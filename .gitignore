@@ -1,0 +1,29 @@
+# LemGendary Dataset Utilities - Git Ignore
+
+# Large Data & Assets
+raw-sets/
+processed/
+*.zip
+*.pth
+*.onnx
+
+# Configuration & Tokens
+.kaggle_token
+.kaggle/
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# IDEs
+.vscode/
+.idea/
+.gemini/
+.antigravity/
+
+# Logs
+log.txt
+*.log
