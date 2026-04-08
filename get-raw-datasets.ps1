@@ -24,12 +24,42 @@ if (!(Test-Path $KaggleDir)) {
     New-Item -ItemType Directory -Force -Path $KaggleDir | Out-Null
 }
 $KaggleJson = Join-Path $KaggleDir "kaggle.json"
-Copy-Item $TokenPath $KaggleJson -Force
+
+# 2026 Resilience: Auto-heal malformed or raw tokens
+$TokenRaw = Get-Content $TokenPath -Raw
+if ($TokenRaw -notmatch '\{.*"username".*\}') {
+    Write-Host "[INFO] Raw Kaggle token detected. Wrapping into valid JSON..."
+    
+    # 2026: Permission Reset Guard
+    # If a previous run locked the file to Read-Only (NTFS), we must reset permissions to regain write access.
+    if (Test-Path $KaggleJson) {
+        icacls $KaggleJson /reset | Out-Null
+        attrib -r $KaggleJson
+        Remove-Item $KaggleJson -Force
+    }
+
+    $TokenKey = $TokenRaw.Trim()
+    # 2026 Resilience: Strip prefixes like 'KGAT_' which are not part of the hex key
+    if ($TokenKey -match "KGAT_(.*)") {
+        $TokenKey = $Matches[1]
+    }
+    
+    $User = "lemtreursi" # Verified username from user confirmation
+    $KaggleConfig = @{
+        username = $User
+        key = $TokenKey
+    } | ConvertTo-Json -Compress
+    $KaggleConfig | Set-Content $KaggleJson -Encoding Ascii
+} else {
+    # Even if it is JSON, ensure we can copy over it
+    if (Test-Path $KaggleJson) { attrib -r $KaggleJson }
+    Copy-Item $TokenPath $KaggleJson -Force
+}
 
 # Set permissions (Windows)
 try {
     icacls $KaggleJson /inheritance:r | Out-Null
-    icacls $KaggleJson /grant:r "$($env:USERNAME):(R)" | Out-Null
+    icacls $KaggleJson /grant:r "$($env:USERNAME):(M)" | Out-Null
 } catch {
     Write-Host "[WARNING] Could not set strict permissions on kaggle.json"
 }
