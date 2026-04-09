@@ -1,5 +1,5 @@
 # ==========================================
-# Kaggle Auto Downloader PRO (Parallel)
+# Kaggle Auto Downloader PRO (Parallel Dashboard)
 # ==========================================
 
 $ErrorActionPreference = "Stop"
@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 
 $BasePath = Join-Path (Get-Location) "raw-sets"
 $TokenPath = Join-Path (Get-Location) ".kaggle_token"
-$MaxParallel = 3   # adjust based on bandwidth (2–5 recommended)
+$MaxParallel = 3   # adjust based on bandwidth (2-5 recommended)
 
 # ---------- CHECK TOKEN ----------
 
@@ -31,7 +31,6 @@ if ($TokenRaw -notmatch '\{.*"username".*\}') {
     Write-Host "[INFO] Raw Kaggle token detected. Wrapping into valid JSON..."
     
     # 2026: Permission Reset Guard
-    # If a previous run locked the file to Read-Only (NTFS), we must reset permissions to regain write access.
     if (Test-Path $KaggleJson) {
         icacls $KaggleJson /reset | Out-Null
         attrib -r $KaggleJson
@@ -39,10 +38,7 @@ if ($TokenRaw -notmatch '\{.*"username".*\}') {
     }
 
     $TokenKey = $TokenRaw.Trim()
-    # 2026 Resilience: Strip prefixes like 'KGAT_' which are not part of the hex key
-    if ($TokenKey -match "KGAT_(.*)") {
-        $TokenKey = $Matches[1]
-    }
+    if ($TokenKey -match "KGAT_(.*)") { $TokenKey = $Matches[1] }
     
     $User = "lemtreursi" # Verified username from user confirmation
     $KaggleConfig = @{
@@ -51,7 +47,6 @@ if ($TokenRaw -notmatch '\{.*"username".*\}') {
     } | ConvertTo-Json -Compress
     $KaggleConfig | Set-Content $KaggleJson -Encoding Ascii
 } else {
-    # Even if it is JSON, ensure we can copy over it
     if (Test-Path $KaggleJson) { attrib -r $KaggleJson }
     Copy-Item $TokenPath $KaggleJson -Force
 }
@@ -84,21 +79,32 @@ $Datasets = @{
     "nafnet"         = @("rahulbhalley/gopro-deblur","khushikhushikhushi/hide-dataset","akshatbhatnagar/darmstadt-noise-dataset")
 }
 
+# Flatten for dashboard
+$TaskList = @()
+foreach ($model in $Datasets.Keys) {
+    foreach ($ds in $Datasets[$model]) {
+        $TaskList += [PSCustomObject]@{
+            Dataset = $ds
+            Category = $model
+            Status = "Pending"
+            Progress = 0
+            JobId = $null
+        }
+    }
+}
+
 # ---------- DOWNLOAD JOB ----------
 
 $ScriptBlock = {
     param($dataset, $targetPath)
 
-    # Re-define utility inside the job scope
     function Test-ZipValidLocal($zipPath) {
         try {
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
             $zip.Dispose()
             return $true
-        } catch {
-            return $false
-        }
+        } catch { return $false }
     }
 
     $datasetName = $dataset.Split("/")[1]
@@ -106,62 +112,103 @@ $ScriptBlock = {
     $zipPath = Join-Path $targetPath "$datasetName.zip"
 
     if (Test-Path $datasetFolder) {
-        Write-Host "[SKIP] [$datasetName] already extracted"
+        Write-Output "RESULT:SKIPPED"
         return
     }
 
     if (Test-Path $zipPath) {
-        Write-Host "[INFO] [$datasetName] found existing zip, validating..."
         if (!(Test-ZipValidLocal $zipPath)) {
-            Write-Host "[ERROR] [$datasetName] corrupted zip -> deleting"
             Remove-Item $zipPath -Force
         }
     }
 
     if (!(Test-Path $zipPath)) {
-        Write-Host "[DOWN] [$datasetName] downloading..."
-        kaggle datasets download -d $dataset -p $targetPath
+        Write-Output "STATUS:DOWNLOADING"
+        # --quiet stops the redundant progress bar clutter in jobs
+        kaggle datasets download -d $dataset -p $targetPath --quiet
     }
 
     if (Test-Path $zipPath) {
         if (Test-ZipValidLocal $zipPath) {
-            Write-Host "[INFO] [$datasetName] extracting..."
-            Expand-Archive -Path $zipPath -DestinationPath $datasetFolder -Force
+            Write-Output "STATUS:QUEUED_FOR_UNZIP"
+            # 2026: Cross-process serialization via Named Mutex
+            $Mutex = New-Object System.Threading.Mutex($false, "Global\LemGendaryExtractionLock")
+            $null = $Mutex.WaitOne()
+            try {
+                Write-Output "STATUS:EXTRACTING"
+                Expand-Archive -Path $zipPath -DestinationPath $datasetFolder -Force
+                # 2026 CLEANUP: Delete zip after successful extraction
+                Remove-Item $zipPath -Force
+                Write-Output "RESULT:COMPLETED"
+            } finally {
+                $Mutex.ReleaseMutex()
+                $Mutex.Dispose()
+            }
         } else {
-            Write-Host "[ERROR] [$datasetName] zip invalid after download"
-            return
+            Write-Output "RESULT:ERROR_ZIP_INVALID"
         }
     }
 }
 
-# ---------- PARALLEL EXECUTION ----------
+# ---------- DASHBOARD LOOP ----------
 
-$Jobs = @()
+Write-Host "`nInitializing LemGendary Acquisition Dashboard..." -ForegroundColor Cyan
 
-foreach ($model in $Datasets.Keys) {
-    $modelPath = Join-Path $BasePath $model
-    if (!(Test-Path $modelPath)) {
-        New-Item -ItemType Directory -Force -Path $modelPath | Out-Null
+$TotalDone = 0
+$TotalTasks = $TaskList.Count
+
+while ($TotalDone -lt $TotalTasks) {
+    # Check for free slots and launch pending
+    $RunningJobs = $TaskList | Where-Object { $_.JobId -ne $null -and (Get-Job -Id $_.JobId).State -eq "Running" }
+    
+    if ($RunningJobs.Count -lt $MaxParallel) {
+        $NextTask = $TaskList | Where-Object { $_.Status -eq "Pending" } | Select-Object -First 1
+        if ($NextTask) {
+            $modelPath = Join-Path $BasePath $NextTask.Category
+            if (!(Test-Path $modelPath)) { New-Item -ItemType Directory -Force -Path $modelPath | Out-Null }
+            
+            $NextTask.JobId = (Start-Job -ScriptBlock $ScriptBlock -ArgumentList $NextTask.Dataset, $modelPath).Id
+            $NextTask.Status = "Starting"
+        }
     }
 
-    foreach ($ds in $Datasets[$model]) {
-        while (($Jobs | Where-Object { $_.State -eq "Running" }).Count -ge $MaxParallel) {
-            Start-Sleep -Seconds 2
+    # Update states from Job output
+    foreach ($task in $TaskList | Where-Object { $_.JobId -ne $null }) {
+        $job = Get-Job -Id $task.JobId
+        $output = $job | Receive-Job
+        foreach ($line in $output) {
+            if ($line -match "STATUS:(.*)") { $task.Status = $Matches[1] }
+            if ($line -match "RESULT:(.*)") { $task.Status = $Matches[1] }
         }
 
-        $job = Start-Job -ScriptBlock $ScriptBlock -ArgumentList $ds, $modelPath
-        $Jobs += $job
+        if ($job.State -eq "Completed" -and $task.Status -notmatch "COMPLETED|SKIPPED|ERROR") {
+            $task.Status = "Completed"
+        }
+        if ($job.State -eq "Failed") { $task.Status = "Job Failed" }
     }
+
+    # Draw Progress Bar Dashboard
+    $TotalDone = ($TaskList | Where-Object { $_.Status -match "COMPLETED|SKIPPED|ERROR" }).Count
+    $Percent = [math]::Round(($TotalDone / $TotalTasks) * 100)
+    
+    $CurrentAction = ($TaskList | Where-Object { $_.Status -match "DOWNLOADING|EXTRACTING" } | Select-Object -ExpandProperty Dataset -First 1)
+    if (!$CurrentAction) { $CurrentAction = "Waiting for slots..." }
+
+    Write-Progress -Activity "LemGendary Dataset Acquisition" `
+                   -Status "Processed: $TotalDone / $TotalTasks ($Percent%) | Working on: $CurrentAction" `
+                   -PercentComplete $Percent
+
+    # Optional: Detailed text dashboard in console
+    # Clear-Host # Caution: Clearing host rapidly might cause flicker
+    
+    Start-Sleep -Seconds 2
 }
 
-# Wait for all
-$Jobs | Wait-Job | Receive-Job
-$Jobs | Remove-Job
+Write-Progress -Activity "LemGendary Dataset Acquisition" -Completed
 
 # ---------- DATASET INDEX ----------
 
 $Index = @()
-
 if (Test-Path $BasePath) {
     foreach ($model in Get-ChildItem $BasePath -Directory) {
         foreach ($ds in Get-ChildItem $model.FullName -Directory) {
@@ -181,5 +228,5 @@ if (Test-Path $BasePath) {
 $IndexPath = Join-Path $BasePath "dataset_index.json"
 $Index | ConvertTo-Json -Depth 4 | Out-File $IndexPath -Encoding utf8
 
-Write-Host "Dataset index saved to $IndexPath"
-Write-Host "COMPLETED"
+Write-Host "`n[SUCCESS] Dataset index saved to $IndexPath"
+Write-Host "All downloads and extractions completed. Zips purged."
