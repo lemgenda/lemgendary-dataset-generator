@@ -1,89 +1,95 @@
-# LemGendary Dataset Pipeline (v2.6.0-SOTA)
+# LemGendary Dataset Pipeline (v3.0.0-LEMGENDARY)
 
-> **Master the Chaos: Orchestrating world-class YOLO datasets with automated vetting, synthesis, and multitasking labels.**
-
-The LemGendary Dataset Pipeline is a professional-grade synthesis engine that transforms raw imagery into production-ready datasets. Optimized for the 2026-era vision architectures, it features automated quality gates, synthetic label bootstrapping, and native support for complex multitasking training.
-
----
-
-## 🚀 Pillars of Resilience
-
-### 🤖 Multi-Task Vetting Engine
-The system acts as an autonomous data scientist, auditing every image candidate:
-- **NIMA Quality Sentry**: Transformer-based technical scoring. Automatically prunes "garbage" images below the 4.5 threshold.
-- **YOLO Auto-Labeler**: Bootstraps missing labels for **Detection**, **Instance Segmentation**, and **Pose Estimation** by dynamically switching between specialized model heads.
-
-### 🧠 Smart Sampler v2
-Balanced data is the key to convergence. Our sampler provides geometric equalization across:
-- **Classes**: Frequency-weighted category balancing.
-- **Sources**: Normalized representation from multiple raw datasets.
-- **Tasks**: Stratification between detection, segmentation, pose, and restoration objectives.
-
-### 🔗 Greedy Format Layer (YOLO Native)
-Direct consumption of professional research formats:
-- **COCO & VOC**: Full extraction of boxes, polygons, and keypoints.
-- **Parquet & MATLAB**: Greedy schema discovery for coordinates and class metadata.
-- **Output**: Native YOLO format (`.txt`) with exact 6-decimal precision.
+> **The Industrial Standard for Vision Data Synthesis.**
+>
+> Orchestrate massive-scale YOLO datasets with hyper-parallel vetting, unified category mapping, and autonomous multitask bootstrapping.
 
 ---
 
-## 🛠️ System Architecture
+## ⚡ 2026 Resilience Architecture
+
+The v3.0 release transforms the pipeline from a sequential script into a distributed synthesis engine, designed for multi-million image datasets with strict quality and consistency requirements.
+
+### 🧵 Massive Parallelism (ProcessPool)
+The core compiler now utilizes all available CPU cores via `ProcessPoolExecutor`. Workers initialize high-precision NIMA and YOLO models once, enabling blistering throughput even with expensive quality vetting enabled.
+
+### 🧬 Unified Category Mapping
+Stop the class-ID fragmentation. Our system injects a global `category_map.json` (COCO-80 Baseline) into every parsing layer, ensuring that "Person" is always Class 0 and "Car" is always Class 2, regardless of the source format (COCO, OID, Parquet, or MATLAB).
+
+### 🎭 Expanded Multitask DNA
+Full, greedy discovery and extraction for professional research formats:
+- **Instance Segmentation**: Deserializes complex polygon vertices.
+- **Pose Estimation**: Extracts normalized keypoint arrays with visibility flags.
+- **Auto-Bootstrapping**: Fills missing labels using task-specific YOLO heads (`-seg`, `-pose`).
+
+---
+
+## 🏗️ System Flow
 
 ```mermaid
-graph TD
-    A[Raw Sources] --> B[LemGendary Hub]
-    B --> C{Pipeline Orchestrator}
-    C --> D[Vetting Engine]
-    D -- NIMA Scorer --> E[Quality Pruning]
-    D -- Multi-Head Predict --> F[Auto-Labeling]
-    E --> G[Standardization]
-    F --> G
-    G --> H[Global Dedup]
-    H --> I[Compiled YAML/Index]
-    I --> J[YOLO Native Output]
-    J --> K[Training Suite]
-```
+graph LR
+    subgraph RawData[Source Repository]
+        D1[COCO/VOC]
+        D2[Parquet]
+        D3[MATLAB]
+    end
 
-## 📦 Engineering Standards
-- **Global Deduplication**: Persistence-aware MD5 hashing checks against existing indices.
-- **Consolidated Multi-Task Labels**: YOLO-compliant serialized labels for boxes, masks, and poses in a single unified `/labels` stream.
-- **Atomic Extractions**: Serial Extraction Mutex ensures thread-safe data unzipping in high-concurrency environments.
+    subgraph V3_Core[SOTA v3.0 Synthesis Engine]
+        A[Parallel Worker Pool]
+        B[NIMA Quality Gate]
+        C[Unified Category Map]
+        D[Multitask Extractor]
+        E[YOLO Auto-Labeler]
+        
+        A --> B
+        B --> C
+        C --> D
+        D --> E
+    end
+
+    subgraph Output[Compiled SOTA Artifacts]
+        F[Native YOLO YAML]
+        G[Verification Board]
+        H[Standardized Index]
+    end
+
+    RawData --> V3_Core
+    V3_Core --> Output
+```
 
 ---
 
-## 🚦 Usage Guide
+## 🛠️ Developer Interface
 
-### 1. The Dataset Hub (Primary Orchestrator)
-The central entry point for the entire repository:
+### 1. The Dataset Hub
+The master TUI for acquiring and compiling datasets.
 ```powershell
 ./lemgendary_hub.ps1
 ```
-- 📥 **Acquire**: Parallel Kaggle downloads and automatic cleanup.
-- ⚙️ **Compile**: Run the full synthesis and pruning pipeline.
-- 📊 **Audit**: Real-time stats on image counts and NIMA quality distributions.
 
 ### 2. Manual Synthesis
-For direct control over the compilation engine:
+Run the high-performance compiler directly.
 ```bash
+# Leverages (CPU_CORES - 2) workers by default
 python compiler-pipeline.py
+```
+
+### 3. Visual Verification (QA)
+Audit the synthesis results with projected labels.
+```bash
+# Renders samples to /verification folder
+python verify_labels.py
 ```
 
 ---
 
-## 📁 Standardized Structure
-After processing, datasets are exported to:
+## 📂 Industrial Dataset Standards
+Post-synthesis, assets are strictly organized for 2026-era vision loaders:
 - `compiled-datasets/images/[train|val]`
-- `compiled-datasets/labels/[train|val]`
-- `compiled-datasets/targets/[train|val]` (Image-to-Image benchmarks)
-- `compiled-datasets/index.json` (Full metadata index with multitask flags)
-
----
-
-## 📊 SOTA Training Optimization
-Compiled sets are pre-configured for:
-- **Detection**: CIoU + Focal Loss optimization.
-- **Segmentation**: Mask IoU / Boundary Loss convergence.
-- **Pose**: OKS (Object Keypoint Similarity) standard.
+- `compiled-datasets/labels/[train|val]` (0-1 Normalized, 6-decimal precision)
+- `compiled-datasets/dataset.yaml` (Self-generating YOLO config)
+- `compiled-datasets/index.json` (The Master Manifest)
+- `verification/` (Burn-in samples for manual QA)
 
 ---
 **LemGendary AI Suite | Advanced Agentic Coding 2026**
