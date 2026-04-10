@@ -18,7 +18,6 @@ $C_Reset = "`e[0m"
 $BasePath = Join-Path (Get-Location) "raw-sets"
 $OutputPath = Join-Path (Get-Location) "compiled-datasets"
 $TokenPath = Join-Path (Get-Location) ".kaggle_token"
-$IndexPath = Join-Path $OutputPath "index.json"
 $MaxParallel = 3
 
 # ---------- BRANDING ----------
@@ -37,7 +36,7 @@ function Show-Branding {
 }
 
 # ---------- DOWNLOADER LOGIC ----------
-function Setup-Kaggle {
+function Initialize-Kaggle {
     if (!(Test-Path $TokenPath)) {
         Write-Host "  ⚠️  [ERROR] Missing .kaggle_token file!" -ForegroundColor Red
         return $false
@@ -65,8 +64,8 @@ function Setup-Kaggle {
     return $true
 }
 
-function Run-Acquisition {
-    if (!(Setup-Kaggle)) { return }
+function Start-Acquisition {
+    if (!(Initialize-Kaggle)) { return }
 
     $Datasets = @{
         "nima_aesthetic" = @("jessevent/all-kaggle-datasets","romainbeaumont/laion-aesthetic-6plus")
@@ -121,7 +120,7 @@ function Run-Acquisition {
     Write-Host "`n  📡 [ACQUISITION] Processing $C_Cyan$($TaskList.Count)$C_Reset datasets in parallel..."
     $TotalDone = 0; $TotalTasks = $TaskList.Count
     while ($TotalDone -lt $TotalTasks) {
-        $RunningJobs = $TaskList | Where-Object { $_.JobId -ne $null -and (Get-Job -Id $_.JobId).State -eq "Running" }
+        $RunningJobs = $TaskList | Where-Object { $null -ne $_.JobId -and (Get-Job -Id $_.JobId).State -eq "Running" }
         if ($RunningJobs.Count -lt $MaxParallel) {
             $NextTask = $TaskList | Where-Object { $_.Status -eq "Pending" } | Select-Object -First 1
             if ($NextTask) {
@@ -131,7 +130,7 @@ function Run-Acquisition {
                 $NextTask.Status = "Starting"
             }
         }
-        foreach ($task in $TaskList | Where-Object { $_.JobId -ne $null }) {
+        foreach ($task in $TaskList | Where-Object { $null -ne $_.JobId }) {
             $job = Get-Job -Id $task.JobId; $output = $job | Receive-Job
             foreach ($line in $output) {
                 if ($line -match "STATUS:(.*)") { $task.Status = $Matches[1] }
@@ -150,7 +149,7 @@ function Run-Acquisition {
 }
 
 # ---------- PIPELINE ORCHESTRATOR ----------
-function Run-Pipeline {
+function Invoke-Pipeline {
     Write-Host "`n  📦 Enter Dataset Identifier (e.g. SOTA_Detection_v1)" -ForegroundColor Gold
     $DatasetName = Read-Host "  Name [default: sota_synthesis]"
     if ([string]::IsNullOrWhiteSpace($DatasetName)) { $DatasetName = "sota_synthesis" }
@@ -190,10 +189,10 @@ while ($true) {
     
     $Choice = Read-Host "`n  Select operation"
     switch ($Choice) {
-        "1" { Run-Acquisition }
-        "2" { Run-Pipeline }
+        "1" { Start-Acquisition }
+        "2" { Invoke-Pipeline }
         "3" { python metadata_builder.py }
-        "4" { ii $OutputPath }
+        "4" { Invoke-Item $OutputPath }
         "q" { break } "Q" { break }
         default { Write-Host "Invalid selection." -ForegroundColor Red; Start-Sleep -Seconds 1 }
     }
