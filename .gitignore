@@ -3,6 +3,7 @@
 # Large Data & Assets
 raw-sets/
 processed/
+compiled-datasets/
 *.zip
 *.pth
 *.onnx
