@@ -64,7 +64,7 @@ graph LR
 ### 1. The Dataset Hub
 The master TUI for acquiring and compiling datasets.
 ```powershell
-./lemgendary_hub.ps1
+./lemgendary_datasets_hub.ps1
 ```
 
 ### 2. Manual Synthesis
