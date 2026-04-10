@@ -62,16 +62,24 @@ graph LR
 ## 🛠️ Developer Interface
 
 ### 1. The Dataset Hub
-The master TUI for acquiring and compiling datasets.
+The master TUI for orchestration. Control the entire raw-to-synthesis lifecycle from one console.
 ```powershell
-# Prompts for Dataset Identifier (e.g. SOTA_Quality_v1)
 ./lemgendary_datasets_hub.ps1
 ```
 
+#### 📋 Menu Options & Sub-Prompts
+| Option | Action | Details |
+| :--- | :--- | :--- |
+| **1. [ACQUIRE]** | **Parallel Downloader** | Pulls massive datasets from Kaggle. Automatically handles credential injection and serialized ZIP extraction to prevent SSD contention. |
+| **2. [COMPILE]** | **Synthesis Pipeline** | The core SOTA v3.1 engine. **Sub-prompt**: Requires a "Dataset Identifier" (e.g., `SOTA_Quality_v1`) to create specialized output folders. |
+| **3. [METADATA]** | **Manifest Rebuild** | Scans the active dataset and rebuilds the `index.json` for rapid search and training integration. |
+| **4. [VIEW]** | **Explorer Sync** | Instantly opens the `compiled-datasets/` directory to inspect generated artifacts. |
+| **Q. [QUIT]** | **System Exit** | Gracefully closes the orchestrator and releases environment locks. |
+
 ### 2. Manual Synthesis
-Run the high-performance compiler directly with a specific name.
+Run the high-performance compiler directly with specific parameters.
 ```bash
-python compiler-pipeline.py --name SOTA_Detection_v1 --workers 8
+python compiler-pipeline.py --name SOTA_Detection_v1 --workers 8 --nima_threshold 5.0
 ```
 
 ### 3. Visual Verification (QA)
