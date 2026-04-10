@@ -64,31 +64,30 @@ graph LR
 ### 1. The Dataset Hub
 The master TUI for acquiring and compiling datasets.
 ```powershell
+# Prompts for Dataset Identifier (e.g. SOTA_Quality_v1)
 ./lemgendary_datasets_hub.ps1
 ```
 
 ### 2. Manual Synthesis
-Run the high-performance compiler directly.
+Run the high-performance compiler directly with a specific name.
 ```bash
-# Leverages (CPU_CORES - 2) workers by default
-python compiler-pipeline.py
+python compiler-pipeline.py --name SOTA_Detection_v1 --workers 8
 ```
 
 ### 3. Visual Verification (QA)
-Audit the synthesis results with projected labels.
+Audit specific synthesis results with projected labels.
 ```bash
-# Renders samples to /verification folder
-python verify_labels.py
+python verify_labels.py --name SOTA_Detection_v1
 ```
 
 ---
 
 ## 📂 Industrial Dataset Standards
-Post-synthesis, assets are strictly organized for 2026-era vision loaders:
-- `compiled-datasets/images/[train|val]`
-- `compiled-datasets/labels/[train|val]` (0-1 Normalized, 6-decimal precision)
-- `compiled-datasets/dataset.yaml` (Self-generating YOLO config)
-- `compiled-datasets/index.json` (The Master Manifest)
+Post-synthesis, assets are strictly organized into named subsets within `compiled-datasets/`:
+- `compiled-datasets/<name>/images/[train|val]`
+- `compiled-datasets/<name>/labels/[train|val]` (0-1 Normalized, 6-decimal precision)
+- `compiled-datasets/<name>/dataset.yaml` (Self-generating YOLO config)
+- `compiled-datasets/<name>/index.json` (The Master Manifest)
 - `verification/` (Burn-in samples for manual QA)
 
 ---

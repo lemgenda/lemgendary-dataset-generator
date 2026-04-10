@@ -151,23 +151,31 @@ function Run-Acquisition {
 
 # ---------- PIPELINE ORCHESTRATOR ----------
 function Run-Pipeline {
-    Write-Host "`n  ⚙️  Initiating Synthesis Pipeline (NIMA + YOLO Vetting)..." -ForegroundColor Cyan
-    python compiler-pipeline.py
-    Write-Host "`n  ✅ PINELINE COMPLETED. REFRESHING INDEX..." -ForegroundColor Green
+    Write-Host "`n  📦 Enter Dataset Identifier (e.g. SOTA_Detection_v1)" -ForegroundColor Gold
+    $DatasetName = Read-Host "  Name [default: sota_synthesis]"
+    if ([string]::IsNullOrWhiteSpace($DatasetName)) { $DatasetName = "sota_synthesis" }
+
+    Write-Host "`n  ⚙️  Initiating Synthesis Pipeline for [$DatasetName]..." -ForegroundColor Cyan
+    python compiler-pipeline.py --name $DatasetName
+    Write-Host "`n  ✅ PIPELINE COMPLETED. REFRESHING INDEX..." -ForegroundColor Green
     Start-Sleep -Seconds 2
 }
 
 # ---------- STATS DASHBOARD ----------
 function Show-Stats {
-    if (Test-Path $IndexPath) {
-        try {
-            $data = Get-Content $IndexPath | ConvertFrom-Json
-            $total = $data.Count
-            $autolabeled = ($data | Where-Object { $_.is_autolabeled -eq $true }).Count
-            $avg_nima = ($data | Measure-Object -Property nima_score -Average).Average
-            Write-Host "  📊 [HUB STATS] Total Compiled: $C_Green$total$C_Reset | Auto-Labeled: $C_Gold$autolabeled$C_Reset | Avg NIMA: $C_Cyan$([math]::Round($avg_nima, 2))$C_Reset"
-        } catch { Write-Host "  📊 [HUB STATS] Index exists but could not be parsed." -ForegroundColor Gray }
-    } else { Write-Host "  📊 [HUB STATS] No compiled index found." -ForegroundColor Gray }
+    $Subsets = Get-ChildItem -Path $OutputPath -Directory -ErrorAction SilentlyContinue
+    if ($Subsets) {
+        $Latest = $Subsets | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $SubIndexPath = Join-Path $Latest.FullName "index.json"
+        if (Test-Path $SubIndexPath) {
+            try {
+                $data = Get-Content $SubIndexPath | ConvertFrom-Json
+                $total = $data.Count
+                $autolabeled = ($data | Where-Object { $_.is_autolabeled -eq $true }).Count
+                Write-Host "  📊 [HUB STATS] Latest Dataset: $C_Cyan$($Latest.Name)$C_Reset | Total: $C_Green$total$C_Reset | Auto-Labeled: $C_Gold$autolabeled$C_Reset"
+            } catch { Write-Host "  📊 [HUB STATS] Found datasets but index parsing failed." -ForegroundColor Gray }
+        } else { Write-Host "  📊 [HUB STATS] Latest dataset [$($Latest.Name)] has no index yet." -ForegroundColor Gray }
+    } else { Write-Host "  📊 [HUB STATS] No compiled datasets found. Run option 2." -ForegroundColor Gray }
 }
 
 # ---------- MAIN MENU ----------

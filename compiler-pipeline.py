@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import argparse
 import hashlib
 import numpy as np
 import torch
@@ -25,10 +26,19 @@ DEFAULT_CONFIG = {
 }
 CONFIG = {**DEFAULT_CONFIG, **json.load(open(CONFIG_PATH))} if CONFIG_PATH.exists() else DEFAULT_CONFIG
 
+# ---------------- CLI ARGS ----------------
+parser = argparse.ArgumentParser(description="LemGendary Dataset Compiler v3.1")
+parser.add_argument("--name", type=str, default="sota_synthesis", help="Name of the compiled dataset")
+parser.add_argument("--workers", type=int, default=DEFAULT_CONFIG["num_workers"], help="Number of parallel workers")
+args, unknown = parser.parse_known_args()
+
 INPUT_ROOT = Path("./raw-sets")
-OUTPUT_ROOT = Path("./compiled-datasets")
+OUTPUT_ROOT = Path("./compiled-datasets") / args.name
 CATEGORY_MAP_PATH = Path("./category_map.json")
 CATEGORY_MAP = json.load(open(CATEGORY_MAP_PATH)) if CATEGORY_MAP_PATH.exists() else {}
+
+# Override workers if specified
+if args.workers: CONFIG["num_workers"] = args.workers
 
 # ---------------- SHARED RESOURCES ----------------
 # Initialized in workers
@@ -311,6 +321,7 @@ def process_dataset():
 # ---------------- GENERATORS ----------------
 def generate_dataset_yaml():
     yaml = f"""
+# SOTA YOLO Dataset Configuration
 path: {OUTPUT_ROOT.resolve()}
 train: images/train
 val: images/val
