@@ -79,7 +79,7 @@ function Run-Acquisition {
         "ffanet"         = @("balraj98/reside-dataset")
         "mprnet"         = @("rahulbhalley/rain-dataset","jeongbinpark/rain-dataset")
         "mirnet"         = @("nareshbhat/low-light-image-enhancement","rajat95gupta/smartphone-image-denoising-dataset","joeljang/mit-adobe-fivek","ursulachang/dped-dataset")
-        "nafnet"         = @("rahulbhalley/gopro-deblur","khushikhushikhushi/hide-dataset","akshatbhatnagar/darmstadt-noise-dataset")
+        "nafnet"         = @("rahulbhalley/gopro-deblur","khushikhushikhushi/hide-dataset","akshatbhatnagar/darmstadt-noise-dataset","rajat95gupta/smartphone-image-denoising-dataset")
     }
 
     $TaskList = @()
