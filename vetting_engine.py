@@ -36,13 +36,16 @@ class QualitySentry:
         ])
 
     @torch.no_grad()
-    def score(self, img_pil):
+    def score(self, img_pil, return_probs=False):
         img_t = self.transform(img_pil).unsqueeze(0).to(self.device)
         probs = self.model(img_t)
         
         # Calculate mean score from distribution [1, 10]
         weights = torch.arange(1, 11).to(self.device).float()
         mean_score = torch.sum(probs * weights, dim=1).item()
+        
+        if return_probs:
+            return mean_score, probs[0].cpu().numpy().tolist()
         return mean_score
 
 class AutoLabeler:

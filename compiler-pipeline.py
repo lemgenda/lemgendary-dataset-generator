@@ -275,8 +275,10 @@ def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
 
         # NIMA Quality
         nima_score = 10.0
+        nima_probs = [0.0] * 10
+        nima_probs[9] = 1.0 # fallback
         if SENTRY:
-            nima_score = SENTRY.score(img)
+            nima_score, nima_probs = SENTRY.score(img, return_probs=True)
             if nima_score < CONFIG["nima_threshold"]: return None
 
         # Meta Preparation
@@ -361,7 +363,7 @@ def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
                     annotations.append({"type": "bbox", "cls": cls, "data": [0.0, 0.0, 1.0, 1.0]}) # Whole image
         
         is_autolabeled = False
-        if not annotations:
+        if not annotations and task != "quality":
             device = "cuda" if torch.cuda.is_available() else "cpu"
             labeler = get_labeler(task, device)
             annotations = labeler.predict(img)
@@ -370,17 +372,20 @@ def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
         # Write Label File
         label_file_path = OUTPUT_ROOT / "labels" / split / f"{name}.txt"
         with open(label_file_path, "w") as f:
-            for ann in annotations:
-                cls = ann["cls"]
-                data = ann["data"]
-                if ann["type"] == "bbox":
-                    yolo = convert_bbox_xywh_to_yolo(data, w, hgt)
-                    f.write(f"{cls} {' '.join(map(str,yolo))}\n")
-                elif ann["type"] == "segmentation":
-                    f.write(f"{cls} {' '.join(map(str,data))}\n")
-                elif ann["type"] == "pose":
-                    yolo_box = convert_bbox_xywh_to_yolo(data[:4], w, hgt)
-                    f.write(f"{cls} {' '.join(map(str,yolo_box))} {' '.join(map(str,data[4:]))}\n")
+            if task == "quality":
+                f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
+            else:
+                for ann in annotations:
+                    cls = ann["cls"]
+                    data = ann["data"]
+                    if ann["type"] == "bbox":
+                        yolo = convert_bbox_xywh_to_yolo(data, w, hgt)
+                        f.write(f"{cls} {' '.join(map(str,yolo))}\n")
+                    elif ann["type"] == "segmentation":
+                        f.write(f"{cls} {' '.join(map(str,data))}\n")
+                    elif ann["type"] == "pose":
+                        yolo_box = convert_bbox_xywh_to_yolo(data[:4], w, hgt)
+                        f.write(f"{cls} {' '.join(map(str,yolo_box))} {' '.join(map(str,data[4:]))}\n")
 
         # Result Meta
         return {
