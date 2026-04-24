@@ -4,6 +4,7 @@
 raw-sets/
 processed/
 compiled-datasets/
+LemGendizedDatasets/
 *.zip
 *.pth
 *.onnx
