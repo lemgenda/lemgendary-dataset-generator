@@ -40,6 +40,31 @@ function Show-Stats {
     }
 }
 
+function Get-RefStatus {
+    param($Ref, $SharedPath)
+    $isHF = $Ref -match 'hf://'
+    $repoId = $Ref.Replace('hf://', '')
+    if ($Ref -match 'competition:(.*)') { $repoId = $Matches[1] }
+    $dn = $repoId.Split('/')[-1]
+    
+    $fold = Join-Path $SharedPath $dn
+    $z = Join-Path $SharedPath ($dn + '.zip')
+    
+    $fCount = 0
+    if (Test-Path $fold) {
+        $fCount = (Get-ChildItem $fold -File -Recurse -ErrorAction SilentlyContinue).Count
+    }
+    
+    if ($isHF) {
+        if ($fCount -gt 0) { return "Extracted" }
+        return "Missing"
+    } else {
+        if (!(Test-Path $z) -and $fCount -gt 0) { return "Extracted" }
+        if (Test-Path $z) { return "ZipOnly" }
+        return "Missing"
+    }
+}
+
 function Test-MissingDatasets {
     param([string[]]$TargetModels = $null)
     $RegData = Get-RegData
@@ -54,9 +79,8 @@ function Test-MissingDatasets {
     
     foreach ($C in $ModelsToCheck) {
         foreach ($E in $RegData.datasets.$C.refs) {
-            $Slug = $E.ref.Replace('hf://', '').Split('/')[-1]
-            $P = Join-Path $Raw $Slug
-            if (!(Test-Path $P) -or (Get-ChildItem $P -File -Recurse).Count -eq 0) {
+            $Stat = Get-RefStatus -Ref $E.ref -SharedPath $Raw
+            if ($Stat -match 'Missing|ZipOnly') {
                 if ($Missing -notcontains $E.ref) { $Missing += $E.ref }
             }
         }
@@ -77,6 +101,7 @@ function Start-Acquisition {
 
     $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
     $DoExtract = $true
+    $ProcessList = @()
     
     if ($null -eq $ForcedRefs) {
         Write-Host "`n--- SELECT DATASET TO ACQUIRE ---" -ForegroundColor Cyan
@@ -105,15 +130,49 @@ function Start-Acquisition {
         $Opt = Read-Host "Selection"
         $DoExtract = ($Opt -eq '2')
         
-        $ForcedRefs = @()
+        Write-Host "`n--- SOURCE STATUS CHECK ---" -ForegroundColor Cyan
         foreach ($td in $TargetDatasets) {
+            Write-Host "[$td]" -ForegroundColor Yellow
             foreach ($E in $RegData.datasets.$td.refs) {
-                if ($ForcedRefs -notcontains $E.ref) { $ForcedRefs += $E.ref }
+                $Stat = Get-RefStatus -Ref $E.ref -SharedPath $Raw
+                $Slug = $E.ref.Replace('hf://', '').Split('/')[-1]
+                
+                # Check if it's already in the process list to avoid duplicates
+                $AlreadyQueued = $ProcessList | Where-Object { $_.Ref -eq $E.ref }
+                if (!$AlreadyQueued) {
+                    if ($Stat -eq "Extracted") {
+                        Write-Host "  [OK] $Slug (Already Extracted)" -ForegroundColor Green
+                    } elseif ($Stat -eq "ZipOnly") {
+                        if ($DoExtract) {
+                            Write-Host "  [UNPACK QUEUED] $Slug (Zip exists, needs extraction)" -ForegroundColor Magenta
+                            $ProcessList += @{ Ref = $E.ref; Action = 'UnpackOnly' }
+                        } else {
+                            Write-Host "  [SKIP] $Slug (Zip exists, extraction not requested)" -ForegroundColor DarkGray
+                        }
+                    } else {
+                        Write-Host "  [DL QUEUED] $Slug (Missing)" -ForegroundColor Red
+                        $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
+                    }
+                }
             }
         }
     } else {
-        # Auto mode
+        # Auto mode (Pre-flight check)
         $DoExtract = $true
+        foreach ($r in $ForcedRefs) {
+            $Stat = Get-RefStatus -Ref $r -SharedPath $Raw
+            if ($Stat -eq "ZipOnly") {
+                $ProcessList += @{ Ref = $r; Action = 'UnpackOnly' }
+            } elseif ($Stat -eq "Missing") {
+                $ProcessList += @{ Ref = $r; Action = 'Download' }
+            }
+        }
+    }
+
+    if ($ProcessList.Count -eq 0) {
+        Write-Host "`n  [OK] All required sources are already acquired/extracted!" -ForegroundColor Green
+        if ($null -eq $ForcedRefs) { Read-Host "Press Enter to return" }
+        return
     }
 
     Write-Host "`n--- ACQUISITION MANIFEST ---" -ForegroundColor Yellow
@@ -121,22 +180,16 @@ function Start-Acquisition {
     if (!(Test-Path $Raw)) { [void](New-Item -ItemType Directory -Path $Raw -Force) }
 
     $UniqueDatasets = @{}
-    foreach ($Ref in $ForcedRefs) {
-        $Slug = $Ref.Replace('hf://', '').Split('/')[-1]
-        if (!$UniqueDatasets.ContainsKey($Ref)) {
-            $UniqueDatasets[$Ref] = @{
-                Ref = $Ref
-                Slug = $Slug
-                Status = 'Queued'
-                JobId = $null
-                ProgressId = 0
-            }
+    foreach ($Item in $ProcessList) {
+        $Slug = $Item.Ref.Replace('hf://', '').Split('/')[-1]
+        $InitStatus = if ($Item.Action -eq 'UnpackOnly') { 'DOWNLOADED' } else { 'Queued' }
+        $UniqueDatasets[$Item.Ref] = @{
+            Ref = $Item.Ref
+            Slug = $Slug
+            Status = $InitStatus
+            JobId = $null
+            ProgressId = 0
         }
-    }
-
-    if ($UniqueDatasets.Count -eq 0) {
-        Write-Host "  [OK] No missing datasets to acquire." -ForegroundColor Green
-        return
     }
 
     $UniqueList = $UniqueDatasets.Values | Sort-Object Ref
@@ -149,30 +202,6 @@ function Start-Acquisition {
         $ref = $ds; if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
         $dn = $ref.Split('/')[-1]
         $z = Join-Path $sharedPath ($dn + '.zip')
-        $fold = Join-Path $sharedPath $dn
-        
-        $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
-        
-        if ((Test-Path $fold) -and !(Test-Path $z)) {
-            if ((Get-ChildItem $fold -File -Recurse -ErrorAction SilentlyContinue).Count -gt 0) {
-                Write-Output "NOTIFICATION:Already Extracted (No Zip): $dn"
-                Write-Output "RESULT:COMPLETED"
-                return
-            }
-        }
-        
-        if (Test-Path $z) {
-            Write-Output "STATUS:VERIFYING"
-            & $vpy $ArchMgr --zip $z --dest "." --action verify 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Output "NOTIFICATION:Zip already exists and is valid: $dn.zip"
-                Write-Output "RESULT:DOWNLOADED"
-                return
-            } else {
-                Write-Output "NOTIFICATION:Zip corrupted, re-downloading: $dn.zip"
-                Remove-Item $z -Force -ErrorAction SilentlyContinue
-            }
-        }
         
         Write-Output "STATUS:DOWNLOADING"
         if ($isC) { kaggle competitions download -c $ref -p $sharedPath --quiet 2>&1 } else { kaggle datasets download -d $ref -p $sharedPath --quiet 2>&1 }
@@ -189,12 +218,6 @@ function Start-Acquisition {
         $repoId = $ds.Replace('hf://', '')
         $dn = $repoId.Split('/')[-1]
         $outFold = Join-Path $sharedPath $dn
-        
-        if ((Test-Path $outFold) -and (Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
-            Write-Output "NOTIFICATION:HF Dataset already exists: $dn"
-            Write-Output "RESULT:COMPLETED"
-            return
-        }
         
         Write-Output "STATUS:HF-PULLING"
         & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
@@ -215,6 +238,14 @@ function Start-Acquisition {
         Write-Output "STATUS:UNPACKING"
         try {
             $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
+            
+            # If the zip is missing, it means HF or Kaggle messed up. But HF emits COMPLETED so it bypasses this!
+            if (!(Test-Path $z)) {
+                Write-Output "NOTIFICATION:Zip not found for extraction: $dn"
+                Write-Output "RESULT:FAILED"
+                return
+            }
+            
             & $vpy $ArchMgr --zip $z --dest $fold --action extract 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-Output "NOTIFICATION:Extraction Finished & Zip Deleted: $dn"
@@ -309,7 +340,7 @@ function Start-Acquisition {
 
     Write-Progress -Id 1 -Activity "OVERALL ACQUISITION" -Completed
     Write-Host '  [OK] ACQUISITION MISSION ENDED.' -ForegroundColor Green
-    Read-Host "Press Enter to return to menu"
+    if ($null -eq $ForcedRefs) { Read-Host "Press Enter to return to menu" }
 }
 
 while ($true) {
