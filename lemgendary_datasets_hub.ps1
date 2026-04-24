@@ -1,201 +1,383 @@
 # ==========================================
 # LemGendary Dataset Hub (SOTA 2026 Dashboard)
-# Centralized Dataset Orchestrator
 # ==========================================
 
-$ErrorActionPreference = "Stop"
-$Host.UI.RawUI.WindowTitle = "LemGendary Dataset Hub v2.5.0"
+$ErrorActionPreference = 'Stop'
+$Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+$Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
+$Raw = Join-Path $PSScriptRoot 'raw-sets'
+$hfManagerPath = Join-Path $PSScriptRoot 'hf_manager.py'
 
-# ---------- COLOR SCHEME ----------
-$C_Cyan = "`e[36m"
-$C_Gold = "`e[33m"
-$C_Green = "`e[32m"
-$C_Red = "`e[31m"
-$C_Gray = "`e[90m"
-$C_Reset = "`e[0m"
-
-# ---------- CONFIG ----------
-$BasePath = Join-Path (Get-Location) "raw-sets"
-$OutputPath = Join-Path (Get-Location) "compiled-datasets"
-$TokenPath = Join-Path (Get-Location) ".kaggle_token"
-$MaxParallel = 3
-
-# ---------- BRANDING ----------
-function Show-Branding {
-    Clear-Host
-    Write-Host "$C_Gold"
-    Write-Host "  _      ______ __  __ _____ ______ _   _ _____          _____  __     __ "
-    Write-Host " | |    |  ____|  \/  / ____|  ____| \ | |  __ \   /\   |  __ \ \ \   / / "
-    Write-Host " | |    | |__  | \  / | |  __| |__  |  \| | |  | | /  \  | |__) | \ \_/ /  "
-    Write-Host " | |    |  __| | |\/| | | |_ |  __| | . ` | |  | |/ /\ \ |  _  /   \   /   "
-    Write-Host " | |____| |____| |  | | |__| | |____| |\  | |__| / ____ \| | \ \    | |    "
-    Write-Host " |______|______|_|  |_|\_____|______|_| \_|_____/_/    \_\_|  \_\   |_|    "
-    Write-Host "                                                                           "
-    Write-Host "         [ SOTA 2026 DATASET ORCHESTRATION HUB - v2.5.0 ]                  "
-    Write-Host "$C_Reset"
+function Get-RegData {
+    if (!(test-path $Reg)) { Write-Host '  [ERROR] unified_data.yaml missing!' -Fore Red; return $null }
+    $RegFixed = $Reg.Replace('\', '/')
+    $YJ = & $Vpy -c "import yaml, json, sys; print(json.dumps(yaml.safe_load(open('$RegFixed'))))"
+    if (!$YJ) { Write-Host '  [ERROR] Manifest load failed!' -Fore Red; return $null }
+    return $YJ | ConvertFrom-Json
 }
 
-# ---------- DOWNLOADER LOGIC ----------
-function Initialize-Kaggle {
-    if (!(Test-Path $TokenPath)) {
-        Write-Host "  ⚠️  [ERROR] Missing .kaggle_token file!" -ForegroundColor Red
-        return $false
+$GlobalData = Get-RegData
+$OutFolderName = "compiled-datasets"
+if ($GlobalData -and $GlobalData._registry_metadata.output_folder_name) { 
+    $OutFolderName = $GlobalData._registry_metadata.output_folder_name 
+}
+$Out = Join-Path (Get-Location) $OutFolderName
+
+function Show-Stats {
+    if (Test-Path $Out) {
+        $Lat = Get-ChildItem $Out -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($Lat) {
+            $IdxPath = Join-Path $Lat.FullName 'index.json'
+            if (Test-Path $IdxPath) {
+                try {
+                    $Txt = [System.IO.File]::ReadAllText($IdxPath)
+                    $Djson = $Txt | ConvertFrom-Json
+                    $Cnt = $Djson.Count
+                    Write-Host ('  [STATS] Latest: ' + $Lat.Name + ' | Total: ' + $Cnt) -ForegroundColor Cyan
+                } catch { }
+            }
+        }
     }
+}
 
-    $KaggleDir = Join-Path $env:USERPROFILE ".kaggle"
-    if (!(Test-Path $KaggleDir)) { New-Item -ItemType Directory -Force -Path $KaggleDir | Out-Null }
-    $KaggleJson = Join-Path $KaggleDir "kaggle.json"
-
-    $TokenRaw = Get-Content $TokenPath -Raw
-    if ($TokenRaw -notmatch '\{.*"username".*\}') {
-        $TokenKey = $TokenRaw.Trim()
-        if ($TokenKey -match "KGAT_(.*)") { $TokenKey = $Matches[1] }
-        $User = "lemtreursi" # Standardized for 2026
-        $KaggleConfig = @{ username = $User; key = $TokenKey } | ConvertTo-Json -Compress
-        $KaggleConfig | Set-Content $KaggleJson -Encoding Ascii
-    } else {
-        Copy-Item $TokenPath $KaggleJson -Force
+function Test-MissingDatasets {
+    param([string[]]$TargetModels = $null)
+    $RegData = Get-RegData
+    if (!$RegData) { return @() }
+    
+    $Missing = @()
+    
+    $ModelsToCheck = $TargetModels
+    if ($null -eq $TargetModels) {
+        $ModelsToCheck = @($RegData.datasets.PSObject.Properties.Name)
     }
     
-    icacls $KaggleJson /inheritance:r | Out-Null
-    icacls $KaggleJson /grant:r "$($env:USERNAME):(M)" | Out-Null
-    
-    if (!(Get-Command kaggle -ErrorAction SilentlyContinue)) { pip install kaggle }
-    return $true
+    foreach ($C in $ModelsToCheck) {
+        foreach ($E in $RegData.datasets.$C.refs) {
+            $Slug = $E.ref.Replace('hf://', '').Split('/')[-1]
+            $P = Join-Path $Raw $Slug
+            if (!(Test-Path $P) -or (Get-ChildItem $P -File -Recurse).Count -eq 0) {
+                if ($Missing -notcontains $E.ref) { $Missing += $E.ref }
+            }
+        }
+    }
+    return $Missing
 }
 
 function Start-Acquisition {
-    if (!(Initialize-Kaggle)) { return }
+    param([string[]]$ForcedRefs = $null)
+    
+    $Cred = @{ username = 'lemgenda'; key = 'd28f8f8b8eef9a8f688e8b8c7c9e8e8' }
+    $KPath = Join-Path $env:USERPROFILE '.kaggle'
+    if (!(Test-Path $KPath)) { [void](New-Item -ItemType Directory -Path $KPath -Force) }
+    [System.IO.File]::WriteAllText((Join-Path $KPath 'kaggle.json'), ($Cred | ConvertTo-Json))
 
-    $Datasets = @{
-        "nima_aesthetic" = @("jessevent/all-kaggle-datasets","romainbeaumont/laion-aesthetic-6plus")
-        "nima_technical" = @("anjanatiha/koniq-10k","taehoonlee/spaq","kanchana1990/tid2013")
-        "codeformer"     = @("jessicali9530/celeba-dataset","kashyapkvh/mm-celeba-hq-dataset","arnaud58/flickrfaceshq-dataset-ffhq")
-        "parsenet"       = @("ashishjangra27/celeba-mask-hq","sanjanchaudhari/lapa-dataset")
-        "retinaface"     = @("gauravduttakiit/wider-face-dataset","aryashah2k/crowdhuman-dataset")
-        "yolov8n"        = @("awsaf49/coco-2017-dataset","amsiddiqui/objects365","landlord/open-images-dataset")
-        "ultrazoom"      = @("joe1995/div2k-dataset","joe1995/flickr2k","nikhilpandey360/hq-50k","doobiusp/huge-dataset-of-images-super-resolution")
-        "ffanet"         = @("balraj98/reside-dataset")
-        "mprnet"         = @("rahulbhalley/rain-dataset","jeongbinpark/rain-dataset")
-        "mirnet"         = @("nareshbhat/low-light-image-enhancement","rajat95gupta/smartphone-image-denoising-dataset","joeljang/mit-adobe-fivek","ursulachang/dped-dataset")
-        "nafnet"         = @("rahulbhalley/gopro-deblur","khushikhushikhushi/hide-dataset","akshatbhatnagar/darmstadt-noise-dataset","rajat95gupta/smartphone-image-denoising-dataset")
+    $RegData = Get-RegData
+    if (!$RegData) { return }
+
+    $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
+    $DoExtract = $true
+    
+    if ($null -eq $ForcedRefs) {
+        Write-Host "`n--- SELECT DATASET TO ACQUIRE ---" -ForegroundColor Cyan
+        for ($i=0; $i -lt $DatasetNames.Count; $i++) {
+            Write-Host "$($i+1). $($DatasetNames[$i])"
+        }
+        Write-Host "a. All Datasets"
+        $Sel = Read-Host "Selection"
+        
+        $TargetDatasets = @()
+        if ($Sel -eq 'a') {
+            $TargetDatasets = $DatasetNames
+        } else {
+            $Idx = [int]$Sel - 1
+            if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
+                $TargetDatasets += $DatasetNames[$Idx]
+            } else {
+                Write-Host "Invalid selection." -Fore Red
+                return
+            }
+        }
+        
+        Write-Host "`nOptions:"
+        Write-Host "1. Download only"
+        Write-Host "2. Download and extract"
+        $Opt = Read-Host "Selection"
+        $DoExtract = ($Opt -eq '2')
+        
+        $ForcedRefs = @()
+        foreach ($td in $TargetDatasets) {
+            foreach ($E in $RegData.datasets.$td.refs) {
+                if ($ForcedRefs -notcontains $E.ref) { $ForcedRefs += $E.ref }
+            }
+        }
+    } else {
+        # Auto mode
+        $DoExtract = $true
     }
 
-    $TaskList = @()
-    foreach ($model in $Datasets.Keys) {
-        foreach ($ds in $Datasets[$model]) {
-            $TaskList += [PSCustomObject]@{ Dataset = $ds; Category = $model; Status = "Pending"; JobId = $null }
+    Write-Host "`n--- ACQUISITION MANIFEST ---" -ForegroundColor Yellow
+
+    if (!(Test-Path $Raw)) { [void](New-Item -ItemType Directory -Path $Raw -Force) }
+
+    $UniqueDatasets = @{}
+    foreach ($Ref in $ForcedRefs) {
+        $Slug = $Ref.Replace('hf://', '').Split('/')[-1]
+        if (!$UniqueDatasets.ContainsKey($Ref)) {
+            $UniqueDatasets[$Ref] = @{
+                Ref = $Ref
+                Slug = $Slug
+                Status = 'Queued'
+                JobId = $null
+                ProgressId = 0
+            }
         }
     }
 
-    $ScriptBlock = {
-        param($dataset, $targetPath)
-        function Test-ZipValidLocal($zipPath) {
-            try {
-                Add-Type -AssemblyName System.IO.Compression.FileSystem
-                $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath); $zip.Dispose(); return $true
-            } catch { return $false }
-        }
-        $datasetName = $dataset.Split("/")[1]
-        $datasetFolder = Join-Path $targetPath $datasetName
-        $zipPath = Join-Path $targetPath "$datasetName.zip"
+    if ($UniqueDatasets.Count -eq 0) {
+        Write-Host "  [OK] No missing datasets to acquire." -ForegroundColor Green
+        return
+    }
 
-        if (Test-Path $datasetFolder) { Write-Output "RESULT:SKIPPED"; return }
+    $UniqueList = $UniqueDatasets.Values | Sort-Object Ref
+    $MaxJobs = 3
+    $BaseId = 100
+    
+    $DownloadSB = {
+        param($ds, $sharedPath, $vpy)
+        $isC = $ds -match 'competition'
+        $ref = $ds; if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
+        $dn = $ref.Split('/')[-1]
+        $z = Join-Path $sharedPath ($dn + '.zip')
+        
+        $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
+        
+        if (Test-Path $z) {
+            Write-Output "STATUS:VERIFYING"
+            & $vpy $ArchMgr --zip $z --dest "." --action verify 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Output "NOTIFICATION:Zip already exists and is valid: $dn.zip"
+                Write-Output "RESULT:DOWNLOADED"
+                return
+            } else {
+                Write-Output "NOTIFICATION:Zip corrupted, re-downloading: $dn.zip"
+                Remove-Item $z -Force -ErrorAction SilentlyContinue
+            }
+        }
         
         Write-Output "STATUS:DOWNLOADING"
-        kaggle datasets download -d $dataset -p $targetPath --quiet
+        if ($isC) { kaggle competitions download -c $ref -p $sharedPath --quiet 2>&1 } else { kaggle datasets download -d $ref -p $sharedPath --quiet 2>&1 }
         
-        if (Test-Path $zipPath) {
-            Write-Output "STATUS:EXTRACTING"
-            $Mutex = New-Object System.Threading.Mutex($false, "Global\LemGendaryExtractionLock")
-            $null = $Mutex.WaitOne()
-            try {
-                Expand-Archive -Path $zipPath -DestinationPath $datasetFolder -Force
-                Remove-Item $zipPath -Force
+        if (Test-Path $z) {
+             Write-Output "RESULT:DOWNLOADED"
+        } else {
+             Write-Output "RESULT:FAILED"
+        }
+    }
+
+    $HuggingFaceSB = {
+        param($ds, $sharedPath, $vpy, $hfManager)
+        $repoId = $ds.Replace('hf://', '')
+        $dn = $repoId.Split('/')[-1]
+        $outFold = Join-Path $sharedPath $dn
+        
+        Write-Output "STATUS:HF-PULLING"
+        & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
+        
+        if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+             Write-Output "RESULT:COMPLETED"
+        } else {
+             Write-Output "RESULT:FAILED"
+        }
+    }
+
+    $UnpackSB = {
+        param($ds, $sharedPath, $vpy)
+        $dn = $ds.Split('/')[-1]
+        $fold = Join-Path $sharedPath $dn
+        $z = Join-Path $sharedPath ($dn + '.zip')
+        
+        Write-Output "STATUS:UNPACKING"
+        try {
+            $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
+            & $vpy $ArchMgr --zip $z --dest $fold --action extract 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Output "NOTIFICATION:Extraction Finished & Zip Deleted: $dn"
                 Write-Output "RESULT:COMPLETED"
-            } finally { $Mutex.ReleaseMutex(); $Mutex.Dispose() }
+            } else {
+                Write-Output "RESULT:FAILED"
+            }
+        } catch {
+            Write-Output "NOTIFICATION:Extraction Failed for $dn : $($_.Exception.Message)"
+            Write-Output "RESULT:FAILED"
         }
     }
 
-    Write-Host "`n  📡 [ACQUISITION] Processing $C_Cyan$($TaskList.Count)$C_Reset datasets in parallel..."
-    $TotalDone = 0; $TotalTasks = $TaskList.Count
-    while ($TotalDone -lt $TotalTasks) {
-        $RunningJobs = $TaskList | Where-Object { $null -ne $_.JobId -and (Get-Job -Id $_.JobId).State -eq "Running" }
-        if ($RunningJobs.Count -lt $MaxParallel) {
-            $NextTask = $TaskList | Where-Object { $_.Status -eq "Pending" } | Select-Object -First 1
-            if ($NextTask) {
-                $dir = Join-Path $BasePath $NextTask.Category
-                if (!(Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-                $NextTask.JobId = (Start-Job -ScriptBlock $ScriptBlock -ArgumentList $NextTask.Dataset, $dir).Id
-                $NextTask.Status = "Starting"
+    $D = 0; $T = $UniqueList.Count
+    while ($D -lt $T) {
+        $AnyUnpacking = $UniqueList | Where-Object { $_.Status -eq 'UNPACKING' }
+        
+        for ($i=0; $i -lt $MaxJobs; $i++) {
+            $SlotOwnedBy = $UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) } | Select-Object -First 1
+            if (!$SlotOwnedBy) {
+                $NextDl = $UniqueList | Where-Object { $_.Status -eq 'Queued' } | Select-Object -First 1
+                if ($NextDl) {
+                    $NextDl.ProgressId = $BaseId + $i
+                    $NextDl.Status = 'Starting DL'
+                    if ($NextDl.Ref -match 'hf://') {
+                        $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
+                    } else {
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy).Id
+                    }
+                }
             }
         }
-        foreach ($task in $TaskList | Where-Object { $null -ne $_.JobId }) {
-            $job = Get-Job -Id $task.JobId; $output = $job | Receive-Job
-            foreach ($line in $output) {
-                if ($line -match "STATUS:(.*)") { $task.Status = $Matches[1] }
-                if ($line -match "RESULT:(.*)") { $task.Status = $Matches[1] }
+        
+        if (!$AnyUnpacking -and $DoExtract) {
+            $NextUnpack = $UniqueList | Where-Object { $_.Status -eq 'DOWNLOADED' } | Select-Object -First 1
+            if ($NextUnpack) {
+                $UnpackSlot = ($UniqueList | Where-Object { $_.ProgressId -gt 0 }).Count
+                if ($UnpackSlot -lt ($MaxJobs + 1)) {
+                    $NextUnpack.ProgressId = $BaseId + $MaxJobs 
+                    $NextUnpack.Status = 'Starting UP'
+                    $NextUnpack.JobId = (Start-Job -ScriptBlock $UnpackSB -ArgumentList $NextUnpack.Ref, $Raw, $Vpy).Id
+                }
             }
-            if ($job.State -eq "Completed" -and $task.Status -notmatch "COMPLETED|SKIPPED|ERROR") { $task.Status = "Completed" }
+        } elseif (!$DoExtract) {
+            foreach ($ti in ($UniqueList | Where-Object { $_.Status -eq 'DOWNLOADED' })) {
+                $ti.Status = 'COMPLETED'
+                $ti.ProgressId = 0
+            }
         }
-        $TotalDone = ($TaskList | Where-Object { $_.Status -match "COMPLETED|SKIPPED|ERROR" }).Count
-        $Percent = [math]::Round(($TotalDone / $TotalTasks) * 100)
-        Write-Progress -Activity "LemGendary Acquisition" -Status "Progress: $TotalDone / $TotalTasks ($Percent%)" -PercentComplete $Percent
-        Start-Sleep -Seconds 2
+
+        foreach ($ti in ($UniqueList | Where-Object { $null -ne $_.JobId })) {
+            $jr = Get-Job -Id $ti.JobId
+            if ($null -ne $jr) {
+                foreach ($ls in ($jr | Receive-Job)) {
+                    if ($ls -match 'STATUS:(.*)') { $ti.Status = $Matches[1] }
+                    if ($ls -match 'NOTIFICATION:(.*)') { Write-Host "  [!] $($Matches[1])" -ForegroundColor Cyan }
+                    if ($ls -match 'RESULT:(.*)') { 
+                        $ti.Status = $Matches[1]
+                        if ($ti.Status -eq 'DOWNLOADED') {
+                             $ti.ProgressId = 0
+                             $ti.JobId = $null
+                        }
+                        if ($ti.Status -match 'COMPLETED|FOUND') { 
+                            $ti.ProgressId = 0
+                        }
+                        if ($ti.Status -eq 'FAILED') { $ti.ProgressId = 0 }
+                    }
+                }
+                if ($jr.State -eq 'Completed' -and $ti.Status -notmatch 'COMPLETED|FOUND|FAILED|MISSING|DOWNLOADED|UNPACKING' ) { 
+                    $ti.Status = 'Done'; $ti.ProgressId = 0 
+                }
+            }
+        }
+
+        $D = ($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|FAILED|MISSING' }).Count
+        $P = [math]::Round(($D / $T) * 100)
+        if ($P -gt 0) { Write-Progress -Activity "OVERALL ACQUISITION" -Status "$D/$T Complete ($P%)" -PercentComplete $P -Id 1 }
+        
+        for ($i=0; $i -lt $MaxJobs; $i++) {
+            $Active = $UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) } | Select-Object -First 1
+            if ($Active) {
+                $StatStr = [string]$Active.Status
+                Write-Progress -Id ($BaseId + $i) -ParentId 1 -Activity "Job $($i+1): $($Active.Slug)" -Status $StatStr -PercentComplete -1
+            } else {
+                Write-Progress -Id ($BaseId + $i) -ParentId 1 -Activity "Job $($i+1): Idle" -Status "Waiting..." -Completed
+            }
+        }
+
+        if ($D -ge $T) { break }
+        Start-Sleep -Seconds 1
     }
-    Write-Progress -Activity "LemGendary Acquisition" -Completed
-    Write-Host "  ✅ ALL DATASETS ACQUIRED." -ForegroundColor Green
-    Start-Sleep -Seconds 2
+
+    Write-Progress -Id 1 -Activity "OVERALL ACQUISITION" -Completed
+    Write-Host '  [OK] ACQUISITION MISSION ENDED.' -ForegroundColor Green
+    Read-Host "Press Enter to return to menu"
 }
 
-# ---------- PIPELINE ORCHESTRATOR ----------
-function Invoke-Pipeline {
-    Write-Host "`n  📦 Enter Dataset Identifier (e.g. SOTA_Detection_v1)" -ForegroundColor Gold
-    $DatasetName = Read-Host "  Name [default: sota_synthesis]"
-    if ([string]::IsNullOrWhiteSpace($DatasetName)) { $DatasetName = "sota_synthesis" }
-
-    Write-Host "`n  ⚙️  Initiating Synthesis Pipeline for [$DatasetName]..." -ForegroundColor Cyan
-    python compiler-pipeline.py --name $DatasetName
-    Write-Host "`n  ✅ PIPELINE COMPLETED. REFRESHING INDEX..." -ForegroundColor Green
-    Start-Sleep -Seconds 2
-}
-
-# ---------- STATS DASHBOARD ----------
-function Show-Stats {
-    $Subsets = Get-ChildItem -Path $OutputPath -Directory -ErrorAction SilentlyContinue
-    if ($Subsets) {
-        $Latest = $Subsets | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        $SubIndexPath = Join-Path $Latest.FullName "index.json"
-        if (Test-Path $SubIndexPath) {
-            try {
-                $data = Get-Content $SubIndexPath | ConvertFrom-Json
-                $total = $data.Count
-                $autolabeled = ($data | Where-Object { $_.is_autolabeled -eq $true }).Count
-                Write-Host "  📊 [HUB STATS] Latest Dataset: $C_Cyan$($Latest.Name)$C_Reset | Total: $C_Green$total$C_Reset | Auto-Labeled: $C_Gold$autolabeled$C_Reset"
-            } catch { Write-Host "  📊 [HUB STATS] Found datasets but index parsing failed." -ForegroundColor Gray }
-        } else { Write-Host "  📊 [HUB STATS] Latest dataset [$($Latest.Name)] has no index yet." -ForegroundColor Gray }
-    } else { Write-Host "  📊 [HUB STATS] No compiled datasets found. Run option 2." -ForegroundColor Gray }
-}
-
-# ---------- MAIN MENU ----------
 while ($true) {
-    Show-Branding
+    Clear-Host
+    Write-Host '--- LEMGENDARY DATASETS HUB v5.2 ---' -ForegroundColor Yellow
     Show-Stats
-    Write-Host "`n  1. $C_Cyan[ACQUIRE]$C_Reset   Download & Extract Raw Datasets (Kaggle)"
-    Write-Host "  2. $C_Green[COMPILE]$C_Reset   Run Synthesis Pipeline (Standardize & Vet)"
-    Write-Host "  3. $C_Gold[METADATA]$C_Reset  Rebuild Search Index"
-    Write-Host "  4. $C_Gray[VIEW]$C_Reset      Explore Compiled Output Folder"
-    Write-Host "  Q. $C_Red[QUIT]$C_Reset      Exit Hub"
-    
-    $Choice = Read-Host "`n  Select operation"
-    switch ($Choice) {
-        "1" { Start-Acquisition }
-        "2" { Invoke-Pipeline }
-        "3" { python metadata_builder.py }
-        "4" { Invoke-Item $OutputPath }
-        "q" { break } "Q" { break }
-        default { Write-Host "Invalid selection." -ForegroundColor Red; Start-Sleep -Seconds 1 }
+    Write-Host '1. Acquire  2. Compile  Q. Quit'
+    $I = Read-Host 'Selection'
+    if ($I -eq '1') { Start-Acquisition }
+    elseif ($I -eq '2') {
+        $RegData = Get-RegData
+        $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
+        
+        Write-Host "`n--- SELECT DATASET TO COMPILE ---" -ForegroundColor Cyan
+        for ($i=0; $i -lt $DatasetNames.Count; $i++) {
+            Write-Host "$($i+1). $($DatasetNames[$i])"
+        }
+        Write-Host "a. All Datasets"
+        $Sel = Read-Host "Selection"
+        
+        $TargetModels = @()
+        if ($Sel -eq 'a') {
+            $TargetModels = $DatasetNames
+        } else {
+            $Idx = [int]$Sel - 1
+            if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
+                $TargetModels += $DatasetNames[$Idx]
+            } else {
+                Write-Host "Invalid selection." -Fore Red
+                continue
+            }
+        }
+        
+        # Check missing sets
+        $Missing = Test-MissingDatasets -TargetModels $TargetModels
+        
+        if ($Missing.Count -gt 0) {
+            Write-Host "`n[WARNING] Some raw datasets are missing or empty for this compilation:" -ForegroundColor Yellow
+            $Missing | ForEach-Object { Write-Host "  - $_" -ForegroundColor Gray }
+            $Choice = Read-Host "`nWould you like to acquire missing sets before compiling? (Y/N)"
+            if ($Choice -match '^y') {
+                Start-Acquisition -ForcedRefs $Missing
+            } else {
+                Write-Host "Proceeding with missing data... might fail." -ForegroundColor Red
+                Start-Sleep -Seconds 2
+            }
+        }
+        
+        # Ask for overrides
+        $MaxSize = Read-Host "Enter Max Size GB [Default: $($RegData._registry_metadata.global_constraints.max_size_gb)]"
+        if ([string]::IsNullOrWhiteSpace($MaxSize)) { $MaxSize = $RegData._registry_metadata.global_constraints.max_size_gb }
+        
+        $Suffix = Read-Host "Enter Suffix [Default: $($RegData._registry_metadata.name_suffix)]"
+        if ([string]::IsNullOrWhiteSpace($Suffix)) { $Suffix = $RegData._registry_metadata.name_suffix }
+        
+        foreach ($tm in $TargetModels) {
+            Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
+            & $Vpy compiler-pipeline.py --model $tm --max_gb $MaxSize --suffix $Suffix
+            
+            # Post-Compile Verification
+            $OutFolder = Join-Path (Get-Location) $OutFolderName
+            if ($RegData._registry_metadata.version) {
+                $OutFolder = Join-Path $OutFolder "v_$($RegData._registry_metadata.version)"
+            }
+            
+            if (Test-Path (Join-Path $OutFolder "README.md")) {
+                Write-Host "  [OK] Dataset compiled successfully!" -ForegroundColor Green
+                Get-Content (Join-Path $OutFolder "README.md") -TotalCount 10
+            }
+            
+            $DelChoice = Read-Host "`nWould you like to delete the raw source data for $tm to save space? (Y/N)"
+            if ($DelChoice -match '^y') {
+                foreach ($E in $RegData.datasets.$tm.refs) {
+                    $Slug = $E.ref.Replace('hf://', '').Split('/')[-1]
+                    $P = Join-Path $Raw $Slug
+                    if (Test-Path $P) {
+                        Remove-Item $P -Recurse -Force -ErrorAction SilentlyContinue
+                        Write-Host "  Deleted raw source: $Slug" -ForegroundColor DarkGray
+                    }
+                }
+            }
+        }
+        Read-Host "Press Enter to return to menu"
     }
+    elseif ($I -match '^q') { break }
 }
-
-Write-Host "`nExiting LemGendary Hub. Keep Convergence High.`n" -ForegroundColor Cyan

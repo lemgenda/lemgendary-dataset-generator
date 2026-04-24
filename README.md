@@ -1,45 +1,54 @@
-# LemGendary Dataset Pipeline (v3.0.0-LEMGENDARY)
+# LemGendary Dataset Pipeline (v5.2.0-LEMGENDARY)
 
-> **The Industrial Standard for Vision Data Synthesis.**
+> **The Industrial Standard for Generative & Vision Data Synthesis.**
 >
-> Orchestrate massive-scale YOLO datasets with hyper-parallel vetting, unified category mapping, and autonomous multitask bootstrapping.
+> Elevate from static sharding to a **Self-Optimizing Generative Manifold**. Orchestrate massive-scale Diffusion and YOLO datasets with industrial-grade CLIP styling, multi-domain balancing, interactive dynamic compilation, and SQLite persistence.
 
 ---
 
-## ⚡ 2026 Resilience Architecture
+## ⚡ v5.2 Ascension Tier: Smart Acquisition & Compilation
 
-The v3.0 release transforms the pipeline from a sequential script into a distributed synthesis engine, designed for multi-million image datasets with strict quality and consistency requirements.
+The v5.2 release introduces a revolutionary **Smart Hub Architecture**, enabling targeted acquisition, dynamic compilation constraints, and precision archive management.
 
-### 🧵 Massive Parallelism (ProcessPool)
-The core compiler now utilizes all available CPU cores via `ProcessPoolExecutor`. Workers initialize high-precision NIMA and YOLO models once, enabling blistering throughput even with expensive quality vetting enabled.
+### 🎯 Interactive Target Compilation
+- **Targeted Execution**: The Hub script (`lemgendary_datasets_hub.ps1`) now allows users to precisely target specific dataset models (e.g., `nima_aesthetic`, `ultrazoom_x4`) or compile all sets globally.
+- **Dynamic Constraints**: Enforce compilation boundaries on the fly. Input absolute maximum dataset limits and suffixes dynamically without hardcoding YAML configs.
 
-### 🧬 Unified Category Mapping
-Stop the class-ID fragmentation. Our system injects a global `category_map.json` (COCO-80 Baseline) into every parsing layer, ensuring that "Person" is always Class 0 and "Car" is always Class 2, regardless of the source format (COCO, OID, Parquet, or MATLAB).
+### 🧠 Smart Archive Manager
+A robust `archive_manager.py` utility completely overhauls the acquisition extraction phase.
+- **Skipping & Verification**: Zips are automatically scanned for corruption. Valid archives natively bypass the Kaggle download phase.
+- **Smart Extraction**: Scans the destination directory against the Zip metadata and only extracts missing files, preserving disk I/O and radically speeding up resumption logic.
+- **Auto-Purge**: Flawless extractions automatically trigger the deletion of the source `.zip` archive to preserve drive capacity.
 
-### 🎭 Expanded Multitask DNA
-Full, greedy discovery and extraction for professional research formats:
-- **Instance Segmentation**: Deserializes complex polygon vertices.
-- **Pose Estimation**: Extracts normalized keypoint arrays with visibility flags.
-- **Auto-Bootstrapping**: Fills missing labels using task-specific YOLO heads (`-seg`, `-pose`).
+### 🧬 CLIP Style Manifold (StyleSentry)
+Every image is semantically scanned using **CLIP (ViT-B/Patch32)**.
+- **Style Clustering**: Automatically groups your dataset into visual clusters (e.g., Cinematic, Sketch, Anime) via *MiniBatchKMeans*.
+- **Zero-Shot Style Tagging**: Injects descriptive style keywords into captions based on multimodal manifold proximity.
 
 ---
 
-## 🏗️ System Flow
+## 🏗️ v5.2 Synthesis Flow
 
 ```mermaid
-graph LR
-    subgraph RawData[Source Repository]
-        D1[COCO/VOC]
-        D2[Parquet]
-        D3[MATLAB]
+graph TD
+    subgraph Hub[Smart Hub Orchestration]
+        M1[Target Selection Menu]
+        M2[Pre-flight Verification]
+        M3[Smart Archive Manager]
     end
 
-    subgraph V3_Core[SOTA v3.0 Synthesis Engine]
+    subgraph RawData[Source Repository]
+        D1[COCO/VOC]
+        D2[DiffusionDB/LAION]
+        D3[Healed Kaggle Mirrors]
+    end
+
+    subgraph Pass1[PASS 1: Extraction]
         A[Parallel Worker Pool]
         B[NIMA Quality Gate]
-        C[Unified Category Map]
-        D[Multitask Extractor]
-        E[YOLO Auto-Labeler]
+        C[CaptionSentry - BLIP]
+        D[CLIP Latent Extraction]
+        E[(SQLite Manifold)]
         
         A --> B
         B --> C
@@ -47,56 +56,44 @@ graph LR
         D --> E
     end
 
-    subgraph Output[Compiled SOTA Artifacts]
-        F[Native YOLO YAML]
-        G[Verification Board]
-        H[Standardized Index]
+    subgraph Manifold[Manifold Optimization]
+        G[Style Clustering K-Means]
+        H[Balanced Round-Robin Scheduler]
     end
 
-    RawData --> V3_Core
-    V3_Core --> Output
+    Hub --> RawData
+    RawData --> Pass1
+    Pass1 --> G
+    G --> H
 ```
 
 ---
 
 ## 🛠️ Developer Interface
 
-### 1. The Dataset Hub
-The master TUI for orchestration. Control the entire raw-to-synthesis lifecycle from one console.
+### 1. The Dataset Hub (v5.2.0-LEMGENDARY)
+Launch the globally hardened interactive dashboard:
 ```powershell
 ./lemgendary_datasets_hub.ps1
 ```
+Follow the interactive prompts to target your `Acquire` or `Compile` operations.
 
-#### 📋 Menu Options & Sub-Prompts
-| Option | Action | Details |
-| :--- | :--- | :--- |
-| **1. [ACQUIRE]** | **Parallel Downloader** | Pulls massive datasets from Kaggle. Automatically handles credential injection and serialized ZIP extraction to prevent SSD contention. |
-| **2. [COMPILE]** | **Synthesis Pipeline** | The core SOTA v3.1 engine. **Sub-prompt**: Requires a "Dataset Identifier" (e.g., `SOTA_Quality_v1`) to create specialized output folders. |
-| **3. [METADATA]** | **Manifest Rebuild** | Scans the active dataset and rebuilds the `index.json` for rapid search and training integration. |
-| **4. [VIEW]** | **Explorer Sync** | Instantly opens the `compiled-datasets/` directory to inspect generated artifacts. |
-| **Q. [QUIT]** | **System Exit** | Gracefully closes the orchestrator and releases environment locks. |
-
-### 2. Manual Synthesis
-Run the high-performance compiler directly with specific parameters.
-```bash
-python compiler-pipeline.py --name SOTA_Detection_v1 --workers 8 --nima_threshold 5.0
-```
-
-### 3. Visual Verification (QA)
-Audit specific synthesis results with projected labels.
-```bash
-python verify_labels.py --name SOTA_Detection_v1
+### 2. Registry Controls (`unified_data.yaml`)
+Establish structural baselines across your ecosystem:
+```yaml
+global_constraints:
+  min_size_gb: 5.0
+  max_size_gb: 150.0
 ```
 
 ---
 
-## 📂 Industrial Dataset Standards
-Post-synthesis, assets are strictly organized into named subsets within `compiled-datasets/`:
-- `compiled-datasets/<name>/images/[train|val]`
-- `compiled-datasets/<name>/labels/[train|val]` (0-1 Normalized, 6-decimal precision)
-- `compiled-datasets/<name>/dataset.yaml` (Self-generating YOLO config)
+## 📂 Industrial Output Topology
+- `raw-sets/` (Raw multi-format sources)
+- `compiled-datasets/<name>/images/` (Standard structured folders)
+- `compiled-datasets/<name>/shards/` (Balanced .tar manifold)
+- `compiled-datasets/<name>/manifold_registry.db` (Persistent SQLite metadata)
 - `compiled-datasets/<name>/index.json` (The Master Manifest)
-- `verification/` (Burn-in samples for manual QA)
 
 ---
 **LemGendary AI Suite | Advanced Agentic Coding 2026**

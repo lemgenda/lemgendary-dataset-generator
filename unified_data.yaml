@@ -1,0 +1,234 @@
+_registry_metadata:
+  version: 4.2.0
+  specialization: 2026_Resiliency
+  name_prefix: "LemGendized"
+  name_suffix: "Large"
+  output_folder_name: "LemGendizedDatasets"
+  global_constraints:
+    min_size_gb: 6.0
+    max_size_gb: 150.0
+
+datasets:
+  # --- QUALITY MODELS ---
+  nima_aesthetic:
+    name: "NimaAesthetic"
+    refs:
+      - ref: "nicolacarrassi/ava-aesthetic-visual-assessment"
+      - ref: "romainbeaumont/laion-aesthetic-6plus"
+      - ref: "praveensuryavanshi/aadb-dataset"
+      - ref: "isaienkov/ffhq-256x256"
+      - ref: "awsaf49/coco-2017-dataset"
+      - ref: "dimensi0n/flickr30k"
+
+  nima_technical:
+    name: "NimaTechnical"
+    refs:
+      - ref: "anjanatiha/koniq-10k"
+      - ref: "taehoonlee/spaq"
+      - ref: "maindolaamit/tid2013"
+      - ref: "arslanali4343/live-iqa-database"
+      - ref: "harshrajput2012/csiq-dataset"
+      - ref: "cheeseandrice/blur-dataset"
+
+  # --- ENHANCE MODELS ---
+  upn_v2:
+    name: "UpnV2"
+    refs:
+      - ref: "thbdh5765/mit-adobe-5k-dataset"
+      - ref: "weighted/fivek-dataset"
+      - ref: "ursulachang/dped-dataset"
+      - ref: "isaienkov/fivek-raw-to-jpeg"
+      - ref: "heykeetae/high-resolution-image-dataset"
+
+  film_restorer:
+    name: "FilmRestorer"
+    refs:
+      - ref: "spiyer/old-film-restoration-dataset"
+      - ref: "marcinrutecki/old-photos"
+      - ref: "arnaud58/old-photos-restoration"
+      - ref: "ashishjangra27/vintage-images"
+      - ref: "kmader/nih-chest-xrays"
+
+  # --- FACE MODELS ---
+  codeformer:
+    name: "CodeFormer"
+    refs:
+      - ref: "jessicali9530/celeba-dataset"
+      - ref: "kashyapkvh/mm-celeba-hq-dataset"
+      - ref: "arnaud58/flickrfaceshq-dataset-ffhq"
+      - ref: "ashwingupta3012/human-faces"
+      - ref: "royorel/face-detection-data"
+      - ref: "soumikrakshit/lfw-dataset"
+
+  parsenet:
+    name: "ParseNet"
+    refs:
+      - ref: "ashishjangra27/celeba-mask-hq"
+      - ref: "sanjanchaudhari/lapa-dataset"
+      - ref: "fareselmenshawy/face-segmentation"
+      - ref: "andrewmvd/face-mask-detection"
+
+  retinaface_mobilenet:
+    name: "RetinaFaceMobileNet"
+    refs:
+      - ref: "gauravduttakiit/wider-face-dataset"
+      - ref: "andrewmvd/face-mask-detection"
+      - ref: "fareselmenshawy/face-detection"
+      - ref: "ashwingupta3012/human-faces"
+
+  retinaface_resnet:
+    name: "RetinaFaceResNet"
+    refs:
+      - ref: "gauravduttakiit/wider-face-dataset"
+      - ref: "aryashah2k/crowdhuman-dataset"
+      - ref: "fareselmenshawy/face-detection"
+      - ref: "ashwingupta3012/human-faces"
+      - ref: "soumikrakshit/lfw-dataset"
+
+  # --- RESTORATION MODELS ---
+  ffanet_indoor:
+    name: "FfaNetIndoor"
+    refs:
+      - ref: "balraj98/indoor-training-set-its-residestandard"
+      - ref: "kmljts/reside-6k"
+      - ref: "rajat95gupta/indoor-haze-dataset"
+      - ref: "isaienkov/reside-dataset"
+
+  ffanet_outdoor:
+    name: "FfaNetOutdoor"
+    refs:
+      - ref: "shivakanthsujit/outdoor-dehazing-dataset"
+      - ref: "litheshshetty/nh-haze"
+      - ref: "rajat95gupta/outdoor-haze"
+      - ref: "kmader/clear-images"
+
+  mirnet_lowlight:
+    name: "MirNetLowLight"
+    refs:
+      - ref: "soumikrakshit/lol-dataset"
+      - ref: "nareshbhat/low-light-image-enhancement"
+      - ref: "isaienkov/exdark-dataset"
+      - ref: "ashishjangra27/dark-face-dataset"
+
+  mirnet_exposure:
+    name: "MirNetExposure"
+    refs:
+      - ref: "weipengzhang/adobe-fivek"
+      - ref: "ursulachang/dped-dataset"
+      - ref: "isaienkov/fivek-raw-to-jpeg"
+      - ref: "heykeetae/high-resolution-image-dataset"
+
+  mprnet_deraining:
+    name: "MprNetDeraining"
+    refs:
+      - ref: "bshaurya/rain-dataset"
+      - ref: "jeongbinpark/rain-dataset"
+      - ref: "isaienkov/rain-dataset"
+      - ref: "rahulbhalley/rain-removal"
+
+  nafnet_debluring:
+    name: "NafNetDebluring"
+    refs:
+      - ref: "adwythdarsanr/gopro-image-deblurring-dataset"
+      - ref: "khushikhushikhushi/hide-dataset"
+      - ref: "isaienkov/gopro-deblur"
+      - ref: "harshrajput2012/deblurring-dataset"
+
+  nafnet_denoising:
+    name: "NafNetDenoising"
+    refs:
+      - ref: "rajat95gupta/smartphone-image-denoising-dataset"
+      - ref: "akshatbhatnagar/darmstadt-noise-dataset"
+      - ref: "isaienkov/sidd-dataset"
+      - ref: "harshrajput2012/noise-dataset"
+
+  # --- SUPER-RESOLUTION ---
+  ultrazoom_x2:
+    name: "UltraZoomX2"
+    refs:
+      - ref: "joe1995/div2k-dataset"
+      - ref: "joe1995/flickr2k"
+      - ref: "isaienkov/df2k-dataset"
+
+  ultrazoom_x3:
+    name: "UltraZoomX3"
+    refs:
+      - ref: "joe1995/div2k-dataset"
+      - ref: "nikhilpandey360/hq-50k"
+      - ref: "ashwingupta3012/high-resolution-images"
+
+  ultrazoom_x4:
+    name: "UltraZoomX4"
+    refs:
+      - ref: "joe1995/div2k-dataset"
+      - ref: "doobiusp/huge-dataset-of-images-super-resolution"
+      - ref: "isaienkov/df2k-dataset"
+
+  ultrazoom_x8:
+    name: "UltraZoomX8"
+    refs:
+      - ref: "joe1995/flickr2k"
+      - ref: "doobiusp/huge-dataset-of-images-super-resolution"
+      - ref: "ashwingupta3012/high-resolution-images"
+
+  # --- DETECTION ---
+  yolov8n:
+    name: "YoloV8n"
+    refs:
+      - ref: "awsaf49/coco-2017-dataset"
+      - ref: "amsiddiqui/objects365"
+      - ref: "ultralytics/coco128"
+      - ref: "kmader/open-images-2019"
+      - ref: "googleai/open-images-dataset"
+
+  # --- MULTI-TASK RESTORATION ---
+  professional_multitask_restoration:
+    name: "ProfessionalMultitaskRestoration"
+    refs:
+      - ref: "duynm619/image-restoration"
+      - ref: "jessicali9530/celeba-dataset"
+      - ref: "balraj98/reside-dataset"
+      - ref: "soumikrakshit/lol-dataset"
+      - ref: "bshaurya/rain-dataset"
+      - ref: "adwythdarsanr/gopro-image-deblurring-dataset"
+
+  # --- DIFFUSION MODELS ---
+  diffusion_sfw:
+    name: "DiffusionSfw"
+    refs:
+      - ref: "poloclub/diffusiondb"
+      - ref: "romainbeaumont/laion-aesthetic-6plus"
+      - ref: "andrewmvd/unsplash-images"
+      - ref: "splcher/animefacedataset"
+      - ref: "mylesoneill/tagged-anime-illustrations"
+      - ref: "shamsad35/anime-sketch-colorization"
+      - ref: "arnaud58/anime-faces"
+      - ref: "harits/anime-dataset"
+      - ref: "awsaf49/coco-2017-dataset"
+      - ref: "dimensi0n/flickr30k"
+      - ref: "isaienkov/ffhq-256x256"
+
+  diffusion_nsfw:
+    name: "DiffusionNsfw"
+    refs:
+      - ref: "vignesh761/human-action-recognition"
+      - ref: "ssuprock/unannotated-human-images"
+      - ref: "nurudeenmohammed/human-skin-diseases"
+      - ref: "ebiswas/anime-hentai-nsfw-classification"
+      - ref: "mylesoneill/tagged-anime-illustrations"
+      - ref: "splcher/animefacedataset"
+      - ref: "shamsad35/anime-sketch-colorization"
+      - ref: "arnaud58/anime-faces"
+      - ref: "awsaf49/coco-2017-dataset"
+      - ref: "dimensi0n/flickr30k"
+      - ref: "brobob/lazymix-real-amateur-nudes"
+      - ref: "vincent019652/sdxl-loras"
+      - ref: "hf://Nikity/Pornhub"
+      - ref: "hf://Nikity/Big-Porn"
+      - ref: "hf://wannaphong/thai_porn_dataset"
+      - ref: "hf://cudecanarim/5k-porn"
+      - ref: "hf://MingSafeR/photo_porn_image_prompts"
+      - ref: "hf://MingSafeR/anime_porn_image_prompts"
+      - ref: "hf://MingSafeR/anime_porn_image_10k"
+      - ref: "hf://MingSafeR/anime_porn_image_1M_augmentation"
+      - ref: "hf://nalpakd/PornhubDataset"

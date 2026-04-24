@@ -9,6 +9,7 @@ compiled-datasets/
 *.onnx
 
 # Configuration & Tokens
+.huggingface_token
 .kaggle_token
 .kaggle/
 
@@ -16,7 +17,7 @@ compiled-datasets/
 __pycache__/
 *.py[cod]
 *$py.class
-venv/
+.venv*/
 .env
 
 # IDEs
