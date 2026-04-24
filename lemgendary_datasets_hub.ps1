@@ -200,11 +200,12 @@ function Start-Acquisition {
     $BaseId = 100
     
     $DownloadSB = {
-        param($ds, $sharedPath, $vpy)
+        param($ds, $sharedPath, $vpy, $hfManager)
         $isC = $ds -match 'competition'
         $ref = $ds; if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
         $dn = $ref.Split('/')[-1]
         $z = Join-Path $sharedPath ($dn + '.zip')
+        $fold = Join-Path $sharedPath $dn
         
         Write-Output "STATUS:DOWNLOADING"
         if ($isC) { kaggle competitions download -c $ref -p $sharedPath --quiet 2>&1 } else { kaggle datasets download -d $ref -p $sharedPath --quiet 2>&1 }
@@ -212,7 +213,15 @@ function Start-Acquisition {
         if (Test-Path $z) {
              Write-Output "RESULT:DOWNLOADED"
         } else {
-             Write-Output "RESULT:FAILED"
+             Write-Output "NOTIFICATION:Kaggle API failed/empty for $dn. Falling back to HF Manager..."
+             Write-Output "STATUS:HF-PULLING"
+             & $vpy $hfManager --repo_id $ref --output_dir $fold --repo_type dataset 2>&1
+             if ((Get-ChildItem $fold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+                  Write-Output "NOTIFICATION:Fallback to HF Successful!"
+                  Write-Output "RESULT:COMPLETED"
+             } else {
+                  Write-Output "RESULT:FAILED"
+             }
         }
     }
 
@@ -276,7 +285,7 @@ function Start-Acquisition {
                     if ($NextDl.Ref -match 'hf://') {
                         $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
                     } else {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
                     }
                 }
             }
@@ -304,8 +313,8 @@ function Start-Acquisition {
             if ($null -ne $jr) {
                 foreach ($ls in ($jr | Receive-Job)) {
                     if ($ls -match 'STATUS:(.*)') { $ti.Status = $Matches[1] }
-                    if ($ls -match 'NOTIFICATION:(.*)') { Write-Host "  [!] $($Matches[1])" -ForegroundColor Cyan }
-                    if ($ls -match 'RESULT:(.*)') { 
+                    elseif ($ls -match 'NOTIFICATION:(.*)') { Write-Host "  [!] $($Matches[1])" -ForegroundColor Cyan }
+                    elseif ($ls -match 'RESULT:(.*)') { 
                         $ti.Status = $Matches[1]
                         if ($ti.Status -eq 'DOWNLOADED') {
                              $ti.ProgressId = 0
@@ -314,7 +323,14 @@ function Start-Acquisition {
                         if ($ti.Status -match 'COMPLETED|FOUND') { 
                             $ti.ProgressId = 0
                         }
-                        if ($ti.Status -eq 'FAILED') { $ti.ProgressId = 0 }
+                        if ($ti.Status -eq 'FAILED') { 
+                            $ti.ProgressId = 0 
+                            Write-Host "`n  [!] Job FAILED: $($ti.Slug)" -ForegroundColor Red
+                        }
+                    } else {
+                        if (-not [string]::IsNullOrWhiteSpace($ls)) {
+                            Write-Host "    $($ti.Slug)> $ls" -ForegroundColor DarkGray
+                        }
                     }
                 }
                 if ($jr.State -eq 'Completed' -and $ti.Status -notmatch 'COMPLETED|FOUND|FAILED|MISSING|DOWNLOADED|UNPACKING' ) { 

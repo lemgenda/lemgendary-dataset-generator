@@ -14,16 +14,16 @@ datasets:
     name: "NimaAesthetic"
     refs:
       - ref: "nicolacarrassi/ava-aesthetic-visual-assessment"
-      - ref: "romainbeaumont/laion-aesthetic-6plus"
-      - ref: "praveensuryavanshi/aadb-dataset"
-      - ref: "isaienkov/ffhq-256x256"
+      - ref: "cookiemonsteryum/laion-5b-65-aesthetic-512x512-images"
+      - ref: "bogdanpetre98/aadb-imagedatabase"
+      - ref: "arnaud58/flickrfaceshq-dataset-ffhq"
       - ref: "awsaf49/coco-2017-dataset"
-      - ref: "dimensi0n/flickr30k"
+      - ref: "awsaf49/flickr30k-dataset"
 
   nima_technical:
     name: "NimaTechnical"
     refs:
-      - ref: "anjanatiha/koniq-10k"
+      - ref: "generalhawking/koniq-10k-dataset"
       - ref: "taehoonlee/spaq"
       - ref: "maindolaamit/tid2013"
       - ref: "arslanali4343/live-iqa-database"
@@ -37,7 +37,7 @@ datasets:
       - ref: "thbdh5765/mit-adobe-5k-dataset"
       - ref: "weighted/fivek-dataset"
       - ref: "ursulachang/dped-dataset"
-      - ref: "isaienkov/fivek-raw-to-jpeg"
+      - ref: "justinjiangnext/mit-adobe-5k-labeled"
       - ref: "heykeetae/high-resolution-image-dataset"
 
   film_restorer:
