@@ -56,7 +56,7 @@ function Get-RefStatus {
     }
     
     if ($isHF) {
-        if ($fCount -gt 0) { return "Extracted" }
+        if ($fCount -gt 0) { return "HF_Partial" }
         return "Missing"
     } else {
         if (!(Test-Path $z) -and $fCount -gt 0) { return "Extracted" }
@@ -142,6 +142,9 @@ function Start-Acquisition {
                 if (!$AlreadyQueued) {
                     if ($Stat -eq "Extracted") {
                         Write-Host "  [OK] $Slug (Already Extracted)" -ForegroundColor Green
+                    } elseif ($Stat -eq "HF_Partial") {
+                        Write-Host "  [HF SYNC] $Slug (Running HF Manager to ensure completion)" -ForegroundColor Yellow
+                        $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
                     } elseif ($Stat -eq "ZipOnly") {
                         if ($DoExtract) {
                             Write-Host "  [UNPACK QUEUED] $Slug (Zip exists, needs extraction)" -ForegroundColor Magenta
@@ -192,7 +195,7 @@ function Start-Acquisition {
         }
     }
 
-    $UniqueList = $UniqueDatasets.Values | Sort-Object Ref
+    $UniqueList = @($UniqueDatasets.Values | Sort-Object Ref)
     $MaxJobs = 3
     $BaseId = 100
     
@@ -259,14 +262,14 @@ function Start-Acquisition {
         }
     }
 
-    $D = 0; $T = $UniqueList.Count
+    $D = 0; $T = @($UniqueList).Count
     while ($D -lt $T) {
-        $AnyUnpacking = $UniqueList | Where-Object { $_.Status -eq 'UNPACKING' }
+        $AnyUnpacking = @($UniqueList | Where-Object { $_.Status -eq 'UNPACKING' })
         
         for ($i=0; $i -lt $MaxJobs; $i++) {
-            $SlotOwnedBy = $UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) } | Select-Object -First 1
+            $SlotOwnedBy = @($UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) }) | Select-Object -First 1
             if (!$SlotOwnedBy) {
-                $NextDl = $UniqueList | Where-Object { $_.Status -eq 'Queued' } | Select-Object -First 1
+                $NextDl = @($UniqueList | Where-Object { $_.Status -eq 'Queued' }) | Select-Object -First 1
                 if ($NextDl) {
                     $NextDl.ProgressId = $BaseId + $i
                     $NextDl.Status = 'Starting DL'
@@ -280,9 +283,9 @@ function Start-Acquisition {
         }
         
         if (!$AnyUnpacking -and $DoExtract) {
-            $NextUnpack = $UniqueList | Where-Object { $_.Status -eq 'DOWNLOADED' } | Select-Object -First 1
+            $NextUnpack = @($UniqueList | Where-Object { $_.Status -eq 'DOWNLOADED' }) | Select-Object -First 1
             if ($NextUnpack) {
-                $UnpackSlot = ($UniqueList | Where-Object { $_.ProgressId -gt 0 }).Count
+                $UnpackSlot = @($UniqueList | Where-Object { $_.ProgressId -gt 0 }).Count
                 if ($UnpackSlot -lt ($MaxJobs + 1)) {
                     $NextUnpack.ProgressId = $BaseId + $MaxJobs 
                     $NextUnpack.Status = 'Starting UP'
@@ -290,13 +293,13 @@ function Start-Acquisition {
                 }
             }
         } elseif (!$DoExtract) {
-            foreach ($ti in ($UniqueList | Where-Object { $_.Status -eq 'DOWNLOADED' })) {
+            foreach ($ti in @($UniqueList | Where-Object { $_.Status -eq 'DOWNLOADED' })) {
                 $ti.Status = 'COMPLETED'
                 $ti.ProgressId = 0
             }
         }
 
-        foreach ($ti in ($UniqueList | Where-Object { $null -ne $_.JobId })) {
+        foreach ($ti in @($UniqueList | Where-Object { $null -ne $_.JobId })) {
             $jr = Get-Job -Id $ti.JobId
             if ($null -ne $jr) {
                 foreach ($ls in ($jr | Receive-Job)) {
@@ -320,12 +323,12 @@ function Start-Acquisition {
             }
         }
 
-        $D = ($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|FAILED|MISSING' }).Count
+        $D = @($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|FAILED|MISSING' }).Count
         $P = [math]::Round(($D / $T) * 100)
         if ($P -gt 0) { Write-Progress -Activity "OVERALL ACQUISITION" -Status "$D/$T Complete ($P%)" -PercentComplete $P -Id 1 }
         
         for ($i=0; $i -lt $MaxJobs; $i++) {
-            $Active = $UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) } | Select-Object -First 1
+            $Active = @($UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) }) | Select-Object -First 1
             if ($Active) {
                 $StatStr = [string]$Active.Status
                 Write-Progress -Id ($BaseId + $i) -ParentId 1 -Activity "Job $($i+1): $($Active.Slug)" -Status $StatStr -PercentComplete -1
