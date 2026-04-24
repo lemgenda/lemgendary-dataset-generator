@@ -149,8 +149,17 @@ function Start-Acquisition {
         $ref = $ds; if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
         $dn = $ref.Split('/')[-1]
         $z = Join-Path $sharedPath ($dn + '.zip')
+        $fold = Join-Path $sharedPath $dn
         
         $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
+        
+        if ((Test-Path $fold) -and !(Test-Path $z)) {
+            if ((Get-ChildItem $fold -File -Recurse -ErrorAction SilentlyContinue).Count -gt 0) {
+                Write-Output "NOTIFICATION:Already Extracted (No Zip): $dn"
+                Write-Output "RESULT:COMPLETED"
+                return
+            }
+        }
         
         if (Test-Path $z) {
             Write-Output "STATUS:VERIFYING"
@@ -180,6 +189,12 @@ function Start-Acquisition {
         $repoId = $ds.Replace('hf://', '')
         $dn = $repoId.Split('/')[-1]
         $outFold = Join-Path $sharedPath $dn
+        
+        if ((Test-Path $outFold) -and (Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+            Write-Output "NOTIFICATION:HF Dataset already exists: $dn"
+            Write-Output "RESULT:COMPLETED"
+            return
+        }
         
         Write-Output "STATUS:HF-PULLING"
         & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
