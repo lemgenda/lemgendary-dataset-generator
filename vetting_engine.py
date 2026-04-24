@@ -9,7 +9,7 @@ import sys
 TRAINING_SUITE_PATH = "c:/Development/python/model-training/lemgendary-training-suite"
 sys.path.append(os.path.join(TRAINING_SUITE_PATH))
 
-from models.nima import NIMA_Model
+from models.nima import NIMA_Model # type: ignore
 from torchvision import transforms
 
 class QualitySentry:

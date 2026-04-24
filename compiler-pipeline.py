@@ -21,23 +21,29 @@ from safetensors import safe_open
 
 def get_dir_size(path):
     """Calculate recursive directory size in GB."""
-    total = 0
-    try:
-        for entry in os.scandir(path):
-            if entry.is_file():
-                total += entry.stat().st_size
-            elif entry.is_dir():
-                total += get_dir_size(entry.path)
-    except (PermissionError, OSError):
-        pass
-    return total / (1024**3)
+    def _get_bytes(p):
+        total = 0
+        try:
+            for entry in os.scandir(p):
+                if entry.is_file():
+                    total += entry.stat().st_size
+                elif entry.is_dir():
+                    total += _get_bytes(entry.path)
+        except (PermissionError, OSError):
+            pass
+        return total
+    return _get_bytes(path) / (1024**3)
 
 # ---------------- CONFIG ----------------
 CONFIG_PATH = Path("./config.json")
 DEFAULT_CONFIG = {
     "train_split": 0.8,
     "num_workers": max(1, multiprocessing.cpu_count() - 2),
-    "diffusion_size": 512
+    "diffusion_size": 512,
+    "black_threshold": 0.1,
+    "nima_threshold": 4.0,
+    "enable_dedup": False,
+    "max_per_dataset": 100000
 }
 CONFIG = {**DEFAULT_CONFIG, **json.load(open(CONFIG_PATH))} if CONFIG_PATH.exists() else DEFAULT_CONFIG
 
@@ -57,7 +63,6 @@ args, unknown = parser.parse_known_args()
 
 INPUT_ROOT = Path("./raw-sets")
 OUT_PARENT = Path(META.get("output_folder_name", "compiled-datasets"))
-OUTPUT_ROOT = OUT_PARENT / f"v_{VERSION}"
 CATEGORY_MAP_PATH = Path("./category_map.json")
 CATEGORY_MAP = json.load(open(CATEGORY_MAP_PATH)) if CATEGORY_MAP_PATH.exists() else {}
 DATASETS_META = YAML_DATA.get("datasets", {})
@@ -240,7 +245,7 @@ def parse_safetensors(st_path):
     return metadata
 
 # ---------------- PROCESSORS ----------------
-def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
+def process_image(img_path, prefix, idx, task, fmt, ann_data, split, output_root_str):
     """Worker function for parallel processing"""
     try:
         # Validity
@@ -286,7 +291,7 @@ def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
         name = f"{prefix}_{idx:09d}"
         
         # Save Output Image
-        out_img_path = OUTPUT_ROOT / "images" / split / f"{name}.jpg"
+        out_img_path = Path(output_root_str) / "images" / split / f"{name}.jpg"
         img.save(out_img_path, "JPEG", quality=95)
         
         # Annotations
@@ -370,7 +375,7 @@ def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
             if annotations: is_autolabeled = True
 
         # Write Label File
-        label_file_path = OUTPUT_ROOT / "labels" / split / f"{name}.txt"
+        label_file_path = Path(output_root_str) / "labels" / split / f"{name}.txt"
         with open(label_file_path, "w") as f:
             if task == "quality":
                 f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
@@ -388,19 +393,24 @@ def process_image(img_path, prefix, idx, task, fmt, ann_data, split):
                         f.write(f"{cls} {' '.join(map(str,yolo_box))} {' '.join(map(str,data[4:]))}\n")
 
         # Result Meta
+        size_bytes = 0
+        if out_img_path.exists(): size_bytes += out_img_path.stat().st_size
+        if label_file_path.exists(): size_bytes += label_file_path.stat().st_size
+        
         return {
             "name": name, "source": prefix, "task": task, "split": split,
             "hash": h, "nima_score": round(nima_score, 3), "is_autolabeled": is_autolabeled,
             "has_segmentation": any(a["type"] == "segmentation" for a in annotations),
             "has_pose": any(a["type"] == "pose" for a in annotations),
-            "label_path": str(label_file_path.resolve()), "path": str(out_img_path.resolve())
+            "label_path": str(label_file_path.resolve()), "path": str(out_img_path.resolve()),
+            "size": size_bytes
         }
 
     except Exception as e:
         print(f"❌ Error processing {img_path}: {e}")
         return None
 
-def process_diffusion(img_path, prefix, idx, split):
+def process_diffusion(img_path, prefix, idx, split, output_root_str):
     """Specialized Text-Image processor for Diffusion Models"""
     try:
         if not img_path.exists(): return None
@@ -456,34 +466,45 @@ def process_diffusion(img_path, prefix, idx, split):
 
 # ---------------- ORCHESTRATOR ----------------
 def process_dataset():
-    if not OUTPUT_ROOT.exists():
-        for d in ["images", "labels", "targets"]:
-            for s in ["train", "val"]: (OUTPUT_ROOT / d / s).mkdir(parents=True, exist_ok=True)
-
-    index = []
-    seen_hashes = set()
-    
-    # PASS 1: Extraction & Latent Collection
-    db_path = OUTPUT_ROOT / "manifold_registry.db"
-    conn = initialize_registry(db_path)
-    
-    # Metadata already loaded globally
     min_gb = META.get("global_constraints", {}).get("min_size_gb", 0.1)
     max_gb = args.max_gb if args.max_gb is not None else META.get("global_constraints", {}).get("max_size_gb", 50.0)
     prefix_str = META.get("name_prefix", "")
     suffix_str = args.suffix if args.suffix is not None else META.get("name_suffix", "")
 
     shared_root = INPUT_ROOT
-    print(f"🚀 [SOTA v5.0] Commencing PASS 1: Latent Extraction & Vetting...")
+    # Pre-load models globally once to prevent multiprocess race conditions on HF cache
+    print("🛡️ [PRE-FLIGHT] Caching pre-trained models safely on main thread...")
+    from vetting_engine import QualitySentry, CaptionSentry, CLIPManifold, AutoLabeler
+    model_path = "c:/Development/python/model-training/lemgendary-training-suite/trained-models/nima_technical/nima_technical_best.pth"
+    if os.path.exists(model_path):
+        _ = QualitySentry(model_path, device="cpu")
+    _ = CaptionSentry(device="cpu")
+    _ = CLIPManifold(device="cpu")
+    print("🛡️ [PRE-FLIGHT] Models cached successfully.")
+
     with ProcessPoolExecutor(max_workers=CONFIG["num_workers"], initializer=init_worker, initargs=(CONFIG,)) as executor:
-        futures = []
-        
-        # 2026 Shift: Universal Registry-First Iteration
         for model_key, model_config in DATASETS_META.items():
             if args.model and model_key != args.model: continue
             task = detect_task(model_key)
             pascal_name = model_config.get("name", model_key.replace("_", ""))
             prefix = pascal_name
+            
+            output_root = OUT_PARENT / f"{prefix_str}{pascal_name}{suffix_str}"
+            output_root_str = str(output_root)
+            
+            if not output_root.exists():
+                for d in ["images", "labels", "targets"]:
+                    for s in ["train", "val"]: (output_root / d / s).mkdir(parents=True, exist_ok=True)
+
+            print(f"\n🚀 [SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
+
+            index = []
+            seen_hashes = set()
+            
+            db_path = output_root / "manifold_registry.db"
+            conn = initialize_registry(db_path)
+
+            futures = []
             
             for ref_entry in model_config.get("refs", []):
                 ref = ref_entry["ref"]
@@ -491,12 +512,6 @@ def process_dataset():
                 dataset = shared_root / slug
                 
                 if not dataset.is_dir(): continue
-                
-                # Shared Manifold Size Filtering
-                d_size = get_dir_size(dataset)
-                if d_size < min_gb or d_size > max_gb:
-                    print(f"⚠️  [SKIPPED] {slug}: {d_size:.2f}GB outside manifold constraints ({min_gb}-{max_gb}GB)")
-                    continue
 
                 fmt, ann_path = detect_annotations(dataset)
                 ann_data = None
@@ -514,103 +529,111 @@ def process_dataset():
                 
                 print(f"[QUEUE] {prefix} ({task}) | {slug} | {len(images)} samples scheduled.")
                 for i, img_path in enumerate(images):
-                    if i >= CONFIG.get("max_per_dataset", 10000): break
+                    if i >= CONFIG.get("max_per_dataset", 100000): break
                     split = "train" if random.random() < CONFIG["train_split"] else "val"
                     if task == "diffusion":
-                        futures.append(executor.submit(process_diffusion, img_path, prefix, i, split))
+                        futures.append(executor.submit(process_diffusion, img_path, prefix, i, split, output_root_str))
                     else:
-                        futures.append(executor.submit(process_image, img_path, prefix, i, task, fmt, ann_data, split))
+                        futures.append(executor.submit(process_image, img_path, prefix, i, task, fmt, ann_data, split, output_root_str))
 
-        with tqdm(total=len(futures), desc="[PASS 1] Extraction & Vetting") as pbar:
-            for future in as_completed(futures):
-                res = future.result()
-                if res:
-                    if CONFIG["enable_dedup"] and res["hash"] in seen_hashes: 
+            compiled_bytes = 0
+            with tqdm(total=len(futures), desc="[PASS 1] Extraction & Vetting") as pbar:
+                for future in as_completed(futures):
+                    res = future.result()
+                    if res:
+                        if CONFIG["enable_dedup"] and res["hash"] in seen_hashes: 
+                            pbar.update(1)
+                            continue
+                        seen_hashes.add(res["hash"])
+                        
+                        compiled_bytes += res.get("size", 0)
+                        
+                        # Commit to SQLite Manifold
+                        latent_blob = sqlite3.Binary(np.array(res.get("clip_latent", [])).astype(np.float32).tobytes())
+                        conn.execute("""
+                            INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (res["name"], res["source"], res["task"], res["split"], res["hash"], res["nima_score"], 
+                              res.get("caption"), res.get("style_tag"), latent_blob, res.get("img_bytes")))
+                        
+                        if (compiled_bytes / (1024**3)) >= max_gb:
+                            print(f"\n⚠️  [MANIFOLD LIMIT REACHED] Compiled set reached {max_gb:.2f}GB. Halting extraction.")
+                            for f in futures: f.cancel()
+                            pbar.update(len(futures) - pbar.n)
+                            break
+                        
                         pbar.update(1)
-                        continue
-                    seen_hashes.add(res["hash"])
-                    
-                    # Commit to SQLite Manifold
-                    latent_blob = sqlite3.Binary(np.array(res.get("clip_latent", [])).astype(np.float32).tobytes())
-                    conn.execute("""
-                        INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (res["name"], res["source"], res["task"], res["split"], res["hash"], res["nima_score"], 
-                          res.get("caption"), res.get("style_tag"), latent_blob, res.get("img_bytes")))
-                    
-                    pbar.update(1)
-        conn.commit()
+            conn.commit()
+            
+            compiled_gb = compiled_bytes / (1024**3)
+            if compiled_gb < min_gb:
+                print(f"⚠️  [WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold constraint ({min_gb:.2f}GB).")
 
-    # STEP 2: Style Clustering (v5.0 Global Manifold)
-    print(f"[STYLING] Commencing Style Clustering on all extracted latents...")
-    cursor = conn.execute("SELECT id, clip_latent FROM registry WHERE clip_latent IS NOT NULL")
-    ids, latents = [], []
-    for row in cursor:
-        ids.append(row[0]); latents.append(np.frombuffer(row[1], dtype=np.float32))
-    
-    if latents:
-        X = np.stack(latents)
-        n_clusters = CONFIG.get("n_style_clusters", 16)
-        kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(X)
-        labels = kmeans.labels_
-        for i, cid in tqdm(zip(ids, labels), total=len(ids), desc="[STYLING] Updating Clusters"):
-            conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (int(cid), i))
-        conn.commit()
-
-    # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
-    print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
-    shard_dir = OUTPUT_ROOT / "shards"
-    shard_dir.mkdir(parents=True, exist_ok=True)
-    
-    # We group by source and create separate tars if plural "compiled sets" is desired
-    # Or we use the prefix/suffix for the overall manifold name.
-    # The user said: "appended to each compiled set name on exporting compiled sets"
-    # I'll create a shard per dataset to satisfy "each".
-    
-    unique_sources = [r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()]
-    
-    for source in unique_sources:
-        shard_name = f"{prefix_str}{source}{suffix_str}.tar"
-        print(f"[SHARD] Writing {shard_name}...")
-        with wds.TarWriter(str(shard_dir / shard_name)) as sink:
-            cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
+            # STEP 2: Style Clustering (v5.0 Global Manifold)
+            print(f"[STYLING] Commencing Style Clustering on all extracted latents...")
+            cursor = conn.execute("SELECT id, clip_latent FROM registry WHERE clip_latent IS NOT NULL")
+            ids, latents = [], []
             for row in cursor:
-                res = {"id": row[0], "name": row[1], "source": row[2], "task": row[3], "split": row[4],
-                       "hash": row[5], "nima_score": row[6], "caption": row[7], "style_tag": row[8], "cluster_id": row[11]}
-                
-                if res["task"] == "diffusion" and row[10]:
-                    sink.write({
-                        "__key__": res["name"],
-                        "jpg": row[10],
-                        "txt": res["caption"],
-                        "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
-                    })
-                index.append(res)
-    
-    with open(OUTPUT_ROOT / "index.json", "w") as f:
-        json.dump(index, f, indent=2)
-    
-    generate_dataset_yaml()
-    generate_readme()
-    print(f"[SUCCESS] v5.0 Ascension Complete: {len(index)} samples compiled.")
+                ids.append(row[0]); latents.append(np.frombuffer(row[1], dtype=np.float32))
+            
+            if latents:
+                X = np.stack(latents)
+                n_clusters = CONFIG.get("n_style_clusters", 16)
+                kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(X)
+                labels = kmeans.labels_
+                for i, cid in tqdm(zip(ids, labels), total=len(ids), desc="[STYLING] Updating Clusters"):
+                    conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (int(cid), i))
+                conn.commit()
+
+            # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
+            print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
+            shard_dir = output_root / "shards"
+            shard_dir.mkdir(parents=True, exist_ok=True)
+            
+            unique_sources = [r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()]
+            
+            for source in unique_sources:
+                shard_name = f"{prefix_str}{source}{suffix_str}.tar"
+                print(f"[SHARD] Writing {shard_name}...")
+                with wds.TarWriter(str(shard_dir / shard_name)) as sink:
+                    cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
+                    for row in cursor:
+                        res = {"id": row[0], "name": row[1], "source": row[2], "task": row[3], "split": row[4],
+                               "hash": row[5], "nima_score": row[6], "caption": row[7], "style_tag": row[8], "cluster_id": row[11]}
+                        
+                        if res["task"] == "diffusion" and row[10]:
+                            sink.write({
+                                "__key__": res["name"],
+                                "jpg": row[10],
+                                "txt": res["caption"],
+                                "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
+                            })
+                        index.append(res)
+            
+            with open(output_root / "index.json", "w") as f:
+                json.dump(index, f, indent=2)
+            
+            generate_dataset_yaml(output_root)
+            generate_readme(output_root)
+            print(f"[SUCCESS] v5.0 Ascension Complete: {len(index)} samples compiled for {pascal_name}.")
 
 # ---------------- GENERATORS ----------------
-def generate_dataset_yaml():
+def generate_dataset_yaml(output_root):
     yaml = f"""
 # SOTA YOLO Dataset Configuration
-path: {OUTPUT_ROOT.resolve()}
+path: {output_root.resolve()}
 train: images/train
 val: images/val
 
 nc: 80
 names: {list(CATEGORY_MAP.keys())[:80]}
 """
-    with open(OUTPUT_ROOT / "dataset.yaml", "w") as f:
+    with open(output_root / "dataset.yaml", "w") as f:
         f.write(yaml)
 
-def generate_readme():
-    if not (OUTPUT_ROOT / "index.json").exists(): return
-    data = json.load(open(OUTPUT_ROOT / "index.json"))
+def generate_readme(output_root):
+    if not (output_root / "index.json").exists(): return
+    data = json.load(open(output_root / "index.json"))
     
     train = [x for x in data if x["split"] == "train"]
     val = [x for x in data if x["split"] == "val"]
@@ -633,7 +656,7 @@ def generate_readme():
     readme += "\n## Sources\n"
     for k, v in sources.items(): readme += f"- {k}: {v}\n"
 
-    with open(OUTPUT_ROOT / "README.md", "w") as f:
+    with open(output_root / "README.md", "w") as f:
         f.write(readme)
 
 if __name__ == "__main__":
