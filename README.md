@@ -1,4 +1,4 @@
-# LemGendary Dataset Pipeline (v5.2.0-LEMGENDARY)
+# LemGendary Dataset Pipeline (v5.7.0-SOTA)
 
 > **The Industrial Standard for Generative & Vision Data Synthesis.**
 >
@@ -6,94 +6,93 @@
 
 ---
 
-## ⚡ v5.2 Ascension Tier: Smart Acquisition & Compilation
+## ⚡ v5.7 SOTA Tier: Full Lifecycle Orchestration
 
-The v5.2 release introduces a revolutionary **Smart Hub Architecture**, enabling targeted acquisition, dynamic compilation constraints, and precision archive management.
+The v5.7 release transforms the pipeline into a complete **Dataset Lifecycle Manager**, adding high-speed sampling, dependency-aware cleanup, and strict metadata compliance for the LemGendary Training Suite.
 
-### 🎯 Interactive Target Compilation
-- **Targeted Execution**: The Hub script (`lemgendary_datasets_hub.ps1`) now allows users to precisely target specific dataset models (e.g., `nima_aesthetic`, `ultrazoom_x4`) or compile all sets globally.
-- **Dynamic Constraints**: Enforce compilation boundaries on the fly. Input absolute maximum dataset limits and suffixes dynamically without hardcoding YAML configs.
+### 🎯 Interactive Orchestrator Dashboard
+- **Row-Based Navigation**: A modernized, high-density CLI menu in both Python and PowerShell.
+- **[ACQUIRE] Logic**: Automated pulling of remote sources from Hugging Face and Kaggle directly into the `raw-sets/` buffer.
+- **[REDUCE] Engine**: Instantly create downsampled "Mini" or "Targeted" manifold variants (e.g., 10k samples) from existing compiled datasets without re-vetting.
+- **[CLEANUP] Guardian**: A smart deletion engine that verifies `unified_data.yaml` dependencies and manifold existence before allowing raw source purging.
 
-### 🧠 Smart Archive Manager
-A robust `archive_manager.py` utility completely overhauls the acquisition extraction phase.
-- **Skipping & Verification**: Zips are automatically scanned for corruption. Valid archives natively bypass the Kaggle download phase.
-- **Smart Extraction**: Scans the destination directory against the Zip metadata and only extracts missing files, preserving disk I/O and radically speeding up resumption logic.
-- **Auto-Purge**: Flawless extractions automatically trigger the deletion of the source `.zip` archive to preserve drive capacity.
+### 💎 NIMA Aesthetic & Technical Standards
+- **Naming Convention**: Enforces the mandatory `Model_SourceSet_000000000.jpg` format to prevent cross-source collisions in multi-tenant training.
+- **Softmax Probability Vectors**: Labels now contain 10-bin quality distributions (Worst 1 -> Best 10) for EMD (Earth Mover's Distance) optimization.
+- **Atomic Persistence**: Registry commits are now buffered every 1,000 samples to prevent SQLite journal bloat and stabilize I/O on large manifolds.
 
-### 🧬 CLIP Style Manifold (StyleSentry)
-Every image is semantically scanned using **CLIP (ViT-B/Patch32)**.
-- **Style Clustering**: Automatically groups your dataset into visual clusters (e.g., Cinematic, Sketch, Anime) via *MiniBatchKMeans*.
-- **Zero-Shot Style Tagging**: Injects descriptive style keywords into captions based on multimodal manifold proximity.
+### 📄 Universal Metadata Compliance
+Every compiled manifold now automatically generates a full LemGendary-compliant metadata package:
+- **`dataset_info.yaml`**: Detailed stats, task type, and source provenance.
+- **`category.txt` / `classes.txt`**: Standardized taxonomies for immediate training ingestion.
+- **SOTA README**: Auto-generated manifests including performance benchmarks and Kaggle deployment schemas.
 
 ---
 
-## 🏗️ v5.2 Synthesis Flow
+## 🏗️ v5.7 Synthesis Flow
 
 ```mermaid
 graph TD
-    subgraph Hub[Smart Hub Orchestration]
-        M1[Target Selection Menu]
-        M2[Pre-flight Verification]
-        M3[Smart Archive Manager]
+    subgraph Hub[v5.7 Dashboard]
+        M1[Acquire Remote]
+        M2[Compile Manifold]
+        M3[Reduce/Sample]
+        M4[Smart Cleanup]
     end
 
     subgraph RawData[Source Repository]
-        D1[COCO/VOC]
-        D2[DiffusionDB/LAION]
-        D3[Healed Kaggle Mirrors]
+        D1[HF / Kaggle]
+        D2[Local Sources]
     end
 
-    subgraph Pass1[PASS 1: Extraction]
-        A[Parallel Worker Pool]
+    subgraph Pass1[PASS 1: Vetting & Naming]
+        A[Parallel Workers]
         B[NIMA Quality Gate]
-        C[CaptionSentry - BLIP]
-        D[CLIP Latent Extraction]
-        E[(SQLite Manifold)]
+        C[Atomic Filename Index]
+        E[(SQLite Registry)]
         
         A --> B
         B --> C
-        C --> D
-        D --> E
+        C --> E
     end
 
-    subgraph Manifold[Manifold Optimization]
-        G[Style Clustering K-Means]
-        H[Balanced Round-Robin Scheduler]
+    subgraph Export[Post-Flight Metadata]
+        G[dataset_info.yaml]
+        H[Standardized README]
+        I[classes.txt]
     end
 
     Hub --> RawData
     RawData --> Pass1
-    Pass1 --> G
-    G --> H
+    Pass1 --> Export
 ```
 
 ---
 
 ## 🛠️ Developer Interface
 
-### 1. The Dataset Hub (v5.2.0-LEMGENDARY)
-Launch the globally hardened interactive dashboard:
+### 1. The Dataset Hub (v5.7.0-SOTA)
+Launch the modernized interactive dashboard:
 ```powershell
 ./lemgendary_datasets_hub.ps1
 ```
-Follow the interactive prompts to target your `Acquire` or `Compile` operations.
 
-### 2. Registry Controls (`unified_data.yaml`)
-Establish structural baselines across your ecosystem:
-```yaml
-global_constraints:
-  min_size_gb: 5.0
-  max_size_gb: 150.0
+### 2. Manual Orchestration
+The python engine now supports direct CLI hooks for automation:
+```bash
+python compiler-pipeline.py --model nima_aesthetic --max_gb 50 --suffix Large
+python compiler-pipeline.py --reduce   # Start sampling engine
+python compiler-pipeline.py --cleanup  # Start smart cleanup
 ```
 
 ---
 
 ## 📂 Industrial Output Topology
-- `raw-sets/` (Raw multi-format sources)
-- `compiled-datasets/<name>/images/` (Standard structured folders)
-- `compiled-datasets/<name>/shards/` (Balanced .tar manifold)
-- `compiled-datasets/<name>/manifold_registry.db` (Persistent SQLite metadata)
-- `compiled-datasets/<name>/index.json` (The Master Manifest)
+- `raw-sets/` (Source datasets - Protected by Cleanup Guardian)
+- `LemGendizedDatasets/<name>/images/` (Standard structured folders)
+- `LemGendizedDatasets/<name>/labels/` (10-bin probability vectors)
+- `LemGendizedDatasets/<name>/dataset_info.yaml` (Suite Metadata)
+- `LemGendizedDatasets/<name>/manifold_registry.db` (Persistent SQLite metadata)
 
 ---
 **LemGendary AI Suite | Advanced Agentic Coding 2026**

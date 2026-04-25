@@ -45,7 +45,17 @@ function Get-RefStatus {
     $isHF = $Ref -match 'hf://'
     $repoId = $Ref.Replace('hf://', '')
     if ($Ref -match 'competition:(.*)') { $repoId = $Matches[1] }
-    $dn = $repoId.Split('/')[-1]
+    
+    $targetFile = $null
+    if ($repoId -match ':') {
+        $parts = $repoId.Split(':')
+        $repoId = $parts[0]
+        $targetFile = $parts[1]
+        # For surgical files, the folder is the slug (filename without ext)
+        $dn = $targetFile.Replace('.tgz', '').Replace('.tar.gz', '').Replace('.zip', '')
+    } else {
+        $dn = $repoId.Split('/')[-1]
+    }
     
     $fold = Join-Path $SharedPath $dn
     $z = Join-Path $SharedPath ($dn + '.zip')
@@ -56,7 +66,7 @@ function Get-RefStatus {
     }
     
     if ($isHF) {
-        if ($fCount -gt 0) { return "HF_Partial" }
+        if ($fCount -gt 0) { return "Extracted" } # OK
         return "Missing"
     } else {
         if (!(Test-Path $z) -and $fCount -gt 0) { return "Extracted" }
@@ -80,7 +90,7 @@ function Test-MissingDatasets {
     foreach ($C in $ModelsToCheck) {
         foreach ($E in $RegData.datasets.$C.refs) {
             $Stat = Get-RefStatus -Ref $E.ref -SharedPath $Raw
-            if ($Stat -match 'Missing|ZipOnly') {
+            if ($Stat -match 'Missing|ZipOnly|HF_Partial') {
                 if ($Missing -notcontains $E.ref) { $Missing += $E.ref }
             }
         }
@@ -166,7 +176,7 @@ function Start-Acquisition {
             $Stat = Get-RefStatus -Ref $r -SharedPath $Raw
             if ($Stat -eq "ZipOnly") {
                 $ProcessList += @{ Ref = $r; Action = 'UnpackOnly' }
-            } elseif ($Stat -eq "Missing") {
+            } elseif ($Stat -match 'Missing|HF_Partial') {
                 $ProcessList += @{ Ref = $r; Action = 'Download' }
             }
         }
@@ -311,7 +321,9 @@ function Start-Acquisition {
         foreach ($ti in @($UniqueList | Where-Object { $null -ne $_.JobId })) {
             $jr = Get-Job -Id $ti.JobId
             if ($null -ne $jr) {
-                foreach ($ls in ($jr | Receive-Job)) {
+                # Capture everything (tqdm writes to stderr/stdout depending on config)
+                $Outputs = @($jr | Receive-Job)
+                foreach ($ls in $Outputs) {
                     if ($ls -match 'STATUS:(.*)') { $ti.Status = $Matches[1] }
                     elseif ($ls -match 'NOTIFICATION:(.*)') { Write-Host "  [!] $($Matches[1])" -ForegroundColor Cyan }
                     elseif ($ls -match 'RESULT:(.*)') { 
@@ -329,36 +341,79 @@ function Start-Acquisition {
                         }
                     } else {
                         if (-not [string]::IsNullOrWhiteSpace($ls)) {
-                            Write-Host "    $($ti.Slug)> $ls" -ForegroundColor DarkGray
+                            # Ensure we are working with a string (prevents ErrorRecord crashes)
+                            $LineStr = [string]$ls
+                            # If it looks like a tqdm bar, we use it as status
+                            if ($LineStr -match '\[.*\]' -or $LineStr -match '%') {
+                                $ti.Status = $LineStr.Trim()
+                            } else {
+                                Write-Host "    $($ti.Slug)> $LineStr" -ForegroundColor DarkGray
+                            }
                         }
                     }
                 }
-                if ($jr.State -eq 'Completed' -and $ti.Status -notmatch 'COMPLETED|FOUND|FAILED|MISSING|DOWNLOADED|UNPACKING' ) { 
+                if ($jr.State -eq 'Completed' -and $ti.Status -notmatch 'COMPLETED|FOUND|FAILED|MISSING|DOWNLOADED|UNPACKING|SUCCESS|processed' ) { 
                     $ti.Status = 'Done'; $ti.ProgressId = 0 
                 }
             }
         }
 
-        $D = @($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|FAILED|MISSING' }).Count
+        # --- AESTHETIC PROGRESS RENDERER ---
+        $D = @($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|FAILED|MISSING|SUCCESS|processed' }).Count
         $P = [math]::Round(($D / $T) * 100)
-        if ($P -gt 0) { Write-Progress -Activity "OVERALL ACQUISITION" -Status "$D/$T Complete ($P%)" -PercentComplete $P -Id 1 }
         
+        # Build the dynamic status display
+        $DisplayLines = @()
+        $DisplayLines += "[OVERALL] $D/$T ($P%)"
         for ($i=0; $i -lt $MaxJobs; $i++) {
             $Active = @($UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) }) | Select-Object -First 1
             if ($Active) {
-                $StatStr = [string]$Active.Status
-                Write-Progress -Id ($BaseId + $i) -ParentId 1 -Activity "Job $($i+1): $($Active.Slug)" -Status $StatStr -PercentComplete -1
-            } else {
-                Write-Progress -Id ($BaseId + $i) -ParentId 1 -Activity "Job $($i+1): Idle" -Status "Waiting..." -Completed
+                $SlugPad = $Active.Slug.PadRight(20).Substring(0, 20)
+                $DisplayLines += "   Job $($i+1): $SlugPad | $($Active.Status)"
             }
         }
 
+        # Use Absolute-Coordinate management with Buffer Safety
+        $StartTop = [System.Console]::CursorTop
+        $BufferHeight = [System.Console]::BufferHeight
+        $WindowWidth = [System.Console]::WindowWidth - 1
+        
+        # Pre-scroll check: Ensure we have enough room in the buffer
+        if (($StartTop + $DisplayLines.Count) -ge $BufferHeight) {
+            # Scroll the terminal up by printing newlines
+            $Needed = ($StartTop + $DisplayLines.Count) - $BufferHeight + 1
+            for ($k=0; $k -le $Needed; $k++) { Write-Host "" }
+            $StartTop = [System.Console]::CursorTop - $DisplayLines.Count - 1
+            if ($StartTop -lt 0) { $StartTop = 0 }
+        }
+
+        for ($i=0; $i -lt $DisplayLines.Count; $i++) {
+            $Line = $DisplayLines[$i]
+            if ($Line.Length -gt $WindowWidth) { $Line = $Line.Substring(0, $WindowWidth) }
+            
+            $TargetTop = $StartTop + $i
+            if ($TargetTop -lt $BufferHeight) {
+                [System.Console]::SetCursorPosition(0, $TargetTop)
+                # Dynamic Color SOTA Logic
+                $Color = 'Gray'
+                if ($Line -match 'OVERALL') { $Color = 'Cyan' }
+                elseif ($Line -match '\[DL\]') { $Color = 'Yellow' }
+                elseif ($Line -match '\[UNPACK\]|Extracting|processed|SUCCESS|Done') { $Color = 'Green' }
+                
+                Write-Host $Line.PadRight($WindowWidth) -ForegroundColor $Color -NoNewline
+            }
+        }
+        
         if ($D -ge $T) { break }
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 500
+        
+        # Reset cursor back to the top of the block
+        if ($StartTop -lt $BufferHeight) {
+            [System.Console]::SetCursorPosition(0, $StartTop)
+        }
     }
 
-    Write-Progress -Id 1 -Activity "OVERALL ACQUISITION" -Completed
-    Write-Host '  [OK] ACQUISITION MISSION ENDED.' -ForegroundColor Green
+    Write-Host "`n[OK] ACQUISITION MISSION ENDED." -ForegroundColor Green
     if ($null -eq $ForcedRefs) { Read-Host "Press Enter to return to menu" }
 }
 
@@ -366,7 +421,11 @@ while ($true) {
     Clear-Host
     Write-Host '--- LEMGENDARY DATASETS HUB v5.2 ---' -ForegroundColor Yellow
     Show-Stats
-    Write-Host '1. Acquire  2. Compile  Q. Quit'
+    Write-Host '1. [ACQUIRE] Pull remote datasets' -ForegroundColor Gray
+    Write-Host '2. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
+    Write-Host '3. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
+    Write-Host '4. [CLEANUP] Purge redundant sources' -ForegroundColor Gray
+    Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
     $I = Read-Host 'Selection'
     if ($I -eq '1') { Start-Acquisition }
     elseif ($I -eq '2') {
@@ -427,21 +486,19 @@ while ($true) {
             
             if (Test-Path (Join-Path $OutFolder "README.md")) {
                 Write-Host "  [OK] Dataset compiled successfully!" -ForegroundColor Green
-                Get-Content (Join-Path $OutFolder "README.md") -TotalCount 10
             }
             
-            $DelChoice = Read-Host "`nWould you like to delete the raw source data for $tm to save space? (Y/N)"
-            if ($DelChoice -match '^y') {
-                foreach ($E in $RegData.datasets.$tm.refs) {
-                    $Slug = $E.ref.Replace('hf://', '').Split('/')[-1]
-                    $P = Join-Path $Raw $Slug
-                    if (Test-Path $P) {
-                        Remove-Item $P -Recurse -Force -ErrorAction SilentlyContinue
-                        Write-Host "  Deleted raw source: $Slug" -ForegroundColor DarkGray
-                    }
-                }
-            }
+            # Trigger Smart Cleanup via Python
+            & $Vpy compiler-pipeline.py --cleanup
         }
+        Read-Host "Press Enter to return to menu"
+    }
+    elseif ($I -eq '3') {
+        & $Vpy compiler-pipeline.py --reduce
+        Read-Host "Press Enter to return to menu"
+    }
+    elseif ($I -eq '4') {
+        & $Vpy compiler-pipeline.py --cleanup
         Read-Host "Press Enter to return to menu"
     }
     elseif ($I -match '^q') { break }
