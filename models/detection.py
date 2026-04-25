@@ -10,13 +10,16 @@ class AutoLabeler:
         self.device = device
         self.mode = mode # 'detection', 'segmentation', 'pose'
         
+        import os
+        base_dir = os.path.dirname(__file__)
+        
         # Determine model path based on task
         if mode == "segmentation":
-            model_path = "yolov8n-seg.pt"
+            model_path = os.path.join(base_dir, "yolov8n-seg.pt")
         elif mode == "pose":
-            model_path = "yolov8n-pose.pt"
+            model_path = os.path.join(base_dir, "yolov8n-pose.pt")
         else:
-            model_path = "yolov8n.pt"
+            model_path = os.path.join(base_dir, "yolov8n.pt")
             
         # print(f"🤖 [AUTO-LABEL] Initializing {mode} model: {model_path}")
         self.model = YOLO(model_path)
