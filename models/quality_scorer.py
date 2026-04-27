@@ -24,7 +24,7 @@ class QualitySentry:
         
         # Diagnostic: Checksum of classifier weights to detect 'Zombie Models'
         w_sum = self.model.classifier[1].weight.sum().item()
-        print(f"📊 [JUDGE] NIMA Model Loaded. Weight Checksum: {w_sum:.6f}")
+        # print(f"📊 [JUDGE] NIMA Model Loaded. Weight Checksum: {w_sum:.6f}")
 
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)), # Reverted to 224 for standard NIMA compatibility
@@ -43,7 +43,7 @@ class QualitySentry:
                 self._diag_count = getattr(self, "_diag_count", 0) + 1
                 l_min, l_max = logits.min().item(), logits.max().item()
                 l_var = logits.var().item()
-                print(f"🧠 [NEURAL] Logit Spread: {l_min:.2f} to {l_max:.2f} | Var: {l_var:.4f}")
+                # print(f"🧠 [NEURAL] Logit Spread: {l_min:.2f} to {l_max:.2f} | Var: {l_var:.4f}")
 
             probs = nn.functional.softmax(logits, dim=1)
         

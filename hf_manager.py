@@ -59,8 +59,10 @@ def main():
             for t_file in targets:
                 # Resolve output directory
                 if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
-                    slug = t_file.replace('.tgz', '').replace('.tar.gz', '').replace('.zip', '')
-                    dedicated_dir = Path(args.output_dir).parent / slug
+                    # Use Path(t_file).name to strip any repo subdirectories (like data/)
+                    slug = Path(t_file).name.replace('.tgz', '').replace('.tar.gz', '').replace('.zip', '')
+                    # Extract inside the actual dataset folder (output_dir), not its parent
+                    dedicated_dir = Path(args.output_dir) / slug
                 else:
                     dedicated_dir = Path(args.output_dir)
                 

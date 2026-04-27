@@ -3,7 +3,7 @@ _registry_metadata:
   specialization: 2026_Resiliency
   name_prefix: LemGendized
   name_suffix: Large
-  output_folder_name: LemGendizedDatasets
+  output_folder_name: ../LemGendaryDatasets
   global_constraints:
     min_size_gb: 6.0
     max_size_gb: 150.0
@@ -23,35 +23,45 @@ datasets:
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:csiq.tgz
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:tid2013.tgz
     - ref: hsyndmr/dnd-nam-noise-data
+  nima_authenticity:
+    name: NimaAuthenticity
+    refs:
+    - ref: shreyasraghav/shutterstock-dataset-for-ai-vs-human-gen-image
+    - ref: birdy654/cifake-real-and-ai-generated-synthetic-images
+    - ref: doctorstrange420/real-and-fake-ai-generated-art-images-dataset
   upn_v2:
     name: UpnV2
     refs:
-    - ref: hf://ShutterstockInc/high_resolution_images
     - ref: joe1995/div2k-dataset
-    - ref: hf://yangtao9009/Flickr2K
-    - ref: awsaf49/coco-2017-dataset
+    - ref: daehoyang/flickr2k
+    - ref: weipengzhang/adobe-fivek
+    - ref: hf://gitpull/DPED
   film_restorer:
     name: FilmRestorer
     refs:
     - ref: spiyer/old-film-restoration-dataset
     - ref: marcinrutecki/old-photos
-    - ref: arnaud58/old-photos-restoration
-    - ref: ashishjangra27/vintage-images
+    - ref: shrutimandaokar2301/vintage-photo-restoration-clean-and-damaged-image
+    - ref: shrutimandaokar2301/vintage-degraded-image-synthetic-real
     - ref: sureshmud/photo-restoration
     - ref: hf://Norod78/Vintage-Faces-FFHQAligned
+    - ref: duynm619/image-restoration
+    - ref: rajat95gupta/smartphone-image-denoising-dataset
+    - ref: hsyndmr/dnd-nam-noise-data
+    - ref: joe1995/div2k-dataset
   codeformer:
     name: CodeFormer
     refs:
     - ref: jessicali9530/celeba-dataset
     - ref: kashyapkvh/mm-celeba-hq-dataset
     - ref: arnaud58/flickrfaceshq-dataset-ffhq
-    - ref: hf://Bingsu/ffhq_512
+    - ref: hf://Ryan-sjtu/ffhq512-caption
   parsenet:
     name: ParseNet
     refs:
     - ref: hf://liusq/CelebAMask-HQ
     - ref: hf://UniqueData/face_segmentation
-    - ref: xiaopitang/lapa-dataset
+    - ref: kiranraghavendrauci/lapa-face-parsing-dataset
   retinaface_mobilenet:
     name: RetinaFaceMobileNet
     refs:
@@ -106,14 +116,15 @@ datasets:
     refs:
     - ref: rajat95gupta/smartphone-image-denoising-dataset
     - ref: hsyndmr/dnd-nam-noise-data
-    - ref: sarathskrishnan/polyu-dataset
+    - ref: tenxengineers/denoising-dataset-multiple-iso-levels
+    - ref: dibakarsil/9-classes-noisy-image-dataset
     - ref: goutham1208/multi-noises-for-image-denoising
     - ref: rajneesh231/salt-and-pepper-noise-images
   ultrazoom:
     name: UltraZoom
     refs:
     - ref: joe1995/div2k-dataset
-    - ref: hf://yangtao9009/Flickr2K
+    - ref: daehoyang/flickr2k
     - ref: hf://Iceclear/DF2K-OST
     - ref: harshraone/urban100
   yolov8n:

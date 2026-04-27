@@ -1,3 +1,4 @@
+# 2026: Environment Linter Sync
 import os
 import sys
 
@@ -76,16 +77,23 @@ parser.add_argument("--workers", type=int, default=DEFAULT_CONFIG["num_workers"]
 parser.add_argument("--reduce", action="store_true", help="Start in Reduce mode")
 parser.add_argument("--cleanup", action="store_true", help="Start in Cleanup mode")
 parser.add_argument("--no-vetting", action="store_true", help="Disable NIMA quality gate (Pass-Through mode)")
+parser.add_argument("--no-labeling", action="store_true", help="Disable YOLO auto-labeling (High-Speed mode)")
 args, unknown = parser.parse_known_args()
 
 INPUT_ROOT = Path("./raw-sets")
-OUT_PARENT = Path(META.get("output_folder_name", "compiled-datasets"))
+OUT_PARENT = Path(META.get("output_folder_name", "../LemGendaryDatasets"))
 CATEGORY_MAP_PATH = Path("./category_map.json")
 CATEGORY_MAP = json.load(open(CATEGORY_MAP_PATH)) if CATEGORY_MAP_PATH.exists() else {}
 DATASETS_META = YAML_DATA.get("datasets", {})
 
 # Override workers if specified
 if args.workers: CONFIG["num_workers"] = args.workers
+
+def get_device_info():
+    import torch
+    if torch.cuda.is_available():
+        return f"CUDA ({torch.cuda.get_device_name(0)})"
+    return "CPU (No CUDA detected)"
 
 # ---------------- GLOBALS ----------------
 SENTRY = None
@@ -518,7 +526,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             if SENTRY:
                 nima_score, nima_probs = SENTRY.score(img, return_probs=True)
                 if idx < 10:
-                    print(f"🔬 [LIVE TRACE] {slug}_{idx:09d} | AI Score: {nima_score:.4f}")
+                    pass # print(f"🔬 [LIVE TRACE] {slug}_{idx:09d} | AI Score: {nima_score:.4f}")
         
         if nima_score < CONFIG["nima_threshold"]: return None
 
@@ -596,7 +604,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                     annotations.append({"type": "bbox", "cls": cls, "data": [0.0, 0.0, 1.0, 1.0]}) # Whole image
         
         is_autolabeled = False
-        if not annotations and task != "quality":
+        if not annotations and task not in ["quality", "classification"] and not args.no_labeling:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             labeler = get_labeler(task, device)
             annotations = labeler.predict(img)
@@ -607,6 +615,11 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         with open(label_file_path, "w") as f:
             if task == "quality":
                 f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
+            elif task == "classification":
+                # AI = 0, Human/Real = 1
+                p_lower = str(img_path).lower()
+                class_label = 0 if any(k in p_lower for k in ['fake', 'ai', 'synthetic']) else 1
+                f.write(str(class_label) + "\n")
             else:
                 for ann in annotations:
                     cls = ann["cls"]
@@ -735,8 +748,17 @@ def process_dataset():
     
     print("🛡️ [PRE-FLIGHT] Pre-flight analysis complete.")
 
-    # 2026 Resilience: Cap workers to 4 for 4GB/8GB GPUs to prevent VRAM saturation
-    max_workers = min(4, CONFIG.get("num_workers", 4))
+    # 2026 Resilience: Adaptive worker scaling (v5.1)
+    # Priority: 1. CLI Args (--workers) | 2. config.json | 3. Auto-detected (CPU-2)
+    final_workers = args.workers if args.workers else CONFIG.get("num_workers", 4)
+    
+    # Only apply safety cap if the user didn't explicitly request a worker count
+    if not args.workers and final_workers > 8:
+        print(f"🛡️ [RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
+        final_workers = 8
+    
+    max_workers = max(1, final_workers)
+    print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
     with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG,)) as executor:
         for model_key, model_config in DATASETS_META.items():
             if args.model and model_key != args.model: continue
@@ -800,7 +822,7 @@ def process_dataset():
                     elif "koniq" in sl_low: slug = "koniq10k"
                     dataset = shared_root / slug
                 
-                print(f"🔍 [DEBUG] Ref: {ref} | Resolved Slug: {slug} | Path: {dataset} | Exists: {dataset.is_dir()}")
+                # print(f"🔍 [DEBUG] Ref: {ref} | Resolved Slug: {slug} | Path: {dataset} | Exists: {dataset.is_dir()}")
                 
                 if not dataset.is_dir(): continue
 
@@ -820,7 +842,15 @@ def process_dataset():
                 elif fmt == "matlab":
                     ann_data = parse_matlab(ann_path)
 
-                images = list(dataset.rglob("*.jpg")) + list(dataset.rglob("*.png")) + list(dataset.rglob("*.bmp")) + list(dataset.rglob("*.jpeg")) + list(dataset.rglob("*.webp"))
+                valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors"}
+                images = []
+                import os
+                for root, _, files in os.walk(dataset):
+                    for f in files:
+                        if os.path.splitext(f)[1].lower() in valid_exts:
+                            images.append(Path(root) / f)
+                
+                print(f"   -> Discovered {len(images)} source tensors.")
                 
                 # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
                 is_virtual = False
@@ -831,10 +861,6 @@ def process_dataset():
                             is_virtual = True
                             print(f"✨ [VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
                             break
-
-                if fmt == "safetensors":
-                    st_files = list(dataset.rglob("*.safetensors"))
-                    images.extend(st_files)
                 
                 # PRE-COMPUTE ANNOTATION LOOKUPS TO AVOID O(N^2) BOTTLENECKS
                 coco_file_to_id = {}
@@ -865,7 +891,7 @@ def process_dataset():
                                 pass
 
                 sample_count = len(images) if not is_virtual else sum(len(d[0]) for d in ann_data_list)
-                print(f"[QUEUE] {prefix} ({task}) | {slug} | {sample_count} samples scheduled.")
+                # print(f"[QUEUE] {prefix} ({task}) | {slug} | {sample_count} samples scheduled.")
                 
                 if is_virtual:
                     # Case A: Queue tasks directly from all Parquet shards
@@ -925,6 +951,14 @@ def process_dataset():
 
             compiled_bytes = 0
             processed_count = len(existing_names)
+            # CPU Resilience: Auto-bypass if CUDA is missing and dataset is massive
+            import torch
+            if not torch.cuda.is_available() and len(all_tasks) > 50000:
+                if not args.no_labeling or not args.no_vetting:
+                    print(f"⚠️ [CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling High-Speed Mode.", flush=True)
+                    args.no_labeling = True
+                    args.no_vetting = True
+
             from concurrent.futures import wait, FIRST_COMPLETED
             with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc="[PASS 1] Extraction & Vetting") as pbar:
                 futures = set()
@@ -1154,12 +1188,23 @@ def generate_readme(output_root):
             "category": "Generative Modeling",
             "desc": "Massive manifold for training Latent Diffusion Models and text-to-image systems.",
             "obj": "Generate high-fidelity images from text prompts or latent seeds.",
-            "models": "Stable Diffusion, SDXL, DiT",
+            "models": "Stable Diffusion, SDXL, DiT, FLUX",
             "arch": "U-Net / Transformer with Cross-Attention mechanisms",
             "loss": "MSE (Latent) Loss, VLB Loss",
             "metrics": "| **FID** | ~15.00 | < 10.00 | **< 6.00** |\n| **CLIP-Score** | ~25.0 | > 28.0 | **> 31.0** |",
             "targets": "EXPLICITLY OMITTED",
-            "targets_desc": "Diffusion manifolds utilize latent space representations and textual captions; physical pixel targets are natively generated during inference through iterative denoising."
+            "targets_desc": "Diffusion manifolds utilize latent space representations and textual captions. Data is natively stored in compressed `.parquet` blocks natively bypassing `images/` architectures."
+        },
+        "vlm": {
+            "category": "Vision-Language Modeling",
+            "desc": "Multimodal conversational dataset for training Large Vision-Language Models (VLMs).",
+            "obj": "Align visual token extraction with causal language generation.",
+            "models": "LLaVA, BLIP-2, Qwen-VL",
+            "arch": "ViT Vision Encoder + Causal LLM Decoder",
+            "loss": "Cross-Entropy (Next-Token Prediction)",
+            "metrics": "| **ROUGE-L** | ~0.40 | > 0.60 | **> 0.80** |\n| **CIDEr** | ~0.8 | > 1.2 | **> 1.5** |",
+            "targets": "EXPLICITLY OMITTED",
+            "targets_desc": "VLM manifolds utilize structured multi-turn conversation arrays alongside `image_bytes`. Data is natively stored in compressed `.parquet` blocks."
         },
         "detection": {
             "category": "Object Detection",
@@ -1255,11 +1300,21 @@ This repository was meticulously dynamically generated strictly transforming inh
 - **`dataset_info.yaml`**: Central PyTorch metadata configuration defining topological evaluation parsing limits.
 - **`classes.txt`**: Standard line-delimited index directly mapping string-to-integer taxonomies statically resolving object class matrices.
 - **`category.txt`**: Implicit hierarchal mapping outlining sequential subset domains.
-
+"""
+    if task_type in ["diffusion", "vlm"]:
+        readme += """
+#### Generative Topologies (`parquet/`)
+**STATUS: ACTIVELY DEPLOYED.**
+This directory securely houses the primary mathematical arrays structurally evaluated dynamically by the generative architecture. These explicitly packed `pyarrow` topologies functionally comprise the foundational physical image structures (`image_bytes`) and embedded textual semantics (`prompt` or `conversation`) intrinsically processed for derivations.
+"""
+    else:
+        readme += """
 #### Input Tensors (`images/`)
 **STATUS: ACTIVELY DEPLOYED.**
 This directory securely houses the primary mathematical input arrays structurally evaluated mechanically directly by the neural architecture. These explicitly normalized topologies functionally comprise the foundational physical image structures intrinsically processed for derivations (e.g., corrupted/defaced spatial outputs natively necessitating structural pixel regeneration organically, or explicitly unified source datasets naturally necessitating categorical classification bounds intrinsically).
+"""
 
+    readme += f"""
 #### Targets Mapping (`targets/`)
 **STATUS: {m['targets']}.** 
 {m['targets_desc']}
@@ -1274,6 +1329,12 @@ Contains strictly formatted mathematically numerical parameters scaling physical
 
 def generate_kaggle_notebook(output_root, target_name):
     import json
+    import base64
+    cell_1_b64 = "aW1wb3J0IG9zCgojIDEuIFNtYXJ0IFJlcG9zaXRvcnkgU3luYwppZiBub3Qgb3MucGF0aC5leGlzdHMoJ2xlbWdlbmRhcnktdHJhaW5pbmctc3VpdGUnKToKICAgIHByaW50KCLwn5qAIENsb25pbmcgTGVtR2VuZGFyeSBlbnZpcm9ubWVudCBmb3IgdGhlIGZpcnN0IHRpbWUuLi4iKQogICAgIWdpdCBjbG9uZSBodHRwczovL2dpdGh1Yi5jb20vbGVtZ2VuZGEvbGVtZ2VuZGFyeS10cmFpbmluZy1zdWl0ZS5naXQKZWxzZToKICAgIHByaW50KCLimqEgRmFzdC1TeW5jOiBSZXBvc2l0b3J5IGFscmVhZHkgZXhpc3RzLiBQdWxsaW5nIGxhdGVzdCBwYXRjaGVzLi4uIikKCiMgMi4gTWF0aGVtYXRpY2FsbHkgZW5mb3JjZSB0aGUgbGF0ZXN0IEdpdEh1YiBtYWluIHN0YXRlCiVjZCBsZW1nZW5kYXJ5LXRyYWluaW5nLXN1aXRlCiFnaXQgcHVsbCBvcmlnaW4gbWFpbgoKIyAzLiBRdWlldGx5IHZlcmlmeSBkZXBlbmRlbmNpZXMKcHJpbnQoIvCfk6YgVmVyaWZ5aW5nIExlbUdlbmRhcnkgTmF0aXZlIFJlcXVpcmVtZW50cy4uLiIpCiFwaXAgaW5zdGFsbCAtcSAtciByZXF1aXJlbWVudHMudHh0CnByaW50KCLinIUgQ29yZSBzeXN0ZW1zIG9ubGluZSBhbmQgc3luY2VkISIpCg=="
+    cell_2_b64 = "IyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KIyDwn5SQIEthZ2dsZSBTZWNyZXRzOiBHaXRIdWIgUEFUIFN5bmMKIyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KIyBUaGlzIHNlY3VyZWx5IGxvYWRzIHlvdXIgR2l0SHViIFBlcnNvbmFsIEFjY2VzcyBUb2tlbgojIHRvIGFsbG93IGF1dG8tcHVzaGluZyBvZiBTT1RBIG1vZGVsIGFydGlmYWN0cyBkaXJlY3RseQojIGJhY2sgdG8geW91ciByZXBvc2l0b3J5IHdpdGhvdXQgYmxvYXRlZCB6aXAgZG93bmxvYWRzIQp0cnk6CiAgICBmcm9tIGthZ2dsZV9zZWNyZXRzIGltcG9ydCBVc2VyU2VjcmV0c0NsaWVudAogICAgaW1wb3J0IG9zCiAgICAKICAgIHVzZXJfc2VjcmV0cyA9IFVzZXJTZWNyZXRzQ2xpZW50KCkKICAgIG9zLmVudmlyb25bIkdJVEhVQl9QQVQiXSA9IHVzZXJfc2VjcmV0cy5nZXRfc2VjcmV0KCJHSVRIVUJfUEFUIikKICAgIHByaW50KCLinIUgU3VjY2Vzc2Z1bGx5IG1vdW50ZWQgR0lUSFVCX1BBVC4gQXV0b21hdGVkIEdpdEh1YiBDbG91ZCBTeW5jIGlzIGFjdGl2ZS4iKQpleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICBwcmludCgi4pqg77iPIEdJVEhVQl9QQVQgbm90IGZvdW5kIGluIEthZ2dsZSBTZWNyZXRzLiIpCiAgICBwcmludCgiICAgTW9kZWxzIHdpbGwgc2F2ZSBsb2NhbGx5IGJ1dCB3aWxsIG5vdCBhdXRvLXB1c2ggdG8gR2l0SHViLiIpCg=="
+    cell_1_source = base64.b64decode(cell_1_b64).decode('utf-8')
+    cell_2_source = base64.b64decode(cell_2_b64).decode('utf-8')
+    
     notebook_content = {
      "metadata": {
       "kernelspec": {
@@ -1304,7 +1365,7 @@ def generate_kaggle_notebook(output_root, target_name):
       },
       {
        "cell_type": "code",
-       "source": ["import os\n", "\n", "# 1. Smart Repository Sync\n", "if not os.path.exists('lemgendary-training-suite'):\n", "    print(\"🚀 Cloning LemGendary environment for the first time...\")\n", "    !git clone https://github.com/lemgenda/lemgendary-training-suite.git\n", "else:\n", "    print(\"⚡ Fast-Sync: Repository already exists. Pulling latest patches...\")\n", "\n", "# 2. Mathematically enforce the latest GitHub main state\n", "%cd lemgendary-training-suite\n", "!git pull origin main\n", "\n", "# 3. Quietly verify dependencies\n", "print(\"📦 Verifying LemGendary Native Requirements...\")\n", "!pip install -q -r requirements.txt\n", "print(\"✅ Core systems online and synced!\")"],
+       "source": cell_1_source.splitlines(keepends=True),
        "metadata": {"trusted": True},
        "outputs": [],
        "execution_count": None
@@ -1341,7 +1402,7 @@ def generate_kaggle_notebook(output_root, target_name):
       },
       {
        "cell_type": "code",
-       "source": ["# ==========================================\n", "# 🔐 Kaggle Secrets: GitHub PAT Sync\n", "# ==========================================\n", "# This securely loads your GitHub Personal Access Token\n", "# to allow auto-pushing of SOTA model artifacts directly\n", "# back to your repository without bloated zip downloads!\n", "try:\n", "    from kaggle_secrets import UserSecretsClient\n", "    import os\n", "    \n", "    user_secrets = UserSecretsClient()\n", "    os.environ[\"GITHUB_PAT\"] = user_secrets.get_secret(\"GITHUB_PAT\")\n", "    print(\"✅ Successfully mounted GITHUB_PAT. Automated GitHub Cloud Sync is active.\")\n", "except Exception as e:\n", "    print(\"⚠️ GITHUB_PAT not found in Kaggle Secrets.\")\n", "    print(\"   Models will save locally but will not auto-push to GitHub.\")"],
+       "source": cell_2_source.splitlines(keepends=True),
        "metadata": {"trusted": True},
        "outputs": [],
        "execution_count": None
@@ -1353,7 +1414,7 @@ def generate_kaggle_notebook(output_root, target_name):
       },
       {
        "cell_type": "code",
-       "source": [f"# EXPLICIT CLOUD METADATA REQUIREMENT:\n", f"# Ensure ALL 1 datasets below are physically mounted via Kaggle 'Add Data':\n", f"# -> {target_name}\n", "\n", "# NOTE: Replace [MODEL_NAME] below with the actual model architecture you intend to train.\n", "# E.g., nafnet_denoising, nima_technical, upn_v2, etc.\n", "!python training/train.py --model [MODEL_NAME] --env kaggle"],
+       "source": [f"# EXPLICIT CLOUD METADATA REQUIREMENT:\n", f"# Ensure ALL 1 datasets below are physically mounted via Kaggle 'Add Data':\n", f"# -> {target_name}\n", "\n", "# NOTE: Replace [MODEL_NAME] below with the actual model architecture you intend to train.\n", "# E.g., nafnet_denoising, nima_technical, upn_v2, etc.\n", "!" + "python training/train.py --model [MODEL_NAME] --env kaggle\n"],
        "metadata": {"trusted": True},
        "outputs": [],
        "execution_count": None
@@ -1366,7 +1427,7 @@ def generate_kaggle_notebook(output_root, target_name):
 
 
 def reduce_dataset():
-    print("\n🔍 [SCANNING] Locating existing manifolds in LemGendizedDatasets...")
+    print("\n🔍 [SCANNING] Locating existing manifolds in LemGendaryDatasets...")
     if not OUT_PARENT.exists():
         print(f"❌ Error: {OUT_PARENT} directory not found.")
         return
@@ -1518,7 +1579,7 @@ def smart_cleanup():
         consumers = []
         for mk, mcfg in DATASETS_META.items():
             for ref_entry in mcfg.get("refs", []):
-                if slug in ref_entry["ref"]:
+                if slug.lower() in ref_entry["ref"].lower():
                     consumers.append(mk)
                     break
         
@@ -1592,7 +1653,7 @@ def cleanup_sources():
         for mk, mcfg in DATASETS_META.items():
             for ref_entry in mcfg.get("refs", []):
                 ref = ref_entry["ref"]
-                if slug in ref:
+                if slug.lower() in ref.lower():
                     consumers.append(mk)
                     break
         

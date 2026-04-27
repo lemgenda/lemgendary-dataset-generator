@@ -7,6 +7,56 @@ $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
 $Raw = Join-Path $PSScriptRoot 'raw-sets'
 $hfManagerPath = Join-Path $PSScriptRoot 'hf_manager.py'
+$KaggleExe = Join-Path (Split-Path $Vpy -Parent) 'kaggle.exe'
+
+function Bootstrap-Environment {
+    Write-Host "🛡️ [PRE-FLIGHT] Verifying LemGendary Environment..." -ForegroundColor Gray
+    
+    # 1. Check for .venv
+    if (!(Test-Path $Vpy)) {
+        Write-Host "⚠️ [WARNING] Virtual environment (.venv) not found!" -ForegroundColor Yellow
+        $Choice = Read-Host "Would you like to create and initialize the environment now? (Y/N)"
+        if ($Choice -match '^y') {
+            Write-Host "🚀 Creating .venv..." -ForegroundColor Cyan
+            & python -m venv .venv
+            if ($LASTEXITCODE -ne 0) { 
+                Write-Host "❌ Failed to create .venv. Ensure Python is installed and in your PATH." -ForegroundColor Red
+                Read-Host "Press Enter to exit"
+                exit 1 
+            }
+        } else {
+            Write-Host "❌ Cannot proceed without .venv. Exiting." -ForegroundColor Red
+            Read-Host "Press Enter to exit"
+            exit 1
+        }
+    }
+
+    # 2. Check for Healthy Torch (CUDA aware)
+    Write-Host "📡 Checking Hardware Acceleration..." -ForegroundColor Gray
+    $Check = & $Vpy -c "import torch; print('CUDA_OK' if torch.cuda.is_available() else 'CPU_ONLY')" 2>$null
+    if ($Check -ne "CUDA_OK") {
+        Write-Host "⚠️ [ENVIRONMENT] GPU Acceleration (CUDA) is NOT detected!" -ForegroundColor Yellow
+        $Choice = Read-Host "Would you like to repair/install dependencies from requirements.txt? (Y/N)"
+        if ($Choice -match '^y') {
+            Write-Host "📡 Installing/Repairing dependencies (this may take several minutes)..." -ForegroundColor Cyan
+            & $Vpy -m pip install -r requirements.txt
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✅ Environment repaired successfully!" -ForegroundColor Green
+                Start-Sleep -Seconds 2
+            } else {
+                Write-Host "❌ Installation failed. Please check your internet connection." -ForegroundColor Red
+                Read-Host "Press Enter to exit"
+                exit 1
+            }
+        }
+    } else {
+        Write-Host "✅ [SOTA] Environment is healthy and GPU-accelerated." -ForegroundColor Green
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+# Run Bootstrap before anything else
+Bootstrap-Environment
 
 function Get-RegData {
     if (!(test-path $Reg)) { Write-Host '  [ERROR] unified_data.yaml missing!' -Fore Red; return $null }
@@ -210,7 +260,7 @@ function Start-Acquisition {
     $BaseId = 100
     
     $DownloadSB = {
-        param($ds, $sharedPath, $vpy, $hfManager)
+        param($ds, $sharedPath, $vpy, $hfManager, $kaggleExe)
         $isC = $ds -match 'competition'
         $ref = $ds; if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
         $dn = $ref.Split('/')[-1]
@@ -218,7 +268,7 @@ function Start-Acquisition {
         $fold = Join-Path $sharedPath $dn
         
         Write-Output "STATUS:DOWNLOADING"
-        if ($isC) { kaggle competitions download -c $ref -p $sharedPath --quiet 2>&1 } else { kaggle datasets download -d $ref -p $sharedPath --quiet 2>&1 }
+        if ($isC) { & $kaggleExe competitions download -c $ref -p $sharedPath 2>&1 } else { & $kaggleExe datasets download -d $ref -p $sharedPath 2>&1 }
         
         if (Test-Path $z) {
              Write-Output "RESULT:DOWNLOADED"
@@ -295,7 +345,7 @@ function Start-Acquisition {
                     if ($NextDl.Ref -match 'hf://') {
                         $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
                     } else {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath, $KaggleExe).Id
                     }
                 }
             }
@@ -341,8 +391,9 @@ function Start-Acquisition {
                         }
                     } else {
                         if (-not [string]::IsNullOrWhiteSpace($ls)) {
-                            # Ensure we are working with a string (prevents ErrorRecord crashes)
+                            # Ensure we are working with a string and strip tqdm carriage returns
                             $LineStr = [string]$ls
+                            $LineStr = $LineStr -replace "`r", ""
                             # If it looks like a tqdm bar, we use it as status
                             if ($LineStr -match '\[.*\]' -or $LineStr -match '%') {
                                 $ti.Status = $LineStr.Trim()
@@ -420,6 +471,15 @@ function Start-Acquisition {
 while ($true) {
     Clear-Host
     Write-Host '--- LEMGENDARY DATASETS HUB v5.2 ---' -ForegroundColor Yellow
+    
+    # Fast CUDA Check
+    $CudaStatus = & $Vpy -c "import torch; print('OK' if torch.cuda.is_available() else 'OFF')" 2>$null
+    if ($CudaStatus -eq "OFF") {
+        Write-Host "⚠️  [SYSTEM] NO CUDA DETECTED! AI tasks will run on CPU (SLOW)." -ForegroundColor Red
+    } else {
+        Write-Host "✅ [SYSTEM] CUDA READY (GPU Accelerated)" -ForegroundColor Green
+    }
+
     Show-Stats
     Write-Host '1. [ACQUIRE] Pull remote datasets' -ForegroundColor Gray
     Write-Host '2. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
@@ -473,10 +533,18 @@ while ($true) {
         
         $Suffix = Read-Host "Enter Suffix [Default: $($RegData._registry_metadata.name_suffix)]"
         if ([string]::IsNullOrWhiteSpace($Suffix)) { $Suffix = $RegData._registry_metadata.name_suffix }
+
+        $Workers = Read-Host "Enter Number of Workers [Default: Auto]"
+        $WorkerArg = if ([string]::IsNullOrWhiteSpace($Workers)) { @() } else { @("--workers", $Workers) }
+        Start-Sleep -Milliseconds 100
+
+        $NoLabel = Read-Host "Disable AI Labeling (Y/N)? [Default: N]"
+        $LabelArg = if ($NoLabel -match '^y') { @("--no-labeling") } else { @() }
+        Start-Sleep -Milliseconds 100
         
         foreach ($tm in $TargetModels) {
             Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
-            & $Vpy compiler-pipeline.py --model $tm --max_gb $MaxSize --suffix $Suffix
+            & $Vpy compiler-pipeline.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg @LabelArg
             
             # Post-Compile Verification
             $OutFolder = Join-Path (Get-Location) $OutFolderName
