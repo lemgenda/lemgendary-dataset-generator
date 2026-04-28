@@ -6,191 +6,341 @@ _registry_metadata:
   output_folder_name: ../LemGendaryDatasets
   global_constraints:
     min_size_gb: 6.0
-    max_size_gb: 150.0
+    max_size_gb: 190.0
 datasets:
   nima_aesthetic:
     name: NimaAesthetic
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticlarge
+    val_split: 0.1
     refs:
-    - ref: nicolacarrassi/ava-aesthetic-visual-assessment
+    - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
     - ref: hf://bhargavsdesai/laion_improved_aesthetics_6.5plus_with_images
-    - ref: bogdanpetre98/aadb-imagedatabase
+    - ref: kaggle://bogdanpetre98/aadb-imagedatabase
   nima_technical:
     name: NimaTechnical
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnicallarge
+    val_split: 0.1
     refs:
-    - ref: generalhawking/koniq-10k-dataset
+    - ref: kaggle://generalhawking/koniq-10k-dataset
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:live.tgz
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:csiq.tgz
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:tid2013.tgz
-    - ref: hsyndmr/dnd-nam-noise-data
+    - ref: kaggle://hsyndmr/dnd-nam-noise-data
   nima_authenticity:
     name: NimaAuthenticity
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticitylarge
+    val_split: 0.1
     refs:
-    - ref: shreyasraghav/shutterstock-dataset-for-ai-vs-human-gen-image
-    - ref: birdy654/cifake-real-and-ai-generated-synthetic-images
-    - ref: doctorstrange420/real-and-fake-ai-generated-art-images-dataset
+    - ref: kaggle://shreyasraghav/shutterstock-dataset-for-ai-vs-human-gen-image
+    - ref: kaggle://birdy654/cifake-real-and-ai-generated-synthetic-images
+    - ref: kaggle://doctorstrange420/real-and-fake-ai-generated-art-images-dataset
   upn_v2:
     name: UpnV2
+    kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
+    val_split: 0.05
+    labeling: false
     refs:
-    - ref: joe1995/div2k-dataset
-    - ref: daehoyang/flickr2k
-    - ref: weipengzhang/adobe-fivek
+    - ref: kaggle://joe1995/div2k-dataset
+    - ref: kaggle://daehoyang/flickr2k
+    - ref: kaggle://weipengzhang/adobe-fivek
     - ref: hf://gitpull/DPED
   film_restorer:
     name: FilmRestorer
+    kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorerlarge
+    val_split: 0.05
+    labeling: false
     refs:
-    - ref: spiyer/old-film-restoration-dataset
-    - ref: marcinrutecki/old-photos
-    - ref: shrutimandaokar2301/vintage-photo-restoration-clean-and-damaged-image
-    - ref: shrutimandaokar2301/vintage-degraded-image-synthetic-real
-    - ref: sureshmud/photo-restoration
+    - ref: kaggle://spiyer/old-film-restoration-dataset
+    - ref: kaggle://marcinrutecki/old-photos
+    - ref: kaggle://shrutimandaokar2301/vintage-photo-restoration-clean-and-damaged-image
+    - ref: kaggle://shrutimandaokar2301/vintage-degraded-image-synthetic-real
+    - ref: kaggle://sureshmud/photo-restoration
     - ref: hf://Norod78/Vintage-Faces-FFHQAligned
-    - ref: duynm619/image-restoration
-    - ref: rajat95gupta/smartphone-image-denoising-dataset
-    - ref: hsyndmr/dnd-nam-noise-data
-    - ref: joe1995/div2k-dataset
+    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+    - ref: kaggle://hsyndmr/dnd-nam-noise-data
+    - ref: kaggle://joe1995/div2k-dataset
+    - ref: gh://microsoft/Bringing-Old-Photos-Back-to-Life
   codeformer:
     name: CodeFormer
+    kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
+    val_split: 0.05
     refs:
-    - ref: jessicali9530/celeba-dataset
-    - ref: kashyapkvh/mm-celeba-hq-dataset
-    - ref: arnaud58/flickrfaceshq-dataset-ffhq
+    - ref: kaggle://jessicali9530/celeba-dataset
+    - ref: kaggle://kashyapkvh/mm-celeba-hq-dataset
+    - ref: kaggle://arnaud58/flickrfaceshq-dataset-ffhq
     - ref: hf://Ryan-sjtu/ffhq512-caption
   parsenet:
     name: ParseNet
+    kaggle_ref: kaggle://lemtreursi/lemgendizedparsenetlarge
+    val_split: 0.1
+    labeling: true
     refs:
     - ref: hf://liusq/CelebAMask-HQ
     - ref: hf://UniqueData/face_segmentation
-    - ref: kiranraghavendrauci/lapa-face-parsing-dataset
+    - ref: kaggle://kiranraghavendrauci/lapa-face-parsing-dataset
   retinaface_mobilenet:
     name: RetinaFaceMobileNet
+    kaggle_ref: kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
+    val_split: 0.1
+    labeling: true
     refs:
     - ref: hf://CUHK-CSE/wider_face
-    - ref: andrewmvd/face-mask-detection
+    - ref: kaggle://andrewmvd/face-mask-detection
   retinaface_resnet:
     name: RetinaFaceResNet
+    kaggle_ref: kaggle://lemtreursi/lemgendizedretinafaceresnetlarge
+    val_split: 0.1
     refs:
     - ref: hf://CUHK-CSE/wider_face
     - ref: hf://purplehaze1/CrowdHuman
   ffanet_indoor:
     name: FfaNetIndoor
+    kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoorlarge
+    val_split: 0.05
     refs:
-    - ref: balraj98/indoor-training-set-its-residestandard
-    - ref: kmljts/reside-6k
-    - ref: rajat95gupta/indoor-haze-dataset
+    - ref: kaggle://balraj98/indoor-training-set-its-residestandard
+    - ref: kaggle://kmljts/reside-6k
+    - ref: kaggle://rajat95gupta/indoor-haze-dataset
   ffanet_outdoor:
     name: FfaNetOutdoor
+    kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoorlarge
+    val_split: 0.05
     refs:
-    - ref: shivakanthsujit/outdoor-dehazing-dataset
-    - ref: litheshshetty/nh-haze
-    - ref: rajat95gupta/outdoor-haze
-    - ref: litheshshetty/ohaze-dataset
+    - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
+    - ref: kaggle://litheshshetty/nh-haze
+    - ref: kaggle://rajat95gupta/outdoor-haze
+    - ref: kaggle://litheshshetty/ohaze-dataset
   mirnet_lowlight:
     name: MirNetLowLight
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlightlarge
+    val_split: 0.05
     refs:
-    - ref: soumikrakshit/lol-dataset
-    - ref: nareshbhat/low-light-image-enhancement
-    - ref: kushal1996/see-in-the-dark-dataset
+    - ref: kaggle://soumikrakshit/lol-dataset
+    - ref: kaggle://nareshbhat/low-light-image-enhancement
+    - ref: kaggle://kushal1996/see-in-the-dark-dataset
   mirnet_exposure:
     name: MirNetExposure
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposurelarge
+    val_split: 0.05
     refs:
-    - ref: weipengzhang/adobe-fivek
+    - ref: kaggle://weipengzhang/adobe-fivek
     - ref: hf://gitpull/DPED
-    - ref: isaienkov/fivek-raw-to-jpeg
+    - ref: kaggle://isaienkov/fivek-raw-to-jpeg
   mprnet_deraining:
     name: MprNetDeraining
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaininglarge
+    val_split: 0.05
     refs:
-    - ref: bshaurya/rain-dataset
-    - ref: yanzhou2004/rain100l
-    - ref: rahulbhalley/rain-removal
-    - ref: tanfuxiang/rain100l-100h
+    - ref: kaggle://bshaurya/rain-dataset
+    - ref: kaggle://yanzhou2004/rain100l
+    - ref: kaggle://rahulbhalley/rain-removal
+    - ref: kaggle://tanfuxiang/rain100l-100h
   nafnet_debluring:
     name: NafNetDebluring
+    kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluringlarge
+    val_split: 0.05
+    labeling: false
     refs:
-    - ref: adwythdarsanr/gopro-image-deblurring-dataset
+    - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
     - ref: hf://slymachenko/image-deblurring-performance-analysis
-    - ref: darthvader4067/hideblur
+    - ref: kaggle://darthvader4067/hideblur
     - ref: hf://rimchang/RealBlur
   nafnet_denoising:
     name: NafNetDenoising
+    kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoisinglarge
+    val_split: 0.05
+    labeling: false
     refs:
-    - ref: rajat95gupta/smartphone-image-denoising-dataset
-    - ref: hsyndmr/dnd-nam-noise-data
-    - ref: tenxengineers/denoising-dataset-multiple-iso-levels
-    - ref: dibakarsil/9-classes-noisy-image-dataset
-    - ref: goutham1208/multi-noises-for-image-denoising
-    - ref: rajneesh231/salt-and-pepper-noise-images
+    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+    - ref: kaggle://hsyndmr/dnd-nam-noise-data
+    - ref: kaggle://tenxengineers/denoising-dataset-multiple-iso-levels
+    - ref: kaggle://dibakarsil/9-classes-noisy-image-dataset
+    - ref: kaggle://goutham1208/multi-noises-for-image-denoising
+    - ref: kaggle://rajneesh231/salt-and-pepper-noise-images
   ultrazoom:
     name: UltraZoom
+    kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoomlarge
+    val_split: 0.05
+    labeling: false
     refs:
-    - ref: joe1995/div2k-dataset
-    - ref: daehoyang/flickr2k
+    - ref: kaggle://joe1995/div2k-dataset
+    - ref: kaggle://daehoyang/flickr2k
     - ref: hf://Iceclear/DF2K-OST
-    - ref: harshraone/urban100
+    - ref: kaggle://harshraone/urban100
   yolov8n:
     name: YoloV8n
+    kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8nlarge
+    val_split: 0.1
     refs:
-    - ref: awsaf49/coco-2017-dataset
+    - ref: kaggle://awsaf49/coco-2017-dataset
     - ref: hf://jxu124/objects365
-    - ref: kmader/open-images-2019
+    - ref: kaggle://kmader/open-images-2019
     - ref: hf://imagenet-1k
-    - ref: harshpatel66/mpii-human-pose
-    - ref: elmahy/crowdpose
+    - ref: kaggle://harshpatel66/mpii-human-pose
+    - ref: kaggle://elmahy/crowdpose
   professional_multitask_restoration:
     name: ProfessionalMultitaskRestoration
+    kaggle_ref: kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge
+    val_split: 0.05
     refs:
-    - ref: duynm619/image-restoration
-    - ref: soumikrakshit/lol-dataset
-    - ref: bshaurya/rain-dataset
-    - ref: adwythdarsanr/gopro-image-deblurring-dataset
-    - ref: rajat95gupta/smartphone-image-denoising-dataset
-    - ref: hsyndmr/dnd-nam-noise-data
-    - ref: joe1995/div2k-dataset
-    - ref: kmljts/reside-6k
-  diffusion_sdxl_sfw:
-    name: DiffusionSdxlSfw
+    - ref: kaggle://duynm619/image-restoration
+    - ref: kaggle://soumikrakshit/lol-dataset
+    - ref: kaggle://bshaurya/rain-dataset
+    - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
+    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+    - ref: kaggle://hsyndmr/dnd-nam-noise-data
+    - ref: kaggle://joe1995/div2k-dataset
+    - ref: kaggle://kmljts/reside-6k
+    - ref: kaggle://awsaf49/coco-2017-dataset
+  diffusion_master_manifold:
+    name: DiffusionMasterManifold
+    kaggle_ref: kaggle://lemtreursi/lemgendizeddiffusionmastermanifoldlarge
+    val_split: 0.005
+    nsfw_ratio: 0.25
     refs:
-    - ref: hf://jainr3/diffusiondb-pixelart
-    - ref: romainbeaumont/laion-aesthetic-6plus
-    - ref: hf://image-search-2/unsplash_lite_image_dataset
+    - ref: hf://thliang01/Pixel_Art
+      tag: sfw
+    - ref: hf://bhargavsdesai/laion_improved_aesthetics_6.5plus_with_images
+      tag: sfw
+    - ref: hf://datasets/timm/unsplash-lite
+      tag: sfw
+    - ref: hf://Nikity/civitai-stable-diffusion-337k
+      tag: nsfw
     - ref: hf://poloclub/diffusiondb
-  diffusion_flux_sfw:
-    name: DiffusionFluxSfw
-    refs:
-    - ref: trolukovich/midjourney-prompts-dataset-2m
-    - ref: ivansivkovenin/img2txt
-    - ref: mylesoneill/tagged-anime-illustrations
-  diffusion_nsfw:
-    name: DiffusionNsfw
-    refs:
-    - ref: hf://Bingsu/Human_Action_Recognition
-    - ref: ssuprock/unannotated-human-images
-    - ref: nurudeenmohammed/human-skin-diseases
-    - ref: ebiswas/anime-hentai-nsfw-classification
-    - ref: splcher/animefacedataset
-    - ref: hf://geekyrakshit/anime_sketch_colorization
+      tag: sfw
+    - ref: kaggle://trolukovich/midjourney-prompts-dataset-2m
+      tag: sfw
+    - ref: kaggle://ivansivkovenin/img2txt
+      tag: sfw
+    - ref: kaggle://mylesoneill/tagged-anime-illustrations
+      tag: sfw
+    - ref: hf://p1atdev/real-human-portraits-v2
+      tag: sfw
+    - ref: kaggle://splcher/animefacedataset
+      tag: sfw
+    - ref: hf://v-shihai/anime-nsfw-classification-v2
+      tag: nsfw
+    - ref: hf://p1atdev/anime-sketch-colorization-v2
+      tag: sfw
     - ref: hf://huggan/anime-faces
-    - ref: brobob/lazymix-real-amateur-nudes
-    - ref: vincent019652/sdxl-loras
+      tag: sfw
+    - ref: kaggle://brobob/lazymix-real-amateur-nudes
+      tag: nsfw
+    - ref: kaggle://vincent019652/sdxl-loras
+      tag: nsfw
     - ref: hf://Nikity/Pornhub
+      tag: nsfw
     - ref: hf://Nikity/Big-Porn
+      tag: nsfw
     - ref: hf://wannaphong/thai_porn_dataset
+      tag: nsfw
     - ref: hf://cudecanarim/5k-porn
+      tag: nsfw
     - ref: hf://MingSafeR/photo_porn_image_prompts
+      tag: nsfw
     - ref: hf://MingSafeR/anime_porn_image_prompts
+      tag: nsfw
     - ref: hf://MingSafeR/anime_porn_image_10k
+      tag: nsfw
     - ref: hf://MingSafeR/anime_porn_image_1M_augmentation
+      tag: nsfw
     - ref: hf://nalpakd/PornhubDataset
-  image_to_text_llava:
-    name: ImageToTextLlava
+      tag: nsfw
+    - ref: hf://NoobEngineere/NSFW_Manga
+      tag: nsfw
+    - ref: hf://yesidobyte/nsfw1024
+      tag: nsfw
+    - ref: hf://cudecanarim/18-virgin-sex
+      tag: nsfw
+    - ref: hf://QuixiAI/SexDrugsAndRockAndRoll
+      tag: nsfw
+    - ref: hf://DRDELATV/woman-sexy
+      tag: nsfw
+    - ref: hf://amaye15/NSFW
+      tag: nsfw
+    - ref: hf://pasindu29/civitai-top-nsfw-images-with-metadata
+      tag: nsfw
+    - ref: hf://herpaderpapotato/pose_vrlens_nsfw_single_class
+      tag: nsfw
+    - ref: hf://cudecanarim/fried-rice-fuckers
+      tag: nsfw
+    - ref: hf://cudecanarim/fuck-studies
+      tag: nsfw
+    - ref: hf://cudecanarim/fucking-skinny
+      tag: nsfw
+    - ref: hf://cudecanarim/fucked-hard-18
+      tag: nsfw
+    - ref: hf://Deenchik/blowjob_1
+      tag: nsfw
+    - ref: hf://cudecanarim/foot-fetish-daily
+      tag: nsfw
+  vision_language_master_manifold:
+    name: VisionLanguageMasterManifold
+    kaggle_ref: kaggle://lemtreursi/lemgendizedvisionlanguagemastermanifoldlarge
+    val_split: 0.01
+    nsfw_ratio: 0.10
     refs:
-    - ref: hf://liuhaotian/LLaVA-Instruct-150K
-    - ref: hf://jxie/visual_genome
-    - ref: awsaf49/coco-2017-dataset
-  image_to_text_blip2:
-    name: ImageToTextBlip2
+    - ref: hf://adamo1139/llava-instruct-150k-with-images
+      tag: sfw
+    - ref: hf://datasets/visual_genome/visual_genome
+      tag: sfw
+    - ref: hf://datasets/m-bain/conceptual_captions_12m
+      tag: sfw
+    - ref: hf://adamo1139/llava-pretrain-585k-with-images
+      tag: sfw
+    - ref: kaggle://awsaf49/coco-2017-dataset
+      tag: sfw
+    - ref: hf://datasets/nlphuji/flickr30k
+      tag: sfw
+    - ref: kaggle://adityajn105/flickr8k
+      tag: sfw
+    - ref: hf://Nikity/Pornhub
+      tag: nsfw
+    - ref: hf://poloclub/diffusiondb
+      tag: sfw
+    - ref: hf://Nikity/Big-Porn
+      tag: nsfw
+    - ref: hf://MingSafeR/photo_porn_image_prompts
+      tag: nsfw
+    - ref: hf://MingSafeR/anime_porn_image_10k
+      tag: nsfw
+    - ref: hf://NoobEngineere/NSFW_Manga
+      tag: nsfw
+    - ref: hf://yesidobyte/nsfw1024
+      tag: nsfw
+    - ref: hf://cudecanarim/18-virgin-sex
+      tag: nsfw
+    - ref: hf://QuixiAI/SexDrugsAndRockAndRoll
+      tag: nsfw
+    - ref: hf://DRDELATV/woman-sexy
+      tag: nsfw
+    - ref: hf://amaye15/NSFW
+      tag: nsfw
+    - ref: hf://pasindu29/civitai-top-nsfw-images-with-metadata
+      tag: nsfw
+    - ref: hf://herpaderpapotato/pose_vrlens_nsfw_single_class
+      tag: nsfw
+    - ref: hf://cudecanarim/fried-rice-fuckers
+      tag: nsfw
+    - ref: hf://cudecanarim/fuck-studies
+      tag: nsfw
+    - ref: hf://cudecanarim/fucking-skinny
+      tag: nsfw
+    - ref: hf://cudecanarim/fucked-hard-18
+      tag: nsfw
+    - ref: hf://Deenchik/blowjob_1
+      tag: nsfw
+    - ref: hf://cudecanarim/foot-fetish-daily
+      tag: nsfw
+  classification_master_manifold:
+    name: ClassificationMasterManifold
+    kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifoldlarge
+    val_split: 0.05
     refs:
-    - ref: hf://google-research-datasets/conceptual_captions
-    - ref: dimensi0n/flickr30k
-    - ref: adityajn105/flickr8k
-    - ref: awsaf49/coco-2017-dataset
+    - ref: hf://v-shihai/anime-nsfw-classification-v2
+      tag: anime_nsfw
+    - ref: hf://Lesser-Known/NSFW-Image-Classifier-Data
+      tag: general_nsfw
+    - ref: hf://datasets/DmitryUlyanov/imagenet-1k-subset
+      tag: sfw_baseline

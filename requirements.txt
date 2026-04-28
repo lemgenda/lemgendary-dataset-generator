@@ -18,6 +18,7 @@ fastparquet>=2024.2.0
 webdataset>=1.0.0
 PyYAML>=6.0.0
 huggingface_hub>=0.23.0
+kaggle>=2.0.2
 
 # Utilities
 tqdm>=4.66.0

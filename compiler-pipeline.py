@@ -227,18 +227,24 @@ def init_worker(config):
     # CRITICAL: Prevent multiprocessing thread thrashing on CPU
     torch.set_num_threads(1)
     
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # 2026 Resilience: Multi-processing with PyTorch on Windows CUDA causes severe deadlocks 
+    # and OOMs if multiple workers allocate GPU memory concurrently on a single 4GB card.
+    # We FORCE the SENTRY to CPU. It is extremely fast (MobileNetV2) and prevents deadlocks.
+    device = "cpu"
     
-    # 1. Quality Vetting (NIMA)
-    model_type = "aesthetic" if args.model and "aesthetic" in args.model else "technical"
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(base_dir, "models", f"nima_{model_type}_best.pth")
-    
-    if os.path.exists(model_path) and not args.no_vetting:
-        try:
-            SENTRY = QualitySentry(model_path, model_name=model_type, device=device)
-        except Exception:
-            pass
+    # 1. Quality Vetting (NIMA) - Only load if the task requires it
+    mission = detect_task(args.model)
+    if mission in ["quality", "classification", "diffusion"] and not args.no_vetting:
+        # For diffusion, we always prefer the aesthetic model to ensure high-quality taste
+        model_type = "aesthetic" if mission == "diffusion" or (args.model and "aesthetic" in args.model) else "technical"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        model_path = os.path.join(base_dir, "models", f"nima_{model_type}_best.pth")
+        
+        if os.path.exists(model_path):
+            try:
+                SENTRY = QualitySentry(model_path, model_name=model_type, device=device)
+            except Exception:
+                pass
     
     # 2. Diffusion Specifics (Captions)
     # 3. Ground Truth Support (AVA/AADB/LAION)
@@ -272,18 +278,31 @@ def get_labeler(task, device="cuda"):
 # ---------------- HELPERS ----------------
 def ensure_srgb(img):
     if img.mode != "RGB":
-        return img.convert("RGB")
+        img = img.convert("RGB")
+        img.was_converted = True
+        return img
     return img
 
 def is_black_image(img, threshold=None):
     if threshold is None: threshold = CONFIG["black_threshold"]
-    grayscale = img.convert("L")
+    img_thumb = img.resize((64, 64), Image.Resampling.NEAREST) if img.size[0] > 64 else img
+    grayscale = img_thumb.convert("L")
     stat = np.array(grayscale)
     black_ratio = np.sum(stat < 10) / stat.size
     return black_ratio > (1.0 - threshold)
 
-def compute_hash(img):
-    return hashlib.md5(img.tobytes()).hexdigest()
+def compute_hash(img_or_path):
+    import hashlib
+    from pathlib import Path
+    if isinstance(img_or_path, (str, Path)):
+        h = hashlib.md5()
+        with open(img_or_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""): h.update(chunk)
+        return h.hexdigest()
+    elif isinstance(img_or_path, bytes):
+        return hashlib.md5(img_or_path).hexdigest()
+    else:
+        return hashlib.md5(img_or_path.tobytes()).hexdigest()
 
 def convert_bbox_xywh_to_yolo(bbox, w, h):
     x, y, bw, bh = bbox
@@ -299,12 +318,17 @@ def normalize_points(points, w, h, stride=2):
 
 # ---------------- REGISTRY ----------------
 def initialize_registry(db_path):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    # 2026 Ultra-Optimization: Exclusive locking for maximum RAID throughput
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA cache_size=100000")
+    conn.execute("PRAGMA locking_mode=EXCLUSIVE")
     # 2026 Resilience: We store BLOBs for latents and bytes for rapid Pass-2 retrieval
     conn.execute("""
         CREATE TABLE IF NOT EXISTS registry (
             id INTEGER PRIMARY KEY,
-            name TEXT, source TEXT, task TEXT, split TEXT,
+            name TEXT UNIQUE, source TEXT, task TEXT, split TEXT,
             hash TEXT, nima_score REAL, caption TEXT,
             style_tag TEXT, clip_latent BLOB,
             img_bytes BLOB, cluster_id INTEGER DEFAULT -1
@@ -404,8 +428,19 @@ def parse_safetensors(st_path):
         pass
     return metadata
 
+# ---------------- BATCH WORKER ----------------
+def batch_worker(tasks):
+    """Executes a list of tasks in a single worker call to reduce IPC overhead."""
+    results = []
+    for task_func, *args in tasks:
+        try:
+            results.append(task_func(*args))
+        except Exception as e:
+            results.append(None)
+    return results
+
 # ---------------- PROCESSORS ----------------
-def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, output_root_str):
+def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, output_root_str, skip_labeling=False):
     """
     Worker function for parallel processing.
     img_input can be a Path or raw bytes (for Parquet-embedded datasets).
@@ -430,8 +465,36 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             if not img_path.exists(): return None
             is_st = img_path.suffix.lower() == ".safetensors"
             
+        ext = img_path.suffix.lower() if isinstance(img_input, (str, Path)) else ".jpg"
+        if ext not in [".jpg", ".jpeg", ".png", ".webp"]: ext = ".jpg"
+        
         name = f"{prefix}_{slug}_{idx:09d}"
-        out_img_path = Path(output_root_str) / "images" / split / f"{name}.jpg"
+        out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
+        out_tgt_path = Path(output_root_str) / "targets" / split / f"{name}{ext}"
+        
+        # Restoration Target Resolver (v5.6)
+        target_img = None
+        if task in ["restoration", "super-resolution"]:
+            if "dped" in slug.lower() and not isinstance(img_input, (bytes, dict)):
+                # DPED Path Mirroring: iphone2canon/test/iphone/1.jpg -> iphone2canon/test/canon/1.jpg
+                p_str = str(img_path).replace("\\", "/")
+                if "/iphone/" in p_str: 
+                    tgt_p_str = p_str.replace("/iphone/", "/canon/")
+                    if os.path.exists(tgt_p_str):
+                        target_img = Image.open(tgt_p_str)
+                elif "/blackberry/" in p_str:
+                    tgt_p_str = p_str.replace("/blackberry/", "/canon/")
+                    if os.path.exists(tgt_p_str):
+                        target_img = Image.open(tgt_p_str)
+                elif "/sony/" in p_str:
+                    tgt_p_str = p_str.replace("/sony/", "/canon/")
+                    if os.path.exists(tgt_p_str):
+                        target_img = Image.open(tgt_p_str)
+            
+            # If no specific paired target found, the clean image is the target (Synthetic Mode)
+            if target_img is None:
+                # We'll set a flag to save the clean 'img' as target later
+                pass
         
         # Resumption Check
         if out_img_path.exists():
@@ -457,12 +520,15 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 img = Image.open(img_path)
             
         img = ensure_srgb(img)
-        if not is_st and is_black_image(img): return None
+        if not is_st and task == "quality" and "laion" not in slug and "ava" not in slug:
+            if is_black_image(img): return None
         
         w, hgt = img.size
-        # For diffusion, we might allow smaller but we'll upscale/standardize later
-        min_dim = 128 if task != "diffusion" else 64
-        if w < min_dim or hgt < min_dim: return None
+        # For restoration and diffusion, we allow smaller patches (e.g. DPED 100x100)
+        min_dim = 64
+        if w < min_dim or hgt < min_dim: 
+            if idx < 5: print(f"DEBUG: {slug} skipped because size {w}x{hgt} < {min_dim}")
+            return None
 
         # NIMA Quality Logic: Prioritize Ground Truth over AI Guessing
         nima_score = 1.0
@@ -515,12 +581,12 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             except Exception: pass
 
         # 5. AI Vetting Fallback (Only if not in Strict Human mode)
-        if nima_probs[0] == 1.0:
+        if nima_probs[0] == 1.0 and task in ["quality", "diffusion"]:
             # If we are here, no human ground truth was found.
             # 2026 Strategy: Allow AI fallback for LAION-branded sources if strict mode is disabled
             if CONFIG.get("strict_ground_truth", True):
                 # Critical Gate: LAION and other internet-scale sets MUST have labels unless specifically bypassed
-                if "laion" not in slug:
+                if task == "quality" and "laion" not in slug:
                     return None
                 
             if SENTRY:
@@ -528,14 +594,43 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 if idx < 10:
                     pass # print(f"🔬 [LIVE TRACE] {slug}_{idx:09d} | AI Score: {nima_score:.4f}")
         
-        if nima_score < CONFIG["nima_threshold"]: return None
+        # 2026 Quality Gate: Enforce higher aesthetic standards for Diffusion manifolds
+        current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
+        if task in ["quality", "diffusion"] and nima_score < current_threshold: 
+            if idx < 5: print(f"DEBUG: {slug} skipped because nima {nima_score} < {current_threshold}")
+            return None
 
         # Meta Preparation
-        h = compute_hash(img) if CONFIG["enable_dedup"] else None
+        hash_target = img_data if isinstance(img_input, (bytes, dict)) else img_path
+        h = compute_hash(hash_target) if CONFIG["enable_dedup"] else None
         
-        # Save Output Image
+        # Save Output Image & Target
         if not out_img_path.exists():
-            img.save(out_img_path, "JPEG", quality=95)
+            # 2026 Optimization: Skip re-encode for restoration JPEGs to push > 100 it/s
+            needs_reencode = getattr(img, "was_converted", False) or (is_st and task not in ["restoration", "super-resolution"])
+            if not needs_reencode and isinstance(img_input, (str, Path)) and ext in [".jpg", ".jpeg", ".png", ".webp"]:
+                import shutil
+                shutil.copy2(img_path, out_img_path)
+            elif not needs_reencode and isinstance(img_input, (bytes, dict)) and getattr(img, "format", "") in ["JPEG", "PNG", "WEBP"]:
+                with open(out_img_path, "wb") as f:
+                    f.write(img_data)
+            else:
+                save_fmt = "PNG" if ext == ".png" else "JPEG"
+                img.save(out_img_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+        
+        if task in ["restoration", "super-resolution"] and not out_tgt_path.exists():
+            if target_img:
+                target_img = ensure_srgb(target_img)
+                save_fmt = "PNG" if ext == ".png" else "JPEG"
+                target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+            else:
+                # Synthetic Mode: Clean image is the target
+                if out_img_path.exists() and not getattr(img, "was_converted", False):
+                    import shutil
+                    shutil.copy2(out_img_path, out_tgt_path)
+                else:
+                    save_fmt = "PNG" if ext == ".png" else "JPEG"
+                    img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
         
         # Annotations
         annotations = []
@@ -604,7 +699,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                     annotations.append({"type": "bbox", "cls": cls, "data": [0.0, 0.0, 1.0, 1.0]}) # Whole image
         
         is_autolabeled = False
-        if not annotations and task not in ["quality", "classification"] and not args.no_labeling:
+        if not annotations and task not in ["quality", "classification"] and not args.no_labeling and not skip_labeling:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             labeler = get_labeler(task, device)
             annotations = labeler.predict(img)
@@ -735,7 +830,6 @@ def process_dataset():
         tmp = CaptionSentry(device="cpu")
         del tmp
     
-    import torch
     if torch.cuda.is_available(): torch.cuda.empty_cache()
         
     if needs_styling and not args.no_vetting:
@@ -763,13 +857,8 @@ def process_dataset():
         for model_key, model_config in DATASETS_META.items():
             if args.model and model_key != args.model: continue
             
-            # Dynamic Model Selection (Local models/ directory)
-            model_type = "aesthetic" if "aesthetic" in model_key else "technical"
-            model_path = f"models/nima_{model_type}_best.pth"
-            if os.path.exists(model_path):
-                print(f"📡 [SYNC] Utilizing local {model_type} quality gate: {model_path}")
-            
             task = detect_task(model_key)
+            
             pascal_name = model_config.get("name", model_key.replace("_", ""))
             prefix = pascal_name
             
@@ -802,29 +891,35 @@ def process_dataset():
                 except Exception as e:
                     print(f"⚠️ Resumption scan failed: {e}")
 
-            futures = []
-            
-            all_tasks = []
+            sfw_tasks = []
+            nsfw_tasks = []
             
             for ref_entry in model_config.get("refs", []):
                 ref = ref_entry["ref"]
-                # Resolve Slug: Handle hf://Repo:File.tgz syntax
-                slug = ref.replace('hf://', '').split('/')[-1]
+                tag = ref_entry.get("tag", "sfw")
+                # Resolve Slug: Handle hf://, gh://, and kaggle:// prefixes
+                slug = ref.replace('hf://', '').replace('gh://', '').replace('kaggle://', '').split('/')[-1]
                 if ":" in slug:
                     slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
                 
-                # Fallback Logic: Some datasets have long repo names but short folder names
+                # High-Resilience Discovery: Check for case-insensitive matches and nested folders
                 dataset = shared_root / slug
                 if not dataset.is_dir():
-                    sl_low = slug.lower()
-                    if "ava-aesthetic" in sl_low: slug = "ava"
-                    elif "aadb" in sl_low: slug = "aadb"
-                    elif "koniq" in sl_low: slug = "koniq10k"
-                    dataset = shared_root / slug
+                    # Check for lowercase version
+                    dataset = shared_root / slug.lower()
+                    if not dataset.is_dir():
+                        # Last resort: Try to find a folder that contains the slug in its name
+                        try:
+                            matches = [d for d in shared_root.iterdir() if d.is_dir() and slug.lower() in d.name.lower()]
+                            if matches:
+                                dataset = matches[0]
+                                print(f"🔍 [DISCOVERY] Mapping {ref} -> {dataset.name}")
+                        except:
+                            pass
                 
-                # print(f"🔍 [DEBUG] Ref: {ref} | Resolved Slug: {slug} | Path: {dataset} | Exists: {dataset.is_dir()}")
-                
-                if not dataset.is_dir(): continue
+                if not dataset.is_dir():
+                    print(f"⚠️ [SKIP] Source {ref} not found in {shared_root}")
+                    continue
 
                 fmt, ann_path = detect_annotations(dataset)
                 ann_data = None
@@ -842,15 +937,14 @@ def process_dataset():
                 elif fmt == "matlab":
                     ann_data = parse_matlab(ann_path)
 
-                valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors"}
+                valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp"}
                 images = []
-                import os
                 for root, _, files in os.walk(dataset):
                     for f in files:
                         if os.path.splitext(f)[1].lower() in valid_exts:
                             images.append(Path(root) / f)
                 
-                print(f"   -> Discovered {len(images)} source tensors.")
+                print(f"   -> [{slug}] Discovered {len(images)} source tensors.")
                 
                 # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
                 is_virtual = False
@@ -893,6 +987,14 @@ def process_dataset():
                 sample_count = len(images) if not is_virtual else sum(len(d[0]) for d in ann_data_list)
                 # print(f"[QUEUE] {prefix} ({task}) | {slug} | {sample_count} samples scheduled.")
                 
+                model_val_split = model_config.get("val_split", None)
+                if model_val_split is not None:
+                    train_prob = 1.0 - float(model_val_split)
+                elif task == "diffusion" or "image_to_text" in model_key:
+                    train_prob = 1.0
+                else:
+                    train_prob = CONFIG["train_split"]
+                
                 if is_virtual:
                     # Case A: Queue tasks directly from all Parquet shards
                     global_idx = 0
@@ -902,7 +1004,7 @@ def process_dataset():
                             img_bytes = getattr(row, "image", None)
                             if img_bytes is None: continue
                             
-                            split = "train" if random.random() < CONFIG["train_split"] else "val"
+                            split = "train" if random.random() < train_prob else "val"
                             name = f"{prefix}_{clean_slug(slug)}_{global_idx:09d}"
                             
                             if name in existing_names: 
@@ -911,21 +1013,26 @@ def process_dataset():
                             
                             # Convert row to dict for easier access in worker
                             row_dict = row._asdict()
+                            skip_lbl = not model_config.get("labeling", True)
                             if task == "diffusion":
-                                all_tasks.append((process_diffusion, img_bytes, prefix, clean_slug(slug), global_idx, split, output_root_str))
+                                task_item = (process_diffusion, img_bytes, prefix, clean_slug(slug), global_idx, split, output_root_str)
                             else:
-                                all_tasks.append((process_image, img_bytes, prefix, clean_slug(slug), global_idx, task, fmt, row_dict, split, output_root_str))
+                                task_item = (process_image, img_bytes, prefix, clean_slug(slug), global_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
+                            
+                            if tag == "nsfw":
+                                nsfw_tasks.append(task_item)
+                            else:
+                                sfw_tasks.append(task_item)
                             
                             global_idx += 1
                         
                 else:
                     # Case B: Standard Physical File Loop
                     for i, img_path in enumerate(images):
-                        split = "train" if random.random() < CONFIG["train_split"] else "val"
+                        split = "train" if random.random() < train_prob else "val"
                         
                         name = f"{prefix}_{clean_slug(slug)}_{i:09d}"
-                        legacy_name = f"{prefix}_{i:09d}"
-                        if name in existing_names or legacy_name in existing_names:
+                        if name in existing_names:
                             continue
 
                         specific_ann_data = None
@@ -944,15 +1051,38 @@ def process_dataset():
                         elif fmt == "safetensors" and ann_data:
                             specific_ann_data = ann_data
 
+                        skip_lbl = not model_config.get("labeling", True)
                         if task == "diffusion":
-                            all_tasks.append((process_diffusion, img_path, prefix, clean_slug(slug), i, split, output_root_str))
+                            task_item = (process_diffusion, img_path, prefix, clean_slug(slug), i, split, output_root_str)
                         else:
-                            all_tasks.append((process_image, img_path, prefix, clean_slug(slug), i, task, fmt, specific_ann_data, split, output_root_str))
+                            task_item = (process_image, img_path, prefix, clean_slug(slug), i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
+                            
+                        if tag == "nsfw":
+                            nsfw_tasks.append(task_item)
+                        else:
+                            sfw_tasks.append(task_item)
+                    
+                    print(f"   -> [{slug}] Discovered {sample_count} source tensors ({tag.upper()}).")
+
+            # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
+            target_nsfw_ratio = model_config.get("nsfw_ratio", 0)
+            if target_nsfw_ratio > 0 and nsfw_tasks:
+                max_nsfw = int(len(sfw_tasks) * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
+                if len(nsfw_tasks) > max_nsfw:
+                    print(f"⚖️  [BALANCING] NSFW pool ({len(nsfw_tasks)}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
+                    random.shuffle(nsfw_tasks)
+                    nsfw_tasks = nsfw_tasks[:max_nsfw]
+            
+            all_tasks = sfw_tasks + nsfw_tasks
+            random.shuffle(all_tasks)
+            
+            if not all_tasks:
+                print(f"⚠️  [NOTICE] No tasks found for {pascal_name}. Manifold is either fully processed or empty.")
+                continue
 
             compiled_bytes = 0
             processed_count = len(existing_names)
             # CPU Resilience: Auto-bypass if CUDA is missing and dataset is massive
-            import torch
             if not torch.cuda.is_available() and len(all_tasks) > 50000:
                 if not args.no_labeling or not args.no_vetting:
                     print(f"⚠️ [CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling High-Speed Mode.", flush=True)
@@ -960,63 +1090,68 @@ def process_dataset():
                     args.no_vetting = True
 
             from concurrent.futures import wait, FIRST_COMPLETED
-            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc="[PASS 1] Extraction & Vetting") as pbar:
+            desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
+            
+            # 2026 Optimization: Batching to reduce IPC overhead
+            BATCH_SIZE = 100
+            task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
+            
+            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label) as pbar:
                 futures = set()
-                task_iter = iter(all_tasks)
+                batch_iter = iter(task_batches)
                 
-                # Top up initial futures (Paced)
-                for _ in range(min(100, len(all_tasks))):
-                    t = next(task_iter)
-                    futures.add(executor.submit(t[0], *t[1:]))
-                    time.sleep(0.01)
+                # Top up initial futures (Higher buffer for 12 workers)
+                for _ in range(min(max_workers * 2, len(task_batches))):
+                    batch = next(batch_iter)
+                    futures.add(executor.submit(batch_worker, batch))
                 
                 try:
                     while futures:
                         done, futures = wait(futures, return_when=FIRST_COMPLETED)
                         for future in done:
                             try:
-                                res = future.result()
-                                if res:
-                                    if CONFIG["enable_dedup"] and res["hash"] in seen_hashes: 
-                                        continue
-                                    seen_hashes.add(res["hash"])
-                                    
-                                    compiled_bytes += res.get("size", 0)
-                                    
-                                    # Commit to SQLite Manifold
-                                    latent_blob = sqlite3.Binary(np.array(res.get("clip_latent", [])).astype(np.float32).tobytes())
-                                    conn.execute("""
-                                        INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    """, (res["name"], res["source"], res["task"], res["split"], res["hash"], res["nima_score"], 
-                                          res.get("caption"), res.get("style_tag"), latent_blob, res.get("img_bytes")))
-                                    
-                                    processed_count += 1
-                                    if processed_count % 1000 == 0:
-                                        conn.commit()
-    
-                                    if (compiled_bytes / (1024**3)) >= max_gb:
-                                        print(f"\n⚠️  [MANIFOLD LIMIT REACHED] Compiled set reached {max_gb:.2f}GB. Halting extraction.")
-                                        for f in futures: f.cancel()
-                                        futures.clear()
-                                        break
+                                batch_results = future.result()
+                                for res in batch_results:
+                                    if res:
+                                        if CONFIG["enable_dedup"] and res["hash"] in seen_hashes: 
+                                            continue
+                                        seen_hashes.add(res["hash"])
+                                        
+                                        compiled_bytes += res.get("size", 0)
+                                        
+                                        # Commit to SQLite Manifold
+                                        latent_blob = sqlite3.Binary(np.array(res.get("clip_latent", [])).astype(np.float32).tobytes())
+                                        conn.execute("""
+                                            INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        """, (res["name"], res["source"], res["task"], res["split"], res["hash"], res["nima_score"], 
+                                              res.get("caption"), res.get("style_tag"), latent_blob, res.get("img_bytes")))
+                                        
+                                        processed_count += 1
+                                        if processed_count % 1000 == 0:
+                                            conn.commit()
+        
+                                        if (compiled_bytes / (1024**3)) >= max_gb:
+                                            print(f"\n⚠️  [MANIFOLD LIMIT REACHED] Compiled set reached {max_gb:.2f}GB. Halting extraction.")
+                                            for f in futures: f.cancel()
+                                            futures.clear()
+                                            break
+                                    pbar.update(1)
                             except Exception as e:
                                 # Write to physical log for SOTA diagnostics (UTF-8)
                                 with open("worker_error.log", "a", encoding='utf-8') as f:
                                     f.write(f"❌ Worker Error at {datetime.now()}: {str(e)}\n")
                                 print(f"[ERROR] Worker Error (Logged): {e}")
-                            finally:
-                                pbar.update(1)
                         
                         # 2026 Resilience: Frequent Commits (v5.5)
                         if pbar.n % 1000 == 0:
                             conn.commit()
                         
-                        # Top up the queue with more tasks as we consume them
+                        # Top up the queue with more batches
                         for _ in range(len(done)):
                             try:
-                                t = next(task_iter)
-                                futures.add(executor.submit(t[0], *t[1:]))
+                                batch = next(batch_iter)
+                                futures.add(executor.submit(batch_worker, batch))
                             except StopIteration:
                                 break
                 except KeyboardInterrupt:
@@ -1078,7 +1213,7 @@ def process_dataset():
                             })
                         index.append(res)
             
-            with open(output_root / "index.json", "w") as f:
+            with open(output_root / "index.json", "w", encoding="utf-8") as f:
                 json.dump(index, f, indent=2)
             
             generate_metadata_files(output_root, index, pascal_name)
@@ -1100,15 +1235,15 @@ path: {str(output_root.resolve())}
 source: {prefix}-manifold
 last_processed: '{datetime.now().isoformat()}'
 """
-    with open(output_root / "dataset_info.yaml", "w") as f:
+    with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
         f.write(yaml_content)
 
     # category.txt
-    with open(output_root / "category.txt", "w") as f:
+    with open(output_root / "category.txt", "w", encoding="utf-8") as f:
         f.write("Image Quality Assessment\n" if task == "quality" else "Object Detection\n")
 
     # classes.txt
-    with open(output_root / "classes.txt", "w") as f:
+    with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
         f.write(f"{task}\n")
 
 def generate_readme(output_root):
@@ -1137,15 +1272,23 @@ def generate_readme(output_root):
     for item in data:
         tasks[item["task"]] = tasks.get(item["task"], 0) + 1
         
-        # Extract true source from item name (Format: Prefix_slug_idx)
-        name_parts = item["name"].split("_")
-        if len(name_parts) >= 3:
-            actual_src = "_".join(name_parts[1:-1])
-        else:
-            actual_src = item["source"]
+        # Extract true source exactly as provided during discovery
+        actual_src = item.get("source", "")
+        if not actual_src:
+            name_parts = item["name"].split("_")
+            if len(name_parts) >= 3:
+                actual_src = "_".join(name_parts[1:-1])
+            else:
+                actual_src = "Unknown"
             
         src = format_source(actual_src)
-        sources[src] = sources.get(src, 0) + 1
+        if src not in sources:
+            sources[src] = {"train": 0, "val": 0, "total": 0}
+            
+        sources[src]["total"] += 1
+        split = item.get("split", "unknown")
+        if split in ["train", "val"]:
+            sources[src][split] += 1
     
     task_type = data[0]["task"] if data else "quality"
     
@@ -1253,78 +1396,46 @@ def generate_readme(output_root):
     
     readme = f"""# {output_root.name}
 
-**Category:** {m['category']}
-**Total Image Count:** {len(data):,}
-**Description:** {m['desc']}
-**Kaggle Native Source:** [https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')}](https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')})
+> {m['desc']}
 
-## Dataset Composition
-This unified dataset was created by merging the following original datasets:
+## 📊 Dataset Overview
+- **Category:** {m['category']}
+- **Total Samples:** {len(data):,}
+- **Architecture Base:** {resolved_arch}
+- **Primary Task:** {m['obj']}
+
+## 🧬 Composition & Lineage
+This manifold is a high-fidelity merge of the following original sources:
+
+| Source Dataset | Train | Val | Total Contribution |
+| :--- | :--- | :--- | :--- |
 """
-    for s, count in sources.items():
-        readme += f"- **{s}**: {count:,} images\n"
+    for src, counts in sorted(sources.items(), key=lambda x: x[1]["total"], reverse=True):
+        readme += f"| **{src}** | {counts['train']:,} | {counts['val']:,} | {counts['total']:,} samples |\n"
 
     readme += f"""
-## Recommended Models
-- **Models to Train**: {m['models']}
+## 🎯 Model Training Profile
+- **Target Architectures**: {m['models']}
+- **Optimization Strategy**: {m['loss']}
 
-## Architecture Info
-- {resolved_arch}
-
-## Training Configuration
-- **Task Type**: {task_type}
-- **Objective**: {m['obj']}
-- **Loss Suggestion**: {m['loss']}
-
-### Universal Baseline Convergence Metrics [SOTA Benchmark]
-| Metric | Acceptable | Excellent | State-of-the-Art (SOTA) |
-|---|---|---|---|
+### Benchmark Metrics [SOTA]
+| Metric | Baseline | Advanced | SOTA |
+| :--- | :--- | :--- | :--- |
 {m['metrics']}
 
+## 📂 Repository Structure
+Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
 
-## Kaggle Public Deployment Schema
-### About this Dataset
-The **{output_root.name}** is a meticulously curated high-fidelity matrix strictly formatted to evaluate deep analytical pipelines dynamically. It mathematically evaluates the absolute statistical distribution limits of {m['obj'].lower()} globally bounding native neural perception pipelines perfectly.
+- **`images/`**: Normalized input tensors (RGB, standardized resolution).
+- **`labels/`**: Strict numerical annotation vectors (JSON/TXT format).
+- **`targets/`**: {m['targets_desc']}
+- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.
 
-**Original Sources Compiled:**
-"""
-    for s, count in sources.items():
-        readme += f"- **{s}**: {count:,} images\n"
-
-    readme += f"""
-### Standardization Architecture & Directory Logic
-This repository was meticulously dynamically generated strictly transforming inherently chaotic internet origins into a rigid, script-enforced internal dataset identically compatible with universal Auto-Encoding loops natively seamlessly.
-
-#### Root Execution Scripts
-- **`README.md`**: Central documentation handling aggregate metadata statistics natively.
-- **`dataset_info.yaml`**: Central PyTorch metadata configuration defining topological evaluation parsing limits.
-- **`classes.txt`**: Standard line-delimited index directly mapping string-to-integer taxonomies statically resolving object class matrices.
-- **`category.txt`**: Implicit hierarchal mapping outlining sequential subset domains.
-"""
-    if task_type in ["diffusion", "vlm"]:
-        readme += """
-#### Generative Topologies (`parquet/`)
-**STATUS: ACTIVELY DEPLOYED.**
-This directory securely houses the primary mathematical arrays structurally evaluated dynamically by the generative architecture. These explicitly packed `pyarrow` topologies functionally comprise the foundational physical image structures (`image_bytes`) and embedded textual semantics (`prompt` or `conversation`) intrinsically processed for derivations.
-"""
-    else:
-        readme += """
-#### Input Tensors (`images/`)
-**STATUS: ACTIVELY DEPLOYED.**
-This directory securely houses the primary mathematical input arrays structurally evaluated mechanically directly by the neural architecture. These explicitly normalized topologies functionally comprise the foundational physical image structures intrinsically processed for derivations (e.g., corrupted/defaced spatial outputs natively necessitating structural pixel regeneration organically, or explicitly unified source datasets naturally necessitating categorical classification bounds intrinsically).
-"""
-
-    readme += f"""
-#### Targets Mapping (`targets/`)
-**STATUS: {m['targets']}.** 
-{m['targets_desc']}
-
-#### Isolated Annotation Paradigms (`labels/`)
-**STATUS: EXPLICIT TOPOLOGICAL VECTORS.**
-Contains strictly formatted mathematically numerical parameters scaling physical bounds (Target Output Sample: `7 0.5 0.5 1.0 1.0`).
+---
+**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')})
 """
     
-    with open(output_root / "README.md", "w") as f:
+    with open(output_root / "README.md", "w", encoding="utf-8") as f:
         f.write(readme)
 
 def generate_kaggle_notebook(output_root, target_name):
@@ -1428,23 +1539,28 @@ def generate_kaggle_notebook(output_root, target_name):
 
 def reduce_dataset():
     print("\n🔍 [SCANNING] Locating existing manifolds in LemGendaryDatasets...")
-    if not OUT_PARENT.exists():
-        print(f"❌ Error: {OUT_PARENT} directory not found.")
-        return
-
-    manifolds = [d for d in OUT_PARENT.iterdir() if d.is_dir() and (d / "images").exists()]
+    manifolds = [d for d in OUT_PARENT.iterdir() if d.is_dir() and (d / "images").exists() and d.name.endswith("Large")]
     if not manifolds:
-        print("❌ No valid datasets found to reduce.")
+        print("❌ No valid Large datasets found to reduce.")
         return
 
     for i, m in enumerate(manifolds):
-        print(f"{i+1}. {m.name}")
+        base_name = m.name[:-5] # Strip 'Large'
+        kaggle_ready_path = m.parent / f"{base_name}KaggleReady"
+        if kaggle_ready_path.exists():
+            print(f"\033[92m{i+1}. {m.name} (KaggleReady exists)\033[0m")
+        else:
+            print(f"\033[93m{i+1}. {m.name}\033[0m")
     
     try:
-        sel = input("\nSelect manifold to sample (number): ").strip()
+        sel = input("\nSelect manifold to sample (number or 'a' for all): ").strip()
         if not sel: return
-        idx = int(sel) - 1
-        source_root = manifolds[idx]
+        if sel.lower() == 'a':
+            target_indices = list(range(len(manifolds)))
+        else:
+            idx = int(sel) - 1
+            if idx < 0 or idx >= len(manifolds): raise ValueError
+            target_indices = [idx]
     except (ValueError, IndexError):
         print("❌ Invalid selection.")
         return
@@ -1461,98 +1577,131 @@ def reduce_dataset():
     except KeyboardInterrupt:
         print("\n🚫 [ABORTED] Operation cancelled by user.")
         return
-    
-    old_suffix = CONFIG.get("name_suffix", "Large")
-    if source_root.name.endswith(old_suffix):
-        base_name = source_root.name[:-len(old_suffix)]
-    else:
-        base_name = source_root.name
         
-    target_name = f"{base_name}{suffix}"
-    target_root = OUT_PARENT / target_name
+    for idx in target_indices:
+        source_root = manifolds[idx]
     
-    print(f"\n⚡ [REDUCING] {source_root.name} -> {target_name} ({max_gb} GB)...")
-    
-    for d in ["images", "labels", "targets"]:
-        for s in ["train", "val"]: (target_root / d / s).mkdir(parents=True, exist_ok=True)
-    
-    new_index = []
-    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-    
-    for split in ["train", "val"]:
-        img_dir = source_root / "images" / split
-        lbl_dir = source_root / "labels" / split
-        tgt_dir = source_root / "targets" / split
-        
-        if not img_dir.exists(): continue
-        
-        # Single-pass iteration for extreme speed (165k+ files)
-        all_imgs = [p for p in img_dir.iterdir() if p.suffix.lower() in valid_exts]
+        old_suffix = CONFIG.get("name_suffix", "Large")
+        if source_root.name.endswith(old_suffix):
+            base_name = source_root.name[:-len(old_suffix)]
+        else:
+            base_name = source_root.name
             
-        if not all_imgs: continue
+        target_name = f"{base_name}{suffix}"
+        target_root = OUT_PARENT / target_name
         
-        # 2026 Resilience: Group by source slug to ensure balanced representation from all sources
-        from collections import defaultdict
-        images_by_slug = defaultdict(list)
-        for img in all_imgs:
+        print(f"\n⚡ [REDUCING] {source_root.name} -> {target_name} ({max_gb} GB)...")
+        
+        for d in ["images", "labels", "targets"]:
+            for s in ["train", "val"]: (target_root / d / s).mkdir(parents=True, exist_ok=True)
+        
+        new_index = []
+        valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+        
+        # Calculate dynamic physical train_prob to enforce disjoint subsets perfectly
+        train_dir = source_root / "images" / "train"
+        val_dir = source_root / "images" / "val"
+        train_count = sum(1 for _ in train_dir.iterdir() if _.is_file()) if train_dir.exists() else 0
+        val_count = sum(1 for _ in val_dir.iterdir() if _.is_file()) if val_dir.exists() else 0
+        total_count = train_count + val_count
+        train_prob = train_count / total_count if total_count > 0 else 1.0
+        
+        for split in ["train", "val"]:
+            img_dir = source_root / "images" / split
+            lbl_dir = source_root / "labels" / split
+            tgt_dir = source_root / "targets" / split
+            
+            if not img_dir.exists(): continue
+            
+            # Single-pass iteration for extreme speed (165k+ files)
+            all_imgs = [p for p in img_dir.iterdir() if p.suffix.lower() in valid_exts]
+                
+            if not all_imgs: continue
+            
+            # 2026 Resilience: Group by source slug to ensure balanced representation from all sources
+            from collections import defaultdict
+            images_by_slug = defaultdict(list)
+            for img in all_imgs:
+                try:
+                    # The filename format is prefix_slug_idx.ext (e.g. data_koniq_000000000.jpg)
+                    slug = img.name.split('_')[1]
+                except IndexError:
+                    slug = "unknown"
+                images_by_slug[slug].append(img)
+                
+            for slug in images_by_slug:
+                random.shuffle(images_by_slug[slug])
+                
+            # Round-robin interleaved sampling: pulls 1 image from every dataset sequentially
+            sampled_imgs = []
+            lists = list(images_by_slug.values())
+            while lists:
+                lists = [lst for lst in lists if lst]
+                if not lists: break
+                for lst in lists:
+                    if lst:
+                        sampled_imgs.append(lst.pop())
+            
+            split_limit_bytes = max_gb * (1024**3) * (train_prob if split == "train" else (1 - train_prob))
+            current_bytes = 0
+            
             try:
-                # The filename format is prefix_slug_idx.ext (e.g. data_koniq_000000000.jpg)
-                slug = img.name.split('_')[1]
-            except IndexError:
-                slug = "unknown"
-            images_by_slug[slug].append(img)
-            
-        for slug in images_by_slug:
-            random.shuffle(images_by_slug[slug])
-            
-        # Round-robin interleaved sampling: pulls 1 image from every dataset sequentially
-        sampled_imgs = []
-        lists = list(images_by_slug.values())
-        while lists:
-            lists = [lst for lst in lists if lst]
-            if not lists: break
-            for lst in lists:
-                if lst:
-                    sampled_imgs.append(lst.pop())
-        
-        split_limit_bytes = max_gb * (1024**3) * (CONFIG["train_split"] if split == "train" else (1 - CONFIG["train_split"]))
-        current_bytes = 0
-        
-        with tqdm(total=split_limit_bytes, desc=f"Copying {split}", unit='B', unit_scale=True, unit_divisor=1024) as pbar:
-            for img_path in sampled_imgs:
-                if current_bytes >= split_limit_bytes: break
-                
-                # Copy Image
-                dest_img = target_root / "images" / split / img_path.name
-                shutil.copy2(img_path, dest_img)
-                file_size = dest_img.stat().st_size
-                
-                # Copy Label
-                lbl_path = lbl_dir / (img_path.stem + ".txt")
-                if lbl_path.exists():
-                    dest_lbl = target_root / "labels" / split / lbl_path.name
-                    shutil.copy2(lbl_path, dest_lbl)
-                    file_size += dest_lbl.stat().st_size
-                    
-                # Copy Target
-                tgt_path = tgt_dir / img_path.name
-                if tgt_path.exists():
-                    dest_tgt = target_root / "targets" / split / tgt_path.name
-                    shutil.copy2(tgt_path, dest_tgt)
-                    file_size += dest_tgt.stat().st_size
-                
-                current_bytes += file_size
-                pbar.update(file_size)
-                new_index.append({"name": img_path.stem, "split": split, "source": "reduced-sample", "task": "unknown"})
+                with tqdm(total=split_limit_bytes, desc=f"Copying {split}", unit='B', unit_scale=True, unit_divisor=1024) as pbar:
+                    for img_path in sampled_imgs:
+                        if current_bytes >= split_limit_bytes: break
+                        
+                        # Copy Image
+                        dest_img = target_root / "images" / split / img_path.name
+                        shutil.copy2(img_path, dest_img)
+                        file_size = dest_img.stat().st_size
+                        
+                        # Copy Label
+                        lbl_path = lbl_dir / (img_path.stem + ".txt")
+                        if lbl_path.exists():
+                            dest_lbl = target_root / "labels" / split / lbl_path.name
+                            shutil.copy2(lbl_path, dest_lbl)
+                            file_size += dest_lbl.stat().st_size
+                            
+                        # Copy Target
+                        tgt_path = tgt_dir / img_path.name
+                        if tgt_path.exists():
+                            dest_tgt = target_root / "targets" / split / tgt_path.name
+                            shutil.copy2(tgt_path, dest_tgt)
+                            file_size += dest_tgt.stat().st_size
+                        
+                        current_bytes += file_size
+                        pbar.update(file_size)
+                        try:
+                            # Extract slug from filename (prefix_slug_idx.ext)
+                            slug = img_path.name.split('_')[1]
+                        except (IndexError, AttributeError):
+                            slug = "unknown"
+                            
+                        # Resolve task type from parent meta
+                        task_type = "quality"
+                        for k, v in DATASETS_META.items():
+                            if v["name"] in source_root.name:
+                                task_type = v.get("task", "quality")
+                                break
 
-    import json
-    with open(target_root / "index.json", "w") as f:
-        json.dump(new_index, f, indent=2)
-        
-    generate_metadata_files(target_root, new_index, target_name)
-    generate_readme(target_root)
-    generate_kaggle_notebook(target_root, target_name)
-    print(f"\n✅ [SUCCESS] Reduced manifold created at {target_root.name}")
+                        new_index.append({
+                            "name": img_path.stem, 
+                            "split": split, 
+                            "source": slug, 
+                            "task": task_type
+                        })
+            except KeyboardInterrupt:
+                print(f"\n🚫 [ABORTED] Reduction cancelled by user.")
+                return
+
+        import json
+        with open(target_root / "index.json", "w", encoding="utf-8") as f:
+            json.dump(new_index, f, indent=2)
+            
+        generate_metadata_files(target_root, new_index, target_name)
+        generate_readme(target_root)
+        generate_kaggle_notebook(target_root, target_name)
+        print(f"\n✅ [SUCCESS] Reduced manifold created at {target_root.name}")
 
 def smart_cleanup():
     """
@@ -1732,10 +1881,11 @@ def acquire_datasets():
                 
                 print(f"   -> Downloading {repo_id} to {target_path}...")
                 snapshot_download(
-                    repo_id=repo_id,
+                    repo_id=repo_id.replace("hf://", ""),
                     repo_type="dataset",
                     local_dir=str(target_path),
-                    local_dir_use_symlinks=False
+                    local_dir_use_symlinks=False,
+                    revision="main"
                 )
         print("\n✅ [SUCCESS] Acquisition complete.")
     except Exception as e:
@@ -1749,8 +1899,7 @@ def main_menu():
         print("1. [ACQUIRE] Pull remote datasets from Hugging Face")
         print("2. [COMPILE] Build new SOTA manifold from raw sources")
         print("3. [REDUCE]  Create downsampled variant of existing dataset")
-        print("4. [CLEANUP] Purge redundant raw sources")
-        print("5. [EXIT]    Terminate mission")
+        print("4. [EXIT]    Terminate mission")
         
         try:
             choice = input("\nSelect directive: ").strip()
@@ -1764,8 +1913,6 @@ def main_menu():
         elif choice == '3':
             reduce_dataset()
         elif choice == '4':
-            smart_cleanup()
-        elif choice == '5':
             print("👋 Exiting Orchestrator.")
             break
         else:

@@ -1,5 +1,5 @@
 # ==========================================
-# LemGendary Dataset Hub (SOTA 2026 Dashboard)
+# LemGendary Dataset Hub (SOTA 2026 Dashboard v5.3)
 # ==========================================
 
 $ErrorActionPreference = 'Stop'
@@ -7,56 +7,147 @@ $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
 $Raw = Join-Path $PSScriptRoot 'raw-sets'
 $hfManagerPath = Join-Path $PSScriptRoot 'hf_manager.py'
-$KaggleExe = Join-Path (Split-Path $Vpy -Parent) 'kaggle.exe'
+$ghManagerPath = Join-Path $PSScriptRoot 'gh_manager.py'
+$kagManagerPath = Join-Path $PSScriptRoot 'kaggle_manager.py'
 
-function Bootstrap-Environment {
-    Write-Host "🛡️ [PRE-FLIGHT] Verifying LemGendary Environment..." -ForegroundColor Gray
+$DownloadSB = {
+    param($ds, $sharedPath, $vpy, $kagManager)
+    $isC = $ds -match 'competition'
+    $ref = $ds.Replace('kaggle://', '')
+    if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
+    $dn = $ref.Split('/')[-1]
+    $fold = Join-Path $sharedPath $dn
     
-    # 1. Check for .venv
+    Write-Output "STATUS:KAG-PULLING"
+    if ($isC) {
+        & $vpy $kagManager --repo_id $ref --output_dir $fold --is_competition 2>&1
+    } else {
+        & $vpy $kagManager --repo_id $ref --output_dir $fold 2>&1
+    }
+    
+    $z = Join-Path $sharedPath ($dn + '.zip')
+    if (Test-Path $z) {
+         Write-Output "RESULT:DOWNLOADED"
+    } else {
+         $fileMatches = Get-ChildItem $sharedPath -Filter "$dn*"
+         if ($fileMatches) {
+             Write-Output "RESULT:DOWNLOADED"
+         } else {
+             Write-Output "RESULT:FAILED"
+         }
+    }
+}
+
+$HuggingFaceSB = {
+    param($ds, $sharedPath, $vpy, $hfManager)
+    $repoId = $ds.Replace('hf://', '')
+    $dn = $repoId.Split('/')[-1]
+    $outFold = Join-Path $sharedPath $dn
+    
+    Write-Output "STATUS:HF-PULLING"
+    & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
+    
+    if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+         Write-Output "RESULT:COMPLETED"
+    } else {
+         Write-Output "RESULT:FAILED"
+    }
+}
+
+$GHSourceSB = {
+    param($ds, $sharedPath, $vpy, $ghManager)
+    $repoId = $ds.Replace('gh://', '')
+    $dn = $repoId.Split('/')[-1]
+    $outFold = Join-Path $sharedPath $dn
+    
+    Write-Output "STATUS:GH-CLONING"
+    & $vpy $ghManager --repo_url $repoId --output_dir $outFold 2>&1
+    
+    if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+         Write-Output "RESULT:COMPLETED"
+    } else {
+         Write-Output "RESULT:FAILED"
+    }
+}
+
+$UnpackSB = {
+    param($ds, $sharedPath, $vpy)
+    $dn = $ds.Split('/')[-1]
+    $fold = Join-Path $sharedPath $dn
+    $z = Join-Path $sharedPath ($dn + '.zip')
+    
+    Write-Output "STATUS:UNPACKING"
+    try {
+        $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
+        
+        # If the zip is missing, it means HF or Kaggle messed up. But HF emits COMPLETED so it bypasses this!
+        if (!(Test-Path $z)) {
+            Write-Output "NOTIFICATION:Zip not found for extraction: $dn"
+            Write-Output "`n`rRESULT:FAILED"
+            return
+        }
+        
+        & $vpy $ArchMgr --zip $z --dest $fold --action extract 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Output "NOTIFICATION:Extraction Finished & Zip Deleted: $dn"
+            Write-Output "RESULT:COMPLETED"
+        } else {
+            Write-Output "`n`rRESULT:FAILED"
+        }
+    } catch {
+        Write-Output "NOTIFICATION:Extraction Failed for $dn : $($_.Exception.Message)"
+        Write-Output "RESULT:FAILED"
+    }
+}
+
+function Initialize-Environment {
+    Write-Host "[PRE-FLIGHT] Verifying LemGendary Environment..." -ForegroundColor Gray
+    
     if (!(Test-Path $Vpy)) {
-        Write-Host "⚠️ [WARNING] Virtual environment (.venv) not found!" -ForegroundColor Yellow
+        Write-Host "[WARNING] Virtual environment (.venv) not found!" -ForegroundColor Yellow
         $Choice = Read-Host "Would you like to create and initialize the environment now? (Y/N)"
         if ($Choice -match '^y') {
-            Write-Host "🚀 Creating .venv..." -ForegroundColor Cyan
+            Write-Host "Creating .venv..." -ForegroundColor Cyan
             & python -m venv .venv
             if ($LASTEXITCODE -ne 0) { 
-                Write-Host "❌ Failed to create .venv. Ensure Python is installed and in your PATH." -ForegroundColor Red
+                Write-Host "[ERROR] Failed to create .venv. Ensure Python is installed." -ForegroundColor Red
                 Read-Host "Press Enter to exit"
                 exit 1 
             }
         } else {
-            Write-Host "❌ Cannot proceed without .venv. Exiting." -ForegroundColor Red
+            Write-Host "[ERROR] Cannot proceed without .venv. Exiting." -ForegroundColor Red
             Read-Host "Press Enter to exit"
             exit 1
         }
     }
-
-    # 2. Check for Healthy Torch (CUDA aware)
-    Write-Host "📡 Checking Hardware Acceleration..." -ForegroundColor Gray
-    $Check = & $Vpy -c "import torch; print('CUDA_OK' if torch.cuda.is_available() else 'CPU_ONLY')" 2>$null
-    if ($Check -ne "CUDA_OK") {
-        Write-Host "⚠️ [ENVIRONMENT] GPU Acceleration (CUDA) is NOT detected!" -ForegroundColor Yellow
+    
+    Write-Host "Checking Hardware Acceleration..." -ForegroundColor Gray
+    $Check = & $Vpy -c "import torch; print('CUDA_OK' if torch.cuda.is_available() else 'CPU_ONLY')"
+    
+    if ($Check -notmatch 'CUDA_OK') {
+        Write-Host "[ENVIRONMENT] GPU Acceleration (CUDA) is NOT detected!" -ForegroundColor Yellow
         $Choice = Read-Host "Would you like to repair/install dependencies from requirements.txt? (Y/N)"
         if ($Choice -match '^y') {
-            Write-Host "📡 Installing/Repairing dependencies (this may take several minutes)..." -ForegroundColor Cyan
+            Write-Host "Installing/Repairing dependencies (this may take several minutes)..." -ForegroundColor Cyan
             & $Vpy -m pip install -r requirements.txt
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✅ Environment repaired successfully!" -ForegroundColor Green
+                Write-Host "[SUCCESS] Environment repaired successfully!" -ForegroundColor Green
                 Start-Sleep -Seconds 2
             } else {
-                Write-Host "❌ Installation failed. Please check your internet connection." -ForegroundColor Red
+                Write-Host "[ERROR] Installation failed. Check internet connection." -ForegroundColor Red
                 Read-Host "Press Enter to exit"
                 exit 1
             }
         }
     } else {
-        Write-Host "✅ [SOTA] Environment is healthy and GPU-accelerated." -ForegroundColor Green
-        Start-Sleep -Milliseconds 500
+        # 2026: SOTA Stealth Sync - Silently update CUDA status for the Menu
+        $global:CudaReady = $true
+        Start-Sleep -Milliseconds 100
     }
 }
 
-# Run Bootstrap before anything else
-Bootstrap-Environment
+# Run Initialization before anything else
+Initialize-Environment
 
 function Get-RegData {
     if (!(test-path $Reg)) { Write-Host '  [ERROR] unified_data.yaml missing!' -Fore Red; return $null }
@@ -91,9 +182,19 @@ function Show-Stats {
 }
 
 function Get-RefStatus {
-    param($Ref, $SharedPath)
+    param($Ref, $SharedPath, $KaggleRef = $null)
     $isHF = $Ref -match 'hf://'
-    $repoId = $Ref.Replace('hf://', '')
+    $isGH = $Ref -match 'gh://'
+    $kaggleSource = $Ref -match 'kaggle://'
+    
+    # 2026 Protocol Expansion: Check for primary Kaggle mirror first
+    if ($KaggleRef) {
+        $kagRepoId = $KaggleRef.Replace('kaggle://', '')
+        $kagDn = $kagRepoId.Split('/')[-1]
+        $kagFold = Join-Path $SharedPath $kagDn
+        if (Test-Path $kagFold) { return "Extracted" }
+    }
+    $repoId = $Ref.Replace('hf://datasets/', 'hf://').Replace('hf://', '').Replace('gh://', '').Replace('kaggle://', '')
     if ($Ref -match 'competition:(.*)') { $repoId = $Matches[1] }
     
     $targetFile = $null
@@ -101,47 +202,74 @@ function Get-RefStatus {
         $parts = $repoId.Split(':')
         $repoId = $parts[0]
         $targetFile = $parts[1]
-        # For surgical files, the folder is the slug (filename without ext)
         $dn = $targetFile.Replace('.tgz', '').Replace('.tar.gz', '').Replace('.zip', '')
     } else {
+        # 2026: SOTA Path Normalization - extract the core slug from potentially deep hf/kaggle paths
         $dn = $repoId.Split('/')[-1]
     }
     
     $fold = Join-Path $SharedPath $dn
     $z = Join-Path $SharedPath ($dn + '.zip')
     
+    # 2026: SOTA Fuzzy Matching - Search for normalized folder names
+    $fuzzyFolders = Get-ChildItem $SharedPath -Directory | Where-Object { $_.Name -match "^$dn" -or $dn -match "^$($_.Name)" }
+    $foundFold = if ($fuzzyFolders) { $fuzzyFolders[0].FullName } else { $fold }
+
     $fCount = 0
-    if (Test-Path $fold) {
-        $fCount = (Get-ChildItem $fold -File -Recurse -ErrorAction SilentlyContinue).Count
+    if (Test-Path $foundFold) {
+        # 2026: SOTA Fast-Check - Don't count millions of files, just check folder existence + sentinel
+        $fCount = 1
+        # Check for metadata if it's a structural repo (HF/GH)
+        if ($fCount -eq 0 -and (Test-Path (Join-Path $foundFold ".git"))) { $fCount = 1 }
     }
     
-    if ($isHF) {
-        if ($fCount -gt 0) { return "Extracted" } # OK
+    if ($isHF -or $isGH -or $kaggleSource) {
+        if ($fCount -gt 0) { return "Extracted" }
+        if (Test-Path $z) { return "ZipOnly" }
         return "Missing"
     } else {
         if (!(Test-Path $z) -and $fCount -gt 0) { return "Extracted" }
         if (Test-Path $z) { return "ZipOnly" }
         return "Missing"
     }
-}
+} # end function Get-RefStatus
 
 function Test-MissingDatasets {
-    param([string[]]$TargetModels = $null)
+    param([string[]]$TargetModels = $null, [switch]$SkipIfCompiled)
     $RegData = Get-RegData
-    if (!$RegData) { return @() }
-    
+    if (!$RegData) {
+        return @()
+    }
     $Missing = @()
-    
     $ModelsToCheck = $TargetModels
     if ($null -eq $TargetModels) {
         $ModelsToCheck = @($RegData.datasets.PSObject.Properties.Name)
     }
-    
+    $Prefix = $RegData._registry_metadata.name_prefix
+    $Suffix = $RegData._registry_metadata.name_suffix
     foreach ($C in $ModelsToCheck) {
-        foreach ($E in $RegData.datasets.$C.refs) {
+        $ds_info = $RegData.datasets.$C
+        $Slug = $ds_info.name
+        $ManifoldName = $Prefix + $Slug + $Suffix
+        $ManifoldPath = Join-Path $Out $ManifoldName
+        $InfoPath = Join-Path $ManifoldPath "dataset_info.yaml"
+        
+        # 2026: Check if the FULL manifold exists locally or on Kaggle mirror
+        $kagRef = $ds_info.kaggle_ref
+        if ($kagRef) {
+            $Stat = Get-RefStatus -Ref $kagRef -SharedPath $Raw -KaggleRef $kagRef
+            if ($Stat -eq "Extracted") {
+                Write-Host "  [OK] $Slug manifold verified via Kaggle Mirror." -ForegroundColor Green
+                continue
+            }
+        }
+
+        foreach ($E in $ds_info.refs) {
             $Stat = Get-RefStatus -Ref $E.ref -SharedPath $Raw
             if ($Stat -match 'Missing|ZipOnly|HF_Partial') {
-                if ($Missing -notcontains $E.ref) { $Missing += $E.ref }
+                if ($Missing -notcontains $E.ref) {
+                    $Missing += $E.ref
+                }
             }
         }
     }
@@ -159,6 +287,7 @@ function Start-Acquisition {
     $RegData = Get-RegData
     if (!$RegData) { return }
 
+    $global:LogBuffer = @()
     $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
     $DoExtract = $true
     $ProcessList = @()
@@ -194,27 +323,30 @@ function Start-Acquisition {
         foreach ($td in $TargetDatasets) {
             Write-Host "[$td]" -ForegroundColor Yellow
             foreach ($E in $RegData.datasets.$td.refs) {
+                # 2026: Consolidated Status Logic (v5.4)
                 $Stat = Get-RefStatus -Ref $E.ref -SharedPath $Raw
-                $Slug = $E.ref.Replace('hf://', '').Split('/')[-1]
+                $Slug = $E.ref.Split('/')[-1].Split(':')[0].Replace('.tgz','').Replace('.zip','')
                 
-                # Check if it's already in the process list to avoid duplicates
                 $AlreadyQueued = $ProcessList | Where-Object { $_.Ref -eq $E.ref }
                 if (!$AlreadyQueued) {
-                    if ($Stat -eq "Extracted") {
-                        Write-Host "  [OK] $Slug (Already Extracted)" -ForegroundColor Green
-                    } elseif ($Stat -eq "HF_Partial") {
-                        Write-Host "  [HF SYNC] $Slug (Running HF Manager to ensure completion)" -ForegroundColor Yellow
-                        $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
-                    } elseif ($Stat -eq "ZipOnly") {
-                        if ($DoExtract) {
-                            Write-Host "  [UNPACK QUEUED] $Slug (Zip exists, needs extraction)" -ForegroundColor Magenta
-                            $ProcessList += @{ Ref = $E.ref; Action = 'UnpackOnly' }
-                        } else {
-                            Write-Host "  [SKIP] $Slug (Zip exists, extraction not requested)" -ForegroundColor DarkGray
+                    switch ($Stat) {
+                        "Extracted" { Write-Host "  [OK] $Slug (Verified)" -ForegroundColor Green }
+                        "HF_Partial" { 
+                            Write-Host "  [SYNC] $Slug (Resuming HF)" -ForegroundColor Yellow
+                            $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
                         }
-                    } else {
-                        Write-Host "  [DL QUEUED] $Slug (Missing)" -ForegroundColor Red
-                        $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
+                        "ZipOnly" {
+                            if ($DoExtract) {
+                                Write-Host "  [UNPACK] $Slug (Ready)" -ForegroundColor Magenta
+                                $ProcessList += @{ Ref = $E.ref; Action = 'UnpackOnly' }
+                            } else {
+                                Write-Host "  [SKIP] $Slug (Zip exists)" -ForegroundColor DarkGray
+                            }
+                        }
+                        Default {
+                            Write-Host "  [DL QUEUED] $Slug (Missing)" -ForegroundColor Red
+                            $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
+                        }
                     }
                 }
             }
@@ -245,7 +377,8 @@ function Start-Acquisition {
     $UniqueDatasets = @{}
     foreach ($Item in $ProcessList) {
         $Slug = $Item.Ref.Replace('hf://', '').Split('/')[-1]
-        $InitStatus = if ($Item.Action -eq 'UnpackOnly') { 'DOWNLOADED' } else { 'Queued' }
+        $InitStatus = 'Queued'
+        if ($Item.Action -eq 'UnpackOnly') { $InitStatus = 'DOWNLOADED' }
         $UniqueDatasets[$Item.Ref] = @{
             Ref = $Item.Ref
             Slug = $Slug
@@ -259,78 +392,6 @@ function Start-Acquisition {
     $MaxJobs = 3
     $BaseId = 100
     
-    $DownloadSB = {
-        param($ds, $sharedPath, $vpy, $hfManager, $kaggleExe)
-        $isC = $ds -match 'competition'
-        $ref = $ds; if ($ds -match 'competition:(.*)') { $ref = $Matches[1] }
-        $dn = $ref.Split('/')[-1]
-        $z = Join-Path $sharedPath ($dn + '.zip')
-        $fold = Join-Path $sharedPath $dn
-        
-        Write-Output "STATUS:DOWNLOADING"
-        if ($isC) { & $kaggleExe competitions download -c $ref -p $sharedPath 2>&1 } else { & $kaggleExe datasets download -d $ref -p $sharedPath 2>&1 }
-        
-        if (Test-Path $z) {
-             Write-Output "RESULT:DOWNLOADED"
-        } else {
-             Write-Output "NOTIFICATION:Kaggle API failed/empty for $dn. Falling back to HF Manager..."
-             Write-Output "STATUS:HF-PULLING"
-             & $vpy $hfManager --repo_id $ref --output_dir $fold --repo_type dataset 2>&1
-             if ((Get-ChildItem $fold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
-                  Write-Output "NOTIFICATION:Fallback to HF Successful!"
-                  Write-Output "RESULT:COMPLETED"
-             } else {
-                  Write-Output "RESULT:FAILED"
-             }
-        }
-    }
-
-    $HuggingFaceSB = {
-        param($ds, $sharedPath, $vpy, $hfManager)
-        $repoId = $ds.Replace('hf://', '')
-        $dn = $repoId.Split('/')[-1]
-        $outFold = Join-Path $sharedPath $dn
-        
-        Write-Output "STATUS:HF-PULLING"
-        & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
-        
-        if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
-             Write-Output "RESULT:COMPLETED"
-        } else {
-             Write-Output "RESULT:FAILED"
-        }
-    }
-
-    $UnpackSB = {
-        param($ds, $sharedPath, $vpy)
-        $dn = $ds.Split('/')[-1]
-        $fold = Join-Path $sharedPath $dn
-        $z = Join-Path $sharedPath ($dn + '.zip')
-        
-        Write-Output "STATUS:UNPACKING"
-        try {
-            $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
-            
-            # If the zip is missing, it means HF or Kaggle messed up. But HF emits COMPLETED so it bypasses this!
-            if (!(Test-Path $z)) {
-                Write-Output "NOTIFICATION:Zip not found for extraction: $dn"
-                Write-Output "RESULT:FAILED"
-                return
-            }
-            
-            & $vpy $ArchMgr --zip $z --dest $fold --action extract 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Output "NOTIFICATION:Extraction Finished & Zip Deleted: $dn"
-                Write-Output "RESULT:COMPLETED"
-            } else {
-                Write-Output "RESULT:FAILED"
-            }
-        } catch {
-            Write-Output "NOTIFICATION:Extraction Failed for $dn : $($_.Exception.Message)"
-            Write-Output "RESULT:FAILED"
-        }
-    }
-
     $D = 0; $T = @($UniqueList).Count
     while ($D -lt $T) {
         $AnyUnpacking = @($UniqueList | Where-Object { $_.Status -eq 'UNPACKING' })
@@ -344,8 +405,13 @@ function Start-Acquisition {
                     $NextDl.Status = 'Starting DL'
                     if ($NextDl.Ref -match 'hf://') {
                         $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
+                    } elseif ($NextDl.Ref -match 'gh://') {
+                        $NextDl.JobId = (Start-Job -ScriptBlock $GHSourceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $ghManagerPath).Id
+                    } elseif ($NextDl.Ref -match 'kaggle://') {
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
                     } else {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath, $KaggleExe).Id
+                        # Legacy fallback
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
                     }
                 }
             }
@@ -387,18 +453,20 @@ function Start-Acquisition {
                         }
                         if ($ti.Status -eq 'FAILED') { 
                             $ti.ProgressId = 0 
-                            Write-Host "`n  [!] Job FAILED: $($ti.Slug)" -ForegroundColor Red
+                            # 2026: SOTA Failure Guard - Ensure a clean line for the error debrief
+                            Write-Host "`n`r  [!] Job FAILED: $($ti.Slug) (Source Offline or Restricted)" -ForegroundColor Red
+                            Start-Sleep -Seconds 1 # Force UI to settle
                         }
                     } else {
                         if (-not [string]::IsNullOrWhiteSpace($ls)) {
-                            # Ensure we are working with a string and strip tqdm carriage returns
-                            $LineStr = [string]$ls
-                            $LineStr = $LineStr -replace "`r", ""
-                            # If it looks like a tqdm bar, we use it as status
-                            if ($LineStr -match '\[.*\]' -or $LineStr -match '%') {
+                            $LineStr = ([string]$ls) -replace "`r", ""
+                            
+                            # 2026: SOTA Buffered Logger - Store notifications to prevent console overlap
+                            if ($LineStr -match '^\[.*\]' -and $LineStr -notmatch '\[DL\]|%') {
+                                if ($global:LogBuffer.Count -ge 5) { $global:LogBuffer = $global:LogBuffer[1..4] }
+                                $global:LogBuffer += "    $($ti.Slug)> $LineStr"
+                            } elseif ($LineStr -match '\[.*\]' -or $LineStr -match '%') {
                                 $ti.Status = $LineStr.Trim()
-                            } else {
-                                Write-Host "    $($ti.Slug)> $LineStr" -ForegroundColor DarkGray
                             }
                         }
                     }
@@ -415,6 +483,11 @@ function Start-Acquisition {
         
         # Build the dynamic status display
         $DisplayLines = @()
+        if ($global:LogBuffer) {
+            $DisplayLines += "--- EVENT LOG ---"
+            foreach ($log in $global:LogBuffer) { $DisplayLines += $log }
+            $DisplayLines += "-----------------"
+        }
         $DisplayLines += "[OVERALL] $D/$T ($P%)"
         for ($i=0; $i -lt $MaxJobs; $i++) {
             $Active = @($UniqueList | Where-Object { $_.ProgressId -eq ($BaseId + $i) }) | Select-Object -First 1
@@ -462,29 +535,52 @@ function Start-Acquisition {
         if ($StartTop -lt $BufferHeight) {
             [System.Console]::SetCursorPosition(0, $StartTop)
         }
+    } # end while
+
+
+    Write-Host "`n================================================================================" -ForegroundColor Cyan
+    Write-Host " [MISSION DEBRIEF] ACQUISITION SUMMARY" -ForegroundColor Cyan
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    
+    $Successes = @($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|SUCCESS|processed' })
+    $Failures = @($UniqueList | Where-Object { $_.Status -eq 'FAILED' })
+
+    if ($Successes.Count -gt 0) {
+        Write-Host "`n [SUCCESSES]" -ForegroundColor Green
+        $Successes | ForEach-Object {
+            $LocalDir = Join-Path $Raw $_.Slug
+            Write-Host "  - $($_.Slug.PadRight(30)) | Path: $LocalDir"
+        }
     }
+
+    if ($Failures.Count -gt 0) {
+        Write-Host "`n [FAILURES]" -ForegroundColor Red
+        $Failures | ForEach-Object {
+            Write-Host "  - $($_.Slug.PadRight(30)) | Ref: $($_.Ref)"
+        }
+    }
+    Write-Host "`n================================================================================" -ForegroundColor Cyan
 
     Write-Host "`n[OK] ACQUISITION MISSION ENDED." -ForegroundColor Green
     if ($null -eq $ForcedRefs) { Read-Host "Press Enter to return to menu" }
-}
+} # end function Start-Acquisition
 
 while ($true) {
-    Clear-Host
+    # 2026: Resilient Header - Safer than Clear-Host in background/remote shells
+    if ($Host.Name -eq 'ConsoleHost') { Clear-Host } else { Write-Host "`n`n`n" }
     Write-Host '--- LEMGENDARY DATASETS HUB v5.2 ---' -ForegroundColor Yellow
     
-    # Fast CUDA Check
-    $CudaStatus = & $Vpy -c "import torch; print('OK' if torch.cuda.is_available() else 'OFF')" 2>$null
-    if ($CudaStatus -eq "OFF") {
-        Write-Host "⚠️  [SYSTEM] NO CUDA DETECTED! AI tasks will run on CPU (SLOW)." -ForegroundColor Red
+    $CudaStatus = & $Vpy -c "import torch; print('OK' if torch.cuda.is_available() else 'OFF')"
+    if ($CudaStatus -notmatch "OK") {
+        Write-Host "[SYSTEM] NO CUDA DETECTED! AI tasks will run on CPU (SLOW)." -ForegroundColor Red
     } else {
-        Write-Host "✅ [SYSTEM] CUDA READY (GPU Accelerated)" -ForegroundColor Green
+        Write-Host "[SYSTEM] CUDA READY (GPU Accelerated)" -ForegroundColor Green
     }
 
     Show-Stats
     Write-Host '1. [ACQUIRE] Pull remote datasets' -ForegroundColor Gray
     Write-Host '2. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
     Write-Host '3. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
-    Write-Host '4. [CLEANUP] Purge redundant sources' -ForegroundColor Gray
     Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
     $I = Read-Host 'Selection'
     if ($I -eq '1') { Start-Acquisition }
@@ -512,8 +608,8 @@ while ($true) {
             }
         }
         
-        # Check missing sets
-        $Missing = Test-MissingDatasets -TargetModels $TargetModels
+        # Check missing sets (with Manifold-Aware skip)
+        $Missing = Test-MissingDatasets -TargetModels $TargetModels -SkipIfCompiled
         
         if ($Missing.Count -gt 0) {
             Write-Host "`n[WARNING] Some raw datasets are missing or empty for this compilation:" -ForegroundColor Yellow
@@ -522,7 +618,7 @@ while ($true) {
             if ($Choice -match '^y') {
                 Start-Acquisition -ForcedRefs $Missing
             } else {
-                Write-Host "Proceeding with missing data... might fail." -ForegroundColor Red
+                Write-Host "Proceeding with missing data... might fail if manifold isn't sufficient." -ForegroundColor Red
                 Start-Sleep -Seconds 2
             }
         }
@@ -535,16 +631,14 @@ while ($true) {
         if ([string]::IsNullOrWhiteSpace($Suffix)) { $Suffix = $RegData._registry_metadata.name_suffix }
 
         $Workers = Read-Host "Enter Number of Workers [Default: Auto]"
-        $WorkerArg = if ([string]::IsNullOrWhiteSpace($Workers)) { @() } else { @("--workers", $Workers) }
+        $WorkerArg = @()
+        if (![string]::IsNullOrWhiteSpace($Workers)) { $WorkerArg = @("--workers", $Workers) }
         Start-Sleep -Milliseconds 100
-
-        $NoLabel = Read-Host "Disable AI Labeling (Y/N)? [Default: N]"
-        $LabelArg = if ($NoLabel -match '^y') { @("--no-labeling") } else { @() }
         Start-Sleep -Milliseconds 100
         
         foreach ($tm in $TargetModels) {
             Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
-            & $Vpy compiler-pipeline.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg @LabelArg
+            & $Vpy compiler-pipeline.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
             
             # Post-Compile Verification
             $OutFolder = Join-Path (Get-Location) $OutFolderName
@@ -555,19 +649,16 @@ while ($true) {
             if (Test-Path (Join-Path $OutFolder "README.md")) {
                 Write-Host "  [OK] Dataset compiled successfully!" -ForegroundColor Green
             }
-            
-            # Trigger Smart Cleanup via Python
-            & $Vpy compiler-pipeline.py --cleanup
         }
-        Read-Host "Press Enter to return to menu"
+        # 2026: Finalized Global Cleanup (Moved outside loop to prevent I/O collisions)
+        Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
+        & $Vpy compiler-pipeline.py --cleanup
     }
     elseif ($I -eq '3') {
         & $Vpy compiler-pipeline.py --reduce
-        Read-Host "Press Enter to return to menu"
-    }
-    elseif ($I -eq '4') {
-        & $Vpy compiler-pipeline.py --cleanup
-        Read-Host "Press Enter to return to menu"
+        if ($LASTEXITCODE -ne 0) {
+            Read-Host "Press Enter to return to menu"
+        }
     }
     elseif ($I -match '^q') { break }
 }

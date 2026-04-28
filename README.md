@@ -1,4 +1,4 @@
-# LemGendary Dataset Pipeline (v6.1.0-Resilience)
+# LemGendary Dataset Pipeline (v6.2.0-Hardened)
 
 > **The Industrial Standard for Generative & Vision Data Synthesis.**
 >
@@ -6,28 +6,26 @@
 
 ---
 
-## ⚡ v6.0 SOTA Tier: Multi-Tenant Generative Orchestration
+## ⚡ v6.2 SOTA Tier: Production Hardening & Batch Orchestration
 
-The v6.0 release transforms the pipeline into a complete **Dataset Lifecycle Manager**, adding Parquet generative formatting, root-level multi-tenant architecture decoupling, and strict metadata compliance for the LemGendary Training Suite.
+The v6.2 release transforms the pipeline into a high-throughput **Production Engine**, adding automated batch reduction, mathematical split enforcement, and high-fidelity source provenance tracking.
 
-### 🎯 Interactive Orchestrator Dashboard
-- **Row-Based Navigation**: A modernized, high-density CLI menu in both Python and PowerShell.
-- **[ACQUIRE] Logic**: Automated pulling of remote sources from Hugging Face and Kaggle directly into the `raw-sets/` buffer.
-- **[REDUCE] Engine**: Instantly create downsampled "Mini" or "Targeted" manifold variants from existing compiled datasets.
-- **[CLEANUP] Guardian**: A smart deletion engine that verifies `unified_data.yaml` dependencies before purging raw sources.
-- **[BOOTSTRAP] Self-Healing**: Automated environment setup that detects missing `.venv` or broken CUDA installations and offers one-click repairs.
+### 🎯 Interactive Orchestrator Dashboard (v6.2)
+- **High-Throughput [REDUCE]**: New `'a'` (All) option allows automated sequential downsampling of all `Large` manifolds into `KaggleReady` variants in a single execution.
+- **Mathematical Split Enforcement**: Transitioned from fixed ratios to **Physical Truth Scanning**. The compiler now computes `train_prob` based on the real-time state of the source manifold, ensuring perfect 95/5 or 90/10 disjoint splits.
+- **[ACQUIRE] Logic**: Deep-recursive discovery for Hugging Face, Kaggle, and **GitHub** (`gh://`) sources, now supporting nested structures (e.g., DPED trees).
+- **[CLEANUP] Guardian**: Improved dependency tracking to prevent the purging of raw sources currently being used by active compilation tasks.
 
-### 💎 Multi-Modal Generative Support (v6.0)
-- **Parquet Streaming**: Diffusion and Vision-Language (VLM) datasets are natively packed into highly compressed PyArrow `.parquet` binaries.
-- **Classification Engine**: The compiler natively scans dataset repositories and automatically assigns categorical integer tags based on path heuristics (e.g., DeepFake `FAKE` vs `REAL` logic) for the Authenticity Scorer.
-- **Multimodal Attributes**: Standardized schemas support `image_bytes`, textual `prompt` embedding, `aesthetic_score` binning, and multimodal `conversation` dicts.
-- **Atomic Persistence**: Registry commits are now buffered every 1,000 samples to prevent SQLite journal bloat and stabilize I/O on large manifolds.
+### 💎 Multi-Modal & Format Resilience
+- **Expanded Format Support**: Native ingestion of **TIFF**, **TIF**, and **BMP** tensors for scientific and satellite restoration tasks.
+- **Physical Reality Sync**: New `insta_readme_sync.py` utility bypasses slow DB queries in favor of direct filesystem scanning, ensuring README manifests are always 100% accurate to the stored images.
+- **Atomic Persistence**: Buffered SQLite commits (1,000 samples) and improved `KeyboardInterrupt` handling to prevent manifold corruption during mid-run terminations.
 
-### 📄 Universal Metadata Compliance
-Every compiled manifold now automatically generates a full LemGendary-compliant metadata package:
-- **`dataset_info.yaml`**: Detailed stats, task type (Restoration vs. Generative), and source provenance.
-- **`category.txt` / `classes.txt`**: Standardized taxonomies for immediate training ingestion.
-- **SOTA README**: Auto-generated dataset manifests specifically configured for Kaggle sync and Parquet tracking.
+### 📄 Professional Source Lineage
+Every compiled manifold now automatically generates a professional-grade documentation package:
+- **4-Column Composition Tables**: Granular breakdown of every original source, including specific **Train/Val/Total** counts for total transparency.
+- **`dataset_info.yaml`**: Full metadata compliance for the LemGendary Training Suite.
+- **Kaggle-Ready Manifests**: Auto-generated READMEs optimized for direct upload and model tracking.
 
 ---
 
