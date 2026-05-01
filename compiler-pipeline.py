@@ -318,12 +318,11 @@ def normalize_points(points, w, h, stride=2):
 
 # ---------------- REGISTRY ----------------
 def initialize_registry(db_path):
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = sqlite3.connect(db_path, timeout=60.0) # Increased timeout for heavy IPC contention
     # 2026 Ultra-Optimization: Exclusive locking for maximum RAID throughput
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA synchronous=OFF") # Maximum throughput
     conn.execute("PRAGMA cache_size=100000")
-    conn.execute("PRAGMA locking_mode=EXCLUSIVE")
     # 2026 Resilience: We store BLOBs for latents and bytes for rapid Pass-2 retrieval
     conn.execute("""
         CREATE TABLE IF NOT EXISTS registry (
@@ -882,10 +881,8 @@ def process_dataset():
             if db_path.exists():
                 print(f"🔄 [RESUMPTION] Scanning {pascal_name} registry for existing entries...")
                 try:
-                    # We use a separate connection to avoid locking issues during parallel execution
-                    with sqlite3.connect(db_path) as temp_conn:
-                        rows = temp_conn.execute("SELECT name FROM registry").fetchall()
-                        existing_names = {r[0] for r in rows}
+                    rows = conn.execute("SELECT name FROM registry").fetchall()
+                    existing_names = {r[0] for r in rows}
                     if existing_names:
                         print(f"✅ Found {len(existing_names)} existing samples. Resuming from checkpoint.")
                 except Exception as e:
@@ -944,7 +941,6 @@ def process_dataset():
                         if os.path.splitext(f)[1].lower() in valid_exts:
                             images.append(Path(root) / f)
                 
-                print(f"   -> [{slug}] Discovered {len(images)} source tensors.")
                 
                 # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
                 is_virtual = False
@@ -1062,7 +1058,7 @@ def process_dataset():
                         else:
                             sfw_tasks.append(task_item)
                     
-                    print(f"   -> [{slug}] Discovered {sample_count} source tensors ({tag.upper()}).")
+                    print(f"   -> [{slug}] Discovered {sample_count} source tensors.")
 
             # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
             target_nsfw_ratio = model_config.get("nsfw_ratio", 0)
@@ -1111,6 +1107,9 @@ def process_dataset():
                         for future in done:
                             try:
                                 batch_results = future.result()
+                                # 2026 Resilience: Update progress bar for the WHOLE batch immediately
+                                pbar.update(len(batch_results))
+                                
                                 for res in batch_results:
                                     if res:
                                         if CONFIG["enable_dedup"] and res["hash"] in seen_hashes: 
@@ -1136,7 +1135,6 @@ def process_dataset():
                                             for f in futures: f.cancel()
                                             futures.clear()
                                             break
-                                    pbar.update(1)
                             except Exception as e:
                                 # Write to physical log for SOTA diagnostics (UTF-8)
                                 with open("worker_error.log", "a", encoding='utf-8') as f:
@@ -1218,7 +1216,7 @@ def process_dataset():
             
             generate_metadata_files(output_root, index, pascal_name)
             generate_readme(output_root)
-            generate_kaggle_notebook(output_root, pascal_name)
+            generate_kaggle_notebook(output_root, pascal_name, model_key)
             print(f"[SUCCESS] v5.0 Ascension Complete: {len(index)} samples compiled for {pascal_name}.")
 
 # ---------------- GENERATORS ----------------
@@ -1438,10 +1436,25 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
     with open(output_root / "README.md", "w", encoding="utf-8") as f:
         f.write(readme)
 
-def generate_kaggle_notebook(output_root, target_name):
+def generate_kaggle_notebook(output_root, target_name, model_key=None):
     import json
     import base64
+    
+    # 2026 Resilience: Auto-resolve model name if not provided
+    resolved_model = model_key
+    if not resolved_model:
+        # Heuristic: convert PascalCase target_name to snake_case model_key
+        # LemGendizedNimaAestheticLarge -> nima_aesthetic
+        clean_name = target_name.replace("LemGendized", "").replace("KaggleReady", "").replace("Large", "").replace("Mini", "")
+        import re
+        resolved_model = re.sub(r'(?<!^)(?=[A-Z])', '_', clean_name).lower()
+        
+    # Standardize common keys
+    if "naf_net" in resolved_model: resolved_model = resolved_model.replace("naf_net", "nafnet")
+    if "upn_v_2" in resolved_model: resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
+
     cell_1_b64 = "aW1wb3J0IG9zCgojIDEuIFNtYXJ0IFJlcG9zaXRvcnkgU3luYwppZiBub3Qgb3MucGF0aC5leGlzdHMoJ2xlbWdlbmRhcnktdHJhaW5pbmctc3VpdGUnKToKICAgIHByaW50KCLwn5qAIENsb25pbmcgTGVtR2VuZGFyeSBlbnZpcm9ubWVudCBmb3IgdGhlIGZpcnN0IHRpbWUuLi4iKQogICAgIWdpdCBjbG9uZSBodHRwczovL2dpdGh1Yi5jb20vbGVtZ2VuZGEvbGVtZ2VuZGFyeS10cmFpbmluZy1zdWl0ZS5naXQKZWxzZToKICAgIHByaW50KCLimqEgRmFzdC1TeW5jOiBSZXBvc2l0b3J5IGFscmVhZHkgZXhpc3RzLiBQdWxsaW5nIGxhdGVzdCBwYXRjaGVzLi4uIikKCiMgMi4gTWF0aGVtYXRpY2FsbHkgZW5mb3JjZSB0aGUgbGF0ZXN0IEdpdEh1YiBtYWluIHN0YXRlCiVjZCBsZW1nZW5kYXJ5LXRyYWluaW5nLXN1aXRlCiFnaXQgcHVsbCBvcmlnaW4gbWFpbgoKIyAzLiBRdWlldGx5IHZlcmlmeSBkZXBlbmRlbmNpZXMKcHJpbnQoIvCfk6YgVmVyaWZ5aW5nIExlbUdlbmRhcnkgTmF0aXZlIFJlcXVpcmVtZW50cy4uLiIpCiFwaXAgaW5zdGFsbCAtcSAtciByZXF1aXJlbWVudHMudHh0CnByaW50KCLinIUgQ29yZSBzeXN0ZW1zIG9ubGluZSBhbmQgc3luY2VkISIpCg=="
+
     cell_2_b64 = "IyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KIyDwn5SQIEthZ2dsZSBTZWNyZXRzOiBHaXRIdWIgUEFUIFN5bmMKIyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KIyBUaGlzIHNlY3VyZWx5IGxvYWRzIHlvdXIgR2l0SHViIFBlcnNvbmFsIEFjY2VzcyBUb2tlbgojIHRvIGFsbG93IGF1dG8tcHVzaGluZyBvZiBTT1RBIG1vZGVsIGFydGlmYWN0cyBkaXJlY3RseQojIGJhY2sgdG8geW91ciByZXBvc2l0b3J5IHdpdGhvdXQgYmxvYXRlZCB6aXAgZG93bmxvYWRzIQp0cnk6CiAgICBmcm9tIGthZ2dsZV9zZWNyZXRzIGltcG9ydCBVc2VyU2VjcmV0c0NsaWVudAogICAgaW1wb3J0IG9zCiAgICAKICAgIHVzZXJfc2VjcmV0cyA9IFVzZXJTZWNyZXRzQ2xpZW50KCkKICAgIG9zLmVudmlyb25bIkdJVEhVQl9QQVQiXSA9IHVzZXJfc2VjcmV0cy5nZXRfc2VjcmV0KCJHSVRIVUJfUEFUIikKICAgIHByaW50KCLinIUgU3VjY2Vzc2Z1bGx5IG1vdW50ZWQgR0lUSFVCX1BBVC4gQXV0b21hdGVkIEdpdEh1YiBDbG91ZCBTeW5jIGlzIGFjdGl2ZS4iKQpleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICBwcmludCgi4pqg77iPIEdJVEhVQl9QQVQgbm90IGZvdW5kIGluIEthZ2dsZSBTZWNyZXRzLiIpCiAgICBwcmludCgiICAgTW9kZWxzIHdpbGwgc2F2ZSBsb2NhbGx5IGJ1dCB3aWxsIG5vdCBhdXRvLXB1c2ggdG8gR2l0SHViLiIpCg=="
     cell_1_source = base64.b64decode(cell_1_b64).decode('utf-8')
     cell_2_source = base64.b64decode(cell_2_b64).decode('utf-8')
@@ -1525,7 +1538,7 @@ def generate_kaggle_notebook(output_root, target_name):
       },
       {
        "cell_type": "code",
-       "source": [f"# EXPLICIT CLOUD METADATA REQUIREMENT:\n", f"# Ensure ALL 1 datasets below are physically mounted via Kaggle 'Add Data':\n", f"# -> {target_name}\n", "\n", "# NOTE: Replace [MODEL_NAME] below with the actual model architecture you intend to train.\n", "# E.g., nafnet_denoising, nima_technical, upn_v2, etc.\n", "!" + "python training/train.py --model [MODEL_NAME] --env kaggle\n"],
+       "source": [f"# EXPLICIT CLOUD METADATA REQUIREMENT:\n", f"# Ensure ALL 1 datasets below are physically mounted via Kaggle 'Add Data':\n", f"# -> {target_name}\n", "\n", f"# NOTE: Replace '{resolved_model}' below with the actual model architecture if needed.\n", "# E.g., nafnet_denoising, nima_technical, upn_v2, etc.\n", "!" + f"python training/train.py --model {resolved_model} --env kaggle\n"],
        "metadata": {"trusted": True},
        "outputs": [],
        "execution_count": None
