@@ -1,7 +1,3 @@
-# ==========================================
-# LemGendary Dataset Hub (SOTA 2026 Dashboard v5.3)
-# ==========================================
-
 $Env:PYTHONUTF8 = "1"
 $ErrorActionPreference = 'Stop'
 $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'

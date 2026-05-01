@@ -1,4 +1,4 @@
-import os
+# LemGendary Kaggle Manager (Last Verified: 2026-05-01)
 import argparse
 import subprocess
 from pathlib import Path
