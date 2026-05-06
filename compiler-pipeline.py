@@ -1466,7 +1466,7 @@ if not os.path.exists(suite_path):
         print("❌ Failed to clone repository. (Did you attach the SUITE_PAT secret?)")
         print("🔒 If access is denied, please request access via: lemgenda.obrt@gmail.com")
         print(res.stderr.replace(pat, '***') if pat else res.stderr)
-if os.path.exists(suite_path): %cd {suite_path}"""
+if os.path.exists(suite_path): os.chdir(suite_path)"""
 
     pull_code = """import os, subprocess
 suite_path = '/kaggle/working/lemgendary-training-suite'
