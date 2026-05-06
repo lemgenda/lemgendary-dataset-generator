@@ -36,6 +36,6 @@ for root, dirs, files in os.walk(raw_dir, topdown=False):
         except Exception:
             pass
 
-print(f"\n✅ [CLEANUP COMPLETE]")
+print(f"\n[CLEANUP COMPLETE]")
 print(f"  - Files Purged: {deleted_files}")
 print(f"  - Folders Purged: {deleted_dirs}")
