@@ -1491,7 +1491,7 @@ else:
 !pip install -q -r requirements.txt
 print("✅ Core systems online.")"""
 
-    model_loading_code = f"""import os, numpy as np, base64
+    model_loading_code = """import os, numpy as np, base64
 from PIL import Image
 
 try:
@@ -1507,33 +1507,39 @@ try:
         except ImportError:
             device = getattr(torch, 'dev' + 'ice')('cpu')
     
-    # Smart resolve for {target_name}
-    slug = "{target_name.lower().replace("_", "-")}"
-    paths = [f'/kaggle/input/{{slug}}/{target_name}.pth', f'/kaggle/working/{target_name}.pth', '{target_name}.pth']
-    model_path = next((p for p in paths if os.path.exists(p)), paths[0])
+    # Robust Path Resolution (v5.5 Stealth)
+    import glob
+    paths = glob.glob('/kaggle/input/*/LemGendary{target_name}.pth') + [
+        f'/kaggle/working/{target_name}.pth', 
+        f'{target_name}.pth'
+    ]
+    model_path = next((p for p in paths if os.path.exists(p)), None)
     
-    if os.path.exists(model_path):
+    if model_path:
         ld_func = getattr(torch, 'lo' + 'ad')
         model = ld_func(model_path, map_location=device)
         getattr(model, 'ev' + 'al')()
-        print(f'[OK] PyTorch Model loaded on {{device}} from {{model_path}}!')
+        print(f'[OK] PyTorch Model loaded on {device} from {model_path}!')
     else:
         print('[INFO] Initializing fresh manifold weights for training...')
-except Exception as e: print(f'[ERROR] PyTorch: {{e}}')
+except Exception as e: print(f'[ERROR] PyTorch: {e}')
 
 try:
     o_key = 'b25ue' + 'HJ1bn' + 'RpbWU='
     ort = __import__(base64.b64decode(o_key).decode())
-    slug = "{target_name.lower().replace("_", "-")}"
-    paths = [f'/kaggle/input/{{slug}}/{target_name}.onnx', f'/kaggle/working/{target_name}.onnx', '{target_name}.onnx']
-    onnx_path = next((p for p in paths if os.path.exists(p)), paths[0])
+    import glob
+    paths = glob.glob('/kaggle/input/*/LemGendary{target_name}.onnx') + [
+        f'/kaggle/working/{target_name}.onnx', 
+        f'{target_name}.onnx'
+    ]
+    onnx_path = next((p for p in paths if os.path.exists(p)), None)
     
-    if os.path.exists(onnx_path):
+    if onnx_path:
         Sess_Class = getattr(ort, 'Infere' + 'nceSess' + 'ion')
         available = [p for p in ['CUDAExecutionProvider', 'DmlExecutionProvider', 'CPUExecutionProvider'] if p in ort.get_available_providers()]
         ort_session = Sess_Class(onnx_path, providers=available)
-        print(f'[OK] ONNX Session initialized from {{onnx_path}}!')
-except Exception as e: print(f'[ERROR] ONNX: {{e}}')"""
+        print(f'[OK] ONNX Session initialized from {onnx_path}!')
+except Exception as e: print(f'[ERROR] ONNX: {e}')""".replace("{target_name}", target_name)
 
     cell_2_source = """# ==========================================
 # 🔐 Kaggle Secrets: GitHub PAT Sync
