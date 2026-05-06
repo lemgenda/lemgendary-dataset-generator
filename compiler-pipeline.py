@@ -1453,28 +1453,39 @@ def generate_kaggle_notebook(output_root, target_name, model_key=None):
     if "naf_net" in resolved_model: resolved_model = resolved_model.replace("naf_net", "nafnet")
     if "upn_v_2" in resolved_model: resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
 
-    clone_code = """import os
-import subprocess
-if not os.path.exists('lemgendary-training-suite'):
+    clone_code = """import os, subprocess
+suite_path = '/kaggle/working/lemgendary-training-suite'
+if not os.path.exists(suite_path):
     print("🚀 Cloning LemGendary environment...")
     pat = os.environ.get('SUITE_PAT', '')
     repo_url = f"https://lemgenda:{pat}@github.com/lemgenda/lemgendary-training-suite.git" if pat else "https://github.com/lemgenda/lemgendary-training-suite.git"
-    res = subprocess.run(f'git clone {repo_url}', shell=True, capture_output=True, text=True)
+    res = subprocess.run(f'git clone {repo_url} {suite_path}', shell=True, capture_output=True, text=True)
     if res.returncode == 0:
         print("✅ Clone successful!")
     else:
         print("❌ Failed to clone repository. (Did you attach the SUITE_PAT secret?)")
         print("🔒 If access is denied, please request access via: lemgenda.obrt@gmail.com")
         print(res.stderr.replace(pat, '***') if pat else res.stderr)
-%cd lemgendary-training-suite"""
+if os.path.exists(suite_path): %cd {suite_path}"""
 
-    pull_code = """import subprocess
-res = subprocess.run(['git', 'pull', 'origin', 'main'], capture_output=True, text=True)
-if 'Already up to date.' in res.stdout:
-    print('✅ LemGendary Training Suite is already up to date')
+    pull_code = """import os, subprocess
+suite_path = '/kaggle/working/lemgendary-training-suite'
+if os.path.exists(suite_path):
+    pat = os.environ.get('SUITE_PAT', '')
+    repo_url = f"https://lemgenda:{pat}@github.com/lemgenda/lemgendary-training-suite.git" if pat else "https://github.com/lemgenda/lemgendary-training-suite.git"
+    res = subprocess.run(f'git -C {suite_path} pull {repo_url} main', shell=True, capture_output=True, text=True)
+    if res.returncode == 0:
+        if 'Already up to date.' in res.stdout:
+            print('✅ LemGendary Training Suite is already up to date')
+        else:
+            print('🚀 LemGendary Training Suite changes pulled')
+            print(res.stdout)
+    else:
+        print("❌ Failed to pull updates. (Did you attach the SUITE_PAT secret?)")
+        print("🔒 If access is denied, please request access via: lemgenda.obrt@gmail.com")
+        print(res.stderr.replace(pat, '***') if pat else res.stderr)
 else:
-    print('🚀 LemGendary Training Suite changes pulled')
-    print(res.stdout)"""
+    print("⚠️ Training suite not found in root. Please run the clone cell first.")"""
 
     install_code = """print("📦 Installing requirements...")
 !pip install -q -r requirements.txt
@@ -1497,14 +1508,15 @@ try:
             device = getattr(torch, 'dev' + 'ice')('cpu')
     
     # Smart resolve for {target_name}
-    model_path = f'/kaggle/input/{target_name.lower().replace("_", "-")}/{target_name}.pth'
-    if not os.path.exists(model_path): model_path = '{target_name}.pth'
+    slug = "{target_name.lower().replace("_", "-")}"
+    paths = [f'/kaggle/input/{{slug}}/{target_name}.pth', f'/kaggle/working/{target_name}.pth', '{target_name}.pth']
+    model_path = next((p for p in paths if os.path.exists(p)), paths[0])
     
     if os.path.exists(model_path):
         ld_func = getattr(torch, 'lo' + 'ad')
         model = ld_func(model_path, map_location=device)
         getattr(model, 'ev' + 'al')()
-        print(f'[OK] PyTorch Model loaded on {{device}}!')
+        print(f'[OK] PyTorch Model loaded on {{device}} from {{model_path}}!')
     else:
         print('[INFO] Initializing fresh manifold weights for training...')
 except Exception as e: print(f'[ERROR] PyTorch: {{e}}')
@@ -1512,13 +1524,15 @@ except Exception as e: print(f'[ERROR] PyTorch: {{e}}')
 try:
     o_key = 'b25ue' + 'HJ1bn' + 'RpbWU='
     ort = __import__(base64.b64decode(o_key).decode())
-    onnx_path = f'/kaggle/input/{target_name.lower().replace("_", "-")}/{target_name}.onnx'
-    if not os.path.exists(onnx_path): onnx_path = '{target_name}.onnx'
+    slug = "{target_name.lower().replace("_", "-")}"
+    paths = [f'/kaggle/input/{{slug}}/{target_name}.onnx', f'/kaggle/working/{target_name}.onnx', '{target_name}.onnx']
+    onnx_path = next((p for p in paths if os.path.exists(p)), paths[0])
     
     if os.path.exists(onnx_path):
         Sess_Class = getattr(ort, 'Infere' + 'nceSess' + 'ion')
-        ort_session = Sess_Class(onnx_path, providers=['CUDAExecutionProvider', 'DmlExecutionProvider', 'CPUExecutionProvider'])
-        print('[OK] ONNX Session initialized successfully with Universal Execution Providers!')
+        available = [p for p in ['CUDAExecutionProvider', 'DmlExecutionProvider', 'CPUExecutionProvider'] if p in ort.get_available_providers()]
+        ort_session = Sess_Class(onnx_path, providers=available)
+        print(f'[OK] ONNX Session initialized from {{onnx_path}}!')
 except Exception as e: print(f'[ERROR] ONNX: {{e}}')"""
 
     cell_2_source = """# ==========================================
