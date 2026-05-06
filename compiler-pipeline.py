@@ -1524,9 +1524,7 @@ except Exception: pass"""
        "accelerator": "nvidiaTeslaT4",
        "dataSources": [],
        "isInternetEnabled": True,
-       "language": "python",
-       "sourceType": "notebook",
-       "isGpuEnabled": True
+       "language": "python"
       }
      },
      "nbformat_minor": 4,
@@ -1534,13 +1532,32 @@ except Exception: pass"""
      "cells": [
       {
        "cell_type": "markdown",
-       "source": [f"# LemGendary Solo Execution: {target_name}\n", "This notebook natively executes the explicit LemGendary Neural Architecture topologies directly upon Kaggle cloud hardware."],
+       "source": [f"# LemGendary Master Execution: {target_name}\n", "This unified notebook natively executes the explicit LemGendary Neural Architecture topologies directly upon Kaggle cloud hardware."],
        "metadata": {}
       },
       {
        "cell_type": "markdown",
        "source": [
-        "## 1. GitHub Personal Access Token (PAT) Guide\n",
+        "## 1. Cloud Sync Configuration\n",
+        "Set your target GitHub repository for model checkpoints and metrics."
+       ],
+       "metadata": {}
+      },
+      {
+       "cell_type": "code",
+       "source": [
+        "# Configuration: Set your target repository here\n",
+        "HUB_USER = 'lemgenda'\n",
+        "HUB_REPO = 'lemgendary-pretrained-models'\n"
+       ],
+       "metadata": {},
+       "outputs": [],
+       "execution_count": None
+      },
+      {
+       "cell_type": "markdown",
+       "source": [
+        "## 2. GitHub Personal Access Token (PAT) Guide\n",
         "To securely clone the training suite and automatically push SOTA models, you need two GitHub Personal Access Tokens (PATs) added to Kaggle Secrets.\n",
         "\n",
         "### 1. Generate Your GitHub Tokens\n",
@@ -1576,7 +1593,7 @@ except Exception: pass"""
       },
       {
        "cell_type": "markdown",
-       "source": ["## 2. Environment Synchronization\n", "Cloning the latest training suite and enforcing native dependencies."],
+       "source": ["## 3. Environment Synchronization\n", "Cloning the latest training suite and enforcing native dependencies."],
        "metadata": {}
       },
       {
