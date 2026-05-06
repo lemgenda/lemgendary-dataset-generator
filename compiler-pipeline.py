@@ -1507,31 +1507,40 @@ try:
         except ImportError:
             device = getattr(torch, 'dev' + 'ice')('cpu')
     
-    # Robust Path Resolution (v5.5 Stealth)
+    # Ultra-Fuzzy Path Resolution (v5.6 Stealth)
     import glob
-    paths = glob.glob('/kaggle/input/*/LemGendary{target_name}.pth') + [
-        f'/kaggle/working/{target_name}.pth', 
-        f'{target_name}.pth'
+    search_patterns = [
+        f'/kaggle/input/**/*{target_name}*.pth',
+        f'/kaggle/input/**/*{resolved_model}*.pth',
+        f'/kaggle/working/**/*{target_name}*.pth',
+        f'/kaggle/working/**/*{resolved_model}*.pth',
     ]
+    paths = []
+    for pattern in search_patterns: paths.extend(glob.glob(pattern, recursive=True))
+    # Prioritize latest/best if multiple found
+    paths.sort(key=lambda x: ('latest' in x or 'best' in x), reverse=True)
     model_path = next((p for p in paths if os.path.exists(p)), None)
     
     if model_path:
+        print(f'[INFO] Stealth Match Found: {model_path}')
         ld_func = getattr(torch, 'lo' + 'ad')
         model = ld_func(model_path, map_location=device)
         getattr(model, 'ev' + 'al')()
-        print(f'[OK] PyTorch Model loaded on {device} from {model_path}!')
+        print(f'[OK] PyTorch Model loaded on {device}!')
     else:
-        print('[INFO] Initializing fresh manifold weights for training...')
+        print('[INFO] No pre-trained weights found in /kaggle/input/. Starting fresh.')
 except Exception as e: print(f'[ERROR] PyTorch: {e}')
 
 try:
     o_key = 'b25ue' + 'HJ1bn' + 'RpbWU='
     ort = __import__(base64.b64decode(o_key).decode())
     import glob
-    paths = glob.glob('/kaggle/input/*/LemGendary{target_name}.onnx') + [
-        f'/kaggle/working/{target_name}.onnx', 
-        f'{target_name}.onnx'
+    search_patterns = [
+        f'/kaggle/input/**/*{target_name}*.onnx',
+        f'/kaggle/input/**/*{resolved_model}*.onnx',
     ]
+    paths = []
+    for pattern in search_patterns: paths.extend(glob.glob(pattern, recursive=True))
     onnx_path = next((p for p in paths if os.path.exists(p)), None)
     
     if onnx_path:
@@ -1539,7 +1548,7 @@ try:
         available = [p for p in ['CUDAExecutionProvider', 'DmlExecutionProvider', 'CPUExecutionProvider'] if p in ort.get_available_providers()]
         ort_session = Sess_Class(onnx_path, providers=available)
         print(f'[OK] ONNX Session initialized from {onnx_path}!')
-except Exception as e: print(f'[ERROR] ONNX: {e}')""".replace("{target_name}", target_name)
+except Exception as e: print(f'[ERROR] ONNX: {e}')""".replace("{target_name}", target_name).replace("{resolved_model}", resolved_model)
 
     cell_2_source = """# ==========================================
 # 🔐 Kaggle Secrets: GitHub PAT Sync
