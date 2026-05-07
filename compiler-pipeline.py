@@ -623,8 +623,12 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                     # Attempt Hardlink (Instant, zero I/O)
                     os.link(str(img_path), str(out_img_path))
                 except (OSError, AttributeError):
-                    # Fallback to copy if cross-device or permission denied
-                    shutil.copy(img_path, out_img_path)
+                    try:
+                        # Fallback to copy if cross-device or permission denied
+                        shutil.copy2(str(img_path), str(out_img_path))
+                    except (shutil.SameFileError, OSError):
+                        # 2026 Resilience: Ignore if already linked/copied or lock contention
+                        pass
             elif img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 img.save(out_img_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
@@ -972,9 +976,9 @@ def process_dataset():
                                     fname = entry.name
                                     dot_idx = fname.find('.')
                                     if dot_idx != -1:
-                                        existing_on_disk.add(fname[:dot_idx])
+                                        existing_on_disk.add(fname[:dot_idx].lower())
                                     else:
-                                        existing_on_disk.add(fname)
+                                        existing_on_disk.add(fname.lower())
                                     count += 1
                                     if count % 100000 == 0:
                                         print(f"   -> Indexed {count // 1000}k files...", flush=True)
@@ -984,6 +988,8 @@ def process_dataset():
                 global PHYSICAL_INDEX
                 PHYSICAL_INDEX = existing_on_disk
                 print(f"✅ Physical scan complete: {len(existing_on_disk)} samples verified on disk.")
+                if existing_on_disk:
+                    print(f"DEBUG: Sample index entries: {list(existing_on_disk)[:5]}")
 
             sfw_tasks = []
             nsfw_tasks = []
@@ -1100,7 +1106,7 @@ def process_dataset():
                             split = "train" if random.random() < train_prob else "val"
                             name = f"{prefix}_{clean_slug(slug)}_{global_idx:09d}"
                             
-                            if name in existing_names or name in existing_on_disk: 
+                            if name in existing_names or name.lower() in existing_on_disk: 
                                 global_idx += 1
                                 continue
                             
@@ -1129,8 +1135,10 @@ def process_dataset():
                             continue
                             
                         # 2026 Resilience: Pre-emptive Disk Skip (SOTA v6.0)
-                        # Avoid worker submission entirely if the file is already on disk.
-                        if name in existing_on_disk:
+                        # Case-insensitive O(1) check using lowercased index
+                        if "001260109" in name:
+                             print(f"DEBUG: Checking {name.lower()} in index: {name.lower() in existing_on_disk}")
+                        if name.lower() in existing_on_disk:
                             continue
 
                         specific_ann_data = None
@@ -1155,6 +1163,8 @@ def process_dataset():
                         else:
                             task_item = (process_image, img_path, prefix, clean_slug(slug), i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
                             
+                        if "001260109" in name:
+                             print(f"DEBUG: Adding {name} to tasks list")
                         if tag == "nsfw":
                             nsfw_tasks.append(task_item)
                         else:
@@ -1176,8 +1186,10 @@ def process_dataset():
             # random.shuffle(all_tasks)
             
             if not all_tasks:
-                print(f"⚠️  [NOTICE] No tasks found for {pascal_name}. Manifold is either fully processed or empty.")
+                print(f"⚠️  [NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
                 continue
+            
+            print(f"📡 [MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
 
             compiled_bytes = 0
             processed_count = len(existing_names)
@@ -1195,6 +1207,7 @@ def process_dataset():
             BATCH_SIZE = 100 if args.no_vetting else 50
             task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
             
+            pbar = None
             with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
                 futures = set()
                 batch_iter = iter(task_batches)
