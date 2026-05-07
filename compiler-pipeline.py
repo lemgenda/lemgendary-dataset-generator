@@ -904,6 +904,16 @@ def process_dataset():
                 except Exception as e:
                     print(f"⚠️ Resumption scan failed: {e}")
 
+            # 2026 Resilience: Pre-cache existing output files to avoid O(N) disk hits (SOTA v6.0)
+            existing_on_disk = set()
+            img_dir = output_root / "images"
+            if img_dir.exists():
+                print(f"🔄 [RESUMPTION] Scanning output manifold for physical consistency...")
+                for root, _, files in os.walk(img_dir):
+                    for f in files:
+                        # Store filename without extension for O(1) lookups
+                        existing_on_disk.add(os.path.splitext(f)[0])
+
             sfw_tasks = []
             nsfw_tasks = []
             
@@ -1019,7 +1029,7 @@ def process_dataset():
                             split = "train" if random.random() < train_prob else "val"
                             name = f"{prefix}_{clean_slug(slug)}_{global_idx:09d}"
                             
-                            if name in existing_names: 
+                            if name in existing_names or name in existing_on_disk: 
                                 global_idx += 1
                                 continue
                             
@@ -1047,12 +1057,9 @@ def process_dataset():
                         if name in existing_names:
                             continue
                             
-                        # 2026 Resilience: Pre-emptive Disk Skip (SOTA v5.9)
-                        # Avoid worker submission entirely if the output file already exists.
-                        ext = os.path.splitext(str(img_path))[1].lower()
-                        if ext not in [".jpg", ".jpeg", ".png", ".webp"]: ext = ".jpg"
-                        check_path = os.path.join(output_root_str, "images", split, f"{name}{ext}")
-                        if os.path.exists(check_path):
+                        # 2026 Resilience: Pre-emptive Disk Skip (SOTA v6.0)
+                        # Avoid worker submission entirely if the file is already on disk.
+                        if name in existing_on_disk:
                             continue
 
                         specific_ann_data = None
@@ -1114,7 +1121,7 @@ def process_dataset():
             desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
             
             # 2026 Optimization: Batching to reduce IPC overhead
-            BATCH_SIZE = 100
+            BATCH_SIZE = 500 if args.no_vetting else 100
             task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
             
             with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label) as pbar:
