@@ -439,7 +439,7 @@ def parse_safetensors(st_path):
 def batch_worker(tasks):
     """Executes a list of tasks in a single worker call to reduce IPC overhead."""
     results = []
-    # print(f"DEBUG: Batch worker started with {len(tasks)} tasks.")
+    print(f"DEBUG: Batch worker started with {len(tasks)} tasks.")
     for i, (task_func, *args) in enumerate(tasks):
         try:
             # if i % 10 == 0: print(f"DEBUG: Task {i} starting...")
@@ -472,7 +472,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
     img = None
     
     try:
-        # print(f"DEBUG: Processing {name}...")
+        if idx % 100 == 0: print(f"DEBUG: Processing {name}...")
         # Validity & Format Handling
         if isinstance(img_input, (bytes, dict)):
             if isinstance(img_input, dict) and "bytes" in img_input:
@@ -1195,12 +1195,14 @@ def process_dataset():
                 
                 # Top up initial futures (Higher buffer for 12 workers)
                 num_initial = min(max_workers * 4, len(task_batches))
+                print(f"DEBUG: Submitting {num_initial} initial batches...")
                 for _ in range(num_initial):
                     try:
                         batch = next(batch_iter)
                         futures.add(executor.submit(batch_worker, batch))
                     except StopIteration: break
                 
+                print(f"DEBUG: Submission loop finished. Submitting status...")
                 if num_initial > 0:
                     print(f"📡 [QUEUED] {num_initial} batches submitted to {max_workers} workers.")
                 
