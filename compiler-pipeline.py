@@ -444,8 +444,12 @@ def batch_worker(tasks):
             results.append(None)
     
     # 2026 Pulse: Log completion for large batches to confirm worker health
-    if len(tasks) >= 50:
-        pass # print(f"✅ [PULSE] Batch of {len(tasks)} completed.")
+    # Use a global counter to avoid flooding the console
+    if not hasattr(batch_worker, 'counter'): batch_worker.counter = 0
+    batch_worker.counter += 1
+    if batch_worker.counter % 10 == 0:
+        print(f"📡 [HEARTBEAT] {batch_worker.counter} batches processed by threads...", flush=True)
+        
     return results
 
 # ---------------- PROCESSORS ----------------
@@ -494,8 +498,8 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             for device_name in ["iphone", "sony", "blackberry"]:
                 # We check for the device folder precisely to avoid replacing parts of the slug (e.g. sony2canon)
                 needle = f"/{device_name}/"
-                if needle in p_str:
-                    tgt_p_str = p_str.replace(needle, "/canon/")
+                if needle in p_str.lower():
+                    tgt_p_str = p_str.lower().replace(needle, "/canon/")
                     if DPED_CACHE:
                         if tgt_p_str in DPED_CACHE: 
                             target_img_path = tgt_p_str
@@ -868,7 +872,8 @@ def process_dataset():
                         print(f"📦 [DPED] Caching ground truth manifold for {slug} ({cr.parent.name})...")
                         for r, _, f_list in os.walk(cr):
                             for f in f_list:
-                                dped_canon_paths.add(os.path.join(r, f).replace("\\", "/"))
+                                # 2026: Normalize to lowercase for case-insensitive resolution
+                                dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
 
     max_workers = max(1, final_workers)
     print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
@@ -1200,9 +1205,10 @@ def process_dataset():
                                         processed_count += 1
                                         if processed_count % 1000 == 0:
                                             conn.commit()
-        
+                                            if args.no_vetting: print(f"📡 [REGISTRY] {processed_count} entries committed.", flush=True)
+                                        
                                         if (compiled_bytes / (1024**3)) >= max_gb:
-                                            print(f"\n⚠️  [MANIFOLD LIMIT REACHED] Compiled set reached {max_gb:.2f}GB. Halting extraction.")
+                                            print(f"\n⚠️  [LIMIT] Reached {max_gb:.2f}GB. Halting.")
                                             for f in futures: f.cancel()
                                             futures.clear()
                                             break
