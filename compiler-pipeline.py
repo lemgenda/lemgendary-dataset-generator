@@ -460,7 +460,14 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
     Worker function for parallel processing.
     img_input can be a Path or raw bytes (for Parquet-embedded datasets).
     """
+    # 2026 Resilience: Initialize defaults early to prevent UnboundLocalError during fast-skips
     img_path = "Unknown"
+    nima_score = 1.0
+    nima_probs = [0.0] * 10
+    nima_probs[0] = 1.0
+    w, hgt = 0, 0
+    img = None
+    
     try:
         # Validity & Format Handling
         if isinstance(img_input, (bytes, dict)):
@@ -487,9 +494,10 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
         out_tgt_path = Path(output_root_str) / "targets" / split / f"{name}{ext}"
         
-        # 2026 Optimization: Return early if output already exists (SOTA High-Speed Skip)
-        if os.path.exists(str(out_img_path)):
-            return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
+        # 2026 Optimization: High-Speed Skip (Redundant but safe if worker state drifts)
+        # Note: We keep this but minimize its use. The main loop should have already skipped this.
+        # if os.path.exists(str(out_img_path)):
+        #    return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
 
         # Restoration Target Resolver (v5.7)
         target_img = None
@@ -510,14 +518,10 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                     break
 
         # 2026 High-Velocity Optimization: Defer image loading
-        img = None
-        w, hgt = 0, 0
-        
-        # If we are in a task that requires image stats (vetting/labeling/resizing), we load now.
-        # Otherwise, we skip the PIL overhead entirely.
+        # Only load if we are in a task that requires image stats (vetting/labeling/resizing).
         needs_stats = (task in ["quality", "diffusion"] and not args.no_vetting) or (not args.no_labeling)
         
-        if needs_stats or isinstance(img_input, (bytes, dict)):
+        if needs_stats:
             if not isinstance(img_input, (bytes, dict)):
                 img = Image.open(img_path)
             else:
@@ -622,22 +626,24 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 with open(out_img_path, "wb") as f:
                     f.write(img_data)
         
-        if task in ["restoration", "super-resolution"] and not os.path.exists(str(out_tgt_path)):
+        if task in ["restoration", "super-resolution"]:
             if target_img_path:
                 try:
                     os.link(str(target_img_path), str(out_tgt_path))
                 except (OSError, AttributeError):
-                    shutil.copy(target_img_path, out_tgt_path)
+                    try: shutil.copy(target_img_path, out_tgt_path)
+                    except: pass
             elif target_img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
             else:
                 # Synthetic Mode: Clean image is the target
-                if out_img_path.exists():
-                    shutil.copy2(out_img_path, out_tgt_path)
-                elif img:
-                    save_fmt = "PNG" if ext == ".png" else "JPEG"
-                    img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+                # 2026 Warp-Speed: Use hardlink instead of copy for zero-cost synthetic target creation
+                try:
+                    os.link(str(out_img_path), str(out_tgt_path))
+                except (OSError, AttributeError):
+                    try: shutil.copy2(out_img_path, out_tgt_path)
+                    except: pass
         
         # Annotations
         annotations = []
