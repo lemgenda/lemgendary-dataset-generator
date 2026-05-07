@@ -603,7 +603,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             # 2026 Optimization: Use raw OS copies if no re-encoding is needed
             if not img and isinstance(img_input, (str, Path)):
                 import shutil
-                shutil.copy2(img_path, out_img_path)
+                shutil.copy(img_path, out_img_path)
             elif img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 img.save(out_img_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
