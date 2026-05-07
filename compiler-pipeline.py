@@ -207,8 +207,11 @@ def detect_task(model_dir_name):
         return "restoration"
     return "detection"
 
-def init_worker(config):
-    global SENTRY, LABELER, CAPTIONER, CLIP_MANIFOLD
+DPED_CACHE = set()
+
+def init_worker(config, dped_cache=None):
+    global SENTRY, LABELER, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE
+    if dped_cache: DPED_CACHE = dped_cache
     # 2026 Modular Alignment: Local imports from encapsulated modules
     from models.quality_scorer import QualitySentry
     from models.detection import AutoLabeler
@@ -481,13 +484,19 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 p_str = str(img_path).replace("\\", "/")
                 if "/iphone/" in p_str: 
                     tgt_p_str = p_str.replace("/iphone/", "/canon/")
-                    if os.path.exists(tgt_p_str): target_img_path = tgt_p_str
+                    if DPED_CACHE:
+                        if tgt_p_str in DPED_CACHE: target_img_path = Path(tgt_p_str)
+                    elif os.path.exists(tgt_p_str): target_img_path = tgt_p_str
                 elif "/blackberry/" in p_str:
                     tgt_p_str = p_str.replace("/blackberry/", "/canon/")
-                    if os.path.exists(tgt_p_str): target_img_path = tgt_p_str
+                    if DPED_CACHE:
+                        if tgt_p_str in DPED_CACHE: target_img_path = Path(tgt_p_str)
+                    elif os.path.exists(tgt_p_str): target_img_path = tgt_p_str
                 elif "/sony/" in p_str:
                     tgt_p_str = p_str.replace("/sony/", "/canon/")
-                    if os.path.exists(tgt_p_str): target_img_path = tgt_p_str
+                    if DPED_CACHE:
+                        if tgt_p_str in DPED_CACHE: target_img_path = Path(tgt_p_str)
+                    elif os.path.exists(tgt_p_str): target_img_path = tgt_p_str
         
         # Resumption Check
         if out_img_path.exists():
@@ -837,10 +846,28 @@ def process_dataset():
         print(f"🛡️ [RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
         final_workers = 8
     
+    # 2026 DPED Optimization: Pre-cache canon paths to avoid O(N) exists() calls
+    dped_canon_paths = set()
+    for model_key, model_config in DATASETS_META.items():
+        if args.model and model_key != args.model: continue
+        for ref_entry in model_config.get("refs", []):
+            if "dped" in ref_entry["ref"].lower():
+                slug = ref_entry["ref"].split("/")[-1].lower()
+                canon_roots = [
+                    shared_root / slug / "iphone2canon" / "train" / "canon",
+                    shared_root / slug / "iphone2canon" / "test" / "canon"
+                ]
+                for cr in canon_roots:
+                    if cr.exists():
+                        print(f"📦 [DPED] Caching ground truth manifold for {slug} ({cr.parent.name})...")
+                        for r, _, f_list in os.walk(cr):
+                            for f in f_list:
+                                dped_canon_paths.add(os.path.join(r, f).replace("\\", "/"))
+
     max_workers = max(1, final_workers)
     print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
     print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
-    with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG,)) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG, dped_canon_paths)) as executor:
         for model_key, model_config in DATASETS_META.items():
             if args.model and model_key != args.model: continue
             
@@ -1057,8 +1084,9 @@ def process_dataset():
                     random.shuffle(nsfw_tasks)
                     nsfw_tasks = nsfw_tasks[:max_nsfw]
             
-            all_tasks = sfw_tasks + nsfw_tasks
-            random.shuffle(all_tasks)
+             all_tasks = sfw_tasks + nsfw_tasks
+             # 2026 Optimization: Disable global shuffle to maintain disk locality (High-Speed HDD support)
+             # random.shuffle(all_tasks)
             
             if not all_tasks:
                 print(f"⚠️  [NOTICE] No tasks found for {pascal_name}. Manifold is either fully processed or empty.")
