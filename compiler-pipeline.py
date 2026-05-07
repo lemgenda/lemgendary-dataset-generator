@@ -1190,7 +1190,8 @@ def process_dataset():
             task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
             
             print(f"DEBUG: Initializing tqdm with {len(all_tasks)} new tasks...")
-            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
+            # with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
+            if True:
                 futures = set()
                 batch_iter = iter(task_batches)
                 
