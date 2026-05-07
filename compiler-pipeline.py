@@ -439,10 +439,13 @@ def parse_safetensors(st_path):
 def batch_worker(tasks):
     """Executes a list of tasks in a single worker call to reduce IPC overhead."""
     results = []
+    # print(f"DEBUG: Batch worker started with {len(tasks)} tasks.")
     for i, (task_func, *args) in enumerate(tasks):
         try:
+            # if i % 10 == 0: print(f"DEBUG: Task {i} starting...")
             results.append(task_func(*args))
         except Exception as e:
+            print(f"DEBUG: Task {i} failed: {e}")
             results.append(None)
     
     # 2026 Pulse: Log completion for large batches to confirm worker health
@@ -469,6 +472,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
     img = None
     
     try:
+        # print(f"DEBUG: Processing {name}...")
         # Validity & Format Handling
         if isinstance(img_input, (bytes, dict)):
             if isinstance(img_input, dict) and "bytes" in img_input:
