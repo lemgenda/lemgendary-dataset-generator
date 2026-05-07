@@ -78,7 +78,8 @@ parser.add_argument("--reduce", action="store_true", help="Start in Reduce mode"
 parser.add_argument("--cleanup", action="store_true", help="Start in Cleanup mode")
 parser.add_argument("--no-vetting", action="store_true", help="Disable NIMA quality gate (Pass-Through mode)")
 parser.add_argument("--no-labeling", action="store_true", help="Disable YOLO auto-labeling (High-Speed mode)")
-args, unknown = parser.parse_known_args()
+parser.add_argument("--no-hash", action="store_true", help="Disable deduplication hash for maximum I/O speed.")
+args = parser.parse_args()
 
 INPUT_ROOT = Path("./raw-sets")
 OUT_PARENT = Path(META.get("output_folder_name", "../LemGendaryDatasets"))
@@ -296,6 +297,7 @@ def is_black_image(img, threshold=None):
     return black_ratio > (1.0 - threshold)
 
 def compute_hash(img_or_path):
+    if getattr(args, 'no_hash', False): return None
     import hashlib
     from pathlib import Path
     if isinstance(img_or_path, (str, Path)):
@@ -604,10 +606,15 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         h = compute_hash(hash_target) if CONFIG["enable_dedup"] else None
         
         # Save Output Image & Target
+        # 2026 Resilience: Hardlink-First Acceleration (v7.1)
         if not os.path.exists(str(out_img_path)):
-            # 2026 Optimization: Use raw OS copies if no re-encoding is needed
             if not img and isinstance(img_input, (str, Path)):
-                shutil.copy(img_path, out_img_path)
+                try:
+                    # Attempt Hardlink (Instant, zero I/O)
+                    os.link(str(img_path), str(out_img_path))
+                except (OSError, AttributeError):
+                    # Fallback to copy if cross-device or permission denied
+                    shutil.copy(img_path, out_img_path)
             elif img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 img.save(out_img_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
@@ -617,7 +624,10 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         
         if task in ["restoration", "super-resolution"] and not os.path.exists(str(out_tgt_path)):
             if target_img_path:
-                shutil.copy(target_img_path, out_tgt_path)
+                try:
+                    os.link(str(target_img_path), str(out_tgt_path))
+                except (OSError, AttributeError):
+                    shutil.copy(target_img_path, out_tgt_path)
             elif target_img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
@@ -727,8 +737,9 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
 
         # Result Meta
         size_bytes = 0
-        if out_img_path.exists(): size_bytes += out_img_path.stat().st_size
-        if label_file_path.exists(): size_bytes += label_file_path.stat().st_size
+        try:
+            if out_img_path.exists(): size_bytes += out_img_path.stat().st_size
+        except: pass
         
         return {
             "name": name, "source": slug, "task": task, "split": split,
@@ -736,7 +747,8 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             "has_segmentation": any(a["type"] == "segmentation" for a in annotations),
             "has_pose": any(a["type"] == "pose" for a in annotations),
             "label_path": str(label_file_path.resolve()), "path": str(out_img_path.resolve()),
-            "size": size_bytes
+            "size": size_bytes,
+            "clip_latent": None # Standard tasks don't use clip_latent but registry expects it
         }
 
     except Exception as e:
@@ -787,10 +799,15 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         img.save(buffer, format="JPEG", quality=95)
         img_bytes = buffer.getvalue()
         
+        # 2026 Resilience: Pre-serialize for SQLite Bulk Ingestion (v8.1)
+        latent_blob = None
+        if clip_latent:
+            latent_blob = sqlite3.Binary(np.array(clip_latent).astype(np.float32).tobytes())
+            
         return {
             "name": name, "source": slug, "task": "diffusion", "split": split,
             "hash": h, "nima_score": round(nima_score, 3), 
-            "caption": caption, "style_tag": style_tag, "clip_latent": clip_latent,
+            "caption": caption, "style_tag": style_tag, "clip_latent": latent_blob,
             "img_bytes": img_bytes, "size": len(img_bytes)
         }
     except Exception as e:
@@ -1180,33 +1197,27 @@ def process_dataset():
                 try:
                     while futures:
                         done, futures = wait(futures, return_when=FIRST_COMPLETED)
+                        batch_entries = []
                         for future in done:
                             try:
                                 batch_results = future.result()
-                                # 2026 Resilience: Update progress bar for the WHOLE batch immediately
                                 pbar.update(len(batch_results))
                                 
                                 for res in batch_results:
                                     if res:
-                                        if CONFIG["enable_dedup"] and res["hash"] in seen_hashes: 
-                                            continue
-                                        seen_hashes.add(res["hash"])
+                                        if CONFIG["enable_dedup"] and not args.no_hash and res["hash"] in seen_hashes: continue
+                                        if res["hash"]: seen_hashes.add(res["hash"])
                                         
                                         compiled_bytes += res.get("size", 0)
                                         
-                                        # Commit to SQLite Manifold
-                                        latent_blob = sqlite3.Binary(np.array(res.get("clip_latent", [])).astype(np.float32).tobytes())
-                                        conn.execute("""
-                                            INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
-                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                        """, (res["name"], res["source"], res["task"], res["split"], res["hash"], res["nima_score"], 
-                                              res.get("caption"), res.get("style_tag"), latent_blob, res.get("img_bytes")))
+                                        # Prepare for Bulk Ingestion
+                                        batch_entries.append((
+                                            res["name"], res["source"], res["task"], res["split"], res["hash"], 
+                                            res["nima_score"], res.get("caption"), res.get("style_tag"), 
+                                            res.get("clip_latent"), res.get("img_bytes")
+                                        ))
                                         
                                         processed_count += 1
-                                        if processed_count % 1000 == 0:
-                                            conn.commit()
-                                            if args.no_vetting: print(f"📡 [REGISTRY] {processed_count} entries committed.", flush=True)
-                                        
                                         if (compiled_bytes / (1024**3)) >= max_gb:
                                             print(f"\n⚠️  [LIMIT] Reached {max_gb:.2f}GB. Halting.")
                                             for f in futures: f.cancel()
@@ -1214,6 +1225,16 @@ def process_dataset():
                                             break
                             except Exception as e:
                                 print(f"[ERROR] Worker Error: {e}")
+                        
+                        # High-Speed Bulk Ingestion (v8.1)
+                        if batch_entries:
+                            conn.executemany("""
+                                INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, batch_entries)
+                            if processed_count % 1000 == 0:
+                                conn.commit()
+                                if args.no_vetting: print(f"📡 [REGISTRY] {processed_count} entries committed.", flush=True)
                         
                         # Top up the queue with more batches
                         for _ in range(len(done)):
