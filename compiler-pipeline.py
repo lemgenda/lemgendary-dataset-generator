@@ -344,6 +344,8 @@ def clean_slug(slug):
     if "ffhq" in sl: return "ffhq"
     if "coco" in sl: return "coco"
     if "flickr" in sl: return "flickr"
+    if any(k in sl for k in ["sidd", "smartphone", "dnd", "nam", "9-classes", "multi-noise", "salt-and-pepper", "iso-levels", "gopro", "hideblur", "realblur"]):
+        return sl
     return slug.split('-')[0]
 
 def map_category(cat_name_or_id, source_name):
@@ -1253,6 +1255,7 @@ def generate_readme(output_root):
     
     def format_source(name):
         lower_name = name.lower()
+        # 2026 Resilience: Explicit SOTA Mappings
         if lower_name == 'celebamask': return 'CelebAMask'
         elif lower_name == 'affectnet': return 'AffectNet'
         elif lower_name == 'wflw': return 'WFLW'
@@ -1263,7 +1266,16 @@ def generate_readme(output_root):
         elif lower_name == 'tid2013': return 'TID2013'
         elif lower_name == 'laion': return 'LAION'
         elif lower_name == 'laion-5b': return 'LAION-5B'
-        else: return name.title()
+        elif 'smartphone' in lower_name: return 'SIDD (Smartphone Image Denoising)'
+        elif 'dnd' in lower_name or 'nam' in lower_name: return 'DND & NAM Noise Data'
+        elif '9-classes' in lower_name: return '9-Classes Noisy Image Dataset'
+        elif 'multi-noises' in lower_name: return 'Multi-Noise Synthetic Dataset'
+        elif 'salt-and-pepper' in lower_name: return 'Salt-and-Pepper Noise'
+        elif 'iso-levels' in lower_name: return 'Multiple ISO Denoising Dataset'
+        elif 'gopro' in lower_name: return 'GoPro Deblurring Dataset'
+        elif 'hideblur' in lower_name: return 'HiDeBlur Dataset'
+        elif 'realblur' in lower_name: return 'RealBlur Dataset'
+        else: return name.replace('-', ' ').title()
 
     tasks = {}
     sources = {}
