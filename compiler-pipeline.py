@@ -219,9 +219,10 @@ def init_worker(config, dped_cache=None):
     from models.encoder import CLIPManifold
 
     # 2026 Resilience: Workers ignore SIGINT to prevent traceback noise.
-    # The main process handles the interrupt and shuts down the executor.
-    import signal
-    signal.signal(signal.SIGINT, signal.SIG_IGN) 
+    if os.name == 'nt':
+        import signal
+        signal.signal(signal.SIGINT, signal.SIG_IGN) 
+    
     import torch
     from PIL import ImageFile
     ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -599,10 +600,9 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         h = compute_hash(hash_target) if CONFIG["enable_dedup"] else None
         
         # Save Output Image & Target
-        if not out_img_path.exists():
+        if not os.path.exists(str(out_img_path)):
             # 2026 Optimization: Use raw OS copies if no re-encoding is needed
             if not img and isinstance(img_input, (str, Path)):
-                import shutil
                 shutil.copy(img_path, out_img_path)
             elif img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
@@ -611,10 +611,9 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 with open(out_img_path, "wb") as f:
                     f.write(img_data)
         
-        if task in ["restoration", "super-resolution"] and not out_tgt_path.exists():
+        if task in ["restoration", "super-resolution"] and not os.path.exists(str(out_tgt_path)):
             if target_img_path:
-                import shutil
-                shutil.copy2(target_img_path, out_tgt_path)
+                shutil.copy(target_img_path, out_tgt_path)
             elif target_img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
@@ -1152,14 +1151,7 @@ def process_dataset():
                                             futures.clear()
                                             break
                             except Exception as e:
-                                # Write to physical log for SOTA diagnostics (UTF-8)
-                                with open("worker_error.log", "a", encoding='utf-8') as f:
-                                    f.write(f"❌ Worker Error at {datetime.now()}: {str(e)}\n")
-                                print(f"[ERROR] Worker Error (Logged): {e}")
-                        
-                        # 2026 Resilience: Frequent Commits (v5.5)
-                        if pbar.n % 1000 == 0:
-                            conn.commit()
+                                print(f"[ERROR] Worker Error: {e}")
                         
                         # Top up the queue with more batches
                         for _ in range(len(done)):
