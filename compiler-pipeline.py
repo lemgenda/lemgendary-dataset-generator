@@ -1084,9 +1084,9 @@ def process_dataset():
                     random.shuffle(nsfw_tasks)
                     nsfw_tasks = nsfw_tasks[:max_nsfw]
             
-             all_tasks = sfw_tasks + nsfw_tasks
-             # 2026 Optimization: Disable global shuffle to maintain disk locality (High-Speed HDD support)
-             # random.shuffle(all_tasks)
+            all_tasks = sfw_tasks + nsfw_tasks
+            # 2026 Optimization: Disable global shuffle to maintain disk locality (High-Speed HDD support)
+            # random.shuffle(all_tasks)
             
             if not all_tasks:
                 print(f"⚠️  [NOTICE] No tasks found for {pascal_name}. Manifold is either fully processed or empty.")
