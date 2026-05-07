@@ -620,7 +620,6 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             else:
                 # Synthetic Mode: Clean image is the target
                 if out_img_path.exists():
-                    import shutil
                     shutil.copy2(out_img_path, out_tgt_path)
                 elif img:
                     save_fmt = "PNG" if ext == ".png" else "JPEG"
