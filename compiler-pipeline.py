@@ -476,32 +476,27 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
         out_tgt_path = Path(output_root_str) / "targets" / split / f"{name}{ext}"
         
-        # Restoration Target Resolver (v5.6)
+        # 2026 Optimization: Return early if output already exists (SOTA High-Speed Skip)
+        if os.path.exists(str(out_img_path)):
+            return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
+
+        # Restoration Target Resolver (v5.7)
         target_img = None
         target_img_path = None
         if task in ["restoration", "super-resolution"]:
-            if "dped" in slug.lower() and not isinstance(img_input, (bytes, dict)):
-                # DPED Path Mirroring: iphone2canon/test/iphone/1.jpg -> iphone2canon/test/canon/1.jpg
-                p_str = str(img_path).replace("\\", "/")
-                if "/iphone/" in p_str: 
-                    tgt_p_str = p_str.replace("/iphone/", "/canon/")
+            # 2026 Resilience: Universal DPED Mirroring (v2.1)
+            p_str = str(img_path).replace("\\", "/")
+            for device_name in ["iphone", "sony", "blackberry"]:
+                # We check for the device folder precisely to avoid replacing parts of the slug (e.g. sony2canon)
+                needle = f"/{device_name}/"
+                if needle in p_str:
+                    tgt_p_str = p_str.replace(needle, "/canon/")
                     if DPED_CACHE:
-                        if tgt_p_str in DPED_CACHE: target_img_path = Path(tgt_p_str)
-                    elif os.path.exists(tgt_p_str): target_img_path = tgt_p_str
-                elif "/blackberry/" in p_str:
-                    tgt_p_str = p_str.replace("/blackberry/", "/canon/")
-                    if DPED_CACHE:
-                        if tgt_p_str in DPED_CACHE: target_img_path = Path(tgt_p_str)
-                    elif os.path.exists(tgt_p_str): target_img_path = tgt_p_str
-                elif "/sony/" in p_str:
-                    tgt_p_str = p_str.replace("/sony/", "/canon/")
-                    if DPED_CACHE:
-                        if tgt_p_str in DPED_CACHE: target_img_path = Path(tgt_p_str)
-                    elif os.path.exists(tgt_p_str): target_img_path = tgt_p_str
-        
-        # Resumption Check
-        if out_img_path.exists():
-            pass
+                        if tgt_p_str in DPED_CACHE: 
+                            target_img_path = tgt_p_str
+                    elif os.path.exists(tgt_p_str): 
+                        target_img_path = tgt_p_str
+                    break
 
         # 2026 High-Velocity Optimization: Defer image loading
         img = None
@@ -795,6 +790,14 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
 # ---------------- ORCHESTRATOR ----------------
 def process_dataset():
+    # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
+    if os.name == 'nt':
+        import signal
+        def signal_handler(sig, frame):
+            print("\n🛑 [INTERRUPT] Emergency termination requested. Mission aborted.")
+            os._exit(1)
+        signal.signal(signal.SIGINT, signal_handler)
+
     min_gb = META.get("global_constraints", {}).get("min_size_gb", 0.1)
     max_gb = args.max_gb if args.max_gb is not None else META.get("global_constraints", {}).get("max_size_gb", 50.0)
     prefix_str = META.get("name_prefix", "")
@@ -1042,6 +1045,14 @@ def process_dataset():
                         
                         name = f"{prefix}_{clean_slug(slug)}_{i:09d}"
                         if name in existing_names:
+                            continue
+                            
+                        # 2026 Resilience: Pre-emptive Disk Skip (SOTA v5.9)
+                        # Avoid worker submission entirely if the output file already exists.
+                        ext = os.path.splitext(str(img_path))[1].lower()
+                        if ext not in [".jpg", ".jpeg", ".png", ".webp"]: ext = ".jpg"
+                        check_path = os.path.join(output_root_str, "images", split, f"{name}{ext}")
+                        if os.path.exists(check_path):
                             continue
 
                         specific_ann_data = None
