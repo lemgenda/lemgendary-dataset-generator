@@ -215,11 +215,10 @@ def init_worker(config):
     from models.diffusion import CaptionSentry
     from models.encoder import CLIPManifold
 
-    # 2026 Resilience: Workers ignore SIGINT. 
-    # NOTE: Re-enabling stderr for SOTA v5.9.2 diagnostics
+    # 2026 Resilience: Workers ignore SIGINT to prevent traceback noise.
+    # The main process handles the interrupt and shuts down the executor.
     import signal
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    # sys.stderr = open(os.devnull, 'w') 
+    signal.signal(signal.SIGINT, signal.SIG_IGN) 
     import torch
     from PIL import ImageFile
     ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -475,61 +474,46 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         
         # Restoration Target Resolver (v5.6)
         target_img = None
+        target_img_path = None
         if task in ["restoration", "super-resolution"]:
             if "dped" in slug.lower() and not isinstance(img_input, (bytes, dict)):
                 # DPED Path Mirroring: iphone2canon/test/iphone/1.jpg -> iphone2canon/test/canon/1.jpg
                 p_str = str(img_path).replace("\\", "/")
                 if "/iphone/" in p_str: 
                     tgt_p_str = p_str.replace("/iphone/", "/canon/")
-                    if os.path.exists(tgt_p_str):
-                        target_img = Image.open(tgt_p_str)
+                    if os.path.exists(tgt_p_str): target_img_path = tgt_p_str
                 elif "/blackberry/" in p_str:
                     tgt_p_str = p_str.replace("/blackberry/", "/canon/")
-                    if os.path.exists(tgt_p_str):
-                        target_img = Image.open(tgt_p_str)
+                    if os.path.exists(tgt_p_str): target_img_path = tgt_p_str
                 elif "/sony/" in p_str:
                     tgt_p_str = p_str.replace("/sony/", "/canon/")
-                    if os.path.exists(tgt_p_str):
-                        target_img = Image.open(tgt_p_str)
-            
-            # If no specific paired target found, the clean image is the target (Synthetic Mode)
-            if target_img is None:
-                # We'll set a flag to save the clean 'img' as target later
-                pass
+                    if os.path.exists(tgt_p_str): target_img_path = tgt_p_str
         
         # Resumption Check
         if out_img_path.exists():
             pass
 
-        if not isinstance(img_input, (bytes, dict)):
-            if is_st:
-                # Safetensors representative image logic
-                img = None
-                for ext in [".jpg", ".png", ".webp"]:
-                    companion = img_path.with_suffix(ext)
-                    if companion.exists():
-                        img = Image.open(companion)
-                        break
-                
-                if img is None:
-                    # Create a placeholder image
-                    img = Image.new("RGB", (512, 512), color=(30, 30, 30))
-                    from PIL import ImageDraw
-                    draw = ImageDraw.Draw(img)
-                    draw.text((10, 250), f"MODEL: {img_path.stem}", fill=(200, 200, 200))
-            else:
-                img = Image.open(img_path)
-            
-        img = ensure_srgb(img)
-        if not is_st and task == "quality" and "laion" not in slug and "ava" not in slug:
-            if is_black_image(img): return None
+        # 2026 High-Velocity Optimization: Defer image loading
+        img = None
+        w, hgt = 0, 0
         
-        w, hgt = img.size
-        # For restoration and diffusion, we allow smaller patches (e.g. DPED 100x100)
-        min_dim = 64
-        if w < min_dim or hgt < min_dim: 
-            if idx < 5: print(f"DEBUG: {slug} skipped because size {w}x{hgt} < {min_dim}")
-            return None
+        # If we are in a task that requires image stats (vetting/labeling/resizing), we load now.
+        # Otherwise, we skip the PIL overhead entirely.
+        needs_stats = (task in ["quality", "diffusion"] and not args.no_vetting) or (not args.no_labeling)
+        
+        if needs_stats or isinstance(img_input, (bytes, dict)):
+            if not isinstance(img_input, (bytes, dict)):
+                img = Image.open(img_path)
+            else:
+                img = Image.open(io.BytesIO(img_data))
+            img = ensure_srgb(img)
+            w, hgt = img.size
+            if task == "quality" and "laion" not in slug and "ava" not in slug:
+                if is_black_image(img): return None
+            
+            # Dimension filter
+            min_dim = 64
+            if w < min_dim or hgt < min_dim: return None
 
         # NIMA Quality Logic: Prioritize Ground Truth over AI Guessing
         nima_score = 1.0
@@ -607,29 +591,30 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         
         # Save Output Image & Target
         if not out_img_path.exists():
-            # 2026 Optimization: Skip re-encode for restoration JPEGs to push > 100 it/s
-            needs_reencode = getattr(img, "was_converted", False) or (is_st and task not in ["restoration", "super-resolution"])
-            if not needs_reencode and isinstance(img_input, (str, Path)) and ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            # 2026 Optimization: Use raw OS copies if no re-encoding is needed
+            if not img and isinstance(img_input, (str, Path)):
                 import shutil
                 shutil.copy2(img_path, out_img_path)
-            elif not needs_reencode and isinstance(img_input, (bytes, dict)) and getattr(img, "format", "") in ["JPEG", "PNG", "WEBP"]:
-                with open(out_img_path, "wb") as f:
-                    f.write(img_data)
-            else:
+            elif img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 img.save(out_img_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+            elif isinstance(img_input, (bytes, dict)):
+                with open(out_img_path, "wb") as f:
+                    f.write(img_data)
         
         if task in ["restoration", "super-resolution"] and not out_tgt_path.exists():
-            if target_img:
-                target_img = ensure_srgb(target_img)
+            if target_img_path:
+                import shutil
+                shutil.copy2(target_img_path, out_tgt_path)
+            elif target_img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
             else:
                 # Synthetic Mode: Clean image is the target
-                if out_img_path.exists() and not getattr(img, "was_converted", False):
+                if out_img_path.exists():
                     import shutil
                     shutil.copy2(out_img_path, out_tgt_path)
-                else:
+                elif img:
                     save_fmt = "PNG" if ext == ".png" else "JPEG"
                     img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
         
@@ -853,6 +838,7 @@ def process_dataset():
         final_workers = 8
     
     max_workers = max(1, final_workers)
+    print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
     print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
     with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG,)) as executor:
         for model_key, model_config in DATASETS_META.items():
@@ -1156,9 +1142,13 @@ def process_dataset():
                                 break
                 except KeyboardInterrupt:
                     print("\n🛑 [INTERRUPT] Mission aborted by user. Performing emergency shutdown...")
-                    for f in futures: f.cancel()
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    # Force exit to prevent Windows threading lock
+                    # 2026 Resilience: Surgical process termination
+                    try:
+                        for f in futures: f.cancel()
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except: pass
+                    # Force exit to prevent Windows threading lock and subprocess ghosting
+                    import os
                     os._exit(1)
 
             conn.commit()

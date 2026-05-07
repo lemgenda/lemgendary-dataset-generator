@@ -1,29 +1,24 @@
-# --- LemGendary Dataset ecosystem (2026 Resilience) ---
-# Install with: pip install -r requirements.txt
-
---extra-index-url https://download.pytorch.org/whl/cu121
-
-# Core ML
-torch>=2.5.0
-torchvision>=0.20.0
-ultralytics>=8.3.0
-transformers>=4.40.0
-safetensors>=0.4.0
-
-# Data Management
-numpy>=2.0.0
-pandas>=2.2.0
-pyarrow>=15.0.0
-fastparquet>=2024.2.0
-webdataset>=1.0.0
-PyYAML>=6.0.0
-huggingface_hub>=0.23.0
-kaggle>=2.0.2
-
-# Utilities
-tqdm>=4.66.0
-requests>=2.31.0
-scipy>=1.13.0
-scikit-learn>=1.4.0
-pillow>=10.3.0
-python-slugify>=8.0.0
+--index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+transformers
+pillow
+numpy
+scikit-learn
+webdataset
+safetensors
+pyyaml
+opencv-python
+tqdm
+huggingface-hub
+tokenizers
+typer
+click
+anyio
+httpcore
+httpx
+shellingham
+annotated-doc
+regex
+hf-xet
+h11
