@@ -219,7 +219,8 @@ def init_worker(config, dped_cache=None):
     from models.encoder import CLIPManifold
 
     # 2026 Resilience: Workers ignore SIGINT to prevent traceback noise.
-    if os.name == 'nt':
+    # ONLY apply to sub-processes.
+    if os.name == 'nt' and multiprocessing.current_process().name != 'MainProcess':
         import signal
         signal.signal(signal.SIGINT, signal.SIG_IGN) 
     
@@ -436,11 +437,15 @@ def parse_safetensors(st_path):
 def batch_worker(tasks):
     """Executes a list of tasks in a single worker call to reduce IPC overhead."""
     results = []
-    for task_func, *args in tasks:
+    for i, (task_func, *args) in enumerate(tasks):
         try:
             results.append(task_func(*args))
         except Exception as e:
             results.append(None)
+    
+    # 2026 Pulse: Log completion for large batches to confirm worker health
+    if len(tasks) >= 50:
+        pass # print(f"✅ [PULSE] Batch of {len(tasks)} completed.")
     return results
 
 # ---------------- PROCESSORS ----------------
@@ -868,7 +873,20 @@ def process_dataset():
     max_workers = max(1, final_workers)
     print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
     print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
-    with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG, dped_canon_paths)) as executor:
+    
+    # 2026 Optimization: Switch to ThreadPoolExecutor if no AI models are active (SOTA v6.2)
+    # This bypasses the massive pickling overhead of sending 1.4M cache items through Windows IPC pipes.
+    ExecutorClass = ProcessPoolExecutor
+    if args.no_vetting and args.no_labeling:
+        from concurrent.futures import ThreadPoolExecutor
+        print("🚀 [I/O-GEAR] High-Speed Mode active. Using ThreadPoolExecutor for zero IPC overhead.")
+        ExecutorClass = ThreadPoolExecutor
+        init_worker(CONFIG, dped_canon_paths) # Initialize current process
+        executor = ExecutorClass(max_workers=max_workers)
+    else:
+        executor = ExecutorClass(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG, dped_canon_paths))
+        
+    with executor:
         for model_key, model_config in DATASETS_META.items():
             if args.model and model_key != args.model: continue
             
@@ -1136,17 +1154,23 @@ def process_dataset():
             desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
             
             # 2026 Optimization: Batching to reduce IPC overhead
-            BATCH_SIZE = 500 if args.no_vetting else 100
+            BATCH_SIZE = 100 if args.no_vetting else 50
             task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
             
-            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label) as pbar:
+            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
                 futures = set()
                 batch_iter = iter(task_batches)
                 
                 # Top up initial futures (Higher buffer for 12 workers)
-                for _ in range(min(max_workers * 2, len(task_batches))):
-                    batch = next(batch_iter)
-                    futures.add(executor.submit(batch_worker, batch))
+                num_initial = min(max_workers * 4, len(task_batches))
+                for _ in range(num_initial):
+                    try:
+                        batch = next(batch_iter)
+                        futures.add(executor.submit(batch_worker, batch))
+                    except StopIteration: break
+                
+                if num_initial > 0:
+                    print(f"📡 [QUEUED] {num_initial} batches submitted to {max_workers} workers.")
                 
                 try:
                     while futures:
