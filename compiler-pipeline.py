@@ -1148,7 +1148,6 @@ def process_dataset():
                         executor.shutdown(wait=False, cancel_futures=True)
                     except: pass
                     # Force exit to prevent Windows threading lock and subprocess ghosting
-                    import os
                     os._exit(1)
 
             conn.commit()
