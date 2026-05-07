@@ -209,10 +209,12 @@ def detect_task(model_dir_name):
     return "detection"
 
 DPED_CACHE = set()
+PHYSICAL_INDEX = set()
 
-def init_worker(config, dped_cache=None):
-    global SENTRY, LABELER, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE
+def init_worker(config, dped_cache=None, physical_index=None):
+    global SENTRY, LABELER, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX
     if dped_cache: DPED_CACHE = dped_cache
+    if physical_index: PHYSICAL_INDEX = physical_index
     # 2026 Modular Alignment: Local imports from encapsulated modules
     from models.quality_scorer import QualitySentry
     from models.detection import AutoLabeler
@@ -494,10 +496,14 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
         out_tgt_path = Path(output_root_str) / "targets" / split / f"{name}{ext}"
         
-        # 2026 Optimization: High-Speed Skip (Redundant but safe if worker state drifts)
-        # Note: We keep this but minimize its use. The main loop should have already skipped this.
-        # if os.path.exists(str(out_img_path)):
-        #    return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
+        # 2026 Optimization: High-Speed Skip (Using Worker-Global Physical Index)
+        # This eliminates the need for expensive os.path.exists() calls on 1.4M files.
+        if name in PHYSICAL_INDEX:
+            return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
+        
+        # Fallback for safety (Legacy)
+        if os.path.exists(str(out_img_path)):
+             return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
 
         # Restoration Target Resolver (v5.7)
         target_img = None
@@ -909,10 +915,10 @@ def process_dataset():
         from concurrent.futures import ThreadPoolExecutor
         print("🚀 [I/O-GEAR] High-Speed Mode active. Using ThreadPoolExecutor for zero IPC overhead.")
         ExecutorClass = ThreadPoolExecutor
-        init_worker(CONFIG, dped_canon_paths) # Initialize current process
+        init_worker(CONFIG, dped_canon_paths, set()) # Initialize with empty index first
         executor = ExecutorClass(max_workers=max_workers)
     else:
-        executor = ExecutorClass(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG, dped_canon_paths))
+        executor = ExecutorClass(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG, dped_canon_paths, set()))
         
     with executor:
         for model_key, model_config in DATASETS_META.items():
@@ -973,6 +979,10 @@ def process_dataset():
                                     if count % 100000 == 0:
                                         print(f"   -> Indexed {count // 1000}k files...", flush=True)
                     except OSError: pass
+                
+                # 2026 Warp-Speed: Inject physical index into worker globals
+                global PHYSICAL_INDEX
+                PHYSICAL_INDEX = existing_on_disk
                 print(f"✅ Physical scan complete: {len(existing_on_disk)} samples verified on disk.")
 
             sfw_tasks = []
