@@ -5,12 +5,12 @@ import argparse
 
 def generate_training_notebook(target_name, resolved_model, output_path):
     """
-    Generates a v16.1 Nuclear-Hardened Training Notebook for Kaggle.
+    Generates a v16.2 Nuclear-Hardened Training Notebook for Kaggle.
     Includes SOTA synchronization, zero-smudge initialization, and hardware-sentinel.
     """
     pascal_model_name = resolved_model.replace("_", " ").title().replace(" ", "")
     
-    # --- Section Logic: v16.1 Nuclear Orchestration ---
+    # --- Section Logic: v16.2 Nuclear Orchestration ---
     
     hardware_sentinel_source = [
         "import torch, sys\n",
@@ -152,33 +152,30 @@ def generate_training_notebook(target_name, resolved_model, output_path):
     ]
 
     kaggle_push_source = [
-        "import os, subprocess, sys\n",
-        "try:\n",
-        "    import base64 as _b64\n",
-        "    _k = 'a2Fn' + 'Z2xlX' + '3NlY3' + 'JldHM='\n",
-        "    _m = __import__(_b64.b64decode(_k).decode())\n",
-        "    _c = getattr(_m, 'UserS' + 'ecrets' + 'Client')()\n",
-        "    os.environ['KAGGLE_USERNAME'] = _c.get_secret('KAGGLE_USERNAME')\n",
-        "    os.environ['KAGGLE_KEY'] = _c.get_secret('KAGGLE_KEY')\n",
-        "    print('✅ [AUTH] Kaggle API Credentials mounted.')\n",
-        "except: print('⚠️ [AUTH] Kaggle Secrets not found. Push skipped.')\n",
-        "\n",
-        "if os.environ.get('KAGGLE_KEY'):\n",
-        "    from kaggle.api.kaggle_api_extended import KaggleApi\n",
-        "    api = KaggleApi()\n",
-        "    api.authenticate()\n",
-        "    \n",
-        f"    model_key = '{resolved_model}'\n",
-        "    model_id = f'lemtreursi/lemgendary-{model_key.replace(\"_\", \"-\")}-checkpoints'\n",
-        f"    local_path = '/kaggle/working/persistence/Lemgendary_{resolved_model.replace('_', ' ').title().replace(' ', '_')}_Checkpoints'\n",
-        "    \n",
-        "    if os.path.exists(local_path):\n",
-        "        print(f'🚀 [KAGGLE] Pushing updated manifold to {model_id}...')\n",
-        "        # 2026: Atomic Push via Kaggle API\n",
-        "        # Note: This creates a new version of the existing model artifact\n",
-        "        api.model_instance_version_create_batch(model_id, local_path, 'v16.2 Nuclear-Hardened Sync', 'pytorch', 'default')\n",
-        "        print('✅ [SOTA] Persistence Sync Complete.')\n",
-        "    else: print(f'⚠️ [ERROR] Local manifold not found at {local_path}')\n"
+        'import os, shutil, subprocess\n',
+        'try:\n',
+        '    import base64 as _b64\n',
+        '    _k = \"a2Fn\" + \"Z2xlX\" + \"3NlY3\" + \"JldHM=\"\n',
+        '    _m = __import__(_b64.b64decode(_k).decode())\n',
+        '    _c = getattr(_m, \"UserS\" + \"ecrets\" + \"Client\")()\n',
+        '    os.environ[\"KAGGLE_USERNAME\"] = _c.get_secret(\"KAGGLE_USERNAME\")\n',
+        '    os.environ[\"KAGGLE_KEY\"] = _c.get_secret(\"KAGGLE_KEY\")\n',
+        '    print(\"\\u2705 [AUTH] Kaggle API Credentials mounted.\")\n',
+        'except: print(\"\\u26a0\\ufe0f [AUTH] Kaggle Secrets not found. Push skipped.\")\n',
+        '\n',
+        'if os.environ.get(\"KAGGLE_KEY\"):\n',
+        '    import kagglehub\n',
+        '    \n',
+        '    model_key = \"' + resolved_model + '\"\n',
+        '    model_handle = f\"lemgenda/{model_key.replace(\'_\', \'-\')}-checkpoints/pytorch/default\"\n',
+        '    local_path = f\"/kaggle/working/persistence/Lemgendary_{model_key.title().replace(\'_\', \'_\')}_Checkpoints\"\n',
+        '    \n',
+        '    if os.path.exists(local_path):\n',
+        '        print(f\"\\ud83d\\ude80 [KAGGLE] Pushing updated manifold to {model_handle}...\")\n',
+        '        # 2026: Atomic Push via KaggleHub (Nuclear-Hardened v16.2)\n',
+        '        kagglehub.model_upload(model_handle, local_path, version_notes=\"v16.2 Nuclear-Hardened Sync\")\n',
+        '        print(\"\\u2705 [SOTA] Persistence Sync Complete.\")\n',
+        '    else: print(f\"\\u26a0\\ufe0f [ERROR] Local manifold not found at {local_path}\")\n'
     ]
 
     persistence_source = [
@@ -208,7 +205,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "cells": [
             {
                 "cell_type": "markdown",
-                "source": [f"# LemGendary Manifold Training: {target_name} ({resolved_model})\n", "v16.1 Nuclear-Hardened Orchestrator.\n"],
+                "source": [f"# LemGendary Manifold Training: {target_name} ({resolved_model})\n", "v16.2 Nuclear-Hardened Orchestrator.\n"],
                 "metadata": {}
             },
             {
@@ -291,7 +288,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
 
     with open(output_path, "w", encoding='utf-8') as f:
         json.dump(notebook_content, f, indent=4)
-    print(f"[OK] Generated v16.1 Nuclear Notebook: {output_path}")
+    print(f"[OK] Generated v16.2 Nuclear Notebook: {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
