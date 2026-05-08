@@ -76,6 +76,7 @@ parser.add_argument("--suffix", type=str, default=None, help="Override suffix")
 parser.add_argument("--workers", type=int, default=DEFAULT_CONFIG["num_workers"], help="Number of parallel workers")
 parser.add_argument("--reduce", action="store_true", help="Start in Reduce mode")
 parser.add_argument("--cleanup", action="store_true", help="Start in Cleanup mode")
+parser.add_argument("--finalize", action="store_true", help="Only run sharding/readme for existing registry")
 parser.add_argument("--no-vetting", action="store_true", help="Disable NIMA quality gate (Pass-Through mode)")
 parser.add_argument("--no-labeling", action="store_true", help="Disable YOLO auto-labeling (High-Speed mode)")
 parser.add_argument("--no-hash", action="store_true", help="Disable deduplication hash for maximum I/O speed.")
@@ -203,6 +204,8 @@ def detect_task(model_dir_name):
     if any(k in name for k in ["seg", "mask", "parsenet"]): return "segmentation"
     if any(k in name for k in ["pose", "face", "codeformer"]): return "pose"
     if any(k in name for k in ["nima", "aesthetic", "quality"]): return "quality"
+    if any(k in name for k in ["classify", "authentic", "authenticity"]): return "classification"
+    if any(k in name for k in ["vlm", "vision_language"]): return "diffusion" # Use diffusion logic for VLM quality
     if any(k in name for k in ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]): return "super-resolution"
     if any(k in name for k in ["restorer", "enhance", "upn", "lowlight", "exposure", "deraining", "debluring", "denoising", "haze", "restoration", "ffanet", "mirnet", "mprnet", "nafnet"]): 
         return "restoration"
@@ -232,8 +235,12 @@ def init_worker(config, dped_cache=None, physical_index=None):
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     # CRITICAL: Prevent multiprocessing thread thrashing on CPU
-    if torch.__version__ >= "2.0.0":
-        torch.set_num_threads(1)
+    # ONLY apply in ProcessPool mode to avoid ThreadPool deadlocks
+    if os.name != 'nt' or multiprocessing.current_process().name != 'MainProcess':
+        try:
+            import torch
+            torch.set_num_threads(1)
+        except: pass
     
     # 2026 Resilience: Multi-processing with PyTorch on Windows CUDA causes severe deadlocks 
     # and OOMs if multiple workers allocate GPU memory concurrently on a single 4GB card.
@@ -457,12 +464,16 @@ def batch_worker(tasks):
             results.append(None)
     
     # 2026 Pulse: Log completion for large batches to confirm worker health
-    # Using a process-safe approach for ThreadPool counters
+    import threading
+    if not hasattr(batch_worker, '_lock'): batch_worker._lock = threading.Lock()
     if not hasattr(batch_worker, 'counter'): batch_worker.counter = 0
-    batch_worker.counter += 1
-    if batch_worker.counter <= 5 or batch_worker.counter % 20 == 0:
-        # High-frequency pulse for the first 5 batches to confirm "Life Sign"
-        print(f"📡 [HEARTBEAT] Worker pulse: Batch {batch_worker.counter} successfully synchronized.", flush=True)
+    
+    with batch_worker._lock:
+        batch_worker.counter += 1
+        curr_count = batch_worker.counter
+    
+    if curr_count <= 5 or curr_count % 20 == 0:
+        print(f"📡 [HEARTBEAT] Worker pulse: Batch {curr_count} successfully synchronized.", flush=True)
         
     return results
 
@@ -532,7 +543,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
 
         # 2026 High-Velocity Optimization: Defer image loading
         # Only load if we are in a task that requires image stats (vetting/labeling/resizing).
-        needs_stats = (task in ["quality", "diffusion"] and not args.no_vetting) or (not args.no_labeling)
+        needs_stats = (task in ["quality", "diffusion"] and not args.no_vetting) or (not skip_labeling)
         
         if needs_stats:
             if not isinstance(img_input, (bytes, dict)):
@@ -624,8 +635,10 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         
         # Save Output Image & Target
         # 2026 Resilience: Hardlink-First Acceleration (v7.1)
-        if not os.path.exists(str(out_img_path)):
-            # 2026 Resilience: Fast-Pass Skip if we know it should be there but isn't (Disk inconsistency)
+        # Trust PHYSICAL_INDEX to avoid expensive os.path.exists directory lookups on millions of files
+        is_already_on_disk = PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX
+        
+        if not is_already_on_disk:
             if not img and isinstance(img_input, (str, Path)):
                 try:
                     # Attempt Hardlink (Instant, zero I/O)
@@ -737,27 +750,31 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             if annotations: is_autolabeled = True
 
         # Write Label File
+        # 2026 Optimization: Skip empty label files for restoration tasks to reduce I/O churn
         label_file_path = Path(output_root_str) / "labels" / split / f"{name}.txt"
-        with open(label_file_path, "w") as f:
-            if task == "quality":
-                f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
-            elif task == "classification":
-                # AI = 0, Human/Real = 1
-                p_lower = str(img_path).lower()
-                class_label = 0 if any(k in p_lower for k in ['fake', 'ai', 'synthetic']) else 1
-                f.write(str(class_label) + "\n")
-            else:
-                for ann in annotations:
-                    cls = ann["cls"]
-                    data = ann["data"]
-                    if ann["type"] == "bbox":
-                        yolo = convert_bbox_xywh_to_yolo(data, w, hgt)
-                        f.write(f"{cls} {' '.join(map(str,yolo))}\n")
-                    elif ann["type"] == "segmentation":
-                        f.write(f"{cls} {' '.join(map(str,data))}\n")
-                    elif ann["type"] == "pose":
-                        yolo_box = convert_bbox_xywh_to_yolo(data[:4], w, hgt)
-                        f.write(f"{cls} {' '.join(map(str,yolo_box))} {' '.join(map(str,data[4:]))}\n")
+        has_annotations = len(annotations) > 0 or task in ["quality", "classification"]
+        
+        if not skip_labeling or has_annotations:
+            with open(label_file_path, "w", encoding="utf-8") as f:
+                if task == "quality":
+                    f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
+                elif task == "classification":
+                    # AI = 0, Human/Real = 1
+                    p_lower = str(img_path).lower()
+                    class_label = 0 if any(k in p_lower for k in ['fake', 'ai', 'synthetic']) else 1
+                    f.write(str(class_label) + "\n")
+                elif annotations:
+                    for ann in annotations:
+                        cls = ann["cls"]
+                        data = ann["data"]
+                        if ann["type"] == "bbox":
+                            yolo = convert_bbox_xywh_to_yolo(data, w, hgt)
+                            f.write(f"{cls} {' '.join(map(str,yolo))}\n")
+                        elif ann["type"] == "segmentation":
+                            f.write(f"{cls} {' '.join(map(str,data))}\n")
+                        elif ann["type"] == "pose":
+                            yolo_box = convert_bbox_xywh_to_yolo(data[:4], w, hgt)
+                            f.write(f"{cls} {' '.join(map(str,yolo_box))} {' '.join(map(str,data[4:]))}\n")
 
         # Result Meta
         size_bytes = 0
@@ -1215,84 +1232,87 @@ def process_dataset():
             from concurrent.futures import wait, FIRST_COMPLETED
             desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
             
-            # 2026 Optimization: Batching to reduce IPC overhead
-            BATCH_SIZE = 100 if args.no_vetting else 50
-            task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
-            
-            pbar = None
-            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
-                futures = set()
-                batch_iter = iter(task_batches)
+            if not args.finalize:
+                # 2026 Optimization: Batching to reduce IPC overhead
+                BATCH_SIZE = 100 if args.no_vetting else 50
+                task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
                 
-                # Top up initial futures (Higher buffer for 12 workers)
-                num_initial = min(max_workers * 4, len(task_batches))
-                for _ in range(num_initial):
-                    try:
-                        batch = next(batch_iter)
-                        futures.add(executor.submit(batch_worker, batch))
-                    except StopIteration: break
-                
-                if num_initial > 0:
-                    print(f"📡 [QUEUED] {num_initial} batches submitted to {max_workers} workers.")
-                
-                try:
-                    while futures:
-                        done, futures = wait(futures, return_when=FIRST_COMPLETED)
-                        batch_entries = []
-                        for future in done:
-                            try:
-                                batch_results = future.result()
-                                pbar.update(len(batch_results))
-                                
-                                for res in batch_results:
-                                    if res:
-                                        if CONFIG["enable_dedup"] and not args.no_hash and res["hash"] in seen_hashes: continue
-                                        if res["hash"]: seen_hashes.add(res["hash"])
-                                        
-                                        compiled_bytes += res.get("size", 0)
-                                        
-                                        # Prepare for Bulk Ingestion
-                                        batch_entries.append((
-                                            res["name"], res["source"], res["task"], res["split"], res["hash"], 
-                                            res["nima_score"], res.get("caption"), res.get("style_tag"), 
-                                            res.get("clip_latent"), res.get("img_bytes")
-                                        ))
-                                        
-                                        processed_count += 1
-                                        if (compiled_bytes / (1024**3)) >= max_gb:
-                                            print(f"\n⚠️  [LIMIT] Reached {max_gb:.2f}GB. Halting.")
-                                            for f in futures: f.cancel()
-                                            futures.clear()
-                                            break
-                            except Exception as e:
-                                print(f"[ERROR] Worker Error: {e}")
-                        
-                        # High-Speed Bulk Ingestion (v8.1)
-                        if batch_entries:
-                            conn.executemany("""
-                                INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, batch_entries)
-                            if processed_count % 1000 == 0:
+                pbar = None
+                with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
+                    # --- 2026 Resilience: SAFE-START WARMUP (SOTA v6.3) ---
+                    warmup_limit = min(500, len(all_tasks))
+                    if warmup_limit > 0:
+                        print(f"🛡️ [SAFE-START] Warming up manifold (Serial Pass: {warmup_limit} samples)...")
+                        for i in range(warmup_limit):
+                            task_args = all_tasks[i]
+                            res = task_args[0](*task_args[1:])
+                            pbar.update(1)
+                            if res:
+                                batch_entries = [(
+                                    res["name"], res["source"], res["task"], res["split"], res["hash"], 
+                                    res["nima_score"], res.get("caption"), res.get("style_tag"), 
+                                    res.get("clip_latent"), res.get("img_bytes")
+                                )]
+                                conn.executemany("""
+                                    INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, batch_entries)
+                            if i % 100 == 99:
                                 conn.commit()
-                                if args.no_vetting: print(f"📡 [REGISTRY] {processed_count} entries committed.", flush=True)
-                        
-                        # Top up the queue with more batches
-                        for _ in range(len(done)):
-                            try:
-                                batch = next(batch_iter)
-                                futures.add(executor.submit(batch_worker, batch))
-                            except StopIteration:
-                                break
-                except KeyboardInterrupt:
-                    print("\n🛑 [INTERRUPT] Mission aborted by user. Performing emergency shutdown...")
-                    # 2026 Resilience: Surgical process termination
+                        print(f"✅ [SAFE-START] Warmup complete. Engaging Parallel Matrix.")
+
+                    remaining_tasks = all_tasks[warmup_limit:]
+                    task_batches = [remaining_tasks[i:i + BATCH_SIZE] for i in range(0, len(remaining_tasks), BATCH_SIZE)]
+                    
+                    futures = set()
+                    batch_iter = iter(task_batches)
+                    
+                    num_initial = min(max_workers * 4, len(task_batches))
+                    for _ in range(num_initial):
+                        try:
+                            batch = next(batch_iter)
+                            futures.add(executor.submit(batch_worker, batch))
+                        except StopIteration: break
+                    
                     try:
-                        for f in futures: f.cancel()
-                        executor.shutdown(wait=False, cancel_futures=True)
-                    except: pass
-                    # Force exit to prevent Windows threading lock and subprocess ghosting
-                    os._exit(1)
+                        while futures:
+                            done, futures = wait(futures, return_when=FIRST_COMPLETED)
+                            batch_entries = []
+                            for future in done:
+                                try:
+                                    batch_results = future.result()
+                                    pbar.update(len(batch_results))
+                                    for res in batch_results:
+                                        if res:
+                                            if CONFIG["enable_dedup"] and not args.no_hash and res["hash"] in seen_hashes: continue
+                                            if res["hash"]: seen_hashes.add(res["hash"])
+                                            compiled_bytes += res.get("size", 0)
+                                            batch_entries.append((
+                                                res["name"], res["source"], res["task"], res["split"], res["hash"], 
+                                                res["nima_score"], res.get("caption"), res.get("style_tag"), 
+                                                res.get("clip_latent"), res.get("img_bytes")
+                                            ))
+                                            processed_count += 1
+                                            if (compiled_bytes / (1024**3)) >= max_gb:
+                                                for f in futures: f.cancel()
+                                                futures.clear()
+                                                break
+                                except Exception as e: print(f"[ERROR] Worker Error: {e}")
+                            
+                            if batch_entries:
+                                conn.executemany("""
+                                    INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, batch_entries)
+                                conn.commit()
+                            
+                            for _ in range(len(done)):
+                                try:
+                                    batch = next(batch_iter)
+                                    futures.add(executor.submit(batch_worker, batch))
+                                except StopIteration: break
+                    except KeyboardInterrupt:
+                        os._exit(1)
 
             conn.commit()
             
@@ -1328,6 +1348,7 @@ def process_dataset():
             
             unique_sources = [r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()]
             
+            final_index = []
             for source in unique_sources:
                 shard_name = f"{prefix_str}{source}{suffix_str}.tar"
                 print(f"[SHARD] Writing {shard_name}...")
@@ -1344,15 +1365,15 @@ def process_dataset():
                                 "txt": res["caption"],
                                 "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
                             })
-                        index.append(res)
+                        final_index.append(res)
             
             with open(output_root / "index.json", "w", encoding="utf-8") as f:
-                json.dump(index, f, indent=2)
+                json.dump(final_index, f, indent=2)
             
-            generate_metadata_files(output_root, index, pascal_name)
+            generate_metadata_files(output_root, final_index, pascal_name)
             generate_readme(output_root)
             generate_kaggle_notebook(output_root, pascal_name, model_key)
-            print(f"[SUCCESS] v5.0 Ascension Complete: {len(index)} samples compiled for {pascal_name}.")
+            print(f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for {pascal_name}.")
 
 # ---------------- GENERATORS ----------------
 def generate_metadata_files(output_root, index, prefix):

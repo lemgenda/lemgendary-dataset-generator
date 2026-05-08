@@ -168,10 +168,13 @@ function Show-Stats {
             $IdxPath = Join-Path $Lat.FullName 'index.json'
             if (Test-Path $IdxPath) {
                 try {
-                    $Txt = [System.IO.File]::ReadAllText($IdxPath)
-                    $Djson = $Txt | ConvertFrom-Json
-                    $Cnt = $Djson.Count
-                    Write-Host ('  [STATS] Latest: ' + $Lat.Name + ' | Total: ' + $Cnt) -ForegroundColor Cyan
+                    # 2026 Optimization: Bypassing PowerShell's ConvertFrom-Json for massive manifolds (1.4M+ items)
+                    # Python's JSON parser is 100x faster and won't crash the shell memory buffer.
+                    $IdxFixed = $IdxPath.Replace('\', '/')
+                    $Cnt = & $Vpy -c "import json; print(len(json.load(open(r'$IdxFixed', encoding='utf-8'))))"
+                    if ($Cnt) {
+                        Write-Host ("  [STATS] Latest: " + $Lat.Name + " | Total: " + $Cnt) -ForegroundColor Cyan
+                    }
                 } catch { }
             }
         }
@@ -572,8 +575,13 @@ while ($true) {
     if ($Host.Name -eq 'ConsoleHost') { Clear-Host } else { Write-Host "`n`n`n" }
     Write-Host '--- LEMGENDARY DATASETS HUB v5.2 ---' -ForegroundColor Yellow
     
-    $CudaStatus = & $Vpy -c "import torch; print('OK' if torch.cuda.is_available() else 'OFF')"
-    if ($CudaStatus -notmatch "OK") {
+    # 2026 Resilience: Use cached CUDA status to prevent 5-second menu delays
+    if ($null -eq $global:CudaReady) {
+        $CudaStatus = & $Vpy -c "import torch; print('OK' if torch.cuda.is_available() else 'OFF')"
+        $global:CudaReady = ($CudaStatus -match "OK")
+    }
+    
+    if (!$global:CudaReady) {
         Write-Host "[SYSTEM] NO CUDA DETECTED! AI tasks will run on CPU (SLOW)." -ForegroundColor Red
     } else {
         Write-Host "[SYSTEM] CUDA READY (GPU Accelerated)" -ForegroundColor Green
