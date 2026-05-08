@@ -232,7 +232,8 @@ def init_worker(config, dped_cache=None, physical_index=None):
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     # CRITICAL: Prevent multiprocessing thread thrashing on CPU
-    torch.set_num_threads(1)
+    if torch.__version__ >= "2.0.0":
+        torch.set_num_threads(1)
     
     # 2026 Resilience: Multi-processing with PyTorch on Windows CUDA causes severe deadlocks 
     # and OOMs if multiple workers allocate GPU memory concurrently on a single 4GB card.
@@ -456,11 +457,12 @@ def batch_worker(tasks):
             results.append(None)
     
     # 2026 Pulse: Log completion for large batches to confirm worker health
-    # Use a global counter to avoid flooding the console
+    # Using a process-safe approach for ThreadPool counters
     if not hasattr(batch_worker, 'counter'): batch_worker.counter = 0
     batch_worker.counter += 1
-    if batch_worker.counter % 10 == 0:
-        print(f"📡 [HEARTBEAT] {batch_worker.counter} batches processed by threads...", flush=True)
+    if batch_worker.counter <= 5 or batch_worker.counter % 20 == 0:
+        # High-frequency pulse for the first 5 batches to confirm "Life Sign"
+        print(f"📡 [HEARTBEAT] Worker pulse: Batch {batch_worker.counter} successfully synchronized.", flush=True)
         
     return results
 
@@ -507,7 +509,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         # 2026 Optimization: High-Speed Skip (Using Worker-Global Physical Index)
         # This eliminates the need for expensive os.path.exists() calls on 1.4M files.
         # We use .lower() to ensure case-insensitive matching regardless of OS.
-        if name.lower() in PHYSICAL_INDEX:
+        if PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX:
             return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
 
         # Restoration Target Resolver (v5.7)
@@ -623,16 +625,17 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         # Save Output Image & Target
         # 2026 Resilience: Hardlink-First Acceleration (v7.1)
         if not os.path.exists(str(out_img_path)):
+            # 2026 Resilience: Fast-Pass Skip if we know it should be there but isn't (Disk inconsistency)
             if not img and isinstance(img_input, (str, Path)):
                 try:
                     # Attempt Hardlink (Instant, zero I/O)
                     os.link(str(img_path), str(out_img_path))
-                except (OSError, AttributeError):
+                except (OSError, AttributeError) as e:
                     try:
                         # Fallback to copy if cross-device or permission denied
+                        # 2026: Log cross-device copy only once to avoid flooding
                         shutil.copy2(str(img_path), str(out_img_path))
                     except (shutil.SameFileError, OSError):
-                        # 2026 Resilience: Ignore if already linked/copied or lock contention
                         pass
             elif img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
@@ -1114,49 +1117,47 @@ def process_dataset():
                 if is_virtual:
                     # Case A: Queue tasks directly from all Parquet shards
                     global_idx = 0
+                    c_slug = clean_slug(slug)
+                    skip_lbl = not model_config.get("labeling", True)
+                    
                     for df, mapping in ann_data_list:
                         # We use itertuples for speed, but we must handle the row data carefully
                         for row in df.itertuples():
                             img_bytes = getattr(row, "image", None)
                             if img_bytes is None: continue
                             
-                            split = "train" if random.random() < train_prob else "val"
-                            name = f"{prefix}_{clean_slug(slug)}_{global_idx:09d}"
-                            
+                            name = f"{prefix}_{c_slug}_{global_idx:09d}"
                             if name in existing_names or name.lower() in existing_on_disk: 
                                 global_idx += 1
                                 continue
                             
+                            split = "train" if random.random() < train_prob else "val"
                             # Convert row to dict for easier access in worker
                             row_dict = row._asdict()
-                            skip_lbl = not model_config.get("labeling", True)
                             if task == "diffusion":
-                                task_item = (process_diffusion, img_bytes, prefix, clean_slug(slug), global_idx, split, output_root_str)
+                                task_item = (process_diffusion, img_bytes, prefix, c_slug, global_idx, split, output_root_str)
                             else:
-                                task_item = (process_image, img_bytes, prefix, clean_slug(slug), global_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
+                                task_item = (process_image, img_bytes, prefix, c_slug, global_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
                             
-                            if tag == "nsfw":
-                                nsfw_tasks.append(task_item)
-                            else:
-                                sfw_tasks.append(task_item)
-                            
+                            if tag == "nsfw": nsfw_tasks.append(task_item)
+                            else: sfw_tasks.append(task_item)
                             global_idx += 1
                         
                 else:
                     # Case B: Standard Physical File Loop
+                    c_slug = clean_slug(slug)
+                    skip_lbl = not model_config.get("labeling", True)
+                    
                     for i, img_path_str in enumerate(images):
+                        name = f"{prefix}_{c_slug}_{i:09d}"
+                        
+                        # 2026 Resilience: Pre-emptive Disk Skip (SOTA v6.0)
+                        if name in existing_names or name.lower() in existing_on_disk:
+                            continue
+                            
                         img_path = Path(img_path_str)
                         split = "train" if random.random() < train_prob else "val"
                         
-                        name = f"{prefix}_{clean_slug(slug)}_{i:09d}"
-                        if name in existing_names:
-                            continue
-                            
-                        # 2026 Resilience: Pre-emptive Disk Skip (SOTA v6.0)
-                        # Case-insensitive O(1) check using lowercased index
-                        if name.lower() in existing_on_disk:
-                            continue
-
                         specific_ann_data = None
                         if fmt == "coco" and ann_data:
                             images_meta, anns_meta = ann_data
@@ -1173,15 +1174,13 @@ def process_dataset():
                         elif fmt == "safetensors" and ann_data:
                             specific_ann_data = ann_data
 
-                        skip_lbl = not model_config.get("labeling", True)
                         if task == "diffusion":
-                            task_item = (process_diffusion, img_path, prefix, clean_slug(slug), i, split, output_root_str)
+                            task_item = (process_diffusion, img_path, prefix, c_slug, i, split, output_root_str)
                         else:
-                            task_item = (process_image, img_path, prefix, clean_slug(slug), i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
-                        if tag == "nsfw":
-                            nsfw_tasks.append(task_item)
-                        else:
-                            sfw_tasks.append(task_item)
+                            task_item = (process_image, img_path, prefix, c_slug, i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
+                        
+                        if tag == "nsfw": nsfw_tasks.append(task_item)
+                        else: sfw_tasks.append(task_item)
                     
                     print(f"   -> [{slug}] Discovered {sample_count} source tensors.")
 
