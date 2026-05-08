@@ -1,20 +1,23 @@
-# LemGendary Dataset Pipeline (v6.2.0-Hardened)
+# LemGendary Dataset Pipeline (v16.2.0-NUCLEAR-HARDENED)
 
 > **The Industrial Standard for Generative & Vision Data Synthesis.**
 >
-> Elevate from static sharding to a **Self-Optimizing Generative Manifold**. Orchestrate massive-scale Diffusion and YOLO datasets with industrial-grade CLIP styling, multi-domain balancing, interactive dynamic compilation, and SQLite persistence.
+> Elevate from static sharding to a **Self-Optimizing Generative Manifold**. Orchestrate massive-scale Diffusion and YOLO datasets with industrial-grade CLIP styling, multi-domain balancing, interactive dynamic compilation, and high-velocity **Nuclear-Hardened v16.2** performance.
 
 ---
 
-## ⚡ v6.2 SOTA Tier: Production Hardening & Batch Orchestration
+## ⚡ v16.2 SOTA Tier: Nuclear Performance & Resilience
 
-The v6.2 release transforms the pipeline into a high-throughput **Production Engine**, adding automated batch reduction, mathematical split enforcement, and high-fidelity source provenance tracking.
+The v16.2 release introduces the **Nuclear-Hardened Compiler**, optimized for processing 1.4M+ item manifolds with zero IPC overhead and O(1) traversal velocity.
 
-### 🎯 Interactive Orchestrator Dashboard (v6.2)
-- **High-Throughput [REDUCE]**: New `'a'` (All) option allows automated sequential downsampling of all `Large` manifolds into `KaggleReady` variants in a single execution.
-- **Mathematical Split Enforcement**: Transitioned from fixed ratios to **Physical Truth Scanning**. The compiler now computes `train_prob` based on the real-time state of the source manifold, ensuring perfect 95/5 or 90/10 disjoint splits.
-- **[ACQUIRE] Logic**: Deep-recursive discovery for Hugging Face, Kaggle, and **GitHub** (`gh://`) sources, now supporting nested structures (e.g., DPED trees).
-- **[CLEANUP] Guardian**: Improved dependency tracking to prevent the purging of raw sources currently being used by active compilation tasks.
+### 🚀 High-Velocity Optimizations
+- **O(1) Physical Skip-Indexing**: Transitioned from slow `Path` object traversals to string-based `os.scandir` logic. This enables the compiler to skip already-processed samples with near-zero latency, even on massive 1M+ item manifolds.
+- **ThreadPoolExecutor Migration**: Replaced high-latency multiprocessing with a streamlined `ThreadPoolExecutor` model, eliminating IPC serialization bottlenecks and maximizing throughput on NVMe hardware.
+- **1.4M Sample Stability**: Hardened the `compiler-pipeline` to handle the absolute scale of the `UpnV2Large` manifold, maintaining absolute parity between physical files and SQLite metadata.
+
+### 🛰️ Hybrid Cloud Deployment
+- **KaggleHub Integration**: Automated synchronization of compiled manifolds to Kaggle via the `kagglehub` API, enabling seamless transition from local compilation to cloud-native training.
+- **Atomic Manifests**: Auto-generated READMEs and `dataset_info.yaml` packages are optimized for direct upload and model tracking in the LemGendary ecosystem.
 
 ### 💎 Multi-Modal & Format Resilience
 - **Expanded Format Support**: Native ingestion of **TIFF**, **TIF**, and **BMP** tensors for scientific and satellite restoration tasks.
@@ -93,13 +96,14 @@ python compiler-pipeline.py --reduce       # Start sampling engine
 
 ---
 
-## 📂 Industrial Output Topology (Decoupled Architecture)
+## 📂 Industrial Output Topology (Nuclear Architecture)
 - `raw-sets/` (Source datasets - Protected by Cleanup Guardian)
 - `../LemGendaryDatasets/<name>/images/` (Standard structured folders for Restoration)
 - `../LemGendaryDatasets/<name>/parquet/` (Highly compressed pyarrow binaries for Generative)
 - `../LemGendaryDatasets/<name>/labels/` (10-bin probability vectors)
 - `../LemGendaryDatasets/<name>/dataset_info.yaml` (Suite Metadata)
 - `../LemGendaryDatasets/<name>/manifold_registry.db` (Persistent SQLite metadata)
+- `../LemGendaryDatasets/<name>/README.md` (Kaggle-Optimized Manifest)
 
 ---
 **LemGendary AI Suite | Advanced Agentic Coding 2026**

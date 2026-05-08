@@ -31,13 +31,26 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "    _c = getattr(_m, 'UserS' + 'ecrets' + 'Client')()\n",
         "    import os as _os\n",
         "    # 2026: Restore PAT mounting for authenticated suite clones\n",
-        "    g_pat = _c.get_secret('GITHUB_PAT')\n",
-        "    s_pat = _c.get_secret('SUITE_PAT')\n",
+        "    g_pat = None\n",
+        "    s_pat = None\n",
+        "    try: g_pat = _c.get_secret('GITHUB_PAT')\n",
+        "    except: pass\n",
+        "    try: s_pat = _c.get_secret('SUITE_PAT')\n",
+        "    except: pass\n",
+        "    \n",
         "    if g_pat: _os.environ['GITHUB_PAT'] = g_pat\n",
         "    if s_pat: _os.environ['SUITE_PAT'] = s_pat\n",
-        "    if g_pat or s_pat: print(f'✅ [AUTH] Kaggle Secrets mounted: {\"SUITE_PAT \" if s_pat else \"\"}{\"GITHUB_PAT\" if g_pat else \"\"}')\n",
-        "    else: print('⚠️ [AUTH] No PATs found in Kaggle Secrets.')\n",
-        "except Exception as e: print(f'⚠️ [AUTH] Secret mounting failed: {e}')\n"
+        "    \n",
+        "    if g_pat or s_pat:\n",
+        "        active = []\n",
+        "        if s_pat: active.append('SUITE_PAT')\n",
+        "        if g_pat: active.append('GITHUB_PAT')\n",
+        "        print(f'✅ [AUTH] Kaggle Secrets mounted: {\", \".join(active)}')\n",
+        "    else:\n",
+        "        print('❌ [CRITICAL] No PATs found in Kaggle Secrets! Private repositories will fail to clone.')\n",
+        "        print('👉 Tip: Go to Add-ons -> Secrets and add SUITE_PAT and GITHUB_PAT.')\n",
+        "except Exception as e:\n",
+        "    print(f'❌ [ERROR] Secret mounting failed: {e}')\n"
     ]
 
     clone_source = [
@@ -46,10 +59,11 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "suite_path = '/kaggle/working/lemgendary-training-suite'\n",
         "pat = os.environ.get('SUITE_PAT', os.environ.get('GITHUB_PAT', ''))\n",
         "if pat:\n",
+        "    # Use x-access-token for more reliable auth with fine-grained tokens\n",
+        "    auth_url = repo_url.replace('https://', f'https://x-access-token:{pat}@')\n",
         "    print(f'🔑 [AUTH] Using {\"SUITE_PAT\" if os.environ.get(\"SUITE_PAT\") else \"GITHUB_PAT\"} for cloning...')\n",
-        "    auth_url = repo_url.replace('https://', f'https://{pat}@')\n",
         "else:\n",
-        "    print('⚠️ [AUTH] No PAT found. Attempting public clone...')\n",
+        "    print('⚠️ [AUTH] No PAT found in environment. Attempting public clone (will fail for private repos)...')\n",
         "    auth_url = repo_url\n",
         "\n",
         "env = os.environ.copy()\n",
@@ -58,8 +72,13 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "if not os.path.exists(suite_path):\n",
         "    print('🚀 [SUITE] Initializing LemGendary Training Suite...')\n",
         "    res = subprocess.run(['git', 'clone', auth_url, suite_path], capture_output=True, text=True, env=env)\n",
-        "    if res.returncode == 0: print('✅ [OK] Suite cloned.')\n",
-        "    else: print(f'❌ [ERROR] Clone failed: {res.stderr}')\n",
+        "    if res.returncode == 0: \n",
+        "        print('✅ [OK] Suite cloned.')\n",
+        "    else: \n",
+        "        print(f'❌ [ERROR] Clone failed: {res.stderr}')\n",
+        "        if '403' in res.stderr or '401' in res.stderr:\n",
+        "            print('💡 Troubleshooting: Your PAT might lack \"Contents: Read\" permission for this repository.')\n",
+        "            print('💡 Also ensure the token is valid and not expired.')\n",
         "else:\n",
         "    print('✅ [OK] Suite resident. Syncing origin and pulling latest...')\n",
         "    subprocess.run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=suite_path, env=env)\n",
@@ -190,8 +209,11 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "import os, subprocess, sys\n",
         "os.chdir('/kaggle/working/lemgendary-training-suite')\n",
         f"print(f'🚀 [NUCLEAR] Initiating Training Matrix for {resolved_model}...')\n",
-        f"cmd = [sys.executable, 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle', '--auto-sync']\n",
-        "subprocess.run(cmd)\n"
+        f"cmd = [sys.executable, 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle', '--auto_sync']\n",
+        "try:\n",
+        "    subprocess.run(cmd)\n",
+        "except KeyboardInterrupt:\n",
+        "    print('\\n🛑 [TERMINATED] Training interrupted by user.')\n"
     ]
 
     notebook_content = {
@@ -280,14 +302,56 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         ]
     }
 
+    export_dir = os.path.dirname(output_path)
+    output_path = os.path.join(export_dir, f"{resolved_model}_training.ipynb")
     with open(output_path, "w", encoding='utf-8') as f:
         json.dump(notebook_content, f, indent=4)
     print(f"[OK] Generated v16.2 Nuclear Notebook: {output_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, required=True)
-    parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--output", type=str, required=True)
+    import yaml
+    parser = argparse.ArgumentParser(description="LemGendary Dataset Notebook Orchestrator (v16.2 Nuclear)")
+    parser.add_argument("--dataset", type=str, help="Dataset key for single notebook generation.")
+    parser.add_argument("--model", type=str, help="Model key for single notebook generation.")
+    parser.add_argument("--all", action="store_true", help="Regenerate the entire Training Notebook Matrix for all datasets.")
+    parser.add_argument("--output", type=str, help="Override output path (for single) or export root (for all).")
     args = parser.parse_args()
-    generate_training_notebook(args.dataset, args.model, args.output)
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    registry_path = os.path.join(base_dir, "unified_data.yaml")
+    
+    with open(registry_path, "r") as f:
+        registry = yaml.safe_load(f)
+    
+    datasets = registry.get("datasets", {})
+    export_root = args.output if args.output else os.path.abspath(os.path.join(base_dir, "../LemGendaryModels"))
+
+    if args.all:
+        print(f"[NUCLEAR] Initiating Global Dataset Notebook Refresh for {len(datasets)} manifolds...")
+        prefix = registry.get("_registry_metadata", {}).get("name_prefix", "")
+        suffix = registry.get("_registry_metadata", {}).get("name_suffix", "")
+        
+        for d_key, d_info in datasets.items():
+            target_name = d_info.get("name", d_key)
+            pascal_name = d_info.get("name", d_key.replace("_", " ").title().replace(" ", ""))
+            folder_name = f"{prefix}{pascal_name}{suffix}"
+            
+            # 1. Models Hub Export
+            m_dir = os.path.join(export_root, d_key)
+            os.makedirs(m_dir, exist_ok=True)
+            m_output = os.path.join(m_dir, f"{d_key}_training.ipynb")
+            generate_training_notebook(target_name, d_key, m_output)
+            
+            # 2. Datasets Hub Export (Dual-Persistence)
+            d_hub_root = os.path.abspath(os.path.join(base_dir, "../LemGendaryDatasets"))
+            d_dir = os.path.join(d_hub_root, folder_name)
+            os.makedirs(d_dir, exist_ok=True)
+            d_output = os.path.join(d_dir, f"{d_key}_training.ipynb")
+            generate_training_notebook(target_name, d_key, d_output)
+            
+        print("\n[SUCCESS] Dataset Notebook Matrix Synchronized.")
+    elif args.dataset and args.model and args.output:
+        generate_training_notebook(args.dataset, args.model, args.output)
+    else:
+        parser.print_help()
+        exit(1)
