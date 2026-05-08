@@ -30,17 +30,14 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "    _m = __import__(_b64.b64decode(_k).decode())\n",
         "    _c = getattr(_m, 'UserS' + 'ecrets' + 'Client')()\n",
         "    import os as _os\n",
-        "    for p in ['SUITE_PAT', 'GITHUB_PAT']:\n",
-        "        try: _os.environ[p] = _c.get_secret(p)\n",
-        "        except: pass\n",
-        "    print('✅ [AUTH] PATs mounted from Kaggle Secrets.')\n",
-        "except: print('⚠️ [AUTH] No Kaggle Secrets found. Ensure GITHUB_PAT is set if repo is private.')\n"
+        "    # 2026: Removed GITHUB_PAT/SUITE_PAT mounting as Git commits are disabled from Kaggle\n",
+        "    print('✅ [AUTH] Kaggle Secrets parsed (Commit-Sync Disabled).')\n",
+        "except: print('⚠️ [AUTH] No Kaggle Secrets found.')\n"
     ]
 
     clone_source = [
         "import os, subprocess, shutil\n",
-        "pat = os.environ.get('SUITE_PAT', os.environ.get('GITHUB_PAT', ''))\n",
-        "repo_url = f'https://{pat}@github.com/lemgenda/lemgendary-training-suite.git'\n",
+        "repo_url = 'https://github.com/lemgenda/lemgendary-training-suite.git'\n",
         "suite_path = '/kaggle/working/lemgendary-training-suite'\n",
         "\n",
         "if not os.path.exists(suite_path):\n",
@@ -63,8 +60,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "import os, shutil, subprocess\n",
         "hub_root = '/kaggle/working/LemGendaryModels'\n",
         "HUB_USER, HUB_REPO = 'lemgenda', 'lemgendary-pretrained-models'\n",
-        "pat = os.environ.get('GITHUB_PAT', '')\n",
-        "hub_url = f'https://{pat}@github.com/{HUB_USER}/{HUB_REPO}.git'\n",
+        "hub_url = f'https://github.com/{HUB_USER}/{HUB_REPO}.git'\n",
         "env = os.environ.copy()\n",
         "env['GIT_LFS_SKIP_SMUDGE'] = '1'\n",
         "\n",
@@ -78,7 +74,6 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "    else: print(f'⚠️ [HUB] Clone failed: {res.stderr.strip()}')\n",
         "else: \n",
         "    print('🔄 [HUB] Syncing hub structure...')\n",
-        "    subprocess.run(['git', 'remote', 'set-url', 'origin', hub_url], cwd=hub_root)\n",
         "    subprocess.run(['git', 'pull', 'origin', 'main'], cwd=hub_root, env=env)\n",
         "    print('✅ [OK] Hub Structure Synced.')\n"
     ]
