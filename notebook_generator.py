@@ -30,24 +30,33 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "    _m = __import__(_b64.b64decode(_k).decode())\n",
         "    _c = getattr(_m, 'UserS' + 'ecrets' + 'Client')()\n",
         "    import os as _os\n",
-        "    # 2026: Removed GITHUB_PAT/SUITE_PAT mounting as Git commits are disabled from Kaggle\n",
-        "    print('✅ [AUTH] Kaggle Secrets parsed (Commit-Sync Disabled).')\n",
-        "except: print('⚠️ [AUTH] No Kaggle Secrets found.')\n"
+        "    # 2026: Restore PAT mounting for authenticated suite clones\n",
+        "    _os.environ['GITHUB_PAT'] = _c.get_secret('GITHUB_PAT')\n",
+        "    _os.environ['SUITE_PAT'] = _c.get_secret('SUITE_PAT')\n",
+        "    print('✅ [AUTH] Kaggle Secrets (GITHUB_PAT/SUITE_PAT) mounted.')\n",
+        "except Exception as e: print(f'⚠️ [AUTH] Secret mounting failed: {e}')\n"
     ]
 
     clone_source = [
         "import os, subprocess, shutil\n",
         "repo_url = 'https://github.com/lemgenda/lemgendary-training-suite.git'\n",
         "suite_path = '/kaggle/working/lemgendary-training-suite'\n",
+        "pat = os.environ.get('GITHUB_PAT')\n",
+        "if pat: auth_url = repo_url.replace('https://', f'https://{pat}@')\n",
+        "else: auth_url = repo_url\n",
+        "\n",
+        "env = os.environ.copy()\n",
+        "env['GIT_TERMINAL_PROMPT'] = '0'\n",
         "\n",
         "if not os.path.exists(suite_path):\n",
         "    print('🚀 [SUITE] Initializing LemGendary Training Suite...')\n",
-        "    res = subprocess.run(['git', 'clone', repo_url, suite_path], capture_output=True, text=True)\n",
+        "    res = subprocess.run(['git', 'clone', auth_url, suite_path], capture_output=True, text=True, env=env)\n",
         "    if res.returncode == 0: print('✅ [OK] Suite cloned.')\n",
         "    else: print(f'❌ [ERROR] Clone failed: {res.stderr}')\n",
         "else:\n",
-        "    print('✅ [OK] Suite resident. Pulling latest...')\n",
-        "    subprocess.run(['git', 'pull'], cwd=suite_path)\n"
+        "    print('✅ [OK] Suite resident. Syncing origin and pulling latest...')\n",
+        "    subprocess.run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=suite_path, env=env)\n",
+        "    subprocess.run(['git', 'pull'], cwd=suite_path, env=env)\n"
     ]
 
     install_source = [
