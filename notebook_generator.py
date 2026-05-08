@@ -57,35 +57,15 @@ def generate_training_notebook(target_name, resolved_model, output_path):
     ]
 
     hub_prep_source = [
-        "import os, shutil, subprocess\n",
-        "hub_root = '/kaggle/working/LemGendaryModels'\n",
-        "HUB_USER, HUB_REPO = 'lemgenda', 'lemgendary-pretrained-models'\n",
-        "hub_url = f'https://github.com/{HUB_USER}/{HUB_REPO}.git'\n",
-        "env = os.environ.copy()\n",
-        "env['GIT_LFS_SKIP_SMUDGE'] = '1'\n",
-        "\n",
-        "print('🛸 [HUB] Preparing SOTA Checkpoint Repository...')\n",
-        "if not os.path.exists(os.path.join(hub_root, '.git')):\n",
-        "    if os.path.exists(hub_root): shutil.rmtree(hub_root, ignore_errors=True)\n",
-        "    print(f'🚀 [HUB] Initializing shallow hub structure from {HUB_REPO}...')\n",
-        "    # 2026: Use blob filtering AND skip smudge to bypass LFS quota during initialization\n",
-        "    res = subprocess.run(['git', 'clone', '--depth', '1', '--filter=blob:none', hub_url, hub_root], env=env, capture_output=True, text=True)\n",
-        "    if res.returncode == 0: print('✅ [OK] Hub Structure Initialized.')\n",
-        "    else: print(f'⚠️ [HUB] Clone failed: {res.stderr.strip()}')\n",
-        "else: \n",
-        "    print('🔄 [HUB] Syncing hub structure...')\n",
-        "    subprocess.run(['git', 'pull', 'origin', 'main'], cwd=hub_root, env=env)\n",
-        "    print('✅ [OK] Hub Structure Synced.')\n"
-    ]
-
-    lfs_source = [
-        "import subprocess\n",
+        "import os\n",
         "hub_root = '/kaggle/working/LemGendaryModels'\n",
         f"model_key = '{resolved_model}'\n",
-        "print(f'📦 [SOTA] Hydrating surgical manifold for {model_key}...')\n",
-        "subprocess.run(['git', 'lfs', 'install'], cwd=hub_root)\n",
-        "subprocess.run(['git', 'lfs', 'pull', '--include', f'{model_key}/checkpoints/*.pth'], cwd=hub_root)\n",
-        "print('✅ [OK] Model Binaries Ready.')\n"
+        "model_dir = os.path.join(hub_root, model_key)\n",
+        "ckpt_dir = os.path.join(model_dir, 'checkpoints')\n",
+        "\n",
+        "print(f'🛸 [HUB] Initializing Lean Manifold for {model_key}...')\n",
+        "os.makedirs(ckpt_dir, exist_ok=True)\n",
+        "print(f'✅ [OK] Manifold structure ready at {model_dir}')\n"
     ]
 
     data_resolution_source = [
@@ -122,33 +102,36 @@ def generate_training_notebook(target_name, resolved_model, output_path):
     ]
 
     checkpoint_recovery_source = [
-        "import os, shutil\n",
+        "import os, shutil, glob\n",
         f"model_key = '{resolved_model}'\n",
-        "print(f'📡 [RECOVERY] Searching for persistent checkpoints for {model_key}...')\n",
-        "search_target = f'lemgendary_{model_key}_checkpoints'.lower().replace('-', '_')\n",
-        "possible_roots = []\n",
-        "for r, dirs, _ in os.walk('/kaggle/input'):\n",
-        "    for d in dirs:\n",
-        "        if search_target in d.lower().replace('-', '_'):\n",
-        "            possible_roots.append(os.path.join(r, d))\n",
-        "if possible_roots:\n",
-        "    recovery_root = sorted(possible_roots, key=lambda x: x.count(os.sep), reverse=True)[0]\n",
-        "    print(f'   -> [FOUND] Recovery manifold at: {recovery_root}')\n",
-        "    # Sync metrics.csv\n",
-        "    src_m = os.path.join(recovery_root, 'metrics.csv')\n",
-        "    if os.path.exists(src_m):\n",
-        "        shutil.copy2(src_m, '/kaggle/working/lemgendary-training-suite/metrics.csv')\n",
-        "        print('   -> [OK] Recovered metrics.csv')\n",
-        "    # Sync checkpoints\n",
-        "    src_c = os.path.join(recovery_root, 'checkpoints')\n",
-        "    dst_c = '/kaggle/working/lemgendary-training-suite/checkpoints'\n",
-        "    os.makedirs(dst_c, exist_ok=True)\n",
-        "    if os.path.exists(src_c):\n",
-        "        for f in os.listdir(src_c):\n",
-        "            if f.endswith('.pth'):\n",
-        "                shutil.copy2(os.path.join(src_c, f), os.path.join(dst_c, f))\n",
-        "                print(f'   -> [OK] Recovered {f}')\n",
-        "else: print('   -> [SKIP] No persistent checkpoints manifold found.')\n"
+        "print(f'📡 [RECOVERY] Searching for SOTA checkpoints for {model_key}...')\n",
+        "hub_root = '/kaggle/working/LemGendaryModels'\n",
+        "model_hub_dir = os.path.join(hub_root, model_key)\n",
+        "ckpt_hub_dir = os.path.join(model_hub_dir, 'checkpoints')\n",
+        "os.makedirs(ckpt_hub_dir, exist_ok=True)\n",
+        "\n",
+        "# 1. Search for Kaggle Model Artifacts (/kaggle/input/**/checkpoints/*.pth)\n",
+        "search_pattern = f'/kaggle/input/**/checkpoints/{model_key}*.pth'\n",
+        "found_ckpts = glob.glob(search_pattern, recursive=True)\n",
+        "\n",
+        "if found_ckpts:\n",
+        "    print(f'   -> [FOUND] {len(found_ckpts)} binaries in Kaggle Input.')\n",
+        "    for src in found_ckpts:\n",
+        "        fname = os.path.basename(src)\n",
+        "        dst = os.path.join(ckpt_hub_dir, fname)\n",
+        "        if not os.path.exists(dst) or os.path.getsize(src) > os.path.getsize(dst):\n",
+        "            shutil.copy2(src, dst)\n",
+        "            print(f'   -> [OK] Recovered {fname}')\n",
+        "    \n",
+        "    # 2. Recover metrics.csv if it exists in the same model folder\n",
+        "    for src in found_ckpts:\n",
+        "        metrics_src = os.path.join(os.path.dirname(os.path.dirname(src)), 'metrics.csv')\n",
+        "        if os.path.exists(metrics_src):\n",
+        "            shutil.copy2(metrics_src, os.path.join(model_hub_dir, 'metrics.csv'))\n",
+        "            shutil.copy2(metrics_src, '/kaggle/working/lemgendary-training-suite/metrics.csv')\n",
+        "            print('   -> [OK] Recovered metrics.csv (Audit Trail Synced)')\n",
+        "            break\n",
+        "else: print('   -> [SKIP] No existing checkpoints found in Kaggle Inputs.')\n"
     ]
 
     kaggle_push_source = [
@@ -191,7 +174,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "import os, subprocess, sys\n",
         "os.chdir('/kaggle/working/lemgendary-training-suite')\n",
         f"print(f'🚀 [NUCLEAR] Initiating Training Matrix for {resolved_model}...')\n",
-        f"cmd = [sys.executable, 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle']\n",
+        f"cmd = [sys.executable, 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle', '--auto-sync']\n",
         "subprocess.run(cmd)\n"
     ]
 
@@ -231,11 +214,6 @@ def generate_training_notebook(target_name, resolved_model, output_path):
             {
                 "cell_type": "code",
                 "source": hub_prep_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "code",
-                "source": lfs_source,
                 "metadata": {}, "outputs": [], "execution_count": None
             },
             {

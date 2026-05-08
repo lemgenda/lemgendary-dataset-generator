@@ -357,16 +357,13 @@ def initialize_registry(db_path):
 
 def clean_slug(slug):
     sl = slug.lower()
-    if "laion-5b" in sl: return "laion-5b"
+    # 2026: Only collapse known massive multi-part manifolds
     if "laion" in sl: return "laion"
     if "ava" in sl: return "ava"
     if "aadb" in sl: return "aadb"
     if "ffhq" in sl: return "ffhq"
-    if "coco" in sl: return "coco"
-    if "flickr" in sl: return "flickr"
-    if any(k in sl for k in ["sidd", "smartphone", "dnd", "nam", "9-classes", "multi-noise", "salt-and-pepper", "iso-levels", "gopro", "hideblur", "realblur"]):
-        return sl
-    return slug.split('-')[0]
+    # For all other specialized SOTA sets, preserve full slug to prevent name collisions
+    return slug.replace(".tar.gz", "").replace(".tgz", "").replace(".zip", "")
 
 def map_category(cat_name_or_id, source_name):
     # If it's a number, we might need source-specific ID mapping (TODO: load mapping catalogs)
