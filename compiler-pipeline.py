@@ -385,11 +385,19 @@ class ShardWriter:
 def detect_annotations(path):
     path = Path(path)
     # 2026 Resilience: Multi-format annotation discovery
-    for f in path.rglob("*.json"):
+    # 2026 Optimization: Avoid recursive rglob on 1.4M folders; check common top-level locations
+    for f in path.glob("*.json"):
         if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
-    for f in path.rglob("*.parquet"): return "parquet", f
-    for f in path.rglob("*.mat"): return "matlab", f
-    for f in path.rglob("*.safetensors"): return "safetensors", f
+    for f in path.glob("*.parquet"): return "parquet", f
+    for f in path.glob("*.mat"): return "matlab", f
+    
+    # Check one level deeper for common structures (e.g. annotations/instances.json)
+    for sub in [path / "annotations", path / "labels", path / "metadata"]:
+        if sub.exists():
+            for f in sub.glob("*.json"):
+                if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
+            for f in sub.glob("*.parquet"): return "parquet", f
+    
     return None, None
 
 
@@ -485,9 +493,9 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             img_path = Path(f"virtual_{slug}_{idx:09d}.jpg")
             is_st = False
         else:
-            img_path = img_input
-            if not img_path.exists(): return None
-            is_st = img_path.suffix.lower() == ".safetensors"
+            img_path_str = str(img_input)
+            img_path = Path(img_path_str)
+            is_st = img_path_str.lower().endswith(".safetensors")
             
         ext = img_path.suffix.lower() if isinstance(img_input, (str, Path)) else ".jpg"
         if ext not in [".jpg", ".jpeg", ".png", ".webp"]: ext = ".jpg"
@@ -498,12 +506,9 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         
         # 2026 Optimization: High-Speed Skip (Using Worker-Global Physical Index)
         # This eliminates the need for expensive os.path.exists() calls on 1.4M files.
-        if name in PHYSICAL_INDEX:
+        # We use .lower() to ensure case-insensitive matching regardless of OS.
+        if name.lower() in PHYSICAL_INDEX:
             return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
-        
-        # Fallback for safety (Legacy)
-        if os.path.exists(str(out_img_path)):
-             return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
 
         # Restoration Target Resolver (v5.7)
         target_img = None
@@ -911,6 +916,12 @@ def process_dataset():
     max_workers = max(1, final_workers)
     print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
     print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
+
+    # 2026 Resilience: Mechanical Drive / Seek-Contention Detection
+    if max_workers > 4 and args.no_vetting and args.no_labeling:
+        print("⚠️  [I/O-GEAR] WARNING: High worker count detected for I/O-bound task.")
+        print("   -> On mechanical HDDs, this will cause SEVERE thrashing (seeking contention).")
+        print("   -> If performance is < 10it/s, restart with --workers 2 or 4.")
     
     # 2026 Optimization: Switch to ThreadPoolExecutor if no AI models are active (SOTA v6.2)
     # This bypasses the massive pickling overhead of sending 1.4M cache items through Windows IPC pipes.
@@ -988,8 +999,7 @@ def process_dataset():
                 global PHYSICAL_INDEX
                 PHYSICAL_INDEX = existing_on_disk
                 print(f"✅ Physical scan complete: {len(existing_on_disk)} samples verified on disk.")
-                if existing_on_disk:
-                    print(f"DEBUG: Sample index entries: {list(existing_on_disk)[:5]}")
+
 
             sfw_tasks = []
             nsfw_tasks = []
@@ -1039,10 +1049,17 @@ def process_dataset():
 
                 valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp"}
                 images = []
-                for root, _, files in os.walk(dataset):
-                    for f in files:
-                        if os.path.splitext(f)[1].lower() in valid_exts:
-                            images.append(Path(root) / f)
+                # 2026 Warp-Speed: Use os.scandir and string paths to avoid 1.4M Path object overhead
+                def fast_scan(path):
+                    for entry in os.scandir(path):
+                        if entry.is_dir():
+                            yield from fast_scan(entry.path)
+                        elif entry.is_file():
+                            ext = entry.name[entry.name.rfind('.'):].lower()
+                            if ext in valid_exts:
+                                yield entry.path
+
+                images = list(fast_scan(str(dataset)))
                 
                 
                 # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
@@ -1127,7 +1144,8 @@ def process_dataset():
                         
                 else:
                     # Case B: Standard Physical File Loop
-                    for i, img_path in enumerate(images):
+                    for i, img_path_str in enumerate(images):
+                        img_path = Path(img_path_str)
                         split = "train" if random.random() < train_prob else "val"
                         
                         name = f"{prefix}_{clean_slug(slug)}_{i:09d}"
@@ -1136,8 +1154,6 @@ def process_dataset():
                             
                         # 2026 Resilience: Pre-emptive Disk Skip (SOTA v6.0)
                         # Case-insensitive O(1) check using lowercased index
-                        if "001260109" in name:
-                             print(f"DEBUG: Checking {name.lower()} in index: {name.lower() in existing_on_disk}")
                         if name.lower() in existing_on_disk:
                             continue
 
@@ -1162,9 +1178,6 @@ def process_dataset():
                             task_item = (process_diffusion, img_path, prefix, clean_slug(slug), i, split, output_root_str)
                         else:
                             task_item = (process_image, img_path, prefix, clean_slug(slug), i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
-                            
-                        if "001260109" in name:
-                             print(f"DEBUG: Adding {name} to tasks list")
                         if tag == "nsfw":
                             nsfw_tasks.append(task_item)
                         else:

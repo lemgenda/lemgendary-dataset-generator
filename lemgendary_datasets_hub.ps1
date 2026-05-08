@@ -252,6 +252,11 @@ function Test-MissingDatasets {
         $InfoPath = Join-Path $ManifoldPath "dataset_info.yaml"
         
         # 2026: Check if the FULL manifold exists locally or on Kaggle mirror
+        if ($SkipIfCompiled -and (Test-Path $InfoPath)) {
+            Write-Host "  [OK] $Slug manifold verified locally." -ForegroundColor Green
+            continue
+        }
+
         $kagRef = $ds_info.kaggle_ref
         if ($kagRef) {
             $Stat = Get-RefStatus -Ref $kagRef -SharedPath $Raw -KaggleRef $kagRef
@@ -578,6 +583,7 @@ while ($true) {
     Write-Host '1. [ACQUIRE] Pull remote datasets' -ForegroundColor Gray
     Write-Host '2. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
     Write-Host '3. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
+    Write-Host '4. [SYNC]    Push compiled manifold to Kaggle' -ForegroundColor Gray
     Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
     $I = Read-Host 'Selection'
     if ($I -eq '1') { Start-Acquisition }
@@ -651,10 +657,49 @@ while ($true) {
         Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
         & $Vpy compiler-pipeline.py --cleanup
     }
-    elseif ($I -eq '3') {
-        & $Vpy compiler-pipeline.py --reduce
-        if ($LASTEXITCODE -ne 0) {
-            Read-Host "Press Enter to return to menu"
+    elseif ($I -eq '4') {
+        $RegData = Get-RegData
+        $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
+        
+        Write-Host "`n--- SELECT MANIFOLD TO SYNC TO KAGGLE ---" -ForegroundColor Cyan
+        for ($i=0; $i -lt $DatasetNames.Count; $i++) {
+            Write-Host "$($i+1). $($DatasetNames[$i])"
+        }
+        $Sel = Read-Host "Selection"
+        $Idx = [int]$Sel - 1
+        if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
+            $tm = $DatasetNames[$Idx]
+            $ds_info = $RegData.datasets.$tm
+            $Slug = $ds_info.name
+            $Prefix = $RegData._registry_metadata.name_prefix
+            $Suffix = $RegData._registry_metadata.name_suffix
+            $ManifoldName = $Prefix + $Slug + $Suffix
+            $ManifoldPath = Join-Path $Out $ManifoldName
+            
+            if (!(Test-Path $ManifoldPath)) {
+                Write-Host "  [ERROR] Compiled manifold not found at $ManifoldPath" -Fore Red
+                Read-Host "Press Enter to return"
+                continue
+            }
+            
+            $KagHandle = $ds_info.kaggle_ref
+            if (!$KagHandle) {
+                $KagHandle = Read-Host "Enter Kaggle Dataset Handle (e.g. username/dataset-name)"
+            } else {
+                $KagHandle = $KagHandle.Replace("kaggle://", "")
+                Write-Host "  [INFO] Target Kaggle Handle: $KagHandle" -ForegroundColor Gray
+            }
+            
+            if ($KagHandle) {
+                Write-Host "`n🚀 [SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
+                & $Vpy $kagManagerPath --action upload --repo_id $KagHandle --output_dir $ManifoldPath 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✅ [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
+                } else {
+                    Write-Host "❌ [SYNC] Synchronization failed." -ForegroundColor Red
+                }
+            }
+            Read-Host "Press Enter to return"
         }
     }
     elseif ($I -match '^q') { break }

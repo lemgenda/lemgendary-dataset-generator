@@ -22,3 +22,5 @@ annotated-doc
 regex
 hf-xet
 h11
+kaggle
+kagglehub
