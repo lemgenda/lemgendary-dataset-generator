@@ -1597,7 +1597,7 @@ def generate_kaggle_notebook(output_root, target_name, model_key=None):
     if "naf_net" in resolved_model: resolved_model = resolved_model.replace("naf_net", "nafnet")
     if "upn_v_2" in resolved_model: resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
 
-    gen_nb(target_name, resolved_model, output_root / f"{target_name.lower()}_training_notebook.ipynb")
+    gen_nb(target_name, resolved_model, output_root / f"{resolved_model}_training.ipynb")
 
 
 
