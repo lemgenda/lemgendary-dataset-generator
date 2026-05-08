@@ -2,8 +2,12 @@
 import os
 import sys
 
-# 2026 Resilience: Silence Intel MKL/Fortran and Windows SIGINT clutter
+# 2026 Resilience: Force UTF-8 encoding for Windows console support (Prevents UnicodeEncodeError)
 if os.name == 'nt':
+    import sys
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
     os.environ["FOR_DISABLE_CONSOLE_CTRL_HANDLER"] = "1"
     os.environ["FOR_IGNORE_EXCEPTIONS"] = "1"
 
@@ -334,11 +338,11 @@ def normalize_points(points, w, h, stride=2):
 
 # ---------------- REGISTRY ----------------
 def initialize_registry(db_path):
-    conn = sqlite3.connect(db_path, timeout=60.0) # Increased timeout for heavy IPC contention
-    # 2026 Ultra-Optimization: Exclusive locking for maximum RAID throughput
+    conn = sqlite3.connect(db_path, timeout=60.0)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=OFF") # Maximum throughput
+    conn.execute("PRAGMA synchronous=NORMAL") # Balanced for resilience and speed
     conn.execute("PRAGMA cache_size=100000")
+    conn.execute("PRAGMA temp_store=MEMORY")
     # 2026 Resilience: We store BLOBs for latents and bytes for rapid Pass-2 retrieval
     conn.execute("""
         CREATE TABLE IF NOT EXISTS registry (
