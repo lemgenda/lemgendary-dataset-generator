@@ -1,4 +1,5 @@
 $Env:PYTHONUTF8 = "1"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'

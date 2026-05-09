@@ -101,7 +101,7 @@ datasets:
     refs:
     - ref: kaggle://balraj98/indoor-training-set-its-residestandard
     - ref: kaggle://kmljts/reside-6k
-    - ref: kaggle://rajat95gupta/indoor-haze-dataset
+    - ref: kaggle://adipuli2004/dehazing-and-desmoking
   ffanet_outdoor:
     name: FfaNetOutdoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoorlarge
@@ -109,7 +109,7 @@ datasets:
     refs:
     - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
     - ref: kaggle://litheshshetty/nh-haze
-    - ref: kaggle://rajat95gupta/outdoor-haze
+    - ref: kaggle://akashdaiict/ntire20202021ohaze
     - ref: kaggle://litheshshetty/ohaze-dataset
   mirnet_lowlight:
     name: MirNetLowLight
