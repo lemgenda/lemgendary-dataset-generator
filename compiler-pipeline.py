@@ -1832,6 +1832,32 @@ def reduce_dataset():
         generate_kaggle_notebook(target_root, target_name)
         print(f"\n✅ [SUCCESS] Reduced manifold created at {target_root.name}")
 
+def purge_ghost_manifolds():
+    """
+    2026 Ghost Manifold Audit (v1.0).
+    Identifies and removes folders containing only notebooks with no manifold data.
+    """
+    print("\n👻 [GHOST-AUDIT] Scanning for empty manifold folders in LemGendaryDatasets...")
+    ghosts = []
+    if not OUT_PARENT.exists(): return
+    for item in OUT_PARENT.iterdir():
+        if not item.is_dir() or item.name == ".git": continue
+        # Marker Check: A real manifold must have data or an index
+        has_data = any((item / d).exists() for d in ["images", "shards", "index.json", "dataset_info.yaml"])
+        if not has_data:
+            ghosts.append(item)
+    
+    if ghosts:
+        print(f"  [FOUND] {len(ghosts)} ghost folders identified.")
+        for g in ghosts:
+            try:
+                shutil.rmtree(g)
+                print(f"  [PURGED] {g.name}")
+            except Exception as e:
+                print(f"  [ERROR] Failed to purge {g.name}: {e}")
+    else:
+        print("  [OK] No ghost manifolds detected.")
+
 def smart_cleanup():
     """
     2026 Intelligent Janitor (v6.0).
@@ -1840,7 +1866,8 @@ def smart_cleanup():
     that consume it in unified_data.yaml.
     """
     if not INPUT_ROOT.exists():
-        print("🛡️ No raw sources found. Cleanup unnecessary.")
+        print("🛡️ No raw sources found. Proceeding to Ghost Audit...")
+        purge_ghost_manifolds()
         return
 
     print("\n🧹 [JANITOR] Evaluating source dataset redundancy...")
@@ -1884,7 +1911,8 @@ def smart_cleanup():
             protected.append((slug, f"Needed by: {', '.join(unsatisfied_models)}"))
 
     if not safe_to_purge:
-        print("✅ All raw sources are currently required for pending compilations. Nothing to purge.")
+        print("✅ All raw sources are currently required. Proceeding to Ghost Audit...")
+        purge_ghost_manifolds()
         return
 
     print("\n📦 [SAFE TO PURGE] The following raw sources are fully compiled and not needed elsewhere:")
@@ -1911,6 +1939,9 @@ def smart_cleanup():
         print("\n🧹 [JANITOR] Cleanup complete.")
     else:
         print("\n🛡️ Cleanup aborted. Sources preserved.")
+        
+    # Always finalize with Ghost Audit
+    purge_ghost_manifolds()
 
 def cleanup_sources():
     print("\n🧹 [CLEANUP] Evaluating source dataset redundancy...")

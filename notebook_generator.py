@@ -350,12 +350,8 @@ if __name__ == "__main__":
             m_output = os.path.join(m_dir, f"{d_key}_training.ipynb")
             generate_training_notebook(target_name, d_key, m_output)
             
-            # 2. Datasets Hub Export (Dual-Persistence)
-            d_hub_root = os.path.abspath(os.path.join(base_dir, "../LemGendaryDatasets"))
-            d_dir = os.path.join(d_hub_root, folder_name)
-            os.makedirs(d_dir, exist_ok=True)
-            d_output = os.path.join(d_dir, f"{d_key}_training.ipynb")
-            generate_training_notebook(target_name, d_key, d_output)
+            # 2026 Resilience: Removed automatic Dual-Persistence from global refresh.
+            # Notebooks should only be created in LemGendaryDatasets after physical compilation.
             
         print("\n[SUCCESS] Dataset Notebook Matrix Synchronized.")
     elif args.dataset and args.model and args.output:
