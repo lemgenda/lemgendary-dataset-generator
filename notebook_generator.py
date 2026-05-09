@@ -193,8 +193,8 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         '    import kagglehub\n',
         '    \n',
         '    model_key = \"' + resolved_model + '\"\n',
-        '    model_handle = f\"lemgenda/{model_key.replace(\'_\', \'-\')}/pyTorch/default\"\n',
-        '    local_path = f\"/kaggle/working/persistence/Lemgendary_{model_key.title().replace(\'_\', \'_\')}_Checkpoints\"\n',
+        '    model_handle = f\"lemtreursi/lemgendary-{model_key.replace(\'_\', \'-\')}-checkpoints/pyTorch/default\"\n',
+        '    local_path = f\"/kaggle/working/LemGendaryModels/{model_key}\"\n',
         '    \n',
         '    if os.path.exists(local_path):\n',
         '        print(f\"\\ud83d\\ude80 [KAGGLE] Pushing updated manifold to {model_handle}...\")\n',
@@ -350,8 +350,13 @@ if __name__ == "__main__":
             m_output = os.path.join(m_dir, f"{d_key}_training.ipynb")
             generate_training_notebook(target_name, d_key, m_output)
             
-            # 2026 Resilience: Removed automatic Dual-Persistence from global refresh.
-            # Notebooks should only be created in LemGendaryDatasets after physical compilation.
+            # 2026 Resilience: Manifold-Aware Refresh.
+            # If the manifold exists in LemGendaryDatasets, refresh its internal notebook too.
+            dataset_root = os.path.abspath(os.path.join(base_dir, "../LemGendaryDatasets"))
+            d_manifold_dir = os.path.join(dataset_root, folder_name)
+            if os.path.exists(d_manifold_dir):
+                d_output = os.path.join(d_manifold_dir, f"{d_key}_training.ipynb")
+                generate_training_notebook(target_name, d_key, d_output)
             
         print("\n[SUCCESS] Dataset Notebook Matrix Synchronized.")
     elif args.dataset and args.model and args.output:
