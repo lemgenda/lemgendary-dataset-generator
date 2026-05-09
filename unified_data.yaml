@@ -108,9 +108,9 @@ datasets:
     val_split: 0.05
     refs:
     - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
-    - ref: kaggle://litheshshetty/nh-haze
+    - ref: kaggle://polarrr/nhhaze
     - ref: kaggle://akashdaiict/ntire20202021ohaze
-    - ref: kaggle://litheshshetty/ohaze-dataset
+    - ref: kaggle://rajat95gupta/hazing-images-dataset-cvpr-2019
   mirnet_lowlight:
     name: MirNetLowLight
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlightlarge
