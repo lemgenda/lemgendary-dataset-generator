@@ -191,41 +191,6 @@ def generate_training_notebook(target_name, resolved_model, output_path):
     ]
 
 
-    kaggle_push_source = [
-        'import os, shutil, subprocess\n',
-        'try:\n',
-        '    import base64 as _b64\n',
-        '    _k = \"a2Fn\" + \"Z2xlX\" + \"3NlY3\" + \"JldHM=\"\n',
-        '    _m = __import__(_b64.b64decode(_k).decode())\n',
-        '    _c = getattr(_m, \"UserS\" + \"ecrets\" + \"Client\")()\n',
-        '    os.environ[\"KAGGLE_USERNAME\"] = _c.get_secret(\"KAGGLE_USERNAME\")\n',
-        '    os.environ[\"KAGGLE_KEY\"] = _c.get_secret(\"KAGGLE_KEY\")\n',
-        '    print(\"\\u2705 [AUTH] Kaggle API Credentials mounted.\")\n',
-        'except: print(\"\\u26a0\\ufe0f [AUTH] Kaggle Secrets not found. Push skipped.\")\n',
-        '\n',
-        'if os.environ.get(\"KAGGLE_KEY\"):\n',
-        '    import kagglehub\n',
-        '    \n',
-        '    model_key = \"' + resolved_model + '\"\n',
-        '    model_handle = f\"lemtreursi/lemgendary-{model_key.replace(\'_\', \'-\')}-checkpoints/pyTorch/default\"\n',
-        '    local_path = f\"/kaggle/working/LemGendaryModels/{model_key}\"\n',
-        '    \n',
-        '    if os.path.exists(local_path):\n',
-        '        print(f\"\\ud83d\\ude80 [KAGGLE] Pushing updated manifold to {model_handle}...\")\n',
-        '        # 2026: Atomic Push via KaggleHub (Nuclear-Hardened v16.2)\n',
-        '        kagglehub.model_upload(model_handle, local_path, version_notes=\"v16.2 Nuclear-Hardened Sync\")\n',
-        '        print(\"\\u2705 [SOTA] Persistence Sync Complete.\")\n',
-        '    else: print(f\"\\u26a0\\ufe0f [ERROR] Local manifold not found at {local_path}\")\n'
-    ]
-
-    persistence_source = [
-        "import os, subprocess, sys\n",
-        f"model_key = '{resolved_model}'\n",
-        "print(f'🚀 [PERSISTENCE] Manual sync triggered for {model_key}...')\n",
-        "cmd = [sys.executable, 'training/checkpoint_sync.py', '--model', model_key, '--target', '/kaggle/working/persistence']\n",
-        "os.chdir('/kaggle/working/lemgendary-training-suite')\n",
-        "subprocess.run(cmd)\n"
-    ]
 
     training_source = [
         "import os, subprocess, sys\n",
@@ -325,26 +290,6 @@ def generate_training_notebook(target_name, resolved_model, output_path):
                 "cell_type": "code",
                 "source": training_source,
                 "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 8. Manual Persistence Sync\n", "Run this cell to manually sync current checkpoints to the persistence folder.\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": persistence_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 9. Kaggle Persistence Sync (Cloud)\n", "Run this cell to push the persistent manifold back to the Kaggle Model artifact.\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": kaggle_push_source,
-                "metadata": {}, "outputs": [], "execution_count": None
             }
         ]
     }
@@ -371,31 +316,46 @@ if __name__ == "__main__":
         registry = yaml.safe_load(f)
     
     datasets = registry.get("datasets", {})
+    # 2026 Resilience: Surgical Model Registry for non-manifold notebooks
+    MODELS_ONLY = {
+        "anime_nsfw_classification": "Anime NSFW Classification",
+        "diffusion_flux": "Diffusion Flux (Black Forest Labs)",
+        "diffusion_sdxl": "Diffusion SDXL (Stability AI)",
+        "vlm_blip2": "VLM BLIP-2 (Salesforce)",
+        "vlm_llava": "VLM LLaVA (Microsoft/UW)"
+    }
+
     export_root = args.output if args.output else os.path.abspath(os.path.join(base_dir, "../LemGendaryModels"))
 
     if args.all:
-        print(f"[NUCLEAR] Initiating Global Dataset Notebook Refresh for {len(datasets)} manifolds...")
+        print(f"[NUCLEAR] Initiating Global Notebook Refresh for {len(datasets) + len(MODELS_ONLY)} entities...")
         prefix = registry.get("_registry_metadata", {}).get("name_prefix", "")
         suffix = registry.get("_registry_metadata", {}).get("name_suffix", "")
         
+        # 1. Dataset Manifolds
         for d_key, d_info in datasets.items():
             target_name = d_info.get("name", d_key)
             pascal_name = d_info.get("name", d_key.replace("_", " ").title().replace(" ", ""))
             folder_name = f"{prefix}{pascal_name}{suffix}"
             
-            # 1. Models Hub Export
             m_dir = os.path.join(export_root, d_key)
             os.makedirs(m_dir, exist_ok=True)
             m_output = os.path.join(m_dir, f"{d_key}_training.ipynb")
             generate_training_notebook(target_name, d_key, m_output)
             
-            # 2026 Resilience: Manifold-Aware Refresh.
-            # If the manifold exists in LemGendaryDatasets, refresh its internal notebook too.
             dataset_root = os.path.abspath(os.path.join(base_dir, "../LemGendaryDatasets"))
             d_manifold_dir = os.path.join(dataset_root, folder_name)
             if os.path.exists(d_manifold_dir):
                 d_output = os.path.join(d_manifold_dir, f"{d_key}_training.ipynb")
                 generate_training_notebook(target_name, d_key, d_output)
+
+        # 2. Surgical Model Notebooks
+        for m_key, m_name in MODELS_ONLY.items():
+            m_dir = os.path.join(export_root, m_key)
+            os.makedirs(m_dir, exist_ok=True)
+            m_output = os.path.join(m_dir, f"{m_key}_training.ipynb")
+            generate_training_notebook(m_name, m_key, m_output)
+            print(f"[OK] [SURGICAL] Refreshed: {m_key}")
             
         print("\n[SUCCESS] Dataset Notebook Matrix Synchronized.")
     elif args.dataset and args.model and args.output:
