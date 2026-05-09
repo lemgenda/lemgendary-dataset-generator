@@ -193,7 +193,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         '    import kagglehub\n',
         '    \n',
         '    model_key = \"' + resolved_model + '\"\n',
-        '    model_handle = f\"lemgenda/{model_key.replace(\'_\', \'-\')}-checkpoints/pytorch/default\"\n',
+        '    model_handle = f\"lemgenda/{model_key.replace(\'_\', \'-\')}/pyTorch/default\"\n',
         '    local_path = f\"/kaggle/working/persistence/Lemgendary_{model_key.title().replace(\'_\', \'_\')}_Checkpoints\"\n',
         '    \n',
         '    if os.path.exists(local_path):\n',
