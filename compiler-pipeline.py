@@ -36,6 +36,9 @@ from sklearn.cluster import MiniBatchKMeans
 import time
 from datetime import datetime
 from tqdm import tqdm
+# 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
+import functools
+tqdm = functools.partial(tqdm, ascii=True)
 from safetensors import safe_open
 
 def get_dir_size(path):
