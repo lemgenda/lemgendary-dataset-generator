@@ -238,14 +238,29 @@ def generate_training_notebook(target_name, resolved_model, output_path):
                 "metadata": {}
             },
             {
+                "cell_type": "markdown",
+                "source": ["## 1. Hardware Sentinel\n", "Ensure the manifold has the required hardware acceleration.\n"],
+                "metadata": {}
+            },
+            {
                 "cell_type": "code",
                 "source": hardware_sentinel_source,
                 "metadata": {}, "outputs": [], "execution_count": None
             },
             {
+                "cell_type": "markdown",
+                "source": ["## 2. Cloud Auth & Secrets\n"],
+                "metadata": {}
+            },
+            {
                 "cell_type": "code",
                 "source": secrets_source,
                 "metadata": {}, "outputs": [], "execution_count": None
+            },
+            {
+                "cell_type": "markdown",
+                "source": ["## 3. Environment Synchronization\n"],
+                "metadata": {}
             },
             {
                 "cell_type": "code",
@@ -258,13 +273,18 @@ def generate_training_notebook(target_name, resolved_model, output_path):
                 "metadata": {}, "outputs": [], "execution_count": None
             },
             {
+                "cell_type": "markdown",
+                "source": ["## 4. SOTA Hub Synchronization (Pull)\n"],
+                "metadata": {}
+            },
+            {
                 "cell_type": "code",
                 "source": hub_prep_source,
                 "metadata": {}, "outputs": [], "execution_count": None
             },
             {
                 "cell_type": "markdown",
-                "source": ["## 4. Multi-Path Data Resolution\n"],
+                "source": ["## 5. Multi-Path Data Resolution\n"],
                 "metadata": {}
             },
             {
@@ -274,7 +294,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
             },
             {
                 "cell_type": "markdown",
-                "source": ["## 5. Checkpoint & Metric Recovery\n"],
+                "source": ["## 6. Checkpoint & Metric Recovery\n"],
                 "metadata": {}
             },
             {
@@ -283,13 +303,18 @@ def generate_training_notebook(target_name, resolved_model, output_path):
                 "metadata": {}, "outputs": [], "execution_count": None
             },
             {
+                "cell_type": "markdown",
+                "source": ["## 7. Nuclear Training Matrix\n"],
+                "metadata": {}
+            },
+            {
                 "cell_type": "code",
                 "source": training_source,
                 "metadata": {}, "outputs": [], "execution_count": None
             },
             {
                 "cell_type": "markdown",
-                "source": ["## 6. Manual Persistence Sync\n", "Run this cell to manually sync current checkpoints to the persistence folder.\n"],
+                "source": ["## 8. Manual Persistence Sync\n", "Run this cell to manually sync current checkpoints to the persistence folder.\n"],
                 "metadata": {}
             },
             {
@@ -299,7 +324,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
             },
             {
                 "cell_type": "markdown",
-                "source": ["## 7. Kaggle Persistence Sync (Cloud)\n", "Run this cell to push the persistent manifold back to the Kaggle Model artifact.\n"],
+                "source": ["## 9. Kaggle Persistence Sync (Cloud)\n", "Run this cell to push the persistent manifold back to the Kaggle Model artifact.\n"],
                 "metadata": {}
             },
             {
