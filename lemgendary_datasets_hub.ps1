@@ -26,6 +26,9 @@ $DownloadSB = {
     $z = Join-Path $sharedPath ($dn + '.zip')
     if (Test-Path $z) {
          Write-Output "RESULT:DOWNLOADED"
+    } elseif (Test-Path $fold) {
+         # 2026 Resilience: Kaggle often returns a folder instead of a zip
+         Write-Output "RESULT:COMPLETED"
     } else {
          $fileMatches = Get-ChildItem $sharedPath -Filter "$dn*"
          if ($fileMatches) {
@@ -229,7 +232,7 @@ function Get-RefStatus {
         if (Test-Path $z) { return "ZipOnly" }
         return "Missing"
     } else {
-        if (!(Test-Path $z) -and $fCount -gt 0) { return "Extracted" }
+        if ($fCount -gt 0) { return "Extracted" }
         if (Test-Path $z) { return "ZipOnly" }
         return "Missing"
     }
