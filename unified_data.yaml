@@ -117,8 +117,8 @@ datasets:
     val_split: 0.05
     refs:
     - ref: kaggle://soumikrakshit/lol-dataset
-    - ref: kaggle://nareshbhat/low-light-image-enhancement
-    - ref: kaggle://kushal1996/see-in-the-dark-dataset
+    - ref: kaggle://washingtongold/exdark-dataset
+    - ref: kaggle://saerosx/learning-to-see-in-the-dark-long-exposure-npy
   mirnet_exposure:
     name: MirNetExposure
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposurelarge
