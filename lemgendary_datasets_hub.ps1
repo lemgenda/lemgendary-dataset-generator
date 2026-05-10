@@ -624,7 +624,7 @@ while ($true) {
         }
         
         # Check missing sets (with Manifold-Aware skip)
-        $Missing = Test-MissingDatasets -TargetModels $TargetModels -SkipIfCompiled
+        $Missing = Test-MissingDatasets -TargetModels $TargetModels
         
         if ($Missing.Count -gt 0) {
             Write-Host "`n[WARNING] Some raw datasets are missing or empty for this compilation:" -ForegroundColor Yellow

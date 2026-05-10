@@ -515,7 +515,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             is_st = img_path_str.lower().endswith(".safetensors")
 
         ext = img_path.suffix.lower() if isinstance(img_input, (str, Path)) else ".jpg"
-        if ext not in [".jpg", ".jpeg", ".png", ".webp"]: ext = ".jpg"
+        if ext not in [".jpg", ".jpeg", ".png", ".webp", ".npy"]: ext = ".jpg"
 
         name = f"{prefix}_{slug}_{idx:09d}"
         out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
@@ -551,7 +551,13 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
 
         if needs_stats:
             if not isinstance(img_input, (bytes, dict)):
-                img = Image.open(img_path)
+                if img_path.suffix.lower() == ".npy":
+                    data = np.load(img_path)
+                    if data.ndim == 3 and data.shape[0] in [1, 3]: data = data.transpose(1, 2, 0)
+                    if data.dtype in [np.float32, np.float64]: data = (data * 255).clip(0, 255).astype(np.uint8)
+                    img = Image.fromarray(data)
+                else:
+                    img = Image.open(img_path)
             else:
                 img = Image.open(io.BytesIO(img_data))
             img = ensure_srgb(img)
@@ -1111,7 +1117,7 @@ def process_dataset():
             elif fmt == "matlab":
                 ann_data = parse_matlab(ann_path)
 
-            valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp"}
+            valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp", ".npy"}
             images = []
             # 2026 Warp-Speed: Use os.scandir and string paths to avoid 1.4M Path object overhead
             def fast_scan(path):

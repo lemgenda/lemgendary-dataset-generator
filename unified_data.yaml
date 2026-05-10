@@ -115,22 +115,30 @@ datasets:
     name: MirNetLowLight
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlightlarge
     val_split: 0.05
+    labeling: false
+    vetting: false
     refs:
     - ref: kaggle://soumikrakshit/lol-dataset
     - ref: kaggle://washingtongold/exdark-dataset
     - ref: kaggle://saerosx/learning-to-see-in-the-dark-long-exposure-npy
+    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+    - ref: kaggle://alenken/low-light-image-enhancement-datasets
+    - ref: kaggle://tanhyml/lol-v2-dataset
   mirnet_exposure:
     name: MirNetExposure
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposurelarge
     val_split: 0.05
+    labeling: false
+    vetting: false
     refs:
     - ref: kaggle://weipengzhang/adobe-fivek
     - ref: hf://gitpull/DPED
-    - ref: kaggle://isaienkov/fivek-raw-to-jpeg
   mprnet_deraining:
     name: MprNetDeraining
     kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaininglarge
     val_split: 0.05
+    labeling: false
+    vetting: false
     refs:
     - ref: kaggle://bshaurya/rain-dataset
     - ref: kaggle://yanzhou2004/rain100l
@@ -141,6 +149,7 @@ datasets:
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluringlarge
     val_split: 0.05
     labeling: false
+    vetting: false
     refs:
     - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
     - ref: hf://slymachenko/image-deblurring-performance-analysis
@@ -151,6 +160,7 @@ datasets:
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoisinglarge
     val_split: 0.05
     labeling: false
+    vetting: false
     refs:
     - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
     - ref: kaggle://hsyndmr/dnd-nam-noise-data
@@ -163,6 +173,7 @@ datasets:
     kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoomlarge
     val_split: 0.05
     labeling: false
+    vetting: false
     refs:
     - ref: kaggle://joe1995/div2k-dataset
     - ref: kaggle://daehoyang/flickr2k
@@ -183,6 +194,8 @@ datasets:
     name: ProfessionalMultitaskRestoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge
     val_split: 0.05
+    labeling: false
+    vetting: false
     refs:
     - ref: kaggle://duynm619/image-restoration
     - ref: kaggle://soumikrakshit/lol-dataset
