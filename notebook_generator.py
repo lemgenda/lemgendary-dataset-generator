@@ -318,7 +318,7 @@ if __name__ == "__main__":
     datasets = registry.get("datasets", {})
     # 2026 Resilience: Surgical Model Registry for non-manifold notebooks
     MODELS_ONLY = {
-        "anime_nsfw_classification": "Anime NSFW Classification",
+        "universal_nsfw_classification": "Universal NSFW Classification",
         "diffusion_flux": "Diffusion Flux (Black Forest Labs)",
         "diffusion_sdxl": "Diffusion SDXL (Stability AI)",
         "vlm_blip2": "VLM BLIP-2 (Salesforce)",
@@ -338,10 +338,11 @@ if __name__ == "__main__":
             pascal_name = d_info.get("name", d_key.replace("_", " ").title().replace(" ", ""))
             folder_name = f"{prefix}{pascal_name}{suffix}"
             
-            m_dir = os.path.join(export_root, d_key)
-            os.makedirs(m_dir, exist_ok=True)
-            m_output = os.path.join(m_dir, f"{d_key}_training.ipynb")
-            generate_training_notebook(target_name, d_key, m_output)
+            if "master_manifold" not in d_key:
+                m_dir = os.path.join(export_root, d_key)
+                os.makedirs(m_dir, exist_ok=True)
+                m_output = os.path.join(m_dir, f"{d_key}_training.ipynb")
+                generate_training_notebook(target_name, d_key, m_output)
             
             dataset_root = os.path.abspath(os.path.join(base_dir, "../LemGendaryDatasets"))
             d_manifold_dir = os.path.join(dataset_root, folder_name)
