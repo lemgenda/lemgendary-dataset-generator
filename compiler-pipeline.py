@@ -61,7 +61,7 @@ CONFIG_PATH = Path("./config.json")
 DEFAULT_CONFIG = {
     "train_split": 0.8,
     "num_workers": max(1, multiprocessing.cpu_count() - 2),
-    "diffusion_size": 512,
+    "diffusion_size": 1024,
     "black_threshold": 0.1,
     "nima_threshold": 4.0,
     "enable_dedup": False,
@@ -565,9 +565,18 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             if task == "quality" and "laion" not in slug and "ava" not in slug:
                 if is_black_image(img): return None
 
-            # Dimension filter
-            min_dim = 64
-            if w < min_dim or hgt < min_dim: return None
+            # 2026 High-Fidelity Floor (v16.2.8 Hardened)
+            # Never start below the training suite's minimum floor to prevent blur pathologies.
+            # Restoration/SR floor at 224px; Quality/Diffusion floor at 512px for SOTA parity.
+            if task in ["quality", "classification", "diffusion"]:
+                min_dim = 512
+            elif task in ["restoration", "super-resolution"]:
+                min_dim = 224
+            else:
+                min_dim = 128
+            
+            if w < min_dim or hgt < min_dim:
+                return None
 
         # NIMA Quality Logic: Prioritize Ground Truth over AI Guessing
         nima_score = 1.0

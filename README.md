@@ -1,38 +1,43 @@
-# LemGendary Dataset Pipeline (v16.2.0-NUCLEAR-HARDENED)
+# LemGendary Dataset Pipeline (v16.2.8-NUCLEAR-HARDENED)
 
 > **The Industrial Standard for Generative & Vision Data Synthesis.**
 >
-> Elevate from static sharding to a **Self-Optimizing Generative Manifold**. Orchestrate massive-scale Diffusion and YOLO datasets with industrial-grade CLIP styling, multi-domain balancing, interactive dynamic compilation, and high-velocity **Nuclear-Hardened v16.2** performance.
+> Elevate from static sharding to a **Self-Optimizing Generative Manifold**. Orchestrate massive-scale Diffusion and Vision datasets with industrial-grade CLIP styling, multi-domain balancing, and high-fidelity **LANCZOS** interpolation.
 
 ---
 
-## ⚡ v16.2 SOTA Tier: Nuclear Performance & Resilience
+### 📡 Mission Status: v16.2.8 (High-Fidelity Synthesis)
+🚀 **Status**: High-Fidelity Compilation Active / 1.4M Manifold Stability Verified  
+🧪 **Current Goal**: Transition all restoration and generative manifolds to the **LANCZOS-512 Hardened Baseline**.
 
-The v16.2 release introduces the **Nuclear-Hardened Compiler**, optimized for processing 1.4M+ item manifolds with zero IPC overhead and O(1) traversal velocity.
+---
+
+## ⚡ v16.2.8 SOTA Tier: Nuclear Performance & Fidelity
+
+The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for processing 1.4M+ item manifolds while maintaining absolute structural integrity for restoration tasks.
 
 ### 🚀 High-Velocity Optimizations
-- **O(1) Physical Skip-Indexing**: Transitioned from slow `Path` object traversals to string-based `os.scandir` logic. This enables the compiler to skip already-processed samples with near-zero latency, even on massive 1M+ item manifolds.
-- **ThreadPoolExecutor Migration**: Replaced high-latency multiprocessing with a streamlined `ThreadPoolExecutor` model, eliminating IPC serialization bottlenecks and maximizing throughput on NVMe hardware.
-- **1.4M Sample Stability**: Hardened the `compiler-pipeline` to handle the absolute scale of the `UpnV2Large` manifold, maintaining absolute parity between physical files and SQLite metadata.
+- **O(1) Physical Skip-Indexing**: Transitioned from slow recursive traversals to string-based `os.scandir` logic. The compiler skips already-processed samples with near-zero latency, even on massive 1M+ item manifolds.
+- **LANCZOS High-Fidelity Scaling**: Native integration of Lanczos resampling for all resolution-locked tasks (Diffusion/VLM), ensuring zero feature aliasing during the downsampling phase.
+- **High-Fidelity Floor (v16.2.8)**: Mandatory resolution filtering to prevent low-res "blur" pathologies.
+    *   **Quality & Diffusion**: Enforced **512px** minimum floor.
+    *   **Restoration & SR**: Enforced **224px** minimum floor.
+- **ThreadPoolExecutor Zero-IPC**: Streamlined execution model that eliminates Windows IPC serialization bottlenecks, maximizing throughput on high-speed NVMe hardware.
+- **1024px SOTA Baselines**: Standardized diffusion manifold resolution to 1024px for native SDXL/Flux compatibility.
 
-### 🛰️ Hybrid Cloud Deployment
-- **KaggleHub Integration**: Automated synchronization of compiled manifolds to Kaggle via the `kagglehub` API, enabling seamless transition from local compilation to cloud-native training.
-- **Atomic Manifests**: Auto-generated READMEs and `dataset_info.yaml` packages are optimized for direct upload and model tracking in the LemGendary ecosystem.
+### 🛰️ Hybrid Cloud & Registry Integration
+- **Atomic Registry Resumption**: Integrated SQLite-based checkpoints allow for instantaneous resumption of interrupted 1M-sample runs without redundant I/O.
+- **KaggleHub & HF Sync**: Automated synchronization of compiled manifolds to Kaggle/HF via native API managers (`kaggle_manager.py`, `hf_manager.py`).
+- **Standardized `dataset_info.yaml`**: Every manifold generates a suite-compliant metadata package for immediate ingestion by the LemGendary Training Suite.
 
 ### 💎 Multi-Modal & Format Resilience
-- **Expanded Format Support**: Native ingestion of **TIFF**, **TIF**, and **BMP** tensors for scientific and satellite restoration tasks.
-- **Physical Reality Sync**: New `insta_readme_sync.py` utility bypasses slow DB queries in favor of direct filesystem scanning, ensuring README manifests are always 100% accurate to the stored images.
-- **Atomic Persistence**: Buffered SQLite commits (1,000 samples) and improved `KeyboardInterrupt` handling to prevent manifold corruption during mid-run terminations.
-
-### 📄 Professional Source Lineage
-Every compiled manifold now automatically generates a professional-grade documentation package:
-- **4-Column Composition Tables**: Granular breakdown of every original source, including specific **Train/Val/Total** counts for total transparency.
-- **`dataset_info.yaml`**: Full metadata compliance for the LemGendary Training Suite.
-- **Kaggle-Ready Manifests**: Auto-generated READMEs optimized for direct upload and model tracking.
+- **Parquet & Safetensors Support**: Native ingestion of highly compressed pyarrow binaries and model metadata (Kohya/Civitai tags).
+- **DPED Mirroring v2.1**: Automated alignment of synthetic and real-world restoration pairs (Smartphone vs. Canon) using the specialized DPED cache.
+- **VRAM De-fragmentation**: Proactive memory purging during NIMA/YOLO vetting to prevent OOM on 4GB-8GB local hardware.
 
 ---
 
-## 🏗️ v5.7 Synthesis Flow
+## 🏗️ v6.2 Synthesis Flow
 
 ```mermaid
 graph TD
@@ -44,24 +49,26 @@ graph TD
     end
 
     subgraph RawData[Source Repository]
-        D1[HF / Kaggle]
+        D1[HF / Kaggle / GH]
         D2[Local Sources]
     end
 
     subgraph Pass1[PASS 1: Vetting & Naming]
         A[Parallel Workers]
-        B[NIMA Quality Gate]
-        C[Atomic Filename Index]
+        B[NIMA High-Fidelity Gate]
+        C[LANCZOS Resampling]
+        D[Atomic Filename Index]
         E[(SQLite Registry)]
         
         A --> B
         B --> C
-        C --> E
+        C --> D
+        D --> E
     end
 
     subgraph Export[Post-Flight Metadata]
         G[dataset_info.yaml]
-        H[Standardized README]
+        H[Kaggle-Ready README]
         I[classes.txt]
     end
 
@@ -75,32 +82,31 @@ graph TD
 ## 🛠️ Developer Interface
 
 ### 1. The Dataset Hub (v6.0.0-SOTA)
-Launch the modernized interactive dashboard:
+The modernized interactive dashboard for end-to-end manifold management:
 ```powershell
 ./lemgendary_datasets_hub.ps1
 ```
 
 ### 2. Manual Orchestration
-The python engine now supports direct CLI hooks for automation:
+The python engine supports direct CLI hooks for automation:
 ```bash
 python compiler-pipeline.py --model nima_aesthetic --max_gb 50 --suffix Large
 python compiler-pipeline.py --workers 16    # Override auto-detected worker cap
 python compiler-pipeline.py --no-labeling  # High-Speed Mode (Bypass YOLO)
-python compiler-pipeline.py --reduce       # Start sampling engine
+python compiler-pipeline.py --no-hash      # Zero-Latency Mode (Bypass Dedup)
 ```
 
 ### 3. Hardware Acceleration & Resilience
-- **CUDA Guardian**: Real-time detection of GPU availability in the Hub dashboard.
-- **CPU-GUARD**: Automatic detection of massive datasets on CPU-bound systems; triggers "High-Speed Mode" to prevent 100+ hour runs.
-- **Adaptive Workers**: Priority-based worker scaling (CLI > config > Auto).
+- **CPU-GUARD**: Automatic detection of massive datasets on CPU-bound systems; triggers "High-Speed Mode" to prevent I/O thrashing.
+- **CUDA-Sentry**: Real-time detection of GPU availability for NIMA vetting and YOLO auto-labeling.
 
 ---
 
 ## 📂 Industrial Output Topology (Nuclear Architecture)
 - `raw-sets/` (Source datasets - Protected by Cleanup Guardian)
 - `../LemGendaryDatasets/<name>/images/` (Standard structured folders for Restoration)
-- `../LemGendaryDatasets/<name>/parquet/` (Highly compressed pyarrow binaries for Generative)
-- `../LemGendaryDatasets/<name>/labels/` (10-bin probability vectors)
+- `../LemGendaryDatasets/<name>/labels/` (NIMA 10-bin probabilities or YOLO vectors)
+- `../LemGendaryDatasets/<name>/targets/` (Ground truth targets for SR/Restoration)
 - `../LemGendaryDatasets/<name>/dataset_info.yaml` (Suite Metadata)
 - `../LemGendaryDatasets/<name>/manifold_registry.db` (Persistent SQLite metadata)
 - `../LemGendaryDatasets/<name>/README.md` (Kaggle-Optimized Manifest)
