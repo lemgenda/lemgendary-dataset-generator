@@ -212,9 +212,13 @@ def detect_task(model_dir_name):
     if any(k in name for k in ["pose", "face", "codeformer"]): return "pose"
     if any(k in name for k in ["nima", "aesthetic", "quality"]): return "quality"
     if any(k in name for k in ["classify", "authentic", "authenticity"]): return "classification"
-    if any(k in name for k in ["vlm", "vision_language"]): return "diffusion" # Use diffusion logic for VLM quality
+    if any(k in name for k in ["vlm", "vision_language"]): return "diffusion"
     if any(k in name for k in ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]): return "super-resolution"
-    if any(k in name for k in ["restorer", "enhance", "upn", "lowlight", "exposure", "deraining", "debluring", "denoising", "haze", "restoration", "ffanet", "mirnet", "mprnet", "nafnet"]):
+    
+    # 2026: Surgical Restoration Detection (Purity-First)
+    if any(k in name for k in ["deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure"]):
+        return "restoration"
+    if any(k in name for k in ["restorer", "enhance", "upn", "restoration", "ffanet", "mirnet", "mprnet", "nafnet"]):
         return "restoration"
     return "detection"
 
@@ -1232,6 +1236,21 @@ def process_dataset():
                         continue
 
                     img_path = Path(img_path_str)
+                    
+                    # 2026 Integrity Guard: Eliminate cross-contamination in specialized restoration manifolds
+                    if task == "restoration":
+                        p_low = img_path_str.lower()
+                        m_low = model_key.lower()
+                        # Strict Deraining Exclusion
+                        if "deraining" not in m_low and "multitask" not in m_low:
+                            if any(k in p_low for k in ["rain", "droplet"]): continue
+                        # Strict Denoising Purity
+                        if "denoising" in m_low:
+                            if any(k in p_low for k in ["blur", "haze", "lowlight", "exposure"]): continue
+                        # Strict Deblurring Purity
+                        if "debluring" in m_low:
+                            if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]): continue
+
                     split = "train" if random.random() < train_prob else "val"
 
                     specific_ann_data = None

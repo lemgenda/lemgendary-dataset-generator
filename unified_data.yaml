@@ -142,7 +142,7 @@ datasets:
     refs:
     - ref: kaggle://bshaurya/rain-dataset
     - ref: kaggle://yanzhou2004/rain100l
-    - ref: kaggle://tanfuxiang/rain100l-100h
+    - ref: kaggle://nguynhoitrung/rain100h
     - ref: hf://Ian824/High-Resolution-Rainy-Image
     - ref: kaggle://balraj98/rain-dataset
   nafnet_debluring:
