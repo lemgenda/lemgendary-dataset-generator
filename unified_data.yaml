@@ -11,7 +11,7 @@ datasets:
   nima_aesthetic:
     name: NimaAesthetic
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticlarge
-    val_split: 0.1
+    val_split: 0.12
     refs:
     - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
     - ref: hf://bhargavsdesai/laion_improved_aesthetics_6.5plus_with_images
@@ -19,7 +19,7 @@ datasets:
   nima_technical:
     name: NimaTechnical
     kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnicallarge
-    val_split: 0.1
+    val_split: 0.12
     refs:
     - ref: kaggle://generalhawking/koniq-10k-dataset
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
@@ -30,7 +30,7 @@ datasets:
   nima_authenticity:
     name: NimaAuthenticity
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticitylarge
-    val_split: 0.1
+    val_split: 0.12
     refs:
     - ref: kaggle://shreyasraghav/shutterstock-dataset-for-ai-vs-human-gen-image
     - ref: kaggle://birdy654/cifake-real-and-ai-generated-synthetic-images
@@ -73,7 +73,7 @@ datasets:
   parsenet:
     name: ParseNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedparsenetlarge
-    val_split: 0.1
+    val_split: 0.12
     labeling: true
     refs:
     - ref: hf://liusq/CelebAMask-HQ
@@ -82,7 +82,7 @@ datasets:
   retinaface_mobilenet:
     name: RetinaFaceMobileNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
-    val_split: 0.1
+    val_split: 0.12
     labeling: true
     refs:
     - ref: hf://CUHK-CSE/wider_face
@@ -90,7 +90,7 @@ datasets:
   retinaface_resnet:
     name: RetinaFaceResNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinafaceresnetlarge
-    val_split: 0.1
+    val_split: 0.12
     refs:
     - ref: hf://CUHK-CSE/wider_face
     - ref: hf://purplehaze1/CrowdHuman
@@ -183,7 +183,7 @@ datasets:
   yolov8n:
     name: YoloV8n
     kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8nlarge
-    val_split: 0.1
+    val_split: 0.12
     refs:
     - ref: kaggle://awsaf49/coco-2017-dataset
     - ref: hf://jxu124/objects365
@@ -213,7 +213,7 @@ datasets:
   diffusion_master_manifold:
     name: DiffusionMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizeddiffusionmastermanifoldlarge
-    val_split: 0.005
+    val_split: 0.12
     nsfw_ratio: 0.25
     refs:
     - ref: hf://thliang01/Pixel_Art
@@ -295,7 +295,7 @@ datasets:
   vision_language_master_manifold:
     name: VisionLanguageMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizedvisionlanguagemastermanifoldlarge
-    val_split: 0.01
+    val_split: 0.12
     nsfw_ratio: 0.10
     refs:
     - ref: hf://adamo1139/llava-instruct-150k-with-images
