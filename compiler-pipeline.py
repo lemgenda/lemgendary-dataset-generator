@@ -1313,7 +1313,7 @@ def process_dataset():
                                 res.get("clip_latent"), res.get("img_bytes")
                             )]
                             conn.executemany("""
-                                INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, batch_entries)
                         if i % 100 == 99:
@@ -1360,7 +1360,7 @@ def process_dataset():
 
                         if batch_entries:
                             conn.executemany("""
-                                INSERT INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, batch_entries)
                             conn.commit()

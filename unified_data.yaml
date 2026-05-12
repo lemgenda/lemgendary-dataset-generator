@@ -38,7 +38,7 @@ datasets:
   upn_v2:
     name: UpnV2
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     refs:
     - ref: kaggle://joe1995/div2k-dataset
@@ -48,7 +48,7 @@ datasets:
   film_restorer:
     name: FilmRestorer
     kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorerlarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     refs:
     - ref: kaggle://spiyer/old-film-restoration-dataset
@@ -64,7 +64,7 @@ datasets:
   codeformer:
     name: CodeFormer
     kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
-    val_split: 0.05
+    val_split: 0.12
     refs:
     - ref: kaggle://jessicali9530/celeba-dataset
     - ref: kaggle://kashyapkvh/mm-celeba-hq-dataset
@@ -97,7 +97,7 @@ datasets:
   ffanet_indoor:
     name: FfaNetIndoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoorlarge
-    val_split: 0.05
+    val_split: 0.12
     refs:
     - ref: kaggle://balraj98/indoor-training-set-its-residestandard
     - ref: kaggle://kmljts/reside-6k
@@ -105,7 +105,7 @@ datasets:
   ffanet_outdoor:
     name: FfaNetOutdoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoorlarge
-    val_split: 0.05
+    val_split: 0.12
     refs:
     - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
     - ref: kaggle://polarrr/nhhaze
@@ -114,7 +114,7 @@ datasets:
   mirnet_lowlight:
     name: MirNetLowLight
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlightlarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
@@ -127,7 +127,7 @@ datasets:
   mirnet_exposure:
     name: MirNetExposure
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposurelarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
@@ -136,18 +136,19 @@ datasets:
   mprnet_deraining:
     name: MprNetDeraining
     kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaininglarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
     - ref: kaggle://bshaurya/rain-dataset
     - ref: kaggle://yanzhou2004/rain100l
-    - ref: kaggle://rahulbhalley/rain-removal
     - ref: kaggle://tanfuxiang/rain100l-100h
+    - ref: hf://Ian824/High-Resolution-Rainy-Image
+    - ref: kaggle://balraj98/rain-dataset
   nafnet_debluring:
     name: NafNetDebluring
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluringlarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
@@ -158,7 +159,7 @@ datasets:
   nafnet_denoising:
     name: NafNetDenoising
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoisinglarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
@@ -171,7 +172,7 @@ datasets:
   ultrazoom:
     name: UltraZoom
     kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoomlarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
@@ -193,13 +194,16 @@ datasets:
   professional_multitask_restoration:
     name: ProfessionalMultitaskRestoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge
-    val_split: 0.05
+    val_split: 0.12
     labeling: false
     vetting: false
     refs:
     - ref: kaggle://duynm619/image-restoration
     - ref: kaggle://soumikrakshit/lol-dataset
     - ref: kaggle://bshaurya/rain-dataset
+    - ref: hf://Yiduo9/Rain13K
+    - ref: hf://Ian824/High-Resolution-Rainy-Image
+    - ref: kaggle://balraj98/rain-dataset
     - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
     - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
     - ref: kaggle://hsyndmr/dnd-nam-noise-data
@@ -349,7 +353,7 @@ datasets:
   classification_master_manifold:
     name: ClassificationMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifoldlarge
-    val_split: 0.05
+    val_split: 0.12
     refs:
     - ref: hf://v-shihai/anime-nsfw-classification-v2
       tag: anime_nsfw

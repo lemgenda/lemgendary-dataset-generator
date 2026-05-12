@@ -132,6 +132,33 @@ def main():
                     from huggingface_hub import hf_hub_download
                     path = hf_hub_download(repo_id=repo_id, filename=t_file, repo_type=args.repo_type, local_dir=dedicated_dir, token=token)
 
+        # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
+        print(f"📦 [SWEEP] Scanning {args.output_dir} for unextracted archives...")
+        for root, dirs, files in os.walk(args.output_dir):
+            for f in files:
+                f_path = Path(root) / f
+                if f.endswith(('.tgz', '.tar.gz')):
+                    print(f"  [UNPACK] Found TGZ: {f}")
+                    import tarfile
+                    try:
+                        with tarfile.open(f_path, "r:gz") as tar:
+                            if hasattr(tarfile, 'data_filter'):
+                                tar.extractall(path=root, filter='data')
+                            else:
+                                tar.extractall(path=root)
+                        os.remove(f_path)
+                    except Exception as ex:
+                        print(f"  [ERR] Failed to extract {f}: {ex}")
+                elif f.endswith('.zip'):
+                    print(f"  [UNPACK] Found ZIP: {f}")
+                    import zipfile
+                    try:
+                        with zipfile.ZipFile(f_path, 'r') as zip_ref:
+                            zip_ref.extractall(root)
+                        os.remove(f_path)
+                    except Exception as ex:
+                        print(f"  [ERR] Failed to extract {f}: {ex}")
+
         print(f"[SUCCESS] {args.repo_id} processed to {args.output_dir}")
     except Exception as e:
         print(f"[ERROR] Failed to download {args.repo_id}: {e}")
