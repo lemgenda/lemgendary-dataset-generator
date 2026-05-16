@@ -198,17 +198,17 @@ datasets:
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://duynm619/image-restoration
-    - ref: kaggle://soumikrakshit/lol-dataset
-    - ref: kaggle://bshaurya/rain-dataset
-    - ref: hf://Yiduo9/Rain13K
-    - ref: hf://Ian824/High-Resolution-Rainy-Image
-    - ref: kaggle://balraj98/rain-dataset
-    - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
-    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
-    - ref: kaggle://hsyndmr/dnd-nam-noise-data
-    - ref: kaggle://joe1995/div2k-dataset
-    - ref: kaggle://kmljts/reside-6k
+    - ref: manifold://NafNetDebluring
+    - ref: manifold://NafNetDenoising
+    - ref: manifold://MprNetDeraining
+    - ref: manifold://FfaNetIndoor
+    - ref: manifold://FfaNetOutdoor
+    - ref: manifold://MirNetLowLight
+    - ref: manifold://MirNetExposure
+    - ref: manifold://UltraZoom
+    - ref: manifold://FilmRestorer
+    - ref: manifold://CodeFormer
+    - ref: manifold://ParseNet
     - ref: kaggle://awsaf49/coco-2017-dataset
   diffusion_master_manifold:
     name: DiffusionMasterManifold

@@ -22,7 +22,8 @@ import cv2
 from pathlib import Path
 from PIL import Image, ImageOps, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import requests
 from multiprocessing import Manager
 import multiprocessing
 import io
@@ -343,6 +344,35 @@ def normalize_points(points, w, h, stride=2):
         if stride == 3: norm.append(points[i+2])
     return norm
 
+def download_image(url, dest_path, session=None):
+    """SOTA Lazy Downloader with exponential backoff and image validation."""
+    if os.path.exists(dest_path): return True
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    }
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            r = (session or requests).get(url, headers=headers, timeout=15, stream=True)
+            if r.status_code == 200:
+                # 2026 Resilience: Verify it's an actual image, not an HTML error page
+                content_type = r.headers.get('Content-Type', '')
+                if 'image' not in content_type and 'octet-stream' not in content_type:
+                    return False
+                
+                with open(dest_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk: f.write(chunk)
+                return True
+            elif r.status_code == 404:
+                return False # Don't retry 404s
+        except Exception:
+            if attempt == max_retries - 1: return False
+            time.sleep(2 ** attempt)
+    return False
+
 # ---------------- REGISTRY ----------------
 def initialize_registry(db_path):
     conn = sqlite3.connect(db_path, timeout=60.0)
@@ -435,7 +465,15 @@ def parse_parquet(pq_path):
     mapping = {}
     cols = df.columns.tolist()
     if "image" in cols: mapping["file_name"] = "image"
+    if "url" in cols: mapping["url"] = "url"
+    if "key" in cols: mapping["key"] = "key"
     if "label" in cols: mapping["class"] = "label"
+    
+    # Restoration Targets
+    if "target" in cols: mapping["target"] = "target"
+    if "sharp" in cols: mapping["target"] = "sharp"
+    if "ground_truth" in cols: mapping["target"] = "ground_truth"
+
     # Additional mappings for bbox/seg if needed
     for c in cols:
         cl = c.lower()
@@ -531,23 +569,110 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         if PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX:
             return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
 
-        # Restoration Target Resolver (v5.7)
+        # Restoration Target Resolver (v5.8 Hardened)
         target_img = None
         target_img_path = None
+
         if task in ["restoration", "super-resolution"]:
-            # 2026 Resilience: Universal DPED Mirroring (v2.1)
-            p_str = str(img_path).replace("\\", "/")
-            for device_name in ["iphone", "sony", "blackberry"]:
-                # We check for the device folder precisely to avoid replacing parts of the slug (e.g. sony2canon)
-                needle = f"/{device_name}/"
-                if needle in p_str.lower():
-                    tgt_p_str = p_str.lower().replace(needle, "/canon/")
-                    if DPED_CACHE:
-                        if tgt_p_str in DPED_CACHE:
+            # 1. Parquet/Virtual Target Detection
+            if ann_data:
+                row_dict = None
+                if isinstance(ann_data, dict): row_dict = ann_data
+                elif isinstance(ann_data, tuple) and len(ann_data) == 2:
+                    df_sub, _ = ann_data
+                    if not df_sub.empty: row_dict = df_sub.iloc[0].to_dict()
+                
+                if row_dict:
+                    for k in ["target", "sharp", "ground_truth", "gt", "clean", "original"]:
+                        val = row_dict.get(k)
+                        if isinstance(val, bytes):
+                            target_img = Image.open(io.BytesIO(val))
+                            break
+                        elif isinstance(val, str) and (val.endswith((".png", ".jpg", ".jpeg"))):
+                            # Try absolute or relative to dataset root
+                            p = Path(val)
+                            if p.exists(): target_img_path = str(p)
+                            break
+
+            # 2. Generic Neighbor Resolve (GoPro, RealBlur, HideBlur)
+            if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
+                blur_keys = ["blur", "blurry", "input", "lowres", "lr", "rain", "hazy", "noisy", "degraded", "distorted", "low", "images"]
+                sharp_keys = ["sharp", "gt", "ground_truth", "groundtruth", "clean", "clear", "original", "hr", "highres", "target", "norain", "high", "targets"]
+                
+                p_str = str(img_path).replace("\\", "/")
+                parent = img_path.parent
+                
+                # Strategy A: Sibling Folder (e.g. blur/001.png -> sharp/001.png)
+                if any(k in parent.name.lower() for k in blur_keys):
+                    try:
+                        for sibling in parent.parent.iterdir():
+                            if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
+                                # 1. Exact Match
+                                potential = sibling / img_path.name
+                                if potential.exists():
+                                    target_img_path = str(potential)
+                                    break
+                                # 2. Fuzzy Prefix Match (e.g. RealBlur style: blur_1.png -> gt_1.png)
+                                for b_k in blur_keys:
+                                    if img_path.name.lower().startswith(b_k):
+                                        for s_k in sharp_keys:
+                                            # Try replacing prefix (e.g. blur_ -> gt_)
+                                            new_name = img_path.name.lower().replace(b_k, s_k, 1)
+                                            p_f = sibling / new_name
+                                            if p_f.exists():
+                                                target_img_path = str(p_f)
+                                                break
+                                        if target_img_path: break
+                                if target_img_path: break
+                    except: pass
+                
+                # Strategy B: Ancestral Sibling (e.g. train/001.png -> GT/001.png)
+                if not target_img_path:
+                    for ancestor in [parent, parent.parent]:
+                        if any(k in ancestor.name.lower() for k in ["train", "test", "val", "images"]):
+                            try:
+                                for sibling in ancestor.parent.iterdir():
+                                    if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
+                                        # Try flat filename first
+                                        potential = sibling / img_path.name
+                                        if potential.exists():
+                                            target_img_path = str(potential)
+                                            break
+                                        # Try relative path preservation
+                                        try:
+                                            rel = img_path.relative_to(ancestor)
+                                            potential_rel = sibling / rel
+                                            if potential_rel.exists():
+                                                target_img_path = str(potential_rel)
+                                                break
+                                        except: pass
+                            except: pass
+                            if target_img_path: break
+                
+                # Strategy C: Same-Folder Resolution (e.g. rain-001.png -> norain-001.png)
+                if not target_img_path and not isinstance(img_input, (bytes, dict)):
+                    for b_k in blur_keys:
+                        if img_path.name.lower().startswith(b_k):
+                            for s_k in sharp_keys:
+                                new_name = img_path.name.lower().replace(b_k, s_k, 1)
+                                if new_name == img_path.name.lower(): continue
+                                p_f = parent / new_name
+                                if p_f.exists():
+                                    target_img_path = str(p_f)
+                                    break
+                            if target_img_path: break
+
+            # 3. Legacy DPED Fallback
+            if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
+                for device_name in ["iphone", "sony", "blackberry"]:
+                    needle = f"/{device_name}/"
+                    if needle in p_str.lower():
+                        tgt_p_str = p_str.lower().replace(needle, "/canon/")
+                        if DPED_CACHE and tgt_p_str in DPED_CACHE:
                             target_img_path = tgt_p_str
-                    elif os.path.exists(tgt_p_str):
-                        target_img_path = tgt_p_str
-                    break
+                        elif os.path.exists(tgt_p_str):
+                            target_img_path = tgt_p_str
+                        break
 
         # 2026 High-Velocity Optimization: Defer image loading
         # Only load if we are in a task that requires image stats (vetting/labeling/resizing).
@@ -970,7 +1095,7 @@ def process_dataset():
     # This bypasses the massive pickling overhead of sending 1.4M cache items through Windows IPC pipes.
     ExecutorClass = ProcessPoolExecutor
     if args.no_vetting and args.no_labeling:
-        from concurrent.futures import ThreadPoolExecutor
+        # Bypassing massive pickling overhead via ThreadPool (Imported globally)
         print("🚀 [I/O-GEAR] High-Speed Mode active. Using ThreadPoolExecutor for zero IPC overhead.")
         ExecutorClass = ThreadPoolExecutor
 
@@ -1091,12 +1216,21 @@ def process_dataset():
             ref = ref_entry["ref"]
             tag = ref_entry.get("tag", "sfw")
             # Resolve Slug: Handle hf://, gh://, and kaggle:// prefixes
-            slug = ref.replace('hf://', '').replace('gh://', '').replace('kaggle://', '').split('/')[-1]
-            if ":" in slug:
-                slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
-
-            # High-Resilience Discovery: Check for case-insensitive matches and nested folders
-            dataset = shared_root / slug
+            if ref.startswith("manifold://"):
+                m_name = ref.replace("manifold://", "")
+                m_path = OUT_PARENT / f"{prefix_str}{m_name}{suffix_str}"
+                if m_path.exists():
+                    dataset = m_path / "images"
+                    slug = f"compiled_{m_name}"
+                    print(f"🔄 [RECIRCULATION] Using compiled manifold: {m_name}")
+                else:
+                    print(f"⚠️ [SKIP] Manifold {m_name} not found at {m_path}")
+                    continue
+            else:
+                slug = ref.replace('hf://', '').replace('gh://', '').replace('kaggle://', '').split('/')[-1]
+                if ":" in slug:
+                    slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
+                dataset = shared_root / slug
             if not dataset.is_dir():
                 # Check for lowercase version
                 dataset = shared_root / slug.lower()
@@ -1154,6 +1288,44 @@ def process_dataset():
                         is_virtual = True
                         print(f"✨ [VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
                         break
+            
+            # LAZY DATASET SUPPORT: If no images and no embedded bytes, check for URLs
+            is_lazy = False
+            if not images and not is_virtual and fmt == "parquet" and ann_data_list:
+                for df_shard, _ in ann_data_list:
+                    if "url" in df_shard.columns:
+                        is_lazy = True
+                        print(f"📡 [LAZY] {slug} identified as URL-based manifest. Commencing background retrieval...")
+                        break
+            
+            if is_lazy:
+                dl_dir = dataset / "downloads"
+                dl_dir.mkdir(exist_ok=True)
+                
+                # Collect all missing URLs
+                to_download = []
+                for df, mapping in ann_data_list:
+                    url_col = mapping.get("url", "url")
+                    key_col = mapping.get("key", "key")
+                    if url_col in df.columns:
+                        for row in df.itertuples():
+                            url = getattr(row, url_col)
+                            key = str(getattr(row, key_col, hashlib.md5(url.encode()).hexdigest()))
+                            ext = ".jpg" # Default to JPG for lazy manifolds
+                            dest = dl_dir / f"{key}{ext}"
+                            if not dest.exists():
+                                to_download.append((url, str(dest)))
+                
+                if to_download:
+                    print(f"📥 [RETRIEVAL] Downloading {len(to_download)} missing images for {slug}...")
+                    with requests.Session() as session:
+                        with ThreadPoolExecutor(max_workers=16) as dl_executor:
+                            dl_tasks = [dl_executor.submit(download_image, url, dest, session) for url, dest in to_download]
+                            for _ in tqdm(as_completed(dl_tasks), total=len(dl_tasks), desc="   -> Downloading", leave=False):
+                                pass
+                
+                # Now scan the downloads directory for the standard physical loop
+                images = list(fast_scan(str(dl_dir)))
 
             # PRE-COMPUTE ANNOTATION LOOKUPS TO AVOID O(N^2) BOTTLENECKS
             coco_file_to_id = {}
