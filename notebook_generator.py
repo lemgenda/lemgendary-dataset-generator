@@ -275,7 +275,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "    pass\n",
         "\n",
         f"print(f'🚀 [NUCLEAR] Initiating Training Matrix for {resolved_model}...')\n",
-        f"cmd = [sys.executable, 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle', '--auto_sync']\n",
+        f"cmd = [sys.executable, '-u', 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle', '--auto_sync']\n",
         "p = subprocess.Popen(cmd)\n",
         "try:\n",
         "    p.wait()\n",
