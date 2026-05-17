@@ -208,6 +208,15 @@ def load_ground_truth(model_name=""):
 def detect_task(model_dir_name):
     if not model_dir_name: return "quality"
     name = str(model_dir_name).lower()
+    
+    # 2026: Check for explicit task_override in dataset config
+    if DATASETS_META:
+        for ds_key, ds_cfg in DATASETS_META.items():
+            if ds_key.lower() == name or (ds_cfg.get('name', '').lower() == name):
+                override = ds_cfg.get('task_override')
+                if override:
+                    return override
+    
     if "diffusion" in name: return "diffusion"
     if any(k in name for k in ["seg", "mask", "parsenet"]): return "segmentation"
     if any(k in name for k in ["pose", "face", "codeformer"]): return "pose"
@@ -217,9 +226,10 @@ def detect_task(model_dir_name):
     if any(k in name for k in ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]): return "super-resolution"
     
     # 2026: Surgical Restoration Detection (Purity-First)
+    # Note: 'upn' removed — UPN models use task_override for parameter_prediction
     if any(k in name for k in ["deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure"]):
         return "restoration"
-    if any(k in name for k in ["restorer", "enhance", "upn", "restoration", "ffanet", "mirnet", "mprnet", "nafnet"]):
+    if any(k in name for k in ["restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet"]):
         return "restoration"
     return "detection"
 
@@ -573,7 +583,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         target_img = None
         target_img_path = None
 
-        if task in ["restoration", "super-resolution"]:
+        if task in ["restoration", "super-resolution", "parameter_prediction"]:
             # 1. Parquet/Virtual Target Detection
             if ann_data:
                 row_dict = None
@@ -824,6 +834,27 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                     try: shutil.copy2(out_img_path, out_tgt_path)
                     except: pass
 
+        elif task == "parameter_prediction":
+            # 2026: Parameter Prediction datasets store clean source images in targets/
+            # The training suite applies on-the-fly degradation during training.
+            # Prefer resolved clean target (e.g., DPED Canon) over duplicating the input.
+            if target_img_path:
+                try:
+                    os.link(str(target_img_path), str(out_tgt_path))
+                except (OSError, AttributeError):
+                    try: shutil.copy(target_img_path, out_tgt_path)
+                    except: pass
+            elif target_img:
+                save_fmt = "PNG" if ext == ".png" else "JPEG"
+                target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+            else:
+                # No paired clean target found — input IS the clean source (DIV2K, Flickr2K)
+                try:
+                    os.link(str(out_img_path), str(out_tgt_path))
+                except (OSError, AttributeError):
+                    try: shutil.copy2(str(out_img_path), str(out_tgt_path))
+                    except: pass
+
         # Annotations
         annotations = []
         if fmt == "coco" and ann_data is not None:
@@ -898,7 +929,8 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             if annotations: is_autolabeled = True
 
         # Write Label File
-        # 2026 Optimization: Skip empty label files for restoration tasks to reduce I/O churn
+        # 2026 Optimization: Skip label files for parameter_prediction (labels generated at training time)
+        # and skip empty label files for restoration tasks to reduce I/O churn
         label_file_path = Path(output_root_str) / "labels" / split / f"{name}.txt"
         has_annotations = len(annotations) > 0 or task in ["quality", "classification"]
 

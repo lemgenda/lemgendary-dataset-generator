@@ -40,6 +40,7 @@ datasets:
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
     val_split: 0.12
     labeling: false
+    task_override: parameter_prediction
     refs:
     - ref: kaggle://joe1995/div2k-dataset
     - ref: kaggle://daehoyang/flickr2k
