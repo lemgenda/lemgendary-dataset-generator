@@ -87,7 +87,7 @@ def generate_training_notebook(target_name, resolved_model, output_path):
 
     install_source = [
         "print('🛠️ [ENV] Installing Nuclear Dependencies...')\n",
-        "!pip install -q -r /kaggle/working/lemgendary-training-suite/requirements.txt\n",
+        "%pip install -q -r /kaggle/working/lemgendary-training-suite/requirements.txt\n",
         "print('✅ [OK] Environment Ready.')\n"
     ]
 
