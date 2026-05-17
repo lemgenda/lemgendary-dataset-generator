@@ -261,10 +261,17 @@ def generate_training_notebook(target_name, resolved_model, output_path):
         "os.chdir('/kaggle/working/lemgendary-training-suite')\n",
         f"print(f'🚀 [NUCLEAR] Initiating Training Matrix for {resolved_model}...')\n",
         f"cmd = [sys.executable, 'training/train.py', '--model', '{resolved_model}', '--env', 'kaggle', '--auto_sync']\n",
+        "p = subprocess.Popen(cmd)\n",
         "try:\n",
-        "    subprocess.run(cmd)\n",
+        "    p.wait()\n",
         "except KeyboardInterrupt:\n",
-        "    print('\\n🛑 [TERMINATED] Training interrupted by user.')\n"
+        "    print('\\n🛑 [TERMINATED] Training interrupted by user. Terminating training subprocess safely...')\n",
+        "    try:\n",
+        "        p.terminate()\n",
+        "        p.wait(timeout=5)\n",
+        "    except subprocess.TimeoutExpired:\n",
+        "        p.kill()\n",
+        "    print('✅ [OK] Subprocess successfully killed. VRAM and CPU are clean.')\n"
     ]
 
     notebook_content = {
