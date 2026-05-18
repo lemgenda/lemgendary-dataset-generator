@@ -40,7 +40,7 @@ The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for pro
 - **DPED Mirroring v2.1**: Automated alignment of synthetic and real-world restoration pairs (Smartphone vs. Canon) using the specialized DPED cache.
 - **VRAM De-fragmentation**: Proactive memory purging during NIMA/YOLO vetting to prevent OOM on 4GB-8GB local hardware.
 - **Universal Film Restorer Dataset Hardening**: Confirmed exactly **0 empty label files** and **100% target physical hardlinking** in `LemGendizedFilmRestorerLarge`, guaranteeing a pristine production state at 0 bytes disk overhead.
-- **Professional Multi-Task Restoration Dataset Integration (v16.2.9)**: Structured unified source pipeline merging 11 individual manifolds (deblurring, denoising, deraining, low-light, ffanet, and ultrazoom). Standardized target hardlinking layout with case-insensitive physically skip-indexed ingestion, and configured strict Lanczos/interpolation ceilings at 256px-640px to feed the Mixture-of-Experts (MoE) routing engine.
+- **Professional Multi-Task Restoration Dataset Integration (v16.3.0)**: Structured unified source pipeline merging 11 individual manifolds with automated filename prefix preservation (e.g. `ProfessionalMultitaskRestoration_deblur_compiled_...`) for downstream regular expression routing. Standardized target hardlinking layout with case-insensitive physically skip-indexed ingestion, and configured strict Lanczos/interpolation ceilings at 256px-640px to feed the Mixture-of-Experts (MoE) routing engine.
 
 ---
 
@@ -126,4 +126,4 @@ python compiler-pipeline.py --no-hash      # Zero-Latency Mode (Bypass Dedup)
 
 ---
 
-<p align="center"><sub>LemGendary AI Suite | Advanced Agentic Coding 2026</sub></p>
+LemGendary AI Suite - Advanced Agentic Coding 2026

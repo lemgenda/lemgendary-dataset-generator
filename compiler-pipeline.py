@@ -1248,13 +1248,28 @@ def process_dataset():
             ref = ref_entry["ref"]
             tag = ref_entry.get("tag", "sfw")
             # Resolve Slug: Handle hf://, gh://, and kaggle:// prefixes
+            task_tag = None
             if ref.startswith("manifold://"):
                 m_name = ref.replace("manifold://", "")
                 m_path = OUT_PARENT / f"{prefix_str}{m_name}{suffix_str}"
                 if m_path.exists():
                     dataset = m_path / "images"
                     slug = f"compiled_{m_name}"
-                    print(f"🔄 [RECIRCULATION] Using compiled manifold: {m_name}")
+                    mapping = {
+                        "NafNetDebluring": "deblur",
+                        "NafNetDenoising": "denoise",
+                        "MprNetDeraining": "derain",
+                        "FfaNetIndoor": "dehaze_indoor",
+                        "FfaNetOutdoor": "dehaze_outdoor",
+                        "MirNetLowLight": "lowlight",
+                        "MirNetExposure": "exposure",
+                        "UltraZoom": "superres",
+                        "FilmRestorer": "vintage",
+                        "CodeFormer": "face_restorer",
+                        "ParseNet": "face_parser"
+                    }
+                    task_tag = mapping.get(m_name)
+                    print(f"🔄 [RECIRCULATION] Using compiled manifold: {m_name} | Task Tag: {task_tag}")
                 else:
                     print(f"⚠️ [SKIP] Manifold {m_name} not found at {m_path}")
                     continue
@@ -1263,6 +1278,12 @@ def process_dataset():
                 if ":" in slug:
                     slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
                 dataset = shared_root / slug
+
+            # Resolve/clean c_slug in the outer loop
+            if task_tag:
+                c_slug = f"{task_tag}_compiled_{m_name}"
+            else:
+                c_slug = clean_slug(slug)
             if not dataset.is_dir():
                 # Check for lowercase version
                 dataset = shared_root / slug.lower()
@@ -1401,7 +1422,7 @@ def process_dataset():
             if is_virtual:
                 # Case A: Queue tasks directly from all Parquet shards
                 global_idx = 0
-                c_slug = clean_slug(slug)
+                # c_slug already defined and formatted above
                 skip_lbl = not model_config.get("labeling", True)
 
                 for df, mapping in ann_data_list:
@@ -1429,7 +1450,7 @@ def process_dataset():
 
             else:
                 # Case B: Standard Physical File Loop
-                c_slug = clean_slug(slug)
+                # c_slug already defined and formatted above
                 skip_lbl = not model_config.get("labeling", True)
 
                 for i, img_path_str in enumerate(images):
