@@ -42,7 +42,10 @@ $DownloadSB = {
 $HuggingFaceSB = {
     param($ds, $sharedPath, $vpy, $hfManager)
     $repoId = $ds.Replace('hf://', '')
-    $dn = $repoId.Split('/')[-1]
+    
+    # SOTA Fix: Strip surgical file targets to prevent Windows invalid char ':' errors
+    $baseRepo = if ($repoId -match ':') { $repoId.Split(':')[0] } else { $repoId }
+    $dn = $baseRepo.Split('/')[-1]
     $outFold = Join-Path $sharedPath $dn
     
     Write-Output "STATUS:HF-PULLING"
@@ -206,7 +209,7 @@ function Get-RefStatus {
         $parts = $repoId.Split(':')
         $repoId = $parts[0]
         $targetFile = $parts[1]
-        $dn = $targetFile.Replace('.tgz', '').Replace('.tar.gz', '').Replace('.zip', '')
+        $dn = $repoId.Split('/')[-1]
     } else {
         # 2026: SOTA Path Normalization - extract the core slug from potentially deep hf/kaggle paths
         $dn = $repoId.Split('/')[-1]
@@ -604,8 +607,17 @@ while ($true) {
         $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
         
         Write-Host "`n--- SELECT DATASET TO COMPILE ---" -ForegroundColor Cyan
+        $Prefix = $RegData._registry_metadata.name_prefix
+        $Suffix = $RegData._registry_metadata.name_suffix
         for ($i=0; $i -lt $DatasetNames.Count; $i++) {
-            Write-Host "$($i+1). $($DatasetNames[$i])"
+            $dsName = $DatasetNames[$i]
+            $slug = $RegData.datasets.$dsName.name
+            $ManifoldPath = Join-Path $Out ($Prefix + $slug + $Suffix)
+            if (Test-Path (Join-Path $ManifoldPath "dataset_info.yaml")) {
+                Write-Host "$($i+1). $dsName [COMPILED]" -ForegroundColor Green
+            } else {
+                Write-Host "$($i+1). $dsName" -ForegroundColor Gray
+            }
         }
         Write-Host "a. All Datasets"
         $Sel = Read-Host "Selection"

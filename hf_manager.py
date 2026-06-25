@@ -133,7 +133,7 @@ def main():
                     path = hf_hub_download(repo_id=repo_id, filename=t_file, repo_type=args.repo_type, local_dir=dedicated_dir, token=token)
 
         # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
-        print(f"📦 [SWEEP] Scanning {args.output_dir} for unextracted archives...")
+        print(f"[SWEEP] Scanning {args.output_dir} for unextracted archives...")
         for root, dirs, files in os.walk(args.output_dir):
             for f in files:
                 f_path = Path(root) / f

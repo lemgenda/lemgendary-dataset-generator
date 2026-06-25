@@ -11,11 +11,23 @@ datasets:
   nima_aesthetic:
     name: NimaAesthetic
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticlarge
-    val_split: 0.12
+    val_split: 0.05
     refs:
     - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
     - ref: hf://bhargavsdesai/laion_improved_aesthetics_6.5plus_with_images
     - ref: kaggle://bogdanpetre98/aadb-imagedatabase
+    - ref: kaggle://generalhawking/koniq-10k-dataset
+    - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
+    - ref: hf://Shuai1995/TAD66K_for_Image_Aesthetics_Assessment
+  nima_aesthetic_mobile:
+    name: NimaAestheticMobile
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticmobile
+    val_split: 0.12
+    refs:
+    - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
+    - ref: kaggle://generalhawking/koniq-10k-dataset
+    - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
+    - ref: hf://Shuai1995/TAD66K_for_Image_Aesthetics_Assessment
   nima_technical:
     name: NimaTechnical
     kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnicallarge

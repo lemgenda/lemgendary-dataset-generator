@@ -127,83 +127,107 @@ def load_ground_truth(model_name=""):
     m_low = model_name.lower()
 
     # 1. Aesthetic Sources
-    if "aesthetic" in m_low or not m_low:
-        ava_csv = Path("./raw-sets/ava-aesthetic-visual-assessment/ground_truth_dataset.csv")
-        if ava_csv.exists():
-            import pandas as pd
-            df = pd.read_csv(ava_csv)
-            vote_cols = [f"vote_{i}" for i in range(1, 11)]
-            AVA_LOOKUP = df.set_index("image_num")[vote_cols].to_dict("index")
-            print(f"📖 [GT] {len(AVA_LOOKUP)} AVA Aesthetic ratings cached.")
+    ava_csv = Path("./raw-sets/ava-aesthetic-visual-assessment/ground_truth_dataset.csv")
+    if ava_csv.exists():
+        import pandas as pd
+        df = pd.read_csv(ava_csv)
+        vote_cols = [f"vote_{i}" for i in range(1, 11)]
+        AVA_LOOKUP = df.set_index("image_num")[vote_cols].to_dict("index")
+        print(f"📖 [GT] {len(AVA_LOOKUP)} AVA Aesthetic ratings cached.")
 
-        aadb_csv = Path("./raw-sets/aadb-imagedatabase/Dataset.csv")
-        if aadb_csv.exists():
-            import pandas as pd
-            df = pd.read_csv(aadb_csv)
-            AADB_LOOKUP = df.set_index("ImageFile")["score"].to_dict()
-            print(f"📖 [GT] {len(AADB_LOOKUP)} AADB Aesthetic ratings cached.")
+    aadb_csv = Path("./raw-sets/aadb-imagedatabase/Dataset.csv")
+    if aadb_csv.exists():
+        import pandas as pd
+        df = pd.read_csv(aadb_csv)
+        AADB_LOOKUP = df.set_index("ImageFile")["score"].to_dict()
+        print(f"📖 [GT] {len(AADB_LOOKUP)} AADB Aesthetic ratings cached.")
 
     # 2. Technical Sources (Universal Normalization v7.0)
-    if "technical" in m_low or not m_low:
-        # Technical Path Helper (v7.5) - Supports Legacy and Jackpot Mirror paths
-        def find_gt_path(base_name, relative_target):
-            # Try Jackpot Mirror path first
-            p1 = Path("./raw-sets/IQA-PyTorch-Datasets") / base_name / relative_target
-            if p1.exists(): return p1
-            # Try Legacy top-level path
-            p2 = Path("./raw-sets") / base_name / relative_target
-            if p2.exists(): return p2
-            # Try deep mirror path (sometimes archives have nested names)
-            p3 = Path("./raw-sets") / base_name / base_name / relative_target
-            if p3.exists(): return p3
-            return None
+    # Technical Path Helper (v7.5) - Supports Legacy and Jackpot Mirror paths
+    def find_gt_path(base_name, relative_target):
+        # Try Jackpot Mirror path first
+        p1 = Path("./raw-sets/IQA-PyTorch-Datasets") / base_name / relative_target
+        if p1.exists(): return p1
+        # Try Legacy top-level path
+        p2 = Path("./raw-sets") / base_name / relative_target
+        if p2.exists(): return p2
+        # Try deep mirror path (sometimes archives have nested names)
+        p3 = Path("./raw-sets") / base_name / base_name / relative_target
+        if p3.exists(): return p3
+        return None
 
-        # KonIQ-10k
+    # KonIQ-10k
+    koniq_csv = find_gt_path("koniq-10k-dataset", "koniq10k_distributions_sets.csv")
+    if not koniq_csv:
         koniq_csv = find_gt_path("koniq10k", "koniq10k_scores.csv")
-        if koniq_csv:
-            import pandas as pd
-            df = pd.read_csv(koniq_csv)
-            for _, row in df.iterrows():
-                TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (float(row['MOS']) - 1.0) * 2.25
-            print(f"📖 [GT] KonIQ-10k ratings cached.")
+    if koniq_csv:
+        import pandas as pd
+        df = pd.read_csv(koniq_csv)
+        for _, row in df.iterrows():
+            # Map KonIQ 1-100 scale down to NIMA 1-10 scale
+            val = float(row['MOS']) / 10.0
+            TID_LOOKUP[str(row['image_name']).lower()] = max(1.0, min(10.0, val))
+        print(f"📖 [GT] KonIQ-10k ratings cached.")
 
-        # SPAQ
+    # SPAQ
+    spaq_csv = find_gt_path("spaq", "SPAQ/Annotations/MOS_Average.csv")
+    if not spaq_csv:
         spaq_csv = find_gt_path("spaq", "Annotations/MOS_Average.csv")
-        if spaq_csv:
-            import pandas as pd
-            df = pd.read_csv(spaq_csv)
-            for _, row in df.iterrows():
-                TID_LOOKUP[str(row['Image name']).lower()] = 1.0 + float(row['MOS']) * 0.09
-            print(f"📖 [GT] SPAQ ratings cached.")
+    if spaq_csv:
+        import pandas as pd
+        df = pd.read_csv(spaq_csv)
+        for _, row in df.iterrows():
+            TID_LOOKUP[str(row['Image name']).lower()] = 1.0 + float(row['MOS']) * 0.09
+        print(f"📖 [GT] SPAQ ratings cached.")
 
-        # TID2013
-        tid_txt = find_gt_path("tid2013", "mos_with_names.txt")
-        if tid_txt:
-            with open(tid_txt, "r") as f:
-                for line in f:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        TID_LOOKUP[parts[1].strip().lower()] = float(parts[0]) + 1.0
-            print(f"📖 [GT] TID2013 ratings cached.")
+    # TID2013
+    tid_txt = find_gt_path("tid2013", "mos_with_names.txt")
+    if tid_txt:
+        with open(tid_txt, "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    TID_LOOKUP[parts[1].strip().lower()] = float(parts[0]) + 1.0
+        print(f"📖 [GT] TID2013 ratings cached.")
 
-        # LIVE IQA
-        live_csv = find_gt_path("live", "live_scores.csv")
-        if live_csv:
-            import pandas as pd
-            df = pd.read_csv(live_csv)
-            for _, row in df.iterrows():
-                orig = min(100.0, float(row['dmos']))
-                TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - orig/100.0) * 9.0
-            print(f"📖 [GT] LIVE IQA ratings cached.")
+    # LIVE IQA
+    live_csv = find_gt_path("live", "live_scores.csv")
+    if live_csv:
+        import pandas as pd
+        df = pd.read_csv(live_csv)
+        for _, row in df.iterrows():
+            orig = min(100.0, float(row['dmos']))
+            TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - orig/100.0) * 9.0
+        print(f"📖 [GT] LIVE IQA ratings cached.")
 
-        # CSIQ
-        csiq_csv = find_gt_path("csiq", "csiq_scores.csv")
-        if csiq_csv:
-            import pandas as pd
-            df = pd.read_csv(csiq_csv)
-            for _, row in df.iterrows():
-                TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - float(row['dmos'])) * 9.0
-            print(f"📖 [GT] CSIQ ratings cached.")
+    # CSIQ
+    csiq_csv = find_gt_path("csiq", "csiq_scores.csv")
+    if csiq_csv:
+        import pandas as pd
+        df = pd.read_csv(csiq_csv)
+        for _, row in df.iterrows():
+            TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - float(row['dmos'])) * 9.0
+        print(f"📖 [GT] CSIQ ratings cached.")
+
+    # TAD66K
+    tad_labels_dir = find_gt_path("TAD66K_for_Image_Aesthetics_Assessment", "labels/unmerge")
+    if not tad_labels_dir or not tad_labels_dir.exists():
+        # Hugging Face manager extracts labels.zip into a 'labels' subfolder, creating 'labels/labels/unmerge'
+        tad_labels_dir = find_gt_path("TAD66K_for_Image_Aesthetics_Assessment", "labels/labels/unmerge")
+    
+    if tad_labels_dir and tad_labels_dir.exists():
+        import os
+        import pandas as pd
+        tad_count = 0
+        for root, _, files in os.walk(tad_labels_dir):
+            for f in files:
+                if f.endswith('.csv'):
+                    df = pd.read_csv(os.path.join(root, f))
+                    for _, row in df.iterrows():
+                        if 'image' in row and 'score' in row:
+                            TID_LOOKUP[str(row['image']).lower()] = max(1.0, min(10.0, float(row['score'])))
+                            tad_count += 1
+        print(f"📖 [GT] {tad_count} TAD66K ratings cached.")
 
 def detect_task(model_dir_name):
     if not model_dir_name: return "quality"
@@ -448,7 +472,7 @@ def detect_annotations(path):
     for f in path.glob("*.mat"): return "matlab", f
 
     # Check one level deeper for common structures (e.g. annotations/instances.json)
-    for sub in [path / "annotations", path / "labels", path / "metadata"]:
+    for sub in [path / "annotations", path / "labels", path / "metadata", path / "data"]:
         if sub.exists():
             for f in sub.glob("*.json"):
                 if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
@@ -528,8 +552,8 @@ def batch_worker(tasks):
         batch_worker.counter += 1
         curr_count = batch_worker.counter
 
-    if curr_count <= 5 or curr_count % 20 == 0:
-        print(f"📡 [HEARTBEAT] Worker pulse: Batch {curr_count} successfully synchronized.", flush=True)
+    if curr_count <= 2 or curr_count % 1000 == 0:
+        pass # print(f"📡 [HEARTBEAT] Worker pulse: Batch {curr_count} successfully synchronized.", flush=True)
 
     return results
 
@@ -706,10 +730,10 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
 
             # 2026 High-Fidelity Floor (v16.2.8 Hardened)
             # Never start below the training suite's minimum floor to prevent blur pathologies.
-            # Restoration/SR floor at 224px; Quality/Diffusion floor at 512px for SOTA parity.
-            if task in ["quality", "classification", "diffusion"]:
+            # Restoration/SR floor at 224px; Diffusion floor at 512px for SOTA parity.
+            if task in ["diffusion"]:
                 min_dim = 512
-            elif task in ["restoration", "super-resolution"]:
+            elif task in ["quality", "classification", "restoration", "super-resolution"]:
                 min_dim = 224
             else:
                 min_dim = 128
@@ -1125,11 +1149,7 @@ def process_dataset():
 
     # 2026 Optimization: Switch to ThreadPoolExecutor if no AI models are active (SOTA v6.2)
     # This bypasses the massive pickling overhead of sending 1.4M cache items through Windows IPC pipes.
-    ExecutorClass = ProcessPoolExecutor
-    if args.no_vetting and args.no_labeling:
-        # Bypassing massive pickling overhead via ThreadPool (Imported globally)
-        print("🚀 [I/O-GEAR] High-Speed Mode active. Using ThreadPoolExecutor for zero IPC overhead.")
-        ExecutorClass = ThreadPoolExecutor
+    ExecutorClass = ThreadPoolExecutor
 
     for model_key, model_config in DATASETS_META.items():
         if args.model and model_key != args.model: continue
@@ -1276,8 +1296,12 @@ def process_dataset():
             else:
                 slug = ref.replace('hf://', '').replace('gh://', '').replace('kaggle://', '').split('/')[-1]
                 if ":" in slug:
-                    slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
-                dataset = shared_root / slug
+                    repo_slug = slug.split(":")[0]
+                    target_slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
+                    dataset = shared_root / repo_slug / target_slug
+                    slug = target_slug
+                else:
+                    dataset = shared_root / slug
 
             # Resolve/clean c_slug in the outer loop
             if task_tag:
@@ -1646,29 +1670,41 @@ def process_dataset():
 
         # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
         print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
-        shard_dir = output_root / "shards"
-        shard_dir.mkdir(parents=True, exist_ok=True)
+        
+        has_diffusion = conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone() is not None
+        if has_diffusion:
+            shard_dir = output_root / "shards"
+            shard_dir.mkdir(parents=True, exist_ok=True)
 
         unique_sources = [r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()]
 
         final_index = []
         for source in unique_sources:
-            shard_name = f"{prefix_str}{source}{suffix_str}.tar"
-            print(f"[SHARD] Writing {shard_name}...")
-            with wds.TarWriter(str(shard_dir / shard_name)) as sink:
-                cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
-                for row in cursor:
-                    res = {"id": row[0], "name": row[1], "source": row[2], "task": row[3], "split": row[4],
-                           "hash": row[5], "nima_score": row[6], "caption": row[7], "style_tag": row[8], "cluster_id": row[11]}
+            cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
+            rows = cursor.fetchall()
+            
+            if has_diffusion:
+                shard_name = f"{prefix_str}{source}{suffix_str}.tar"
+                print(f"[SHARD] Writing {shard_name}...")
+                sink = wds.TarWriter(str(shard_dir / shard_name))
+            else:
+                sink = None
+                
+            for row in rows:
+                res = {"id": row[0], "name": row[1], "source": row[2], "task": row[3], "split": row[4],
+                       "hash": row[5], "nima_score": row[6], "caption": row[7], "style_tag": row[8], "cluster_id": row[11]}
 
-                    if res["task"] == "diffusion" and row[10]:
-                        sink.write({
-                            "__key__": res["name"],
-                            "jpg": row[10],
-                            "txt": res["caption"],
-                            "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
-                        })
-                    final_index.append(res)
+                if res["task"] == "diffusion" and row[10] and sink:
+                    sink.write({
+                        "__key__": res["name"],
+                        "jpg": row[10],
+                        "txt": res["caption"],
+                        "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
+                    })
+                final_index.append(res)
+                
+            if sink:
+                sink.close()
 
         with open(output_root / "index.json", "w", encoding="utf-8") as f:
             json.dump(final_index, f, indent=2)
