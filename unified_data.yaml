@@ -188,9 +188,8 @@ datasets:
     val_split: 0.12
     refs:
     - ref: kaggle://awsaf49/coco-2017-dataset
-    - ref: hf://jxu124/objects365
-    - ref: kaggle://programmerrdai/open-images-v6
-    - ref: hf://imagenet-1k
+    - ref: kaggle://gopalbhattrai/pascal-voc-2012-dataset
+    - ref: kaggle://klemenko/kitti-dataset
     - ref: kaggle://harshpatel66/mpii-human-pose
     - ref: kaggle://elmahy/crowdpose
   professional_multitask_restoration:

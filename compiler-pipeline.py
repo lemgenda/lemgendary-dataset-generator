@@ -307,7 +307,8 @@ def init_worker(config, dped_cache=None, physical_index=None):
 
     # 2. Diffusion Specifics (Captions)
     # 3. Ground Truth Support (AVA/AADB/LAION)
-    load_ground_truth(args.model or "")
+    if mission in ["quality", "classification", "diffusion", "restoration"]:
+        load_ground_truth(args.model or "")
 
     # Mission Resolution for Workers
     mission = detect_task(args.model)
@@ -470,11 +471,15 @@ def detect_annotations(path):
     for f in path.glob("*.mat"): return "matlab", f
 
     # Check one level deeper for common structures (e.g. annotations/instances.json)
-    for sub in [path / "annotations", path / "labels", path / "metadata", path / "data"]:
+    for sub in [path / "annotations", path / "Annotations", path / "labels", path / "metadata", path / "data"]:
         if sub.exists():
             for f in sub.glob("*.json"):
                 if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
             for f in sub.glob("*.parquet"): return "parquet", f
+            
+            # 2026: Directory-level annotation formats (1 file per image)
+            if any(sub.glob("*.xml")): return "xml", sub
+            if any(sub.glob("*.txt")): return "yolo", sub
 
     return None, None
 
@@ -530,6 +535,44 @@ def parse_safetensors(st_path):
     except Exception:
         pass
     return metadata
+def parse_xml(xml_path):
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    annotations = []
+    
+    for obj in root.findall("object"):
+        cls = obj.find("name").text
+        bndbox = obj.find("bndbox")
+        if bndbox is not None:
+            xmin = float(bndbox.find("xmin").text)
+            ymin = float(bndbox.find("ymin").text)
+            xmax = float(bndbox.find("xmax").text)
+            ymax = float(bndbox.find("ymax").text)
+            width = xmax - xmin
+            height = ymax - ymin
+            annotations.append({"class": cls, "bbox": [xmin, ymin, width, height]})
+    
+    return annotations
+
+def parse_yolo(txt_path, img_w, img_h):
+    annotations = []
+    try:
+        with open(txt_path, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    cls_id = parts[0]
+                    # YOLO is center_x, center_y, width, height (normalized)
+                    cx, cy, nw, nh = map(float, parts[1:5])
+                    w = nw * img_w
+                    h = nh * img_h
+                    xmin = (cx * img_w) - (w / 2.0)
+                    ymin = (cy * img_h) - (h / 2.0)
+                    annotations.append({"class": cls_id, "bbox": [xmin, ymin, w, h]})
+    except Exception:
+        pass
+    return annotations
 
 # ---------------- BATCH WORKER ----------------
 def batch_worker(tasks):
@@ -917,6 +960,18 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 except Exception:
                     pass
 
+        elif fmt == "xml" and ann_data:
+            xml_anns = parse_xml(ann_data)
+            for a in xml_anns:
+                cls = map_category(a["class"], prefix)
+                annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+
+        elif fmt == "yolo" and ann_data:
+            yolo_anns = parse_yolo(ann_data, w, hgt)
+            for a in yolo_anns:
+                cls = map_category(a["class"], prefix)
+                annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+
         elif fmt == "safetensors" and ann_data:
             metadata = ann_data
             # Extract tags from common metadata keys (Kohya/Civitai style)
@@ -961,9 +1016,27 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 if task == "quality":
                     f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
                 elif task == "classification":
-                    # AI = 0, Human/Real = 1
-                    p_lower = str(img_path).lower()
-                    class_label = 0 if any(k in p_lower for k in ['fake', 'ai', 'synthetic']) else 1
+                    class_label = 1
+                    if isinstance(ann_data, dict) and "label" in ann_data:
+                        class_label = ann_data["label"]
+                    elif isinstance(ann_data, tuple) and len(ann_data) == 2 and isinstance(ann_data[1], dict):
+                        df_subset, mapping = ann_data
+                        lbl_col = mapping.get("label", "label")
+                        if lbl_col in df_subset.columns:
+                            class_label = df_subset.iloc[0][lbl_col]
+                    else:
+                        p_lower = str(img_path).lower()
+                        if any(k in p_lower for k in ['fake', 'ai', 'synthetic', 'nsfw', 'porn', 'explicit']):
+                            class_label = 0
+                    
+                    if isinstance(class_label, float):
+                        try:
+                            import pandas as pd
+                            if not pd.isna(class_label):
+                                class_label = int(class_label)
+                        except:
+                            pass
+                        
                     f.write(str(class_label) + "\n")
                 elif annotations:
                     for ann in annotations:
@@ -1515,6 +1588,12 @@ def process_dataset():
                         specific_ann_data = matlab_map.get(img_path.name, [])
                     elif fmt == "safetensors" and ann_data:
                         specific_ann_data = ann_data
+                    elif fmt in ["xml", "yolo"] and ann_data:
+                        # ann_data is the Path to the annotations/labels directory
+                        ext = ".xml" if fmt == "xml" else ".txt"
+                        ann_file = ann_data / f"{img_path.stem}{ext}"
+                        if ann_file.exists():
+                            specific_ann_data = str(ann_file)
 
                     if task == "diffusion":
                         task_item = (process_diffusion, img_path, prefix, c_slug, i, split, output_root_str)
