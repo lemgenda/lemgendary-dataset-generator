@@ -4,10 +4,9 @@ import sys
 
 # 2026 Resilience: Force UTF-8 encoding for Windows console support (Prevents UnicodeEncodeError)
 if os.name == 'nt':
-    import sys
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
     os.environ["FOR_DISABLE_CONSOLE_CTRL_HANDLER"] = "1"
     os.environ["FOR_IGNORE_EXCEPTIONS"] = "1"
 
@@ -39,7 +38,6 @@ from datetime import datetime
 from tqdm import tqdm
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 import functools
-tqdm = functools.partial(tqdm, ascii=True)
 from safetensors import safe_open
 
 def get_dir_size(path):

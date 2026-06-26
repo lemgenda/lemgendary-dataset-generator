@@ -5,13 +5,12 @@ import shutil
 from tqdm import tqdm
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 import functools
-tqdm = functools.partial(tqdm, ascii=True)
 
 def copy_with_progress(src, dst):
     """SOTA Buffered Copy with tqdm progress tracking."""
     file_size = os.path.getsize(src)
     with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
-        with tqdm(total=file_size, unit="B", unit_scale=True, desc=f"FINALIZING: {os.path.basename(src)}", ascii=True) as pbar:
+        with tqdm(total=file_size, unit="B", unit_scale=True, desc=f"FINALIZING: {os.path.basename(src)}") as pbar:
             while True:
                 buf = fsrc.read(64*1024) # 64KB chunks
                 if not buf:

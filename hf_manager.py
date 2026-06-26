@@ -5,7 +5,6 @@ from pathlib import Path
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 import functools
 from tqdm import tqdm
-tqdm = functools.partial(tqdm, ascii=True)
 
 def main():
     parser = argparse.ArgumentParser(description="LemGendary HF Downloader")
