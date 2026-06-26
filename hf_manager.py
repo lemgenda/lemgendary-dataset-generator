@@ -3,7 +3,7 @@ import argparse
 from huggingface_hub import snapshot_download, login
 from pathlib import Path
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
-import functools
+os.environ["TQDM_ASCII"] = "True"
 from tqdm import tqdm
 
 def main():

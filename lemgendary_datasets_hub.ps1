@@ -7,6 +7,7 @@ $Raw = Join-Path $PSScriptRoot 'raw-sets'
 $hfManagerPath = Join-Path $PSScriptRoot 'hf_manager.py'
 $ghManagerPath = Join-Path $PSScriptRoot 'gh_manager.py'
 $kagManagerPath = Join-Path $PSScriptRoot 'kaggle_manager.py'
+$gdManagerPath = Join-Path $PSScriptRoot 'gd_manager.py'
 
 $DownloadSB = {
     param($ds, $sharedPath, $vpy, $kagManager)
@@ -68,6 +69,25 @@ $GHSourceSB = {
     & $vpy $ghManager --repo_url $repoId --output_dir $outFold 2>&1
     
     if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+         Write-Output "RESULT:COMPLETED"
+    } else {
+         Write-Output "RESULT:FAILED"
+    }
+}
+
+$GDriveSB = {
+    param($ds, $sharedPath, $vpy, $gdManager)
+    $repoId = $ds.Replace('gdrive://', '')
+    $dn = $repoId.Split('/')[-1]
+    $outFold = Join-Path $sharedPath $dn
+    
+    Write-Output "STATUS:GD-PULLING"
+    & $vpy $gdManager --repo_id $repoId --output_dir $outFold 2>&1
+    
+    $z = Join-Path $sharedPath ($dn + '.zip')
+    if (Test-Path $z) {
+         Write-Output "RESULT:DOWNLOADED"
+    } elseif (Test-Path $outFold) {
          Write-Output "RESULT:COMPLETED"
     } else {
          Write-Output "RESULT:FAILED"
@@ -193,6 +213,7 @@ function Get-RefStatus {
     $isHF = $Ref -match 'hf://'
     $isGH = $Ref -match 'gh://'
     $kaggleSource = $Ref -match 'kaggle://'
+    $isGDrive = $Ref -match 'gdrive://'
     
     # 2026 Protocol Expansion: Check for primary Kaggle mirror first
     if ($KaggleRef) {
@@ -201,7 +222,7 @@ function Get-RefStatus {
         $kagFold = Join-Path $SharedPath $kagDn
         if (Test-Path $kagFold) { return "Extracted" }
     }
-    $repoId = $Ref.Replace('hf://datasets/', 'hf://').Replace('hf://', '').Replace('gh://', '').Replace('kaggle://', '')
+    $repoId = $Ref.Replace('hf://datasets/', 'hf://').Replace('hf://', '').Replace('gh://', '').Replace('kaggle://', '').Replace('gdrive://', '')
     if ($Ref -match 'competition:(.*)') { $repoId = $Matches[1] }
     
     $targetFile = $null
@@ -230,7 +251,7 @@ function Get-RefStatus {
         if ($fCount -eq 0 -and (Test-Path (Join-Path $foundFold ".git"))) { $fCount = 1 }
     }
     
-    if ($isHF -or $isGH -or $kaggleSource) {
+    if ($isHF -or $isGH -or $kaggleSource -or $isGDrive) {
         if ($fCount -gt 0) { return "Extracted" }
         if (Test-Path $z) { return "ZipOnly" }
         return "Missing"
@@ -421,6 +442,8 @@ function Start-Acquisition {
                         $NextDl.JobId = (Start-Job -ScriptBlock $GHSourceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $ghManagerPath).Id
                     } elseif ($NextDl.Ref -match 'kaggle://') {
                         $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
+                    } elseif ($NextDl.Ref -match 'gdrive://') {
+                        $NextDl.JobId = (Start-Job -ScriptBlock $GDriveSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $gdManagerPath).Id
                     } else {
                         # Legacy fallback
                         $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
