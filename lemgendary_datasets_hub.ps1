@@ -476,7 +476,10 @@ function Start-Acquisition {
                 $Outputs = @($jr | Receive-Job)
                 foreach ($ls in $Outputs) {
                     if ($ls -match 'STATUS:(.*)') { $ti.Status = $Matches[1] }
-                    elseif ($ls -match 'NOTIFICATION:(.*)') { Write-Host "  [!] $($Matches[1])" -ForegroundColor Cyan }
+                    elseif ($ls -match 'NOTIFICATION:(.*)') {
+                        if ($global:LogBuffer.Count -ge 5) { $global:LogBuffer = $global:LogBuffer[1..4] }
+                        $global:LogBuffer += "  [!] $($Matches[1])"
+                    }
                     elseif ($ls -match 'RESULT:(.*)') { 
                         $ti.Status = $Matches[1]
                         if ($ti.Status -eq 'DOWNLOADED') {
@@ -489,7 +492,8 @@ function Start-Acquisition {
                         if ($ti.Status -eq 'FAILED') { 
                             $ti.ProgressId = 0 
                             # 2026: SOTA Failure Guard - Ensure a clean line for the error debrief
-                            Write-Host "`n`r  [!] Job FAILED: $($ti.Slug) (Source Offline or Restricted)" -ForegroundColor Red
+                            if ($global:LogBuffer.Count -ge 5) { $global:LogBuffer = $global:LogBuffer[1..4] }
+                            $global:LogBuffer += "  [!] Job FAILED: $($ti.Slug) (Source Offline or Restricted)"
                             Start-Sleep -Seconds 1 # Force UI to settle
                         }
                     } else {

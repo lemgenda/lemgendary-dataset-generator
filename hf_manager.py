@@ -3,7 +3,7 @@ import argparse
 from huggingface_hub import snapshot_download, login
 from pathlib import Path
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
-os.environ["TQDM_ASCII"] = "True"
+# Removed TQDM_ASCII override to allow Unicode block characters
 from tqdm import tqdm
 
 def main():
@@ -46,7 +46,7 @@ def main():
             targets = [f for f in all_files if f.lower() in human_technical_targets]
             
             if not targets:
-                print(f"[HF] No specific human targets found. Falling back to archives & parquets...")
+                print(f"[HF] No specific custom/IQA targets found. Falling back to full archives & parquets...")
                 targets = [f for f in all_files if f.endswith(('.tgz', '.tar.gz', '.zip', '.parquet'))]
         
         if not targets:
@@ -103,6 +103,7 @@ def main():
                         unit='B',
                         unit_scale=True,
                         unit_divisor=1024,
+                        ascii=True,
                         bar_format='{desc}: {bar} | {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
                     ) as pbar:
                         for data in response.iter_content(chunk_size=1024*1024):

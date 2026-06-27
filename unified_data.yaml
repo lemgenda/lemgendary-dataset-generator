@@ -355,10 +355,13 @@ datasets:
     name: ClassificationMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifoldlarge
     val_split: 0.12
+    nsfw_ratio: 0.5
     refs:
-    - ref: hf://v-shihai/anime-nsfw-classification-v2
+    - ref: hf://deepghs/anime_dbrating
       tag: anime_nsfw
-    - ref: hf://Lesser-Known/NSFW-Image-Classifier-Data
+    - ref: hf://amaye15/NSFW
       tag: general_nsfw
-    - ref: hf://datasets/DmitryUlyanov/imagenet-1k-subset
+    - ref: gdrive://1BxiMVs0XRA5nFMdKvBdBNe-hxXmWaPee
+      tag: general_nsfw
+    - ref: hf://zh-plus/tiny-imagenet
       tag: sfw_baseline

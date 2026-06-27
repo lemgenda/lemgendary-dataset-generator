@@ -1130,6 +1130,18 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         print(f"❌ Error processing diffusion sample {img_path}: {e}")
         return None
 
+def remove_empty_dirs(path):
+    for sub in ["images", "labels", "targets", "shards"]:
+        for split in ["train", "val", "test"]:
+            p = path / sub / split
+            if p.exists() and p.is_dir():
+                try: p.rmdir()
+                except OSError: pass
+        p = path / sub
+        if p.exists() and p.is_dir():
+            try: p.rmdir()
+            except OSError: pass
+
 # ---------------- ORCHESTRATOR ----------------
 def process_dataset():
     # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
@@ -1786,6 +1798,7 @@ def process_dataset():
         with open(output_root / "index.json", "w", encoding="utf-8") as f:
             json.dump(final_index, f, indent=2)
 
+        remove_empty_dirs(output_root)
         generate_metadata_files(output_root, final_index, pascal_name)
         generate_readme(output_root)
         generate_kaggle_notebook(output_root, pascal_name, model_key)
@@ -1895,7 +1908,7 @@ def generate_readme(output_root):
             "models": "NafNet, MirNet, MprNet, FfaNet, MultiTaskRestorer",
             "arch": "UNet-based restoration architectures with residual learning",
             "loss": "L1 Loss, SSIM Loss, Charbonnier Loss",
-            "metrics": "| **PSNR** | ~28.0 dB | > 31.0 dB | **> 33.0 dB** |\n| **SSIM** | ~0.8000  | > 0.8800  | **> 0.9200**  |\n| **LPIPS**| ~0.1500  | < 0.1200  | **< 0.0800**  |\n| **FID**  | ~15.00   | < 12.00   | **< 8.00**    |",
+            "metrics": "| **PSNR** | ~28.0 dB | > 31.0 dB | **> 33.0 dB** |\n| **SSIM** | ~0.8000 | > 0.8800 | **> 0.9200** |\n| **LPIPS** | ~0.1500 | < 0.1200 | **< 0.0800** |\n| **FID** | ~15.00 | < 12.00 | **< 8.00** |",
             "targets": "ACTIVELY DEPLOYED",
             "targets_desc": "Because this dataset natively inherently evaluates pixel-to-pixel structural auto-encoder derivations, the `targets/` folder physically houses the uncorrupted High-Resolution matrices strictly mapped identically 1-to-1 against `images/`."
         },
@@ -1906,7 +1919,7 @@ def generate_readme(output_root):
             "models": "SwinIR, HAT, EDSR, RRDBNet",
             "arch": "Transformer-based or Deep Residual networks",
             "loss": "L1 Loss, VGG Perceptual Loss, GAN Loss",
-            "metrics": "| **PSNR** | ~29.0 dB | > 32.0 dB | **> 34.0 dB** |\n| **SSIM** | ~0.8200  | > 0.8900  | **> 0.9300**  |",
+            "metrics": "| **PSNR** | ~29.0 dB | > 32.0 dB | **> 34.0 dB** |\n| **SSIM** | ~0.8200 | > 0.8900 | **> 0.9300** |",
             "targets": "ACTIVELY DEPLOYED",
             "targets_desc": "The `targets/` folder houses the original high-resolution ground truth images strictly mapped identically to the downscaled counterparts in `images/`."
         },
@@ -1977,17 +1990,48 @@ def generate_readme(output_root):
         elif "Aesthetic" in output_root.name:
             resolved_arch = "MobileNetV2 / ResNet backbone with regression head"
 
+    desc_map = {
+        "images": "Normalized input tensors (RGB, standardized resolution).",
+        "labels": "Strict numerical annotation vectors (JSON/TXT format).",
+        "targets": m.get('targets_desc', "Target matrices or masks for training."),
+        "shards": "WebDataset `.tar` shards containing serialized manifold data.",
+        "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
+        "category.txt": "Top-level categorization tag.",
+        "classes.txt": "Class labels mapping.",
+        "index.json": "Compiled metadata index mapping all dataset samples.",
+        "manifold_registry.db": "SQLite registry containing processing history and hashes.",
+        "README.md": "This documentation file."
+    }
+
+    structure_lines = []
+    if output_root.exists():
+        for item in sorted(output_root.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+            name = item.name
+            if "_training" in name and name.endswith(".ipynb"):
+                desc = "Auto-generated Jupyter notebook for model training."
+            else:
+                desc = desc_map.get(name, "Dataset component.")
+                
+            if item.is_dir():
+                structure_lines.append(f"- **`{name}/`**: {desc}")
+            else:
+                structure_lines.append(f"- **`{name}`**: {desc}")
+                
+    structure_text = "\n".join(structure_lines)
+
     readme = f"""# {output_root.name}
 
 > {m['desc']}
 
-## 📊 Dataset Overview
+## Dataset Overview
+
 - **Category:** {m['category']}
 - **Total Samples:** {len(data):,}
 - **Architecture Base:** {resolved_arch}
 - **Primary Task:** {m['obj']}
 
-## 🧬 Composition & Lineage
+## Composition & Lineage
+
 This manifold is a high-fidelity merge of the following original sources:
 
 | Source Dataset | Train | Val | Total Contribution |
@@ -1997,24 +2041,25 @@ This manifold is a high-fidelity merge of the following original sources:
         readme += f"| **{src}** | {counts['train']:,} | {counts['val']:,} | {counts['total']:,} samples |\n"
 
     readme += f"""
-## 🎯 Model Training Profile
+## Model Training Profile
+
 - **Target Architectures**: {m['models']}
 - **Optimization Strategy**: {m['loss']}
 
 ### Benchmark Metrics [SOTA]
+
 | Metric | Baseline | Advanced | SOTA |
 | :--- | :--- | :--- | :--- |
 {m['metrics']}
 
-## 📂 Repository Structure
+## Repository Structure
+
 Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
 
-- **`images/`**: Normalized input tensors (RGB, standardized resolution).
-- **`labels/`**: Strict numerical annotation vectors (JSON/TXT format).
-- **`targets/`**: {m['targets_desc']}
-- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.
+{structure_text}
 
 ---
+
 **Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')})
 """
 
@@ -2202,6 +2247,7 @@ def reduce_dataset():
         with open(target_root / "index.json", "w", encoding="utf-8") as f:
             json.dump(new_index, f, indent=2)
 
+        remove_empty_dirs(target_root)
         generate_metadata_files(target_root, new_index, target_name)
         generate_readme(target_root)
         generate_kaggle_notebook(target_root, target_name)

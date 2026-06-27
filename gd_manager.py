@@ -4,7 +4,7 @@ import os
 import shutil
 
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
-os.environ["TQDM_ASCII"] = "True"
+# Removed TQDM_ASCII override to allow Unicode block characters
 
 def main():
     parser = argparse.ArgumentParser(description="LemGendary Google Drive Downloader")
@@ -23,7 +23,7 @@ def main():
         try:
             print(f"Attempting to download {args.repo_id} as a file archive to {zip_path}...")
             # fuzzy=True helps if the URL is provided instead of an ID
-            res = gdown.download(id=args.repo_id, output=zip_path, quiet=False, fuzzy=True)
+            res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)
             if res is None:
                 raise Exception("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
