@@ -658,11 +658,13 @@ while ($true) {
         if ($Sel -eq 'a') {
             $TargetModels = $DatasetNames
         } else {
-            $Idx = [int]$Sel - 1
+            $Idx = -1
+            try { $Idx = [int]$Sel - 1 } catch {}
             if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
                 $TargetModels += $DatasetNames[$Idx]
             } else {
-                Write-Host "Invalid selection." -Fore Red
+                Write-Host "Invalid selection. Please enter a valid number or 'a'." -Fore Red
+                Start-Sleep -Seconds 2
                 continue
             }
         }
@@ -713,6 +715,9 @@ while ($true) {
         Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
         & $Vpy compiler-pipeline.py --cleanup
     }
+    elseif ($I -eq '3') {
+        & $Vpy compiler-pipeline.py --reduce
+    }
     elseif ($I -eq '4') {
         $RegData = Get-RegData
         $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
@@ -722,7 +727,8 @@ while ($true) {
             Write-Host "$($i+1). $($DatasetNames[$i])"
         }
         $Sel = Read-Host "Selection"
-        $Idx = [int]$Sel - 1
+        $Idx = -1
+        try { $Idx = [int]$Sel - 1 } catch {}
         if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
             $tm = $DatasetNames[$Idx]
             $ds_info = $RegData.datasets.$tm
@@ -759,4 +765,12 @@ while ($true) {
         }
     }
     elseif ($I -match '^q') { break }
+    else {
+        Write-Host "Command finished or unrecognized input." -ForegroundColor DarkGray
+    }
+    
+    # 2026: SOTA Debugging Pause - Prevent screen clear if there was an error
+    Write-Host "`nPress Enter to return to Dashboard..." -ForegroundColor Yellow
+    Read-Host
+
 }

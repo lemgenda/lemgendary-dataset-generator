@@ -1,17 +1,20 @@
 # 2026: Environment Linter Sync (Last Verified: 2026-05-01)
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 2026 Resilience: Force UTF-8 encoding for Windows console support (Prevents UnicodeEncodeError)
 if os.name == 'nt':
     if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding='utf-8') # type: ignore
+        sys.stderr.reconfigure(encoding='utf-8') # type: ignore
     os.environ["FOR_DISABLE_CONSOLE_CTRL_HANDLER"] = "1"
     os.environ["FOR_IGNORE_EXCEPTIONS"] = "1"
 
 import json
-import random# LemGendary Kaggle Manager (Last Verified: 2026-05-01)
+import pandas as pd
+import random
+# LemGendary Kaggle Manager (Last Verified: 2026-05-01)
 import argparse
 import hashlib
 import shutil
@@ -20,7 +23,7 @@ import torch
 import cv2
 from pathlib import Path
 from PIL import Image, ImageOps, ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+ImageFile.LOAD_TRUNCATED_IMAGES = True # type: ignore
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import requests
 from multiprocessing import Manager
@@ -30,6 +33,7 @@ import sqlite3
 import webdataset as wds
 from datetime import datetime
 import json
+import pandas as pd
 import yaml
 import hashlib
 from sklearn.cluster import MiniBatchKMeans
@@ -263,10 +267,10 @@ def init_worker(config, dped_cache=None, physical_index=None):
     if dped_cache: DPED_CACHE = dped_cache
     if physical_index: PHYSICAL_INDEX = physical_index
     # 2026 Modular Alignment: Local imports from encapsulated modules
-    from models.quality_scorer import QualitySentry
-    from models.detection import AutoLabeler
-    from models.diffusion import CaptionSentry
-    from models.encoder import CLIPManifold
+    from models.quality_scorer import QualitySentry # type: ignore
+    from models.detection import AutoLabeler # type: ignore
+    from models.diffusion import CaptionSentry # type: ignore
+    from models.encoder import CLIPManifold # type: ignore
 
     # 2026 Resilience: Workers ignore SIGINT to prevent traceback noise.
     # ONLY apply to sub-processes.
@@ -276,7 +280,7 @@ def init_worker(config, dped_cache=None, physical_index=None):
 
     import torch
     from PIL import ImageFile
-    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    ImageFile.LOAD_TRUNCATED_IMAGES = True # type: ignore
 
     # CRITICAL: Prevent multiprocessing thread thrashing on CPU
     # ONLY apply in ProcessPool mode to avoid ThreadPool deadlocks
@@ -327,7 +331,7 @@ def init_worker(config, dped_cache=None, physical_index=None):
             pass
 
 def get_labeler(task, device="cuda"):
-    from models.detection import AutoLabeler
+    from models.detection import AutoLabeler # type: ignore
     global LABELER
     if LABELER is None: LABELER = {}
     if task not in LABELER:
@@ -496,12 +500,13 @@ def parse_coco(json_path):
     return images, anns
 
 def parse_parquet(pq_path):
-    import pandas as pd
-    df = pd.read_parquet(pq_path)
+    import pyarrow.parquet as pq
+    schema = pq.read_schema(pq_path)
+    cols = schema.names
     # Detect common schemas
     mapping = {}
-    cols = df.columns.tolist()
     if "image" in cols: mapping["file_name"] = "image"
+    elif "pixel_values" in cols: mapping["file_name"] = "pixel_values"
     if "url" in cols: mapping["url"] = "url"
     if "key" in cols: mapping["key"] = "key"
     if "label" in cols: mapping["class"] = "label"
@@ -518,7 +523,7 @@ def parse_parquet(pq_path):
         if any(x in cl for x in ["ymin", "y1"]): mapping["ymin"] = c
         if any(x in cl for x in ["width", "w"]): mapping["width"] = c
         if any(x in cl for x in ["height", "h"]): mapping["height"] = c
-    return df, mapping
+    return pq_path, mapping, cols
 
 def parse_matlab(mat_path):
     import scipy.io as sio
@@ -542,13 +547,15 @@ def parse_xml(xml_path):
     annotations = []
     
     for obj in root.findall("object"):
-        cls = obj.find("name").text
+        name_node = obj.find("name")
+        cls = name_node.text if name_node is not None else "unknown"
         bndbox = obj.find("bndbox")
         if bndbox is not None:
-            xmin = float(bndbox.find("xmin").text)
-            ymin = float(bndbox.find("ymin").text)
-            xmax = float(bndbox.find("xmax").text)
-            ymax = float(bndbox.find("ymax").text)
+            xn, yn = bndbox.find("xmin"), bndbox.find("ymin")
+            xmn, ymn = bndbox.find("xmax"), bndbox.find("ymax")
+            if xn is not None and yn is not None and xmn is not None and ymn is not None:
+                xmin, ymin, xmax, ymax = float(xn.text), float(yn.text), float(xmn.text), float(ymn.text) # type: ignore
+            else: continue
             width = xmax - xmin
             height = ymax - ymin
             annotations.append({"class": cls, "bbox": [xmin, ymin, width, height]})
@@ -585,21 +592,13 @@ def batch_worker(tasks):
             results.append(None)
 
     # 2026 Pulse: Log completion for large batches to confirm worker health
-    import threading
-    if not hasattr(batch_worker, '_lock'): batch_worker._lock = threading.Lock()
-    if not hasattr(batch_worker, 'counter'): batch_worker.counter = 0
-
-    with batch_worker._lock:
-        batch_worker.counter += 1
-        curr_count = batch_worker.counter
-
-    if curr_count <= 2 or curr_count % 1000 == 0:
-        pass # print(f"📡 [HEARTBEAT] Worker pulse: Batch {curr_count} successfully synchronized.", flush=True)
+    # Pulse logic removed for type safety
 
     return results
 
 # ---------------- PROCESSORS ----------------
-def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, output_root_str, skip_labeling=False):
+def process_image(
+    img_input, prefix, slug, idx, task, fmt, ann_data, split, output_root_str, skip_labeling=False):
     """
     Worker function for parallel processing.
     img_input can be a Path or raw bytes (for Parquet-embedded datasets).
@@ -611,6 +610,8 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
     nima_probs[0] = 1.0
     w, hgt = 0, 0
     img = None
+    p_str = ""
+    img_data = b""
 
     try:
         # Validity & Format Handling
@@ -618,11 +619,11 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             if isinstance(img_input, dict) and "bytes" in img_input:
                 img_data = img_input["bytes"]
             else:
-                img_data = img_input
+                img_data = img_input if isinstance(img_input, bytes) else b""
 
             if img_data is None: return None
 
-            img = Image.open(io.BytesIO(img_data))
+            img = Image.open(io.BytesIO(img_data)) # type: ignore
             # 2026 Resilience: Use a Path object even for virtual, but with a safe Windows-friendly name
             img_path = Path(f"virtual_{slug}_{idx:09d}.jpg")
             is_st = False
@@ -763,7 +764,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
                 else:
                     img = Image.open(img_path)
             else:
-                img = Image.open(io.BytesIO(img_data))
+                img = Image.open(io.BytesIO(img_data)) # type: ignore
             img = ensure_srgb(img)
             w, hgt = img.size
             if task == "quality" and "laion" not in slug and "ava" not in slug:
@@ -812,7 +813,8 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             try:
                 # Case A: Virtual (ann_data is a dict from row)
                 if isinstance(ann_data, dict):
-                    nima_score = float(ann_data.get("aesthetic_score", ann_data.get("score", 6.5)))
+                    val = ann_data.get("aesthetic_score", ann_data.get("score", 6.5))
+                    nima_score = float(val) if val is not None else 6.5
                     nima_probs = get_gaussian_probs(nima_score)
                 # Case B: Physical (ann_data is (df_subset, mapping))
                 elif fmt == "parquet" and ann_data:
@@ -883,7 +885,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         if task in ["restoration", "super-resolution"]:
             if target_img_path:
                 try:
-                    os.link(str(target_img_path), str(out_tgt_path))
+                    os.link(target_img_path, str(out_tgt_path))
                 except (OSError, AttributeError):
                     try: shutil.copy(target_img_path, out_tgt_path)
                     except: pass
@@ -905,7 +907,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
             # Prefer resolved clean target (e.g., DPED Canon) over duplicating the input.
             if target_img_path:
                 try:
-                    os.link(str(target_img_path), str(out_tgt_path))
+                    os.link(target_img_path, str(out_tgt_path))
                 except (OSError, AttributeError):
                     try: shutil.copy(target_img_path, out_tgt_path)
                     except: pass
@@ -1071,11 +1073,22 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split, outp
         print(f"[ERROR] processing {img_path}: {e}")
         return None
 
-def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
+def process_diffusion(
+    img_path, prefix, slug, idx, split, output_root_str):
     """Specialized Text-Image processor for Diffusion Models"""
     try:
-        if not img_path.exists(): return None
-        img = Image.open(img_path)
+        # Handle virtual dataset bytes
+        if isinstance(img_path, (bytes, dict)):
+            img_data = img_path["bytes"] if isinstance(img_path, dict) and "bytes" in img_path else img_path
+            if img_data is None: return None
+            img = Image.open(io.BytesIO(img_data)) # type: ignore
+            is_virtual = True
+        else:
+            if isinstance(img_path, str): img_path = Path(img_path)
+            if not img_path.exists(): return None
+            img = Image.open(img_path)
+            is_virtual = False
+
         img = ensure_srgb(img)
         if is_black_image(img): return None
 
@@ -1093,8 +1106,8 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         caption = "a high quality image"
         if CAPTIONER:
             # Check for native captions first (DiffusionDB convention)
-            caption_file = img_path.parent / (img_path.stem + ".txt")
-            if caption_file.exists():
+            caption_file = img_path.parent / (img_path.stem + ".txt") if not is_virtual else None
+            if caption_file and caption_file.exists():
                 caption = caption_file.read_text().strip()
             else:
                 caption = CAPTIONER.generate(img)
@@ -1127,7 +1140,8 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
             "img_bytes": img_bytes, "size": len(img_bytes)
         }
     except Exception as e:
-        print(f"❌ Error processing diffusion sample {img_path}: {e}")
+        safe_path = "virtual_bytes" if isinstance(img_path, (bytes, dict)) else img_path
+        print(f"❌ Error processing diffusion sample {safe_path}: {e}")
         return None
 
 def remove_empty_dirs(path):
@@ -1160,10 +1174,10 @@ def process_dataset():
     shared_root = INPUT_ROOT
     # Pre-load models globally once to prevent multiprocess race conditions on HF cache
     print("🛡️ [PRE-FLIGHT] Analyzing task requirements...")
-    from models.quality_scorer import QualitySentry
-    from models.diffusion import CaptionSentry
-    from models.encoder import CLIPManifold
-    from models.detection import AutoLabeler
+    from models.quality_scorer import QualitySentry # type: ignore
+    from models.diffusion import CaptionSentry # type: ignore
+    from models.encoder import CLIPManifold # type: ignore
+    from models.detection import AutoLabeler # type: ignore
 
     # Analyze if any target models need AI augmentation
     needs_captioning = False
@@ -1220,7 +1234,7 @@ def process_dataset():
                                 # 2026: Normalize to lowercase for case-insensitive resolution
                                 dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
 
-    max_workers = max(1, final_workers)
+    max_workers = int(max(1, final_workers))
     print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
     print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
 
@@ -1352,6 +1366,7 @@ def process_dataset():
             tag = ref_entry.get("tag", "sfw")
             # Resolve Slug: Handle hf://, gh://, and kaggle:// prefixes
             task_tag = None
+            m_name = ""
             if ref.startswith("manifold://"):
                 m_name = ref.replace("manifold://", "")
                 m_path = OUT_PARENT / f"{prefix_str}{m_name}{suffix_str}"
@@ -1410,6 +1425,7 @@ def process_dataset():
 
             fmt, ann_path = detect_annotations(dataset)
             ann_data = None
+            ann_data_list = []
             if fmt == "coco":
                 ann_data = parse_coco(ann_path)
             elif fmt == "parquet":
@@ -1424,6 +1440,8 @@ def process_dataset():
                 ann_data = ann_data_list[0] if ann_data_list else None
             elif fmt == "matlab":
                 ann_data = parse_matlab(ann_path)
+            elif fmt in ["xml", "yolo"]:
+                ann_data = ann_path
 
             valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp", ".npy"}
             images = []
@@ -1443,9 +1461,9 @@ def process_dataset():
             # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
             is_virtual = False
             if not images and fmt == "parquet" and ann_data_list:
-                # Check ALL shards for "image" column, not just the first one
-                for df_shard, _ in ann_data_list:
-                    if "image" in df_shard.columns:
+                # Check ALL shards for "image" or "pixel_values" column, not just the first one
+                for pq_path, _, cols in ann_data_list:
+                    if "image" in cols or "pixel_values" in cols:
                         is_virtual = True
                         print(f"✨ [VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
                         break
@@ -1453,8 +1471,8 @@ def process_dataset():
             # LAZY DATASET SUPPORT: If no images and no embedded bytes, check for URLs
             is_lazy = False
             if not images and not is_virtual and fmt == "parquet" and ann_data_list:
-                for df_shard, _ in ann_data_list:
-                    if "url" in df_shard.columns:
+                for pq_path, _, cols in ann_data_list:
+                    if "url" in cols:
                         is_lazy = True
                         print(f"📡 [LAZY] {slug} identified as URL-based manifest. Commencing background retrieval...")
                         break
@@ -1465,10 +1483,15 @@ def process_dataset():
                 
                 # Collect all missing URLs
                 to_download = []
-                for df, mapping in ann_data_list:
+                for pq_path, mapping, cols in ann_data_list:
                     url_col = mapping.get("url", "url")
                     key_col = mapping.get("key", "key")
-                    if url_col in df.columns:
+                    if url_col in cols:
+                        try:
+                            df = pd.read_parquet(pq_path)
+                        except Exception as e:
+                            print(f"⚠️ [WARNING] Skipping corrupted lazy parquet shard {pq_path}: {e}")
+                            continue
                         for row in df.itertuples():
                             url = getattr(row, url_col)
                             key = str(getattr(row, key_col, hashlib.md5(url.encode()).hexdigest()))
@@ -1498,7 +1521,12 @@ def process_dataset():
                 for k, v in images_meta.items():
                     coco_file_to_id[v["file_name"]] = k
             elif fmt == "parquet" and ann_data and not is_virtual:
-                df, mapping = ann_data
+                pq_path, mapping, cols = ann_data # type: ignore
+                try:
+                    df = pd.read_parquet(str(pq_path))
+                except Exception as e:
+                    print(f"⚠️ [WARNING] Skipping corrupted parquet {pq_path}: {e}")
+                    df = pd.DataFrame()
                 file_col = mapping.get("file_name", "file_name")
                 # Only group if the column is hashable (e.g. filename strings)
                 if file_col in df.columns and len(df) > 0 and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str)):
@@ -1516,7 +1544,13 @@ def process_dataset():
                         except Exception:
                             pass
 
-            sample_count = len(images) if not is_virtual else sum(len(d[0]) for d in ann_data_list)
+            if not is_virtual:
+                sample_count = len(images)
+            else:
+                try:
+                    sample_count = sum(pd.read_parquet(d[0], columns=[]).shape[0] for d in ann_data_list)
+                except Exception:
+                    sample_count = 0
             # print(f"[QUEUE] {prefix} ({task}) | {slug} | {sample_count} samples scheduled.")
 
             model_val_split = model_config.get("val_split", None)
@@ -1533,10 +1567,15 @@ def process_dataset():
                 # c_slug already defined and formatted above
                 skip_lbl = not model_config.get("labeling", True)
 
-                for df, mapping in ann_data_list:
+                for pq_path, mapping, cols in ann_data_list:
                     # We use itertuples for speed, but we must handle the row data carefully
+                    try:
+                        df = pd.read_parquet(pq_path)
+                    except Exception as e:
+                        print(f"⚠️ [WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
+                        continue
                     for row in df.itertuples():
-                        img_bytes = getattr(row, "image", None)
+                        img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
                         if img_bytes is None: continue
 
                         name = f"{prefix}_{c_slug}_{global_idx:09d}"
@@ -1546,7 +1585,7 @@ def process_dataset():
 
                         split = "train" if random.random() < train_prob else "val"
                         # Convert row to dict for easier access in worker
-                        row_dict = row._asdict()
+                        row_dict = {k: getattr(row, k) for k in df.columns}
                         if task == "diffusion":
                             task_item = (process_diffusion, img_bytes, prefix, c_slug, global_idx, split, output_root_str)
                         else:
@@ -1593,7 +1632,7 @@ def process_dataset():
                         if img_id is not None:
                             specific_ann_data = anns_meta.get(img_id, [])
                     elif fmt == "parquet" and ann_data:
-                        df, mapping = ann_data
+                        pq_path, mapping, cols = ann_data # type: ignore
                         df_subset = parquet_map.get(img_path.name)
                         if df_subset is not None and not df_subset.empty:
                             specific_ann_data = (df_subset, mapping)
@@ -1604,7 +1643,7 @@ def process_dataset():
                     elif fmt in ["xml", "yolo"] and ann_data:
                         # ann_data is the Path to the annotations/labels directory
                         ext = ".xml" if fmt == "xml" else ".txt"
-                        ann_file = ann_data / f"{img_path.stem}{ext}"
+                        ann_file = ann_path / f"{img_path.stem}{ext}"
                         if ann_file.exists():
                             specific_ann_data = str(ann_file)
 
@@ -1749,7 +1788,7 @@ def process_dataset():
 
         if latents and len(latents) > 0 and len(latents[0]) > 0:
             X = np.stack(latents)
-            n_clusters = CONFIG.get("n_style_clusters", 16)
+            n_clusters = int(CONFIG.get("n_style_clusters", 16))
             kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(X)
             labels = kmeans.labels_
             for i, cid in tqdm(zip(ids, labels), total=len(ids), desc="[STYLING] Updating Clusters"):
@@ -1761,6 +1800,7 @@ def process_dataset():
         # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
         print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
         
+        shard_dir = None
         has_diffusion = conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone() is not None
         if has_diffusion:
             shard_dir = output_root / "shards"
@@ -1773,7 +1813,7 @@ def process_dataset():
             cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
             rows = cursor.fetchall()
             
-            if has_diffusion:
+            if has_diffusion and shard_dir is not None:
                 shard_name = f"{prefix_str}{source}{suffix_str}.tar"
                 print(f"[SHARD] Writing {shard_name}...")
                 sink = wds.TarWriter(str(shard_dir / shard_name))
@@ -2068,7 +2108,10 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
         f.write(readme)
 
 def generate_kaggle_notebook(output_root, target_name, model_key=None):
-    from notebook_generator import generate_training_notebook as gen_nb
+    try:
+        from notebook_generator import generate_training_notebook as gen_nb # type: ignore
+    except ImportError:
+        def gen_nb(*args, **kwargs): pass
     # 2026 Resilience: Auto-resolve model name if not provided
     resolved_model = model_key
     if not resolved_model:
@@ -2131,7 +2174,7 @@ def reduce_dataset():
     for idx in target_indices:
         source_root = manifolds[idx]
 
-        old_suffix = CONFIG.get("name_suffix", "Large")
+        old_suffix = str(CONFIG.get("name_suffix", "Large"))
         if source_root.name.endswith(old_suffix):
             base_name = source_root.name[:-len(old_suffix)]
         else:
@@ -2244,7 +2287,6 @@ def reduce_dataset():
                 print(f"\n🚫 [ABORTED] Reduction cancelled by user.")
                 return
 
-        import json
         with open(target_root / "index.json", "w", encoding="utf-8") as f:
             json.dump(new_index, f, indent=2)
 
@@ -2466,7 +2508,7 @@ def acquire_datasets():
                     repo_id=repo_id.replace("hf://", ""),
                     repo_type="dataset",
                     local_dir=str(target_path),
-                    local_dir_use_symlinks=False,
+                    
                     revision="main"
                 )
         print("\n✅ [SUCCESS] Acquisition complete.")

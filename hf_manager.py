@@ -92,7 +92,10 @@ def main():
                     response = requests.get(url, headers=headers, stream=True)
                     # If 206 Partial Content, we are resuming
                     total_size = int(response.headers.get('content-length', 0))
-                    if response.status_code == 206:
+                    if response.status_code == 200 and existing_size > 0:
+                        print(f"  [WARN] Server ignored resume request. Overwriting from start.")
+                        existing_size = 0
+                    elif response.status_code == 206:
                         total_size += existing_size
                     
                     mode = "ab" if existing_size > 0 else "wb"
