@@ -1419,7 +1419,8 @@ def process_dataset():
                 for ap in ann_paths:
                     try:
                         ann_data_list.append(parse_parquet(ap))
-                    except: pass
+                    except Exception as e:
+                        print(f"⚠️ [WARNING] Failed to parse {ap}: {e}")
                 ann_data = ann_data_list[0] if ann_data_list else None
             elif fmt == "matlab":
                 ann_data = parse_matlab(ann_path)
