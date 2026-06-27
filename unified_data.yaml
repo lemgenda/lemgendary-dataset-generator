@@ -361,7 +361,5 @@ datasets:
       tag: anime_nsfw
     - ref: hf://amaye15/NSFW
       tag: general_nsfw
-    - ref: gdrive://1BxiMVs0XRA5nFMdKvBdBNe-hxXmWaPee
-      tag: general_nsfw
     - ref: hf://zh-plus/tiny-imagenet
       tag: sfw_baseline
