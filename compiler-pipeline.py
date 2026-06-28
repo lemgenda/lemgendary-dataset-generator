@@ -582,12 +582,62 @@ def parse_yolo(txt_path, img_w, img_h):
     return annotations
 
 # ---------------- BATCH WORKER ----------------
+def process_parquet_shard(pq_path, prefix, c_slug, start_idx, task, fmt, split_fallback, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, keep_prob, num_rows):
+    import pandas as pd
+    import random
+    from pathlib import Path
+    try:
+        df = pd.read_parquet(pq_path)
+    except Exception as e:
+        print(f"⚠️ [WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
+        return [{"hash": "skipped"}] * num_rows
+    
+    results = []
+    global_idx = start_idx
+    for row in df.itertuples():
+        current_idx = global_idx
+        global_idx += 1
+        
+        name = f"{prefix}_{c_slug}_{current_idx:09d}"
+        
+        if keep_prob < 1.0 and random.random() > keep_prob:
+            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "dropped", "nima_score": 1.0, "size": 0})
+            continue
+            
+        if name in existing_names or name.lower() in existing_on_disk:
+            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "skipped", "nima_score": 1.0, "size": 0})
+            continue
+            
+        img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
+        if img_bytes is None:
+            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "skipped", "nima_score": 1.0, "size": 0})
+            continue
+            
+        split = "train" if random.random() < train_prob else "val"
+        row_dict = {k: getattr(row, k) for k in df.columns}
+        
+        if task == "diffusion":
+            res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split, output_root_str)
+        else:
+            res = process_image(img_bytes, prefix, c_slug, current_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
+        
+        if res:
+            results.append(res)
+        else:
+            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "failed", "nima_score": 1.0, "size": 0})
+            
+    return results
+
 def batch_worker(tasks):
     """Executes a list of tasks in a single worker call to reduce IPC overhead."""
     results = []
     for i, (task_func, *args) in enumerate(tasks):
         try:
-            results.append(task_func(*args))
+            res = task_func(*args)
+            if task_func.__name__ == "process_parquet_shard":
+                results.extend(res)
+            else:
+                results.append(res)
         except Exception as e:
             results.append(None)
 
@@ -1568,32 +1618,25 @@ def process_dataset():
                 skip_lbl = not model_config.get("labeling", True)
 
                 for pq_path, mapping, cols in ann_data_list:
-                    # We use itertuples for speed, but we must handle the row data carefully
                     try:
-                        df = pd.read_parquet(pq_path)
-                    except Exception as e:
-                        print(f"⚠️ [WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
-                        continue
-                    for row in df.itertuples():
-                        img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
-                        if img_bytes is None: continue
-
-                        name = f"{prefix}_{c_slug}_{global_idx:09d}"
-                        if name in existing_names or name.lower() in existing_on_disk:
-                            global_idx += 1
+                        import pyarrow.parquet as pq
+                        num_rows = pq.read_metadata(str(pq_path)).num_rows
+                    except Exception:
+                        try:
+                            num_rows = pd.read_parquet(pq_path, columns=[]).shape[0]
+                        except Exception as e:
+                            print(f"⚠️ [WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
                             continue
-
-                        split = "train" if random.random() < train_prob else "val"
-                        # Convert row to dict for easier access in worker
-                        row_dict = {k: getattr(row, k) for k in df.columns}
-                        if task == "diffusion":
-                            task_item = (process_diffusion, img_bytes, prefix, c_slug, global_idx, split, output_root_str)
-                        else:
-                            task_item = (process_image, img_bytes, prefix, c_slug, global_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
-
-                        if tag == "nsfw": nsfw_tasks.append(task_item)
-                        else: sfw_tasks.append(task_item)
-                        global_idx += 1
+                            
+                    if num_rows == 0: continue
+                    
+                    # We pass num_rows explicitly so we can use it for balancing and tqdm later
+                    task_item = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, None, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
+                    
+                    if tag == "nsfw": nsfw_tasks.append(task_item)
+                    else: sfw_tasks.append(task_item)
+                    
+                    global_idx += num_rows
 
             else:
                 # Case B: Standard Physical File Loop
@@ -1658,14 +1701,34 @@ def process_dataset():
                 print(f"   -> [{slug}] Discovered {sample_count} source tensors.")
 
         # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
-        target_nsfw_ratio = model_config.get("nsfw_ratio", 0)
-        if target_nsfw_ratio > 0 and nsfw_tasks:
-            max_nsfw = int(len(sfw_tasks) * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
-            if len(nsfw_tasks) > max_nsfw:
-                print(f"⚖️  [BALANCING] NSFW pool ({len(nsfw_tasks)}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
-                random.shuffle(nsfw_tasks)
-                nsfw_tasks = nsfw_tasks[:max_nsfw]
-
+        target_nsfw_ratio = float(model_config.get("nsfw_ratio", 0))
+        
+        def get_count(task_list):
+            return sum(args[14] if args[0].__name__ == "process_parquet_shard" else 1 for args in task_list)
+            
+        sfw_count = get_count(sfw_tasks)
+        nsfw_count = get_count(nsfw_tasks)
+        
+        if target_nsfw_ratio > 0 and nsfw_count > 0:
+            max_nsfw = int(sfw_count * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
+            if nsfw_count > max_nsfw:
+                print(f"⚖️  [BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
+                nsfw_keep_prob = max_nsfw / nsfw_count
+                
+                # Apply drop directly
+                new_nsfw_tasks = []
+                for item in nsfw_tasks:
+                    if item[0].__name__ == "process_parquet_shard":
+                        # Update keep_prob (index 13) and expected num_rows (index 14)
+                        new_item = list(item)
+                        new_item[13] = nsfw_keep_prob
+                        new_item[14] = int(item[14] * nsfw_keep_prob)
+                        new_nsfw_tasks.append(tuple(new_item))
+                    else:
+                        if random.random() <= nsfw_keep_prob:
+                            new_nsfw_tasks.append(item)
+                nsfw_tasks = new_nsfw_tasks
+                
         all_tasks = sfw_tasks + nsfw_tasks
         # 2026 Optimization: Disable global shuffle to maintain disk locality (High-Speed HDD support)
         # random.shuffle(all_tasks)
@@ -1694,7 +1757,8 @@ def process_dataset():
             task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
 
             pbar = None
-            with tqdm(total=len(all_tasks) + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
+            total_items_to_process = sum(args[14] if args[0].__name__ == "process_parquet_shard" else 1 for args in all_tasks)
+            with tqdm(total=total_items_to_process + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
                 # --- 2026 Resilience: SAFE-START WARMUP (SOTA v6.3) ---
                 warmup_limit = min(500, len(all_tasks))
                 if warmup_limit > 0:
