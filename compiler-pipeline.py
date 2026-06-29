@@ -1768,15 +1768,21 @@ def process_dataset():
                         res = task_args[0](*task_args[1:])
                         pbar.update(1)
                         if res:
-                            batch_entries = [(
-                                res["name"], res["source"], res["task"], res["split"], res["hash"],
-                                res["nima_score"], res.get("caption"), res.get("style_tag"),
-                                res.get("clip_latent"), res.get("img_bytes")
-                            )]
-                            conn.executemany("""
-                                INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, batch_entries)
+                            if not isinstance(res, list):
+                                res = [res]
+                            batch_entries = []
+                            for r in res:
+                                if r:
+                                    batch_entries.append((
+                                        r["name"], r["source"], r["task"], r["split"], r["hash"],
+                                        r["nima_score"], r.get("caption"), r.get("style_tag"),
+                                        r.get("clip_latent"), r.get("img_bytes")
+                                    ))
+                            if batch_entries:
+                                conn.executemany("""
+                                    INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, batch_entries)
                         if i % 100 == 99:
                             conn.commit()
                     print(f"✅ [SAFE-START] Warmup complete. Engaging Parallel Matrix.")

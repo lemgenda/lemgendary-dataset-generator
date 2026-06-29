@@ -361,5 +361,5 @@ datasets:
       tag: anime_nsfw
     - ref: hf://amaye15/NSFW
       tag: general_nsfw
-    - ref: hf://zh-plus/tiny-imagenet
+    - ref: hf://food101
       tag: sfw_baseline
