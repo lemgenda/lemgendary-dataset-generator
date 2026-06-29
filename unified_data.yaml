@@ -199,17 +199,17 @@ datasets:
     labeling: false
     vetting: false
     refs:
-    - ref: manifold://NafNetDebluring
-    - ref: manifold://NafNetDenoising
-    - ref: manifold://MprNetDeraining
-    - ref: manifold://FfaNetIndoor
-    - ref: manifold://FfaNetOutdoor
-    - ref: manifold://MirNetLowLight
-    - ref: manifold://MirNetExposure
-    - ref: manifold://UltraZoom
-    - ref: manifold://FilmRestorer
-    - ref: manifold://CodeFormer
-    - ref: manifold://ParseNet
+    - ref: manifold://NafNetDebluringMultiTask
+    - ref: manifold://NafNetDenoisingMultiTask
+    - ref: manifold://MprNetDerainingMultiTask
+    - ref: manifold://FfaNetIndoorMultiTask
+    - ref: manifold://FfaNetOutdoorMultiTask
+    - ref: manifold://MirNetLowLightMultiTask
+    - ref: manifold://MirNetExposureMultiTask
+    - ref: manifold://UltraZoomMultiTask
+    - ref: manifold://FilmRestorerMultiTask
+    - ref: manifold://CodeFormerMultiTask
+    - ref: manifold://ParseNetMultiTask
     - ref: kaggle://awsaf49/coco-2017-dataset
   diffusion_master_manifold:
     name: DiffusionMasterManifold
