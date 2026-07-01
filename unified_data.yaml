@@ -89,12 +89,6 @@ datasets:
     refs:
     - ref: hf://CUHK-CSE/wider_face
     - ref: kaggle://andrewmvd/face-mask-detection
-  retinaface_resnet:
-    name: RetinaFaceResNet
-    kaggle_ref: kaggle://lemtreursi/lemgendizedretinafaceresnetlarge
-    val_split: 0.12
-    refs:
-    - ref: hf://CUHK-CSE/wider_face
     - ref: hf://purplehaze1/CrowdHuman
   ffanet_indoor:
     name: FfaNetIndoor
