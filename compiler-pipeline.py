@@ -1906,6 +1906,8 @@ def process_dataset():
             if sink:
                 sink.close()
 
+        random.seed(42)
+        random.shuffle(final_index)
         with open(output_root / "index.json", "w", encoding="utf-8") as f:
             json.dump(final_index, f, indent=2)
 
