@@ -205,146 +205,6 @@ datasets:
     - ref: manifold://CodeFormerMultiTask
     - ref: manifold://ParseNetMultiTask
     - ref: kaggle://awsaf49/coco-2017-dataset
-  diffusion_master_manifold:
-    name: DiffusionMasterManifold
-    kaggle_ref: kaggle://lemtreursi/lemgendizeddiffusionmastermanifoldlarge
-    val_split: 0.12
-    nsfw_ratio: 0.25
-    refs:
-    - ref: hf://thliang01/Pixel_Art
-      tag: sfw
-    - ref: hf://bhargavsdesai/laion_improved_aesthetics_6.5plus_with_images
-      tag: sfw
-    - ref: hf://datasets/timm/unsplash-lite
-      tag: sfw
-    - ref: hf://Nikity/civitai-stable-diffusion-337k
-      tag: nsfw
-    - ref: hf://poloclub/diffusiondb
-      tag: sfw
-    - ref: kaggle://trolukovich/midjourney-prompts-dataset-2m
-      tag: sfw
-    - ref: kaggle://ivansivkovenin/img2txt
-      tag: sfw
-    - ref: kaggle://mylesoneill/tagged-anime-illustrations
-      tag: sfw
-    - ref: hf://p1atdev/real-human-portraits-v2
-      tag: sfw
-    - ref: kaggle://splcher/animefacedataset
-      tag: sfw
-    - ref: hf://v-shihai/anime-nsfw-classification-v2
-      tag: nsfw
-    - ref: hf://p1atdev/anime-sketch-colorization-v2
-      tag: sfw
-    - ref: hf://huggan/anime-faces
-      tag: sfw
-    - ref: kaggle://brobob/lazymix-real-amateur-nudes
-      tag: nsfw
-    - ref: kaggle://vincent019652/sdxl-loras
-      tag: nsfw
-    - ref: hf://Nikity/Pornhub
-      tag: nsfw
-    - ref: hf://Nikity/Big-Porn
-      tag: nsfw
-    - ref: hf://wannaphong/thai_porn_dataset
-      tag: nsfw
-    - ref: hf://cudecanarim/5k-porn
-      tag: nsfw
-    - ref: hf://MingSafeR/photo_porn_image_prompts
-      tag: nsfw
-    - ref: hf://MingSafeR/anime_porn_image_prompts
-      tag: nsfw
-    - ref: hf://MingSafeR/anime_porn_image_10k
-      tag: nsfw
-    - ref: hf://MingSafeR/anime_porn_image_1M_augmentation
-      tag: nsfw
-    - ref: hf://nalpakd/PornhubDataset
-      tag: nsfw
-    - ref: hf://NoobEngineere/NSFW_Manga
-      tag: nsfw
-    - ref: hf://yesidobyte/nsfw1024
-      tag: nsfw
-    - ref: hf://cudecanarim/18-virgin-sex
-      tag: nsfw
-    - ref: hf://QuixiAI/SexDrugsAndRockAndRoll
-      tag: nsfw
-    - ref: hf://DRDELATV/woman-sexy
-      tag: nsfw
-    - ref: hf://amaye15/NSFW
-      tag: nsfw
-    - ref: hf://pasindu29/civitai-top-nsfw-images-with-metadata
-      tag: nsfw
-    - ref: hf://herpaderpapotato/pose_vrlens_nsfw_single_class
-      tag: nsfw
-    - ref: hf://cudecanarim/fried-rice-fuckers
-      tag: nsfw
-    - ref: hf://cudecanarim/fuck-studies
-      tag: nsfw
-    - ref: hf://cudecanarim/fucking-skinny
-      tag: nsfw
-    - ref: hf://cudecanarim/fucked-hard-18
-      tag: nsfw
-    - ref: hf://Deenchik/blowjob_1
-      tag: nsfw
-    - ref: hf://cudecanarim/foot-fetish-daily
-      tag: nsfw
-  vision_language_master_manifold:
-    name: VisionLanguageMasterManifold
-    kaggle_ref: kaggle://lemtreursi/lemgendizedvisionlanguagemastermanifoldlarge
-    val_split: 0.12
-    nsfw_ratio: 0.10
-    refs:
-    - ref: hf://adamo1139/llava-instruct-150k-with-images
-      tag: sfw
-    - ref: hf://datasets/visual_genome/visual_genome
-      tag: sfw
-    - ref: hf://datasets/m-bain/conceptual_captions_12m
-      tag: sfw
-    - ref: hf://adamo1139/llava-pretrain-585k-with-images
-      tag: sfw
-    - ref: kaggle://awsaf49/coco-2017-dataset
-      tag: sfw
-    - ref: hf://datasets/nlphuji/flickr30k
-      tag: sfw
-    - ref: kaggle://adityajn105/flickr8k
-      tag: sfw
-    - ref: hf://Nikity/Pornhub
-      tag: nsfw
-    - ref: hf://poloclub/diffusiondb
-      tag: sfw
-    - ref: hf://Nikity/Big-Porn
-      tag: nsfw
-    - ref: hf://MingSafeR/photo_porn_image_prompts
-      tag: nsfw
-    - ref: hf://MingSafeR/anime_porn_image_10k
-      tag: nsfw
-    - ref: hf://NoobEngineere/NSFW_Manga
-      tag: nsfw
-    - ref: hf://yesidobyte/nsfw1024
-      tag: nsfw
-    - ref: hf://cudecanarim/18-virgin-sex
-      tag: nsfw
-    - ref: hf://QuixiAI/SexDrugsAndRockAndRoll
-      tag: nsfw
-    - ref: hf://DRDELATV/woman-sexy
-      tag: nsfw
-    - ref: hf://amaye15/NSFW
-      tag: nsfw
-    - ref: hf://pasindu29/civitai-top-nsfw-images-with-metadata
-      tag: nsfw
-    - ref: hf://herpaderpapotato/pose_vrlens_nsfw_single_class
-      tag: nsfw
-    - ref: hf://cudecanarim/fried-rice-fuckers
-      tag: nsfw
-    - ref: hf://cudecanarim/fuck-studies
-      tag: nsfw
-    - ref: hf://cudecanarim/fucking-skinny
-      tag: nsfw
-    - ref: hf://cudecanarim/fucked-hard-18
-      tag: nsfw
-    - ref: hf://Deenchik/blowjob_1
-      tag: nsfw
-    - ref: hf://cudecanarim/foot-fetish-daily
-      tag: nsfw
   classification_master_manifold:
     name: ClassificationMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifoldlarge
@@ -357,3 +217,143 @@ datasets:
       tag: general_nsfw
     - ref: hf://food101
       tag: sfw_baseline
+#   diffusion_master_manifold:
+#     name: DiffusionMasterManifold
+#     kaggle_ref: kaggle://lemtreursi/lemgendizeddiffusionmastermanifoldlarge
+#     val_split: 0.12
+#     nsfw_ratio: 0.25
+#     refs:
+#     - ref: hf://thliang01/Pixel_Art
+#       tag: sfw
+#     - ref: hf://bhargavsdesai/laion_improved_aesthetics_6.5plus_with_images
+#       tag: sfw
+#     - ref: hf://datasets/timm/unsplash-lite
+#       tag: sfw
+#     - ref: hf://Nikity/civitai-stable-diffusion-337k
+#       tag: nsfw
+#     - ref: hf://poloclub/diffusiondb
+#       tag: sfw
+#     - ref: kaggle://trolukovich/midjourney-prompts-dataset-2m
+#       tag: sfw
+#     - ref: kaggle://ivansivkovenin/img2txt
+#       tag: sfw
+#     - ref: kaggle://mylesoneill/tagged-anime-illustrations
+#       tag: sfw
+#     - ref: hf://p1atdev/real-human-portraits-v2
+#       tag: sfw
+#     - ref: kaggle://splcher/animefacedataset
+#       tag: sfw
+#     - ref: hf://v-shihai/anime-nsfw-classification-v2
+#       tag: nsfw
+#     - ref: hf://p1atdev/anime-sketch-colorization-v2
+#       tag: sfw
+#     - ref: hf://huggan/anime-faces
+#       tag: sfw
+#     - ref: kaggle://brobob/lazymix-real-amateur-nudes
+#       tag: nsfw
+#     - ref: kaggle://vincent019652/sdxl-loras
+#       tag: nsfw
+#     - ref: hf://Nikity/Pornhub
+#       tag: nsfw
+#     - ref: hf://Nikity/Big-Porn
+#       tag: nsfw
+#     - ref: hf://wannaphong/thai_porn_dataset
+#       tag: nsfw
+#     - ref: hf://cudecanarim/5k-porn
+#       tag: nsfw
+#     - ref: hf://MingSafeR/photo_porn_image_prompts
+#       tag: nsfw
+#     - ref: hf://MingSafeR/anime_porn_image_prompts
+#       tag: nsfw
+#     - ref: hf://MingSafeR/anime_porn_image_10k
+#       tag: nsfw
+#     - ref: hf://MingSafeR/anime_porn_image_1M_augmentation
+#       tag: nsfw
+#     - ref: hf://nalpakd/PornhubDataset
+#       tag: nsfw
+#     - ref: hf://NoobEngineere/NSFW_Manga
+#       tag: nsfw
+#     - ref: hf://yesidobyte/nsfw1024
+#       tag: nsfw
+#     - ref: hf://cudecanarim/18-virgin-sex
+#       tag: nsfw
+#     - ref: hf://QuixiAI/SexDrugsAndRockAndRoll
+#       tag: nsfw
+#     - ref: hf://DRDELATV/woman-sexy
+#       tag: nsfw
+#     - ref: hf://amaye15/NSFW
+#       tag: nsfw
+#     - ref: hf://pasindu29/civitai-top-nsfw-images-with-metadata
+#       tag: nsfw
+#     - ref: hf://herpaderpapotato/pose_vrlens_nsfw_single_class
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fried-rice-fuckers
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fuck-studies
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fucking-skinny
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fucked-hard-18
+#       tag: nsfw
+#     - ref: hf://Deenchik/blowjob_1
+#       tag: nsfw
+#     - ref: hf://cudecanarim/foot-fetish-daily
+#       tag: nsfw
+#   vision_language_master_manifold:
+#     name: VisionLanguageMasterManifold
+#     kaggle_ref: kaggle://lemtreursi/lemgendizedvisionlanguagemastermanifoldlarge
+#     val_split: 0.12
+#     nsfw_ratio: 0.10
+#     refs:
+#     - ref: hf://adamo1139/llava-instruct-150k-with-images
+#       tag: sfw
+#     - ref: hf://datasets/visual_genome/visual_genome
+#       tag: sfw
+#     - ref: hf://datasets/m-bain/conceptual_captions_12m
+#       tag: sfw
+#     - ref: hf://adamo1139/llava-pretrain-585k-with-images
+#       tag: sfw
+#     - ref: kaggle://awsaf49/coco-2017-dataset
+#       tag: sfw
+#     - ref: hf://datasets/nlphuji/flickr30k
+#       tag: sfw
+#     - ref: kaggle://adityajn105/flickr8k
+#       tag: sfw
+#     - ref: hf://Nikity/Pornhub
+#       tag: nsfw
+#     - ref: hf://poloclub/diffusiondb
+#       tag: sfw
+#     - ref: hf://Nikity/Big-Porn
+#       tag: nsfw
+#     - ref: hf://MingSafeR/photo_porn_image_prompts
+#       tag: nsfw
+#     - ref: hf://MingSafeR/anime_porn_image_10k
+#       tag: nsfw
+#     - ref: hf://NoobEngineere/NSFW_Manga
+#       tag: nsfw
+#     - ref: hf://yesidobyte/nsfw1024
+#       tag: nsfw
+#     - ref: hf://cudecanarim/18-virgin-sex
+#       tag: nsfw
+#     - ref: hf://QuixiAI/SexDrugsAndRockAndRoll
+#       tag: nsfw
+#     - ref: hf://DRDELATV/woman-sexy
+#       tag: nsfw
+#     - ref: hf://amaye15/NSFW
+#       tag: nsfw
+#     - ref: hf://pasindu29/civitai-top-nsfw-images-with-metadata
+#       tag: nsfw
+#     - ref: hf://herpaderpapotato/pose_vrlens_nsfw_single_class
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fried-rice-fuckers
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fuck-studies
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fucking-skinny
+#       tag: nsfw
+#     - ref: hf://cudecanarim/fucked-hard-18
+#       tag: nsfw
+#     - ref: hf://Deenchik/blowjob_1
+#       tag: nsfw
+#     - ref: hf://cudecanarim/foot-fetish-daily
+#       tag: nsfw
