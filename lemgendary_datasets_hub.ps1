@@ -210,6 +210,17 @@ function Show-Stats {
 
 function Get-RefStatus {
     param($Ref, $SharedPath, $KaggleRef = $null)
+    
+    if ($Ref -match '^manifold://') {
+        $m_name = $Ref.Replace('manifold://', '')
+        $RegData = Get-RegData
+        $Prefix = $RegData._registry_metadata.name_prefix
+        $Suffix = if ($m_name.EndsWith("MultiTask")) { "" } else { $RegData._registry_metadata.name_suffix }
+        $OutPath = (Get-Item "..\LemGendaryDatasets").FullName
+        if (Test-Path (Join-Path $OutPath ($Prefix + $m_name + $Suffix))) { return "Extracted" }
+        return "Missing"
+    }
+    
     $isHF = $Ref -match 'hf://'
     $isGH = $Ref -match 'gh://'
     $kaggleSource = $Ref -match 'kaggle://'

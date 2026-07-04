@@ -1419,7 +1419,11 @@ def process_dataset():
             m_name = ""
             if ref.startswith("manifold://"):
                 m_name = ref.replace("manifold://", "")
-                m_path = OUT_PARENT / f"{prefix_str}{m_name}{suffix_str}"
+                
+                # MultiTask manifolds don't have the global suffix
+                current_suffix = "" if m_name.endswith("MultiTask") else suffix_str
+                m_path = OUT_PARENT / f"{prefix_str}{m_name}{current_suffix}"
+                
                 if m_path.exists():
                     dataset = m_path / "images"
                     slug = f"compiled_{m_name}"
