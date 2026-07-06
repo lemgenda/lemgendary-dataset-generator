@@ -33,9 +33,10 @@ datasets:
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticitylarge
     val_split: 0.12
     refs:
-    - ref: kaggle://shreyasraghav/shutterstock-dataset-for-ai-vs-human-gen-image
-    - ref: kaggle://birdy654/cifake-real-and-ai-generated-synthetic-images
-    - ref: kaggle://doctorstrange420/real-and-fake-ai-generated-art-images-dataset
+    - ref: kaggle://awsaf49/artifact-dataset
+    - ref: kaggle://arnaud58/flickrfaceshq-dataset-ffhq
+    - ref: kaggle://joe1995/div2k-dataset
+    - ref: kaggle://hiddenplant/sut-project
   upn_v2:
     name: UpnV2
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
