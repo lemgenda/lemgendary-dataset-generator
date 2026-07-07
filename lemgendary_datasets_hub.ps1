@@ -9,6 +9,11 @@ $ghManagerPath = Join-Path $PSScriptRoot 'gh_manager.py'
 $kagManagerPath = Join-Path $PSScriptRoot 'kaggle_manager.py'
 $gdManagerPath = Join-Path $PSScriptRoot 'gd_manager.py'
 
+$TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
+if (Test-Path $TokenPath) {
+    $env:KAGGLE_API_TOKEN = (Get-Content $TokenPath -Raw).Trim()
+}
+
 $DownloadSB = {
     param($ds, $sharedPath, $vpy, $kagManager)
     $isC = $ds -match 'competition'
@@ -320,11 +325,6 @@ function Test-MissingDatasets {
                     $Missing += $E.ref
                 }
             }
-        }
-    }
-    return $Missing
-}
-
 function Start-Acquisition {
     param([string[]]$ForcedRefs = $null)
     
@@ -332,6 +332,11 @@ function Start-Acquisition {
     $KPath = Join-Path $env:USERPROFILE '.kaggle'
     if (!(Test-Path $KPath)) { [void](New-Item -ItemType Directory -Path $KPath -Force) }
     [System.IO.File]::WriteAllText((Join-Path $KPath 'kaggle.json'), ($Cred | ConvertTo-Json))
+    
+    $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
+    if (Test-Path $TokenPath) {
+        Copy-Item -Path $TokenPath -Destination (Join-Path $KPath 'access_token') -Force
+    }
 
     $RegData = Get-RegData
     if (!$RegData) { return }
