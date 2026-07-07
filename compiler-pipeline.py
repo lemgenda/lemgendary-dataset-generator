@@ -826,7 +826,7 @@ def process_image(
             if task in ["diffusion"]:
                 min_dim = 512
             elif task in ["quality", "classification", "restoration", "super-resolution"]:
-                min_dim = 224
+                min_dim = 128 if "artifact" in slug.lower() else 224
             else:
                 min_dim = 128
             
@@ -884,8 +884,21 @@ def process_image(
                     nima_probs = get_gaussian_probs(nima_score)
             except Exception: pass
 
+        # 4.5. Authenticity Label Override (AI vs Human)
+        is_authenticity = "authentic" in prefix.lower()
+        if is_authenticity:
+            path_str = str(img_path).lower()
+            if any(k in path_str for k in ["sut-project", "midjourney", "diffusion", "ai", "fake", "gan", "generated"]):
+                nima_probs = [0.0] * 10
+                nima_probs[0] = 1.0
+                nima_score = 1.0
+            elif any(k in path_str for k in ["ffhq", "div2k", "celebahq", "human", "real", "afhq", "nature"]):
+                nima_probs = [0.0] * 10
+                nima_probs[9] = 1.0
+                nima_score = 10.0
+
         # 5. AI Vetting Fallback (Only if not in Strict Human mode)
-        if nima_probs[0] == 1.0 and task in ["quality", "diffusion"]:
+        if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
             # If we are here, no human ground truth was found.
             # 2026 Strategy: Allow AI fallback for LAION-branded sources if strict mode is disabled
             if CONFIG.get("strict_ground_truth", True):
