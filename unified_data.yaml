@@ -33,8 +33,7 @@ datasets:
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticitylarge
     val_split: 0.12
     refs:
-    - ref: kaggle://cashncarry/midjourney-v6-images
-    - ref: kaggle://arnaud58/flickrfaceshq-dataset-ffhq
+    - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
     - ref: kaggle://joe1995/div2k-dataset
     - ref: kaggle://hiddenplant/sut-project
   upn_v2:
