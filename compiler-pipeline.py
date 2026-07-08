@@ -293,8 +293,15 @@ def init_worker(config, dped_cache=None, physical_index=None):
 
     # 2026 Resilience: Multi-processing with PyTorch on Windows CUDA causes severe deadlocks
     # and OOMs if multiple workers allocate GPU memory concurrently on a single 4GB card.
-    # We FORCE the SENTRY to CPU. It is extremely fast (MobileNetV2) and prevents deadlocks.
-    device = "cpu"
+    # However, on Kaggle/Cloud with multiple GPUs (e.g. 2x T4), we must distribute workers across GPUs!
+    if os.name == 'nt' or not torch.cuda.is_available():
+        device = "cpu"
+    else:
+        gpu_count = torch.cuda.device_count()
+        if physical_index is not None and gpu_count > 0:
+            device = f"cuda:{physical_index % gpu_count}"
+        else:
+            device = "cuda:0"
 
     # 1. Quality Vetting (NIMA) - Only load if the task requires it
     mission = detect_task(args.model)
