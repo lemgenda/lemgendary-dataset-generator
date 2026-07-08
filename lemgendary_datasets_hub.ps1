@@ -325,6 +325,11 @@ function Test-MissingDatasets {
                     $Missing += $E.ref
                 }
             }
+        }
+    }
+    return $Missing
+}
+
 function Start-Acquisition {
     param([string[]]$ForcedRefs = $null)
     

@@ -34,8 +34,8 @@ datasets:
     val_split: 0.12
     refs:
     - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
-    - ref: kaggle://joe1995/div2k-dataset
     - ref: kaggle://hiddenplant/sut-project
+    - ref: kaggle://custom/Real vs Fake Faces
   upn_v2:
     name: UpnV2
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large

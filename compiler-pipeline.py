@@ -24,6 +24,7 @@ import cv2
 from pathlib import Path
 from PIL import Image, ImageOps, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True # type: ignore
+Image.MAX_IMAGE_PIXELS = None # Disable DOS limit to allow massive panoramas without warning
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import requests
 from multiprocessing import Manager
@@ -342,6 +343,10 @@ def get_labeler(task, device="cuda"):
 # ---------------- HELPERS ----------------
 def ensure_srgb(img):
     if img.mode != "RGB":
+        if img.mode in ("RGBA", "P", "LA") or (img.mode == "P" and "transparency" in img.info):
+            img = img.convert("RGBA")
+        
+        # Now safely convert to RGB, dropping alpha without warning
         img = img.convert("RGB")
         img.was_converted = True
         return img
@@ -887,7 +892,8 @@ def process_image(
         # 4.5. Authenticity Label Override (AI vs Human)
         is_authenticity = "authentic" in prefix.lower()
         if is_authenticity:
-            path_str = str(img_path).lower()
+            # Only check the filename and immediate parent directory to prevent root folder names (like "Real vs Fake") from overriding
+            path_str = f"{img_path.parent.name}/{img_path.name}".lower()
             if any(k in path_str for k in ["sut-project", "midjourney", "diffusion", "ai", "fake", "gan", "generated"]):
                 nima_probs = [0.0] * 10
                 nima_probs[0] = 1.0
@@ -913,7 +919,7 @@ def process_image(
 
         # 2026 Quality Gate: Enforce higher aesthetic standards for Diffusion manifolds
         current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
-        if task in ["quality", "diffusion"] and nima_score < current_threshold:
+        if task in ["quality", "diffusion"] and nima_score < current_threshold and not is_authenticity:
             if idx < 5: print(f"DEBUG: {slug} skipped because nima {nima_score} < {current_threshold}")
             return None
 
