@@ -772,12 +772,12 @@ while ($true) {
             }
             
             if ($KagHandle) {
-                Write-Host "`n🚀 [SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
+                Write-Host "`n[SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
                 & $Vpy $kagManagerPath --action upload --repo_id $KagHandle --output_dir $ManifoldPath 2>&1
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "✅ [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
+                    Write-Host "[OK] [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
                 } else {
-                    Write-Host "❌ [SYNC] Synchronization failed." -ForegroundColor Red
+                    Write-Host "[FAILED] [SYNC] Synchronization failed." -ForegroundColor Red
                 }
             }
             Read-Host "Press Enter to return"

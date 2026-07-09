@@ -66,7 +66,7 @@ def main():
                 
     elif args.action == "upload":
         print(f"PUSHING: {args.repo_id}")
-        kagglehub.model_upload(args.repo_id, args.output_dir)
+        kagglehub.dataset_upload(args.repo_id, args.output_dir)
 
 if __name__ == "__main__":
     main()
