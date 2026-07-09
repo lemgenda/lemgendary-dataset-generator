@@ -648,14 +648,12 @@ while ($true) {
     }
 
     Show-Stats
-    Write-Host '1. [ACQUIRE] Pull remote datasets' -ForegroundColor Gray
-    Write-Host '2. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
-    Write-Host '3. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
-    Write-Host '4. [SYNC]    Push compiled manifold to Kaggle' -ForegroundColor Gray
+    Write-Host '1. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
+    Write-Host '2. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
+    Write-Host '3. [SYNC]    Push compiled manifold to Kaggle' -ForegroundColor Gray
     Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
     $I = Read-Host 'Selection'
-    if ($I -eq '1') { Start-Acquisition }
-    elseif ($I -eq '2') {
+    if ($I -eq '1') {
         $RegData = Get-RegData
         $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
         
@@ -736,10 +734,10 @@ while ($true) {
         Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
         & $Vpy compiler-pipeline.py --cleanup
     }
-    elseif ($I -eq '3') {
+    elseif ($I -eq '2') {
         & $Vpy compiler-pipeline.py --reduce
     }
-    elseif ($I -eq '4') {
+    elseif ($I -eq '3') {
         $RegData = Get-RegData
         $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
         
