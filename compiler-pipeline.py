@@ -899,8 +899,15 @@ def process_image(
         # 4.5. Authenticity Label Override (AI vs Human)
         is_authenticity = "authentic" in prefix.lower()
         if is_authenticity:
-            # Only check the filename and immediate parent directory to prevent root folder names (like "Real vs Fake") from overriding
-            path_str = f"{img_path.parent.name}/{img_path.name}".lower()
+            parent_name = img_path.parent.name.lower()
+            file_name = img_path.name.lower()
+            
+            # Prevent root dataset folders from biasing the labels
+            if parent_name in ["sut-project", "ai-generated-images-vs-real-images", "real vs fake faces", "raw-sets"]:
+                parent_name = ""
+                
+            path_str = f"{parent_name}/{file_name}".lower()
+            
             if any(k in path_str for k in ["sut-project", "midjourney", "diffusion", "ai", "fake", "gan", "generated"]):
                 nima_probs = [0.0] * 10
                 nima_probs[0] = 1.0
@@ -2038,6 +2045,8 @@ def generate_readme(output_root):
             sources[src][split] += 1
 
     task_type = data[0]["task"] if data else "quality"
+    if "authenticity" in str(output_root).lower():
+        task_type = "authenticity"
 
     # Task Metadata Mapping for Industrial Formatting
     TASK_META = {
@@ -2050,7 +2059,18 @@ def generate_readme(output_root):
             "loss": "Earth Mover's Distance (EMD) Loss, L1/Huber Loss",
             "metrics": "| **PLCC** | ~0.8500 | > 0.9000 | **> 0.9500** |\n| **SRCC** | ~0.8000 | > 0.8500 | **> 0.9000** |",
             "targets": "EXPLICITLY OMITTED",
-            "targets_desc": "Because this specific task organically maps abstracted analytical endpoints sequentially tracking internal topologies natively inside `labels/` (like probability vectors), generating physical Image-To-Image targets natively is structurally redundant and safely decoupled."
+            "targets_desc": "Because this specific task organically maps abstracted analytical endpoints sequentially without complex masks or explicit spatial localizations, target artifacts are bypassed to maximize storage density."
+        },
+        "authenticity": {
+            "category": "Image Authenticity Assessment",
+            "desc": "Unified dataset for training SOTA models to distinguish between AI-generated images and real photographs.",
+            "obj": "Predict image authenticity score and map to binary categorical distribution.",
+            "models": "NIMA_Model",
+            "arch": "MobileNetV2 / ResNet backbone with regression head",
+            "loss": "Earth Mover's Distance (EMD) Loss",
+            "metrics": "| **Accuracy** | ~0.8000 | > 0.9000 | **> 0.9500** |",
+            "targets": "EXPLICITLY OMITTED",
+            "targets_desc": "Because this specific task organically maps abstracted analytical endpoints sequentially without complex masks or explicit spatial localizations, target artifacts are bypassed to maximize storage density."
         },
         "classification": {
             "category": "Image Classification",
