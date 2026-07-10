@@ -248,7 +248,7 @@ def detect_task(model_dir_name):
     if any(k in name for k in ["seg", "mask", "parsenet"]): return "segmentation"
     if any(k in name for k in ["pose", "face", "codeformer"]): return "pose"
     if any(k in name for k in ["nima", "aesthetic", "quality"]): return "quality"
-    if any(k in name for k in ["classify", "authentic", "authenticity"]): return "classification"
+    if any(k in name for k in ["classify", "classification", "authentic", "authenticity"]): return "classification"
     if any(k in name for k in ["vlm", "vision_language"]): return "diffusion"
     if any(k in name for k in ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]): return "super-resolution"
     
@@ -256,7 +256,7 @@ def detect_task(model_dir_name):
     # Note: 'upn' removed — UPN models use task_override for parameter_prediction
     if any(k in name for k in ["deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure"]):
         return "restoration"
-    if any(k in name for k in ["restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet"]):
+    if any(k in name for k in ["restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet", "upn", "codeformer"]):
         return "restoration"
     return "detection"
 
@@ -1966,8 +1966,16 @@ last_processed: '{datetime.now().isoformat()}'
         f.write(yaml_content)
 
     # category.txt
+    category_map = {
+        "quality": "Image Quality Assessment",
+        "restoration": "Image Restoration",
+        "detection": "Object Detection",
+        "classification": "Image Classification",
+        "segmentation": "Image Segmentation"
+    }
+    cat_str = category_map.get(task, "Object Detection")
     with open(output_root / "category.txt", "w", encoding="utf-8") as f:
-        f.write("Image Quality Assessment\n" if task == "quality" else "Object Detection\n")
+        f.write(f"{cat_str}\n")
 
     # classes.txt
     with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
@@ -2043,6 +2051,17 @@ def generate_readme(output_root):
             "metrics": "| **PLCC** | ~0.8500 | > 0.9000 | **> 0.9500** |\n| **SRCC** | ~0.8000 | > 0.8500 | **> 0.9000** |",
             "targets": "EXPLICITLY OMITTED",
             "targets_desc": "Because this specific task organically maps abstracted analytical endpoints sequentially tracking internal topologies natively inside `labels/` (like probability vectors), generating physical Image-To-Image targets natively is structurally redundant and safely decoupled."
+        },
+        "classification": {
+            "category": "Image Classification",
+            "desc": "High-throughput dataset for image classification and content tagging.",
+            "obj": "Predict categorical classes and safety content labels.",
+            "models": "MobileNetV2, ResNet, EfficientNet",
+            "arch": "Lightweight convolutional backbones with classification heads",
+            "loss": "Cross-Entropy Loss, Focal Loss",
+            "metrics": "| **Accuracy** | ~0.8000 | > 0.9000 | **> 0.9500** |",
+            "targets": "EXPLICITLY OMITTED",
+            "targets_desc": "Classification tasks utilize simple class labels natively stored inside `labels/`. Target images are not required."
         },
         "restoration": {
             "category": "Image Restoration",
