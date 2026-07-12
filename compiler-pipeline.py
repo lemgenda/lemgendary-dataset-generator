@@ -246,7 +246,7 @@ def detect_task(model_dir_name):
     
     if "diffusion" in name: return "diffusion"
     if any(k in name for k in ["seg", "mask", "parsenet"]): return "segmentation"
-    if any(k in name for k in ["pose", "face", "codeformer"]): return "pose"
+    if any(k in name for k in ["pose", "face"]): return "pose"
     if any(k in name for k in ["nima", "aesthetic", "quality"]): return "quality"
     if any(k in name for k in ["classify", "classification", "authentic", "authenticity"]): return "classification"
     if any(k in name for k in ["vlm", "vision_language"]): return "diffusion"
@@ -487,7 +487,7 @@ def detect_annotations(path):
     for f in path.glob("*.mat"): return "matlab", f
 
     # Check one level deeper for common structures (e.g. annotations/instances.json)
-    for sub in [path / "annotations", path / "Annotations", path / "labels", path / "metadata", path / "data"]:
+    for sub in [path / "annotations", path / "Annotations", path / "labels", path / "metadata", path / "data", path / "landmarks"]:
         if sub.exists():
             for f in sub.glob("*.json"):
                 if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
@@ -496,6 +496,7 @@ def detect_annotations(path):
             # 2026: Directory-level annotation formats (1 file per image)
             if any(sub.glob("*.xml")): return "xml", sub
             if any(sub.glob("*.txt")): return "yolo", sub
+            if any(sub.glob("*.npz")): return "npz", sub
 
     return None, None
 
@@ -588,7 +589,11 @@ def parse_yolo(txt_path, img_w, img_h):
                     h = nh * img_h
                     xmin = (cx * img_w) - (w / 2.0)
                     ymin = (cy * img_h) - (h / 2.0)
-                    annotations.append({"class": cls_id, "bbox": [xmin, ymin, w, h]})
+                    item = {"class": cls_id, "bbox": [xmin, ymin, w, h]}
+                    if len(parts) > 5:
+                        kpts = list(map(float, parts[5:]))
+                        item["keypoints"] = kpts
+                    annotations.append(item)
     except Exception:
         pass
     return annotations
@@ -699,7 +704,8 @@ def process_image(
 
         name = f"{prefix}_{slug}_{idx:09d}"
         out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
-        out_tgt_path = Path(output_root_str) / "targets" / split / f"{name}{ext}"
+        tgt_dir = "masks" if task == "segmentation" else "targets"
+        out_tgt_path = Path(output_root_str) / tgt_dir / split / f"{name}{ext}"
 
         # 2026 Optimization: High-Speed Skip (Using Worker-Global Physical Index)
         # This eliminates the need for expensive os.path.exists() calls on 1.4M files.
@@ -711,7 +717,7 @@ def process_image(
         target_img = None
         target_img_path = None
 
-        if task in ["restoration", "super-resolution", "parameter_prediction"]:
+        if task in ["restoration", "super-resolution", "parameter_prediction", "segmentation"]:
             # 1. Parquet/Virtual Target Detection
             if ann_data:
                 row_dict = None
@@ -721,7 +727,7 @@ def process_image(
                     if not df_sub.empty: row_dict = df_sub.iloc[0].to_dict()
                 
                 if row_dict:
-                    for k in ["target", "sharp", "ground_truth", "gt", "clean", "original"]:
+                    for k in ["target", "sharp", "ground_truth", "gt", "clean", "original", "mask", "masks"]:
                         val = row_dict.get(k)
                         if isinstance(val, bytes):
                             target_img = Image.open(io.BytesIO(val))
@@ -732,10 +738,10 @@ def process_image(
                             if p.exists(): target_img_path = str(p)
                             break
 
-            # 2. Generic Neighbor Resolve (GoPro, RealBlur, HideBlur)
+            # 2. Generic Neighbor Resolve (GoPro, RealBlur, HideBlur, SFHQ)
             if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
                 blur_keys = ["blur", "blurry", "input", "lowres", "lr", "rain", "hazy", "noisy", "degraded", "distorted", "low", "images"]
-                sharp_keys = ["sharp", "gt", "ground_truth", "groundtruth", "clean", "clear", "original", "hr", "highres", "target", "norain", "high", "targets"]
+                sharp_keys = ["sharp", "gt", "ground_truth", "groundtruth", "clean", "clear", "original", "hr", "highres", "target", "norain", "high", "targets", "mask", "masks", "segmentation", "segmentations"]
                 
                 p_str = str(img_path).replace("\\", "/")
                 parent = img_path.parent
@@ -946,7 +952,11 @@ def process_image(
         # Trust PHYSICAL_INDEX to avoid expensive os.path.exists directory lookups on millions of files
         is_already_on_disk = PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX
 
-        if not is_already_on_disk:
+        is_clean_only = ("parsenet" in slug.lower() or "codeformer" in slug.lower()) and task == "restoration"
+        if is_clean_only and not target_img_path and isinstance(img_input, (str, Path)):
+            target_img_path = str(img_path)
+
+        if not is_already_on_disk and not is_clean_only:
             if not img and isinstance(img_input, (str, Path)):
                 try:
                     # Attempt Hardlink (Instant, zero I/O)
@@ -965,7 +975,7 @@ def process_image(
                 with open(out_img_path, "wb") as f:
                     f.write(img_data)
 
-        if task in ["restoration", "super-resolution"]:
+        if task in ["restoration", "super-resolution", "segmentation"]:
             if target_img_path:
                 try:
                     os.link(target_img_path, str(out_tgt_path))
@@ -978,11 +988,18 @@ def process_image(
             else:
                 # Synthetic Mode: Clean image is the target
                 # 2026 Warp-Speed: Use hardlink instead of copy for zero-cost synthetic target creation
-                try:
-                    os.link(str(out_img_path), str(out_tgt_path))
-                except (OSError, AttributeError):
-                    try: shutil.copy2(out_img_path, out_tgt_path)
-                    except: pass
+                if is_clean_only:
+                    if isinstance(img_input, (bytes, dict)):
+                        with open(out_tgt_path, "wb") as f: f.write(img_data)
+                    elif img:
+                        save_fmt = "PNG" if ext == ".png" else "JPEG"
+                        img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+                else:
+                    try:
+                        os.link(str(out_img_path), str(out_tgt_path))
+                    except (OSError, AttributeError):
+                        try: shutil.copy2(out_img_path, out_tgt_path)
+                        except: pass
 
         elif task == "parameter_prediction":
             # 2026: Parameter Prediction datasets store clean source images in targets/
@@ -1054,8 +1071,54 @@ def process_image(
         elif fmt == "yolo" and ann_data:
             yolo_anns = parse_yolo(ann_data, w, hgt)
             for a in yolo_anns:
-                cls = map_category(a["class"], prefix)
-                annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+                if task == "pose":
+                    cls = map_category("0", prefix)
+                else:
+                    cls = map_category(a["class"], prefix)
+                if "keypoints" in a and a["keypoints"]:
+                    annotations.append({"type": "pose", "cls": cls, "data": a["bbox"] + a["keypoints"]})
+                else:
+                    annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+
+        elif fmt == "npz" and ann_data:
+            try:
+                data = np.load(str(ann_data))
+                if "landmarks" in data.files:
+                    landmarks = data["landmarks"]
+                    if landmarks.shape == (110, 2):
+                        # Construct bbox from first 68 points (standard face)
+                        pts = landmarks[:68]
+                        x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
+                        y_min, y_max = pts[:, 1].min(), pts[:, 1].max()
+                        # Add 5% padding
+                        pad_w = (x_max - x_min) * 0.05
+                        pad_h = (y_max - y_min) * 0.05
+                        x_min = max(0, x_min - pad_w)
+                        y_min = max(0, y_min - pad_h)
+                        x_max = min(w, x_max + pad_w)
+                        y_max = min(hgt, y_max + pad_h)
+                        bbox_w = x_max - x_min
+                        bbox_h = y_max - y_min
+                        
+                        # 5 Keypoints: left_eye, right_eye, nose, left_mouth, right_mouth
+                        l_eye = landmarks[36:42].mean(axis=0)
+                        r_eye = landmarks[42:48].mean(axis=0)
+                        nose = landmarks[30]
+                        l_mouth = landmarks[48]
+                        r_mouth = landmarks[54]
+                        
+                        kpts = [
+                            l_eye[0], l_eye[1],
+                            r_eye[0], r_eye[1],
+                            nose[0], nose[1],
+                            l_mouth[0], l_mouth[1],
+                            r_mouth[0], r_mouth[1]
+                        ]
+                        
+                        cls = map_category("0", prefix)
+                        annotations.append({"type": "pose", "cls": cls, "data": [x_min, y_min, bbox_w, bbox_h] + kpts})
+            except Exception as e:
+                print(f"Error parsing NPZ {ann_data}: {e}")
 
         elif fmt == "safetensors" and ann_data:
             metadata = ann_data
@@ -1228,7 +1291,7 @@ def process_diffusion(
         return None
 
 def remove_empty_dirs(path):
-    for sub in ["images", "labels", "targets", "shards"]:
+    for sub in ["images", "labels", "targets", "masks", "shards"]:
         for split in ["train", "val", "test"]:
             p = path / sub / split
             if p.exists() and p.is_dir():
@@ -1342,15 +1405,23 @@ def process_dataset():
         output_root_str = str(output_root)
 
         if not output_root.exists():
-            for d in ["images", "labels", "targets"]:
-                for s in ["train", "val"]: (output_root / d / s).mkdir(parents=True, exist_ok=True)
+            for s in ["train", "val"]: (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
+            if task in ["quality", "classification", "detection", "pose", "yolo"]:
+                for s in ["train", "val"]: (output_root / "labels" / s).mkdir(parents=True, exist_ok=True)
+            elif task == "segmentation":
+                for s in ["train", "val"]: (output_root / "masks" / s).mkdir(parents=True, exist_ok=True)
+            elif task in ["restoration", "super-resolution"]:
+                for s in ["train", "val"]: (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
 
         print(f"\n🚀 [SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
         index = []
         seen_hashes = set()
 
-        db_path = output_root / "manifold_registry.db"
+        # 2026 Resilience: Move registry out of the manifold to avoid polluting the dataset
+        registry_dir = Path(__file__).parent / ".cache"
+        registry_dir.mkdir(parents=True, exist_ok=True)
+        db_path = registry_dir / f"registry_{pascal_name}.db"
         conn = initialize_registry(db_path)
 
         # RESUMPTION LOGIC: Load existing entries from SQLite to bypass already processed samples
@@ -1680,6 +1751,9 @@ def process_dataset():
                 # c_slug already defined and formatted above
                 skip_lbl = not model_config.get("labeling", True)
 
+                val_real_count = 0
+                val_fake_count = 0
+
                 for i, img_path_str in enumerate(images):
                     name = f"{prefix}_{c_slug}_{i:09d}"
 
@@ -1704,6 +1778,21 @@ def process_dataset():
                             if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]): continue
 
                     split = "train" if random.random() < train_prob else "val"
+                    
+                    # 2026 CodeFormer Exact Split Injection
+                    if model_key == "codeformer" and "realvsfakefaces" in prefix.lower():
+                        if "real" in img_path.parent.name.lower():
+                            if val_real_count < 1000:
+                                split = "val"
+                                val_real_count += 1
+                            else:
+                                split = "train"
+                        elif "fake" in img_path.parent.name.lower():
+                            if val_fake_count < 1000:
+                                split = "val"
+                                val_fake_count += 1
+                            else:
+                                split = "train"
 
                     specific_ann_data = None
                     if fmt == "coco" and ann_data:
@@ -1720,9 +1809,9 @@ def process_dataset():
                         specific_ann_data = matlab_map.get(img_path.name, [])
                     elif fmt == "safetensors" and ann_data:
                         specific_ann_data = ann_data
-                    elif fmt in ["xml", "yolo"] and ann_data:
+                    elif fmt in ["xml", "yolo", "npz"] and ann_data:
                         # ann_data is the Path to the annotations/labels directory
-                        ext = ".xml" if fmt == "xml" else ".txt"
+                        ext = ".xml" if fmt == "xml" else (".txt" if fmt == "yolo" else ".npz")
                         ann_file = ann_path / f"{img_path.stem}{ext}"
                         if ann_file.exists():
                             specific_ann_data = str(ann_file)
@@ -1986,7 +2075,8 @@ last_processed: '{datetime.now().isoformat()}'
 
     # classes.txt
     with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
-        f.write(f"{task}\n")
+        class_name = "face" if task == "pose" else task
+        f.write(f"{class_name}\n")
 
 def generate_readme(output_root):
     if not (output_root / "index.json").exists(): return
@@ -2181,7 +2271,6 @@ def generate_readme(output_root):
         "category.txt": "Top-level categorization tag.",
         "classes.txt": "Class labels mapping.",
         "index.json": "Compiled metadata index mapping all dataset samples.",
-        "manifold_registry.db": "SQLite registry containing processing history and hashes.",
         "README.md": "This documentation file."
     }
 

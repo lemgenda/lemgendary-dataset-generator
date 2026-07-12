@@ -35,7 +35,7 @@ datasets:
     refs:
     - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
     - ref: kaggle://hiddenplant/sut-project
-    - ref: kaggle://custom/Real vs Fake Faces
+    - ref: kaggle://custom/RealVsFakeFaces
   upn_v2:
     name: UpnV2
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
@@ -66,30 +66,29 @@ datasets:
   codeformer:
     name: CodeFormer
     kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
-    val_split: 0.12
+    val_split: 0.10
     refs:
-    - ref: kaggle://jessicali9530/celeba-dataset
-    - ref: kaggle://kashyapkvh/mm-celeba-hq-dataset
-    - ref: kaggle://arnaud58/flickrfaceshq-dataset-ffhq
-    - ref: hf://Ryan-sjtu/ffhq512-caption
+    - ref: local://raw-sets/RealVsFakeFaces/
   parsenet:
     name: ParseNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedparsenetlarge
     val_split: 0.12
-    labeling: true
+    labeling: false
     refs:
-    - ref: hf://liusq/CelebAMask-HQ
-    - ref: hf://UniqueData/face_segmentation
-    - ref: kaggle://kiranraghavendrauci/lapa-face-parsing-dataset
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
   retinaface_mobilenet:
     name: RetinaFaceMobileNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
     val_split: 0.12
     labeling: true
     refs:
-    - ref: hf://CUHK-CSE/wider_face
-    - ref: kaggle://andrewmvd/face-mask-detection
-    - ref: hf://purplehaze1/CrowdHuman
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
+    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
   ffanet_indoor:
     name: FfaNetIndoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoorlarge
@@ -205,6 +204,12 @@ datasets:
     - ref: manifold://CodeFormerMultiTask
     - ref: manifold://ParseNetMultiTask
     - ref: kaggle://awsaf49/coco-2017-dataset
+  codeformer:
+    name: CodeFormer
+    kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
+    val_split: 0.1
+    refs:
+    - ref: local://raw-sets/RealVsFakeFaces/
   classification_master_manifold:
     name: ClassificationMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifoldlarge

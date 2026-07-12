@@ -238,11 +238,12 @@ function Get-RefStatus {
         $kagFold = Join-Path $SharedPath $kagDn
         if (Test-Path $kagFold) { return "Extracted" }
     }
-    $repoId = $Ref.Replace('hf://datasets/', 'hf://').Replace('hf://', '').Replace('gh://', '').Replace('kaggle://', '').Replace('gdrive://', '')
+    $repoId = $Ref.Replace('hf://datasets/', 'hf://').Replace('hf://', '').Replace('gh://', '').Replace('kaggle://', '').Replace('gdrive://', '').Replace('local://raw-sets/', '').Replace('local://', '')
     if ($Ref -match 'competition:(.*)') { $repoId = $Matches[1] }
+    $repoId = $repoId.Trim('/')
     
     $targetFile = $null
-    if ($repoId -match ':') {
+    if ($repoId -match ':' -and -not ($repoId -match '^[A-Za-z]:')) {
         $parts = $repoId.Split(':')
         $repoId = $parts[0]
         $targetFile = $parts[1]
