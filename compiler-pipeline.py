@@ -703,7 +703,13 @@ def process_image(
         if ext not in [".jpg", ".jpeg", ".png", ".webp", ".npy"]: ext = ".jpg"
 
         name = f"{prefix}_{slug}_{idx:09d}"
-        out_img_path = Path(output_root_str) / "images" / split / f"{name}{ext}"
+        
+        # 2026 Resilience: Detect structural parent to avoid forcing targets/masks into images/
+        source_parent_name = img_path.parent.parent.name.lower() if isinstance(img_input, (str, Path)) and len(img_path.parts) >= 3 else "images"
+        out_dir = source_parent_name if source_parent_name in ["targets", "masks"] else "images"
+        
+        out_img_path = Path(output_root_str) / out_dir / split / f"{name}{ext}"
+        
         tgt_dir = "masks" if task == "segmentation" else "targets"
         out_tgt_path = Path(output_root_str) / tgt_dir / split / f"{name}{ext}"
 
@@ -1529,7 +1535,11 @@ def process_dataset():
                 m_path = OUT_PARENT / f"{prefix_str}{m_name}{current_suffix}"
                 
                 if m_path.exists():
+                    # 2026 Resilience: Dynamically attach to targets/ or masks/ if images/ is missing
                     dataset = m_path / "images"
+                    if not dataset.exists(): dataset = m_path / "targets"
+                    if not dataset.exists(): dataset = m_path / "masks"
+                    
                     slug = f"compiled_{m_name}"
                     mapping = {
                         "NafNetDebluring": "deblur",
@@ -2362,7 +2372,7 @@ def generate_kaggle_notebook(output_root, target_name, model_key=None):
 
 def reduce_dataset():
     print("\n🔍 [SCANNING] Locating existing manifolds in LemGendaryDatasets...")
-    manifolds = [d for d in OUT_PARENT.iterdir() if d.is_dir() and (d / "images").exists() and d.name.endswith("Large")]
+    manifolds = [d for d in OUT_PARENT.iterdir() if d.is_dir() and ((d / "images").exists() or (d / "targets").exists()) and d.name.endswith("Large")]
     if not manifolds:
         print("❌ No valid Large datasets found to reduce.")
         return
@@ -2376,14 +2386,16 @@ def reduce_dataset():
             print(f"\033[93m{i+1}. {m.name}\033[0m")
 
     try:
-        sel = input("\nSelect manifold to sample (number or 'a' for all): ").strip()
+        sel = input("\nSelect manifold to sample (number, comma-separated numbers, or 'a' for all): ").strip()
         if not sel: return
         if sel.lower() == 'a':
             target_indices = list(range(len(manifolds)))
         else:
-            idx = int(sel) - 1
-            if idx < 0 or idx >= len(manifolds): raise ValueError
-            target_indices = [idx]
+            target_indices = []
+            for part in sel.split(','):
+                idx = int(part.strip()) - 1
+                if idx < 0 or idx >= len(manifolds): raise ValueError
+                target_indices.append(idx)
     except (ValueError, IndexError):
         print("❌ Invalid selection.")
         return
@@ -2415,15 +2427,16 @@ def reduce_dataset():
 
         print(f"\n⚡ [REDUCING] {source_root.name} -> {target_name} ({max_gb} GB)...")
 
-        for d in ["images", "labels", "targets"]:
+        for d in ["images", "labels", "targets", "masks"]:
             for s in ["train", "val"]: (target_root / d / s).mkdir(parents=True, exist_ok=True)
 
         new_index = []
         valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
         # Calculate dynamic physical train_prob to enforce disjoint subsets perfectly
-        train_dir = source_root / "images" / "train"
-        val_dir = source_root / "images" / "val"
+        primary_dir_name = "images" if (source_root / "images").exists() else "targets"
+        train_dir = source_root / primary_dir_name / "train"
+        val_dir = source_root / primary_dir_name / "val"
         train_count = sum(1 for _ in train_dir.iterdir() if _.is_file()) if train_dir.exists() else 0
         val_count = sum(1 for _ in val_dir.iterdir() if _.is_file()) if val_dir.exists() else 0
         total_count = train_count + val_count
@@ -2433,11 +2446,13 @@ def reduce_dataset():
             img_dir = source_root / "images" / split
             lbl_dir = source_root / "labels" / split
             tgt_dir = source_root / "targets" / split
+            mask_dir = source_root / "masks" / split
+            primary_split_dir = source_root / primary_dir_name / split
 
-            if not img_dir.exists(): continue
+            if not primary_split_dir.exists(): continue
 
             # Single-pass iteration for extreme speed (165k+ files)
-            all_imgs = [p for p in img_dir.iterdir() if p.suffix.lower() in valid_exts]
+            all_imgs = [p for p in primary_split_dir.iterdir() if p.suffix.lower() in valid_exts]
 
             if not all_imgs: continue
 
@@ -2473,10 +2488,10 @@ def reduce_dataset():
                     for img_path in sampled_imgs:
                         if current_bytes >= split_limit_bytes: break
 
-                        # Copy Image
-                        dest_img = target_root / "images" / split / img_path.name
-                        shutil.copy2(img_path, dest_img)
-                        file_size = dest_img.stat().st_size
+                        # Copy Primary Data (images or targets)
+                        dest_primary = target_root / primary_dir_name / split / img_path.name
+                        shutil.copy2(img_path, dest_primary)
+                        file_size = dest_primary.stat().st_size
 
                         # Copy Label
                         lbl_path = lbl_dir / (img_path.stem + ".txt")
@@ -2485,12 +2500,29 @@ def reduce_dataset():
                             shutil.copy2(lbl_path, dest_lbl)
                             file_size += dest_lbl.stat().st_size
 
-                        # Copy Target
-                        tgt_path = tgt_dir / img_path.name
-                        if tgt_path.exists():
-                            dest_tgt = target_root / "targets" / split / tgt_path.name
-                            shutil.copy2(tgt_path, dest_tgt)
-                            file_size += dest_tgt.stat().st_size
+                        if primary_dir_name == "images":
+                            # Copy Target
+                            tgt_path = tgt_dir / img_path.name
+                            if tgt_path.exists():
+                                dest_tgt = target_root / "targets" / split / tgt_path.name
+                                shutil.copy2(tgt_path, dest_tgt)
+                                file_size += dest_tgt.stat().st_size
+                        else:
+                            # Copy Image (if primary was targets)
+                            img_path_alt = img_dir / img_path.name
+                            if img_path_alt.exists():
+                                dest_img = target_root / "images" / split / img_path_alt.name
+                                shutil.copy2(img_path_alt, dest_img)
+                                file_size += dest_img.stat().st_size
+
+                        # Copy Mask
+                        mask_path = mask_dir / img_path.name
+                        if not mask_path.exists():
+                            mask_path = mask_dir / (img_path.stem + ".png")
+                        if mask_path.exists():
+                            dest_mask = target_root / "masks" / split / mask_path.name
+                            shutil.copy2(mask_path, dest_mask)
+                            file_size += dest_mask.stat().st_size
 
                         current_bytes += file_size
                         pbar.update(file_size)

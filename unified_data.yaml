@@ -203,7 +203,6 @@ datasets:
     - ref: manifold://FilmRestorerMultiTask
     - ref: manifold://CodeFormerMultiTask
     - ref: manifold://ParseNetMultiTask
-    - ref: kaggle://awsaf49/coco-2017-dataset
   codeformer:
     name: CodeFormer
     kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
