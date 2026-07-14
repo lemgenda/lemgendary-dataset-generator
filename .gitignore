@@ -15,6 +15,7 @@ LemGendizedDatasets/
 .kaggle/
 
 # Python & Environment
+.cache/
 __pycache__/
 *.py[cod]
 *$py.class
