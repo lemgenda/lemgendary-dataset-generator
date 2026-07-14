@@ -18,6 +18,7 @@ anyio
 httpcore
 httpx
 shellingham
+mediapipe>=0.10.0
 annotated-doc
 regex
 hf-xet

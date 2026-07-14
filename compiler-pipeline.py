@@ -343,7 +343,10 @@ def get_labeler(task, device="cuda"):
     global LABELER
     if LABELER is None: LABELER = {}
     if task not in LABELER:
-        mode = "segmentation" if "seg" in task else "detection"
+        if task == "face_detection":
+            mode = "face_landmarks"
+        else:
+            mode = "segmentation" if "seg" in task else "detection"
         LABELER[task] = AutoLabeler(mode=mode, device=device)
     return LABELER[task]
 
