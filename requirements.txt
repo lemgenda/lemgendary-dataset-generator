@@ -26,3 +26,8 @@ h11
 kaggle>=2.2.3
 kagglehub>=1.0.2
 gdown
+pandas
+pyarrow
+requests
+scipy
+ultralytics
