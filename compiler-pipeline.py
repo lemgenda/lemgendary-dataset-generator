@@ -2269,16 +2269,60 @@ def generate_readme(output_root):
 
     # 2026: Dynamic Architecture Resolution for specialized models
     resolved_arch = m['arch']
+    resolved_desc = m['desc']
+    resolved_obj = m['obj']
+    img_desc = "RGB"
+    tgt_desc = ""
+
     if task_type == "quality":
         if "Technical" in output_root.name:
             resolved_arch = "EfficientNetV2-S / ResNet backbone with regression head"
         elif "Aesthetic" in output_root.name:
             resolved_arch = "MobileNetV2 / ResNet backbone with regression head"
+    elif task_type == "restoration":
+        name_lower = output_root.name.lower()
+        if "dehazing" in name_lower or "indoor" in name_lower or "outdoor" in name_lower:
+            task_noun = "dehazing"
+            img_desc = "Hazy RGB images"
+            tgt_desc = "Haze-free reference images"
+            resolved_obj = "Remove haze from images and restore visual quality."
+        elif "deraining" in name_lower:
+            task_noun = "deraining"
+            img_desc = "Rainy RGB images"
+            tgt_desc = "Rain-free reference images"
+            resolved_obj = "Remove rain streaks from images and restore visual quality."
+        elif "deblurring" in name_lower or "debluring" in name_lower:
+            task_noun = "deblurring"
+            img_desc = "Blurry RGB images"
+            tgt_desc = "Blur-free reference images"
+            resolved_obj = "Remove blur from images and restore visual sharpness."
+        elif "denoising" in name_lower:
+            task_noun = "denoising"
+            img_desc = "Noisy RGB images"
+            tgt_desc = "Noise-free reference images"
+            resolved_obj = "Remove noise from images and restore visual quality."
+        elif "exposure" in name_lower or "lowlight" in name_lower:
+            task_noun = "exposure correction and low-light enhancement"
+            img_desc = "Under/over-exposed RGB images"
+            tgt_desc = "Properly exposed reference images"
+            resolved_obj = "Correct under/over-exposed images and enhance visual quality."
+        elif "film" in name_lower:
+            task_noun = "old film restoration"
+            img_desc = "Degraded film frame RGB images"
+            tgt_desc = "Restored film frame reference images"
+            resolved_obj = "Restore degraded vintage film frames (scratches, noise, color fade)."
+        else:
+            task_noun = "restoration"
+            img_desc = "Degraded RGB images"
+            tgt_desc = "Clean reference images"
+            resolved_obj = "Restore degraded images and enhance visual quality."
+            
+        resolved_desc = f"Standardized dataset for image {task_noun} models."
 
     desc_map = {
-        "images": "Normalized input tensors (RGB, standardized resolution).",
+        "images": f"Normalized input tensors ({img_desc}, standardized resolution).",
         "labels": "Strict numerical annotation vectors (JSON/TXT format).",
-        "targets": m.get('targets_desc', "Target matrices or masks for training."),
+        "targets": f"Clean ground truth tensors ({tgt_desc})." if task_type == "restoration" else m.get('targets_desc', "Target matrices or masks for training."),
         "shards": "WebDataset `.tar` shards containing serialized manifold data.",
         "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
         "category.txt": "Top-level categorization tag.",
@@ -2305,14 +2349,14 @@ def generate_readme(output_root):
 
     readme = f"""# {output_root.name}
 
-> {m['desc']}
+> {resolved_desc}
 
 ## Dataset Overview
 
 - **Category:** {m['category']}
 - **Total Samples:** {len(data):,}
 - **Architecture Base:** {resolved_arch}
-- **Primary Task:** {m['obj']}
+- **Primary Task:** {resolved_obj}
 
 ## Composition & Lineage
 
