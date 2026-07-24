@@ -8,6 +8,8 @@
 
 ## 📡 Mission Status: v16.2.8 (High-Fidelity Synthesis)
 
+🔗 **Project Repository**: [lemgendary-dataset-generator](https://github.com/lemgenda/lemgendary-dataset-generator)
+
 🚀 **Status**: High-Fidelity Compilation Active / 1.4M Manifold Stability Verified  
 🧪 **Current Goal**: Transition all restoration and generative manifolds to the **LANCZOS-512 Hardened Baseline**.
 
