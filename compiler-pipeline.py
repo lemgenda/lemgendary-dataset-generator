@@ -1424,6 +1424,92 @@ def process_dataset():
 
         print(f"\n🚀 [SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
+        if model_config.get("dataset_type") == "forex" or model_config.get("acquisition_mode") == "mt5_terminal":
+            print(f"\n📈 [FOREX MANIFOLD] Packaging LemGendized Forex Predictor Manifold: {output_root.name}...")
+            output_root.mkdir(parents=True, exist_ok=True)
+            target_forex_dir = output_root / "forex"
+            target_forex_dir.mkdir(parents=True, exist_ok=True)
+            
+            raw_forex_dir = INPUT_ROOT / "forex"
+            ts_forex_dir = Path(__file__).parent.parent / "lemgendary-training-suite" / "data" / "forex"
+            source_dir = raw_forex_dir if (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) else ts_forex_dir
+            
+            if source_dir.exists() and any(source_dir.iterdir()):
+                print(f"   -> Transferring forex pair shards from {source_dir} to {target_forex_dir}...")
+                import shutil
+                for item in source_dir.iterdir():
+                    if item.is_dir():
+                        dest = target_forex_dir / item.name
+                        if dest.exists():
+                            shutil.rmtree(dest)
+                        shutil.copytree(item, dest)
+                print(f"   -> ✅ Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
+            else:
+                print(f"   -> ⚠️  [WARNING] Raw forex data missing at {source_dir}.")
+                print(f"   -> To download training bars, connect MT5 and run: python data/mt5_pipeline.py --mode download")
+
+            category_str = model_config.get('category', 'Forex & Financial Time-Series')
+            with open(output_root / "category.txt", "w", encoding="utf-8") as f:
+                f.write(f"{category_str}\n")
+            with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
+                f.write("SELL\nHOLD\nBUY\n")
+            
+            pairs_list = model_config.get('pairs', ['AUDUSD', 'EURUSD', 'GBPUSD', 'NZDUSD', 'USDCAD', 'USDCHF', 'USDJPY', 'XAUUSD'])
+            tfs_list = model_config.get('timeframe_rungs', [60, 240])
+            
+            yaml_info = f"""name: {pascal_name}
+dataset_type: forex
+category: {category_str}
+pairs: {pairs_list}
+timeframe_rungs: {tfs_list}
+lookback_bars: {model_config.get('lookback_bars', 168)}
+last_processed: '{datetime.now().isoformat()}'
+"""
+            with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
+                f.write(yaml_info)
+
+            readme_text = f"""# {output_root.name}
+
+## 📈 LemGendary Forex Predictor Dataset Manifold
+
+- **Category**: {category_str}
+- **Acquisition Mode**: MetaTrader 5 Terminal API
+- **Pairs Included**: {', '.join(pairs_list)}
+- **Timeframe Rungs**: H1 (60min), H4 (240min)
+- **Lookback Window**: {model_config.get('lookback_bars', 168)} bars
+- **Output Classes**: `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)
+
+## Structure
+```
+{output_root.name}/
+├── forex/
+│   ├── AUDUSD/
+│   ├── EURUSD/
+│   ├── GBPUSD/
+│   ├── NZDUSD/
+│   ├── USDCAD/
+│   ├── USDCHF/
+│   ├── USDJPY/
+│   └── XAUUSD/
+├── category.txt
+├── classes.txt
+├── dataset_info.yaml
+├── README.md
+└── forex_predictor_training.ipynb
+```
+
+## Training Usage
+```bash
+python training/train.py --model forex_predictor
+```
+"""
+            with open(output_root / "README.md", "w", encoding="utf-8") as f:
+                f.write(readme_text)
+
+            generate_kaggle_notebook(output_root, pascal_name, model_key)
+            print(f"✅ [SUCCESS] Manifold {output_root.name} compiled successfully!\n")
+            continue
+
         index = []
         seen_hashes = set()
 

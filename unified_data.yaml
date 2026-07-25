@@ -8,6 +8,26 @@ _registry_metadata:
     min_size_gb: 6.0
     max_size_gb: 190.0
 datasets:
+  forex_predictor:
+    name: ForexPredictor
+    kaggle_ref: kaggle://lemtreursi/lemgendizedforexpredictorlarge
+    acquisition_mode: mt5_terminal
+    dataset_type: forex
+    category: "Forex & Financial Time-Series"
+    pairs:
+      - AUDUSD
+      - EURUSD
+      - GBPUSD
+      - NZDUSD
+      - USDCAD
+      - USDCHF
+      - USDJPY
+      - XAUUSD
+    timeframe_rungs:
+      - 60
+      - 240
+    lookback_bars: 168
+    description: "Multi-pair multi-timeframe OHLCV dataset with technical indicators generated via MetaTrader 5."
   nima_aesthetic:
     name: NimaAesthetic
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticlarge

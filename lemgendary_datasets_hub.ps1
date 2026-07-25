@@ -689,6 +689,23 @@ while ($true) {
             }
         }
         
+        if ($TargetModels -contains 'forex_predictor') {
+            $RawForex = Join-Path $Raw 'forex'
+            $TsForex = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'lemgendary-training-suite') 'data\forex'
+            if (!(Test-Path $RawForex) -and !(Test-Path $TsForex)) {
+                Write-Host "`n================================================================================" -ForegroundColor Yellow
+                Write-Host " 📈 METATRADER 5 (MT5) SETUP INSTRUCTIONS FOR FOREX MANIFOLD DATASET" -ForegroundColor Cyan
+                Write-Host "================================================================================" -ForegroundColor Yellow
+                Write-Host " 1. Download MetaTrader 5: https://www.metatrader5.com/en/download" -ForegroundColor Green
+                Write-Host " 2. Install & Open MetaTrader 5." -ForegroundColor White
+                Write-Host " 3. Register a free Demo Account: File -> Open an Account -> 'MetaQuotes-Demo'." -ForegroundColor White
+                Write-Host " 4. Note down your demo account credentials (Login Number, Password, Server)." -ForegroundColor White
+                Write-Host " 5. Run live data download command in terminal:" -ForegroundColor White
+                Write-Host "    python data/mt5_pipeline.py --mode download --login <ACCOUNT> --password <PASS> --server MetaQuotes-Demo" -ForegroundColor Yellow
+                Write-Host "================================================================================`n" -ForegroundColor Yellow
+            }
+        }
+        
         # Check missing sets (with Manifold-Aware skip)
         $Missing = Test-MissingDatasets -TargetModels $TargetModels
         
