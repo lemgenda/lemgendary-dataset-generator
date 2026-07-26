@@ -1414,27 +1414,34 @@ def process_dataset():
         output_root_str = str(output_root)
 
         if not output_root.exists():
-            for s in ["train", "val"]: (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
-            if task in ["quality", "classification", "detection", "pose", "yolo"]:
-                for s in ["train", "val"]: (output_root / "labels" / s).mkdir(parents=True, exist_ok=True)
-            elif task == "segmentation":
-                for s in ["train", "val"]: (output_root / "masks" / s).mkdir(parents=True, exist_ok=True)
-            elif task in ["restoration", "super-resolution"]:
-                for s in ["train", "val"]: (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
+            if model_config.get("dataset_type") != "forex" and model_config.get("acquisition_mode") != "mt5_terminal":
+                for s in ["train", "val"]: (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
+                if task in ["quality", "classification", "detection", "pose", "yolo"]:
+                    for s in ["train", "val"]: (output_root / "labels" / s).mkdir(parents=True, exist_ok=True)
+                elif task == "segmentation":
+                    for s in ["train", "val"]: (output_root / "masks" / s).mkdir(parents=True, exist_ok=True)
+                elif task in ["restoration", "super-resolution"]:
+                    for s in ["train", "val"]: (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
 
         print(f"\n🚀 [SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
         if model_config.get("dataset_type") == "forex" or model_config.get("acquisition_mode") == "mt5_terminal":
             print(f"\n📈 [FOREX MANIFOLD] Packaging LemGendized Forex Predictor Manifold: {output_root.name}...")
             output_root.mkdir(parents=True, exist_ok=True)
+            import shutil
+            for empty_dir in [output_root / "images", output_root / "labels", output_root / "masks", output_root / "targets"]:
+                if empty_dir.exists():
+                    shutil.rmtree(empty_dir)
             target_forex_dir = output_root / "forex"
             target_forex_dir.mkdir(parents=True, exist_ok=True)
             
             raw_forex_dir = INPUT_ROOT / "forex"
             ts_forex_dir = Path(__file__).parent.parent / "lemgendary-training-suite" / "data" / "forex"
-            source_dir = raw_forex_dir if (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) else ts_forex_dir
             
-            if source_dir.exists() and any(source_dir.iterdir()):
+            if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
+                print(f"   -> ✅ Found existing manifold pair shards at {target_forex_dir} ({len(list(target_forex_dir.iterdir()))} pairs).")
+            elif (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) or (ts_forex_dir.exists() and any(ts_forex_dir.iterdir())):
+                source_dir = raw_forex_dir if (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) else ts_forex_dir
                 print(f"   -> Transferring forex pair shards from {source_dir} to {target_forex_dir}...")
                 import shutil
                 for item in source_dir.iterdir():
@@ -1445,7 +1452,7 @@ def process_dataset():
                         shutil.copytree(item, dest)
                 print(f"   -> ✅ Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
             else:
-                print(f"   -> ⚠️  [WARNING] Raw forex data missing at {source_dir}.")
+                print(f"   -> ⚠️  [WARNING] Raw forex data missing at {raw_forex_dir}.")
                 print(f"   -> To download training bars, connect MT5 and run: python data/mt5_pipeline.py --mode download")
 
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
