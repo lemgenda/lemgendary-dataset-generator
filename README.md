@@ -125,7 +125,6 @@ python compiler-pipeline.py --no-hash      # Zero-Latency Mode (Bypass Dedup)
 - `../LemGendaryDatasets/<name>/labels/` (NIMA 10-bin probabilities or YOLO vectors)
 - `../LemGendaryDatasets/<name>/targets/` (Ground truth targets for SR/Restoration)
 - `../LemGendaryDatasets/<name>/dataset_info.yaml` (Suite Metadata)
-- `../LemGendaryDatasets/<name>/manifold_registry.db` (Persistent SQLite metadata)
 - `../LemGendaryDatasets/<name>/README.md` (Kaggle-Optimized Manifest)
 
 ---
