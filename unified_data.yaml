@@ -15,19 +15,32 @@ datasets:
     dataset_type: forex
     category: "Forex & Financial Time-Series"
     pairs:
-      - AUDUSD
       - EURUSD
       - GBPUSD
-      - NZDUSD
-      - USDCAD
-      - USDCHF
       - USDJPY
       - XAUUSD
+      - USDCAD
+      - USDCHF
+      - AUDUSD
+      - NZDUSD
+      - EURJPY
+      - GBPJPY
+      - EURGBP
+      - XAGUSD
+      - USOIL
+      - US500
+      - USTEC
+      - GER40
     timeframe_rungs:
+      - 1
+      - 5
+      - 15
       - 60
       - 240
+      - 1440
+    start_date: "2019-01-01"
     lookback_bars: 168
-    description: "Multi-pair multi-timeframe OHLCV dataset with technical indicators generated via MetaTrader 5."
+    description: "Multi-pair multi-timeframe OHLCV dataset with technical indicators and 6-Fold Walk-Forward validation matrices generated via MetaTrader 5."
   nima_aesthetic:
     name: NimaAesthetic
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticlarge

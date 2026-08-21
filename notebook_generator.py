@@ -78,7 +78,7 @@ def build_training_notebook_content(model_key, config=None):
         "        print(f'[OK] [AUTH] Kaggle Secrets mounted: {\", \".join(active)}')\n",
         "    else:\n",
         "        print('[ERROR] [CRITICAL] No PATs found in Kaggle Secrets! Private repositories will fail to clone.')\n",
-        "        print('👉 Action Required: In Kaggle Notebook top bar -> Add-ons -> Secrets -> Add SUITE_PAT or GITHUB_PAT.')\n",
+        "        print('[ACTION REQUIRED] In Kaggle Notebook top bar -> Add-ons -> Secrets -> Add SUITE_PAT or GITHUB_PAT.')\n",
         "except Exception as e:\n",
         "    print(f'[ERROR] Secret mounting failed: {e}')\n"
     ]
@@ -94,7 +94,7 @@ def build_training_notebook_content(model_key, config=None):
         "    print(f'[AUTH] Using {\"SUITE_PAT\" if os.environ.get(\"SUITE_PAT\") else \"GITHUB_PAT\"} for cloning...')\n",
         "else:\n",
         "    print('[WARNING] No PAT found in environment. Attempting public clone (will fail for private repos)...')\n",
-        "    print('👉 If clone fails, add SUITE_PAT or GITHUB_PAT to Kaggle Add-ons -> Secrets.')\n",
+        "    print('[ACTION REQUIRED] If clone fails, add SUITE_PAT or GITHUB_PAT to Kaggle Add-ons -> Secrets.')\n",
         "    auth_url = repo_url\n",
         "\n",
         "env = os.environ.copy()\n",
@@ -108,7 +108,7 @@ def build_training_notebook_content(model_key, config=None):
         "    else: \n",
         "        print(f'[ERROR] Clone failed: {res.stderr.strip()}')\n",
         "        if '403' in res.stderr or '401' in res.stderr or 'terminal prompts disabled' in res.stderr:\n",
-        "            print('👉 Action Required: Add SUITE_PAT or GITHUB_PAT to Kaggle Add-ons -> Secrets with GitHub read permissions.')\n",
+        "            print('[ACTION REQUIRED] Add SUITE_PAT or GITHUB_PAT to Kaggle Add-ons -> Secrets with GitHub read permissions.')\n",
         "else:\n",
         "    print('[OK] Suite resident. Syncing origin and pulling latest...')\n",
         "    subprocess.run(['git', 'remote', 'set-url', 'origin', auth_url], cwd=suite_path, env=env)\n",
@@ -188,8 +188,8 @@ def build_training_notebook_content(model_key, config=None):
         "        print('[WARNING] Dependency installation finished with non-zero exit code.')\n",
         "else:\n",
         "    print('[ERROR] Could not open requirements file: No such file or directory')\n",
-        "    print('👉 ACTION REQUIRED: Suite clone failed in Step 3 because SUITE_PAT/GITHUB_PAT is missing from Kaggle Secrets.')\n",
-        "    print('👉 Fix: Go to Kaggle Notebook top bar -> Add-ons -> Secrets -> Add SUITE_PAT or GITHUB_PAT with your GitHub token.')\n"
+        "    print('[ACTION REQUIRED] Suite clone failed in Step 3 because SUITE_PAT/GITHUB_PAT is missing from Kaggle Secrets.')\n",
+        "    print('[ACTION REQUIRED] Fix: Go to Kaggle Notebook top bar -> Add-ons -> Secrets -> Add SUITE_PAT or GITHUB_PAT with your GitHub token.')\n"
     ]
 
     hub_prep_source = [

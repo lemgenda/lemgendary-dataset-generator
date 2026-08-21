@@ -21,7 +21,7 @@ class AutoLabeler:
         else:
             model_path = os.path.join(base_dir, "yolov8n.pt")
             
-        # print(f"🤖 [AUTO-LABEL] Initializing {mode} model: {model_path}")
+        # print(f"[AUTO-LABEL] Initializing {mode} model: {model_path}")
         self.model = YOLO(model_path)
 
     def predict(self, img_pil):
@@ -32,20 +32,20 @@ class AutoLabeler:
         annotations = []
         
         for r in results:
-            if self.mode == "detection":
+            if self.mode == "detection" and r.boxes is not None:
                 for box in r.boxes:
                     xyxy = box.xyxy[0].cpu().numpy()
                     cls = int(box.cls[0].cpu().numpy())
                     x, y, x2, y2 = xyxy
                     annotations.append({"type": "bbox", "cls": cls, "data": [x, y, x2-x, y2-y]})
             
-            elif self.mode == "segmentation" and r.masks:
+            elif self.mode == "segmentation" and r.masks is not None and r.boxes is not None:
                 for i, mask in enumerate(r.masks.xyn):
                     cls = int(r.boxes.cls[i].cpu().numpy())
                     poly = mask.flatten().tolist()
                     annotations.append({"type": "segmentation", "cls": cls, "data": poly})
             
-            elif self.mode == "pose" and r.keypoints:
+            elif self.mode == "pose" and r.keypoints is not None and r.boxes is not None:
                 for i, kpts in enumerate(r.keypoints.xyn):
                     cls = int(r.boxes.cls[i].cpu().numpy())
                     box = r.boxes.xywh[i].cpu().numpy()

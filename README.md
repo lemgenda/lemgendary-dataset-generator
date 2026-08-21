@@ -6,20 +6,20 @@
 
 ---
 
-## 📡 Mission Status: v16.2.8 (High-Fidelity Synthesis)
+## Mission Status: v16.2.8 (High-Fidelity Synthesis)
 
-🔗 **Project Repository**: [lemgendary-dataset-generator](https://github.com/lemgenda/lemgendary-dataset-generator)
+**Project Repository**: [lemgendary-dataset-generator](https://github.com/lemgenda/lemgendary-dataset-generator)
 
-🚀 **Status**: High-Fidelity Compilation Active / 1.4M Manifold Stability Verified  
-🧪 **Current Goal**: Transition all restoration and generative manifolds to the **LANCZOS-512 Hardened Baseline**.
+**Status**: High-Fidelity Compilation Active / 1.4M Manifold Stability Verified  
+**Current Goal**: Transition all restoration and generative manifolds to the **LANCZOS-512 Hardened Baseline**.
 
 ---
 
-## ⚡ v16.2.8 SOTA Tier: Nuclear Performance & Fidelity
+## v16.2.8 SOTA Tier: Nuclear Performance & Fidelity
 
 The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for processing 1.4M+ item manifolds while maintaining absolute structural integrity for restoration tasks.
 
-### 🚀 High-Velocity Optimizations
+### High-Velocity Optimizations
 
 - **O(1) Physical Skip-Indexing**: Transitioned from slow recursive traversals to string-based `os.scandir` logic. The compiler skips already-processed samples with near-zero latency, even on massive 1M+ item manifolds.
 - **LANCZOS High-Fidelity Scaling**: Native integration of Lanczos resampling for all resolution-locked tasks (Diffusion/VLM), ensuring zero feature aliasing during the downsampling phase.
@@ -29,14 +29,14 @@ The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for pro
 - **ThreadPoolExecutor Zero-IPC**: Streamlined execution model that eliminates Windows IPC serialization bottlenecks, maximizing throughput on high-speed NVMe hardware.
 - **1024px SOTA Baselines**: Standardized diffusion manifold resolution to 1024px for native SDXL/Flux compatibility.
 
-### 🛰️ Hybrid Cloud & Registry Integration
+### Hybrid Cloud & Registry Integration
 
 - **Atomic Registry Resumption**: Integrated SQLite-based checkpoints allow for instantaneous resumption of interrupted 1M-sample runs without redundant I/O.
 - **KaggleHub & HF Sync**: Automated synchronization of compiled manifolds to Kaggle/HF via native API managers (`kaggle_manager.py`, `hf_manager.py`).
 - **Standardized `dataset_info.yaml`**: Every manifold generates a suite-compliant metadata package for immediate ingestion by the LemGendary Training Suite.
 - **UPNv2 Large Space-Recovery (v16.2.9)**: Autonomously purged **1.36 million empty labels** and compiled physical **NTFS hardlinks** in `targets/` mapping back to `images/` on duplicate synthetic structures, successfully recovering **~1.06 TB** of disk space with zero pipeline disruption.
 
-### 💎 Multi-Modal & Format Resilience
+### Multi-Modal & Format Resilience
 
 - **Parquet & Safetensors Support**: Native ingestion of highly compressed pyarrow binaries and model metadata (Kohya/Civitai tags).
 - **DPED Mirroring v2.1**: Automated alignment of synthetic and real-world restoration pairs (Smartphone vs. Canon) using the specialized DPED cache.
@@ -45,10 +45,11 @@ The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for pro
 - **Professional Multi-Task Restoration Dataset Integration (v16.3.0)**: Structured unified source pipeline merging 11 individual manifolds with automated filename prefix preservation (e.g. `ProfessionalMultitaskRestoration_deblur_compiled_...`) for downstream regular expression routing. Standardized target hardlinking layout with case-insensitive physically skip-indexed ingestion, and configured strict Lanczos/interpolation ceilings at 256px-640px to feed the Mixture-of-Experts (MoE) routing engine.
 - **ParseNet Semantic Extraction (v16.3.1)**: Compiler explicitly outputs `masks/` directory, resolving paired masks as target images natively for face segmentation tasks rather than generic YOLO polygons.
 - **RetinaFace YOLO Landmarking (v16.3.1)**: Integrated dynamic 5-point landmark extraction directly from `landmarks/` into standard YOLO format and strictly filtered all classes to `face` (index 0).
+- **Forex & Financial Time-Series Automated Acquisition (v16.4.0)**: Integrated direct MetaTrader 5 (MT5) IPC pipeline fallback and synthetic multi-regime generator spanning 2019 to Present. When compiling `forex_predictor`, the compiler ingests the 16-asset universe (Titan 4 Core, G7 Majors, High-Beta Crosses, Commodities, and Global Indices) across 4 active confluence timeframes (`M15`, `H1`, `H4`, `D1`), computes indicators (`RSI`, `MACD`, `ATR`, `BBW`), builds 6-Fold Walk-Forward validation matrices with 14-day embargo gaps, and synchronizes shards end-to-end.
 
 ---
 
-## 🏗️ v6.2 Synthesis Flow
+## Synthesis Flow (v6.2)
 
 ```mermaid
 graph TD
@@ -90,7 +91,7 @@ graph TD
 
 ---
 
-## 🛠️ Developer Interface
+## Developer Interface
 
 ### 1. The Dataset Hub (v6.0.0-SOTA)
 
@@ -118,7 +119,7 @@ python compiler-pipeline.py --no-hash      # Zero-Latency Mode (Bypass Dedup)
 
 ---
 
-## 📂 Industrial Output Topology (Nuclear Architecture)
+## Industrial Output Topology (Nuclear Architecture)
 
 - `raw-sets/` (Source datasets - Protected by Cleanup Guardian)
 - `../LemGendaryDatasets/<name>/images/` (Standard structured folders for Restoration)

@@ -136,14 +136,14 @@ def load_ground_truth(model_name=""):
         df = pd.read_csv(ava_csv)
         vote_cols = [f"vote_{i}" for i in range(1, 11)]
         AVA_LOOKUP = df.set_index("image_num")[vote_cols].to_dict("index")
-        print(f"📖 [GT] {len(AVA_LOOKUP)} AVA Aesthetic ratings cached.")
+        print(f"[GT] {len(AVA_LOOKUP)} AVA Aesthetic ratings cached.")
 
     aadb_csv = Path("./raw-sets/aadb-imagedatabase/Dataset.csv")
     if aadb_csv.exists():
         import pandas as pd
         df = pd.read_csv(aadb_csv)
         AADB_LOOKUP = df.set_index("ImageFile")["score"].to_dict()
-        print(f"📖 [GT] {len(AADB_LOOKUP)} AADB Aesthetic ratings cached.")
+        print(f"[GT] {len(AADB_LOOKUP)} AADB Aesthetic ratings cached.")
 
     # 2. Technical Sources (Universal Normalization v7.0)
     # Technical Path Helper (v7.5) - Supports Legacy and Jackpot Mirror paths
@@ -170,7 +170,7 @@ def load_ground_truth(model_name=""):
             # Map KonIQ 1-100 scale down to NIMA 1-10 scale
             val = float(row['MOS']) / 10.0
             TID_LOOKUP[str(row['image_name']).lower()] = max(1.0, min(10.0, val))
-        print(f"📖 [GT] KonIQ-10k ratings cached.")
+        print(f"[GT] KonIQ-10k ratings cached.")
 
     # SPAQ
     spaq_csv = find_gt_path("spaq", "SPAQ/Annotations/MOS_Average.csv")
@@ -181,7 +181,7 @@ def load_ground_truth(model_name=""):
         df = pd.read_csv(spaq_csv)
         for _, row in df.iterrows():
             TID_LOOKUP[str(row['Image name']).lower()] = 1.0 + float(row['MOS']) * 0.09
-        print(f"📖 [GT] SPAQ ratings cached.")
+        print(f"[GT] SPAQ ratings cached.")
 
     # TID2013
     tid_txt = find_gt_path("tid2013", "mos_with_names.txt")
@@ -191,7 +191,7 @@ def load_ground_truth(model_name=""):
                 parts = line.split()
                 if len(parts) >= 2:
                     TID_LOOKUP[parts[1].strip().lower()] = float(parts[0]) + 1.0
-        print(f"📖 [GT] TID2013 ratings cached.")
+        print(f"[GT] TID2013 ratings cached.")
 
     # LIVE IQA
     live_csv = find_gt_path("live", "live_scores.csv")
@@ -201,7 +201,7 @@ def load_ground_truth(model_name=""):
         for _, row in df.iterrows():
             orig = min(100.0, float(row['dmos']))
             TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - orig/100.0) * 9.0
-        print(f"📖 [GT] LIVE IQA ratings cached.")
+        print(f"[GT] LIVE IQA ratings cached.")
 
     # CSIQ
     csiq_csv = find_gt_path("csiq", "csiq_scores.csv")
@@ -210,7 +210,7 @@ def load_ground_truth(model_name=""):
         df = pd.read_csv(csiq_csv)
         for _, row in df.iterrows():
             TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - float(row['dmos'])) * 9.0
-        print(f"📖 [GT] CSIQ ratings cached.")
+        print(f"[GT] CSIQ ratings cached.")
 
     # TAD66K
     tad_labels_dir = find_gt_path("TAD66K_for_Image_Aesthetics_Assessment", "labels/unmerge")
@@ -230,7 +230,7 @@ def load_ground_truth(model_name=""):
                         if 'image' in row and 'score' in row:
                             TID_LOOKUP[str(row['image']).lower()] = max(1.0, min(10.0, float(row['score'])))
                             tad_count += 1
-        print(f"📖 [GT] {tad_count} TAD66K ratings cached.")
+        print(f"[GT] {tad_count} TAD66K ratings cached.")
 
 def detect_task(model_dir_name):
     if not model_dir_name: return "quality"
@@ -253,7 +253,7 @@ def detect_task(model_dir_name):
     if any(k in name for k in ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]): return "super-resolution"
     
     # 2026: Surgical Restoration Detection (Purity-First)
-    # Note: 'upn' removed — UPN models use task_override for parameter_prediction
+    # Note: 'upn' removed -- UPN models use task_override for parameter_prediction
     if any(k in name for k in ["deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure"]):
         return "restoration"
     if any(k in name for k in ["restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet", "upn", "codeformer"]):
@@ -609,7 +609,7 @@ def process_parquet_shard(pq_path, prefix, c_slug, start_idx, task, fmt, split_f
     try:
         df = pd.read_parquet(pq_path)
     except Exception as e:
-        print(f"⚠️ [WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
+        print(f"[WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
         return [{"hash": "skipped"}] * num_rows
     
     results = []
@@ -944,7 +944,7 @@ def process_image(
             if SENTRY:
                 nima_score, nima_probs = SENTRY.score(img, return_probs=True)
                 if idx < 10:
-                    pass # print(f"🔬 [LIVE TRACE] {slug}_{idx:09d} | AI Score: {nima_score:.4f}")
+                    pass # print(f"[LIVE TRACE] {slug}_{idx:09d} | AI Score: {nima_score:.4f}")
 
         # 2026 Quality Gate: Enforce higher aesthetic standards for Diffusion manifolds
         current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
@@ -1024,7 +1024,7 @@ def process_image(
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
                 target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
             else:
-                # No paired clean target found — input IS the clean source (DIV2K, Flickr2K)
+                # No paired clean target found -- input IS the clean source (DIV2K, Flickr2K)
                 try:
                     os.link(str(out_img_path), str(out_tgt_path))
                 except (OSError, AttributeError):
@@ -1296,7 +1296,7 @@ def process_diffusion(
         }
     except Exception as e:
         safe_path = "virtual_bytes" if isinstance(img_path, (bytes, dict)) else img_path
-        print(f"❌ Error processing diffusion sample {safe_path}: {e}")
+        print(f"[ERROR] Error processing diffusion sample {safe_path}: {e}")
         return None
 
 def remove_empty_dirs(path):
@@ -1317,7 +1317,7 @@ def process_dataset():
     if os.name == 'nt':
         import signal
         def signal_handler(sig, frame):
-            print("\n🛑 [INTERRUPT] Emergency termination requested. Mission aborted.")
+            print("\n[INTERRUPT] Emergency termination requested. Mission aborted.")
             os._exit(1)
         signal.signal(signal.SIGINT, signal_handler)
 
@@ -1328,7 +1328,7 @@ def process_dataset():
 
     shared_root = INPUT_ROOT
     # Pre-load models globally once to prevent multiprocess race conditions on HF cache
-    print("🛡️ [PRE-FLIGHT] Analyzing task requirements...")
+    print("[PRE-FLIGHT] Analyzing task requirements...")
     from models.quality_scorer import QualitySentry # type: ignore
     from models.diffusion import CaptionSentry # type: ignore
     from models.encoder import CLIPManifold # type: ignore
@@ -1345,7 +1345,7 @@ def process_dataset():
         if task == "diffusion" or model_key == "nima_aesthetic": needs_styling = True # Styling optional for aesthetic
 
     if needs_captioning and not args.no_vetting:
-        print("🛡️ [PRE-FLIGHT] Caching CaptionSentry (BLIP)...")
+        print("[PRE-FLIGHT] Caching CaptionSentry (BLIP)...")
         tmp = CaptionSentry(device="cpu")
         del tmp
 
@@ -1356,10 +1356,10 @@ def process_dataset():
         # For NimaAesthetic, we'll only load if not in a "Pure Sharding" mindset.
         # Given user feedback, we default to skipping unless it's a diffusion manifold.
         if needs_captioning:
-            print("🛡️ [PRE-FLIGHT] Caching CLIPManifold...")
+            print("[PRE-FLIGHT] Caching CLIPManifold...")
             _ = CLIPManifold(device="cpu")
 
-    print("🛡️ [PRE-FLIGHT] Pre-flight analysis complete.")
+    print("[PRE-FLIGHT] Pre-flight analysis complete.")
 
     # 2026 Resilience: Adaptive worker scaling (v5.1)
     # Priority: 1. CLI Args (--workers) | 2. config.json | 3. Auto-detected (CPU-2)
@@ -1367,7 +1367,7 @@ def process_dataset():
 
     # Only apply safety cap if the user didn't explicitly request a worker count
     if not args.workers and final_workers > 8:
-        print(f"🛡️ [RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
+        print(f"[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
         final_workers = 8
 
     # 2026 DPED Optimization: Pre-cache canon paths to avoid O(N) exists() calls
@@ -1383,19 +1383,19 @@ def process_dataset():
                 ]
                 for cr in canon_roots:
                     if cr.exists():
-                        print(f"📦 [DPED] Caching ground truth manifold for {slug} ({cr.parent.name})...")
+                        print(f"[DPED] Caching ground truth manifold for {slug} ({cr.parent.name})...")
                         for r, _, f_list in os.walk(cr):
                             for f in f_list:
                                 # 2026: Normalize to lowercase for case-insensitive resolution
                                 dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
 
     max_workers = int(max(1, final_workers))
-    print(f"🛡️ [PRE-FLIGHT] Python: {sys.executable}")
-    print(f"🛡️ [PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
+    print(f"[PRE-FLIGHT] Python: {sys.executable}")
+    print(f"[PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
 
     # 2026 Resilience: Mechanical Drive / Seek-Contention Detection
     if max_workers > 4 and args.no_vetting and args.no_labeling:
-        print("⚠️  [I/O-GEAR] WARNING: High worker count detected for I/O-bound task.")
+        print("[I/O-GEAR] WARNING: High worker count detected for I/O-bound task.")
         print("   -> On mechanical HDDs, this will cause SEVERE thrashing (seeking contention).")
         print("   -> If performance is < 10it/s, restart with --workers 2 or 4.")
 
@@ -1423,10 +1423,10 @@ def process_dataset():
                 elif task in ["restoration", "super-resolution"]:
                     for s in ["train", "val"]: (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
 
-        print(f"\n🚀 [SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
+        print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
         if model_config.get("dataset_type") == "forex" or model_config.get("acquisition_mode") == "mt5_terminal":
-            print(f"\n📈 [FOREX MANIFOLD] Packaging LemGendized Forex Predictor Manifold: {output_root.name}...")
+            print(f"\n[FOREX MANIFOLD] Packaging LemGendized Forex Predictor Manifold: {output_root.name}...")
             output_root.mkdir(parents=True, exist_ok=True)
             import shutil
             for empty_dir in [output_root / "images", output_root / "labels", output_root / "masks", output_root / "targets"]:
@@ -1438,8 +1438,20 @@ def process_dataset():
             raw_forex_dir = INPUT_ROOT / "forex"
             ts_forex_dir = Path(__file__).parent.parent / "lemgendary-training-suite" / "data" / "forex"
             
-            if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
-                print(f"   -> ✅ Found existing manifold pair shards at {target_forex_dir} ({len(list(target_forex_dir.iterdir()))} pairs).")
+            default_pairs = [
+                'EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD',
+                'USDCAD', 'USDCHF', 'AUDUSD', 'NZDUSD',
+                'EURJPY', 'GBPJPY', 'EURGBP',
+                'XAGUSD', 'USOIL',
+                'US500', 'USTEC', 'GER40'
+            ]
+            pairs_list = model_config.get('pairs', default_pairs)
+            tfs_list = model_config.get('timeframe_rungs', [1, 5, 15, 60, 240, 1440])
+            start_date_str = model_config.get('start_date', '2019-01-01')
+
+            existing_pairs = [d.name for d in target_forex_dir.iterdir() if d.is_dir() and not d.name.startswith('.')] if target_forex_dir.exists() else []
+            if len(existing_pairs) >= len(pairs_list):
+                print(f"   -> [OK] Found existing complete manifold pair shards at {target_forex_dir} ({len(existing_pairs)} pairs).")
             elif (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) or (ts_forex_dir.exists() and any(ts_forex_dir.iterdir())):
                 source_dir = raw_forex_dir if (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) else ts_forex_dir
                 print(f"   -> Transferring forex pair shards from {source_dir} to {target_forex_dir}...")
@@ -1450,10 +1462,41 @@ def process_dataset():
                         if dest.exists():
                             shutil.rmtree(dest)
                         shutil.copytree(item, dest)
-                print(f"   -> ✅ Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
+                print(f"   -> [OK] Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
             else:
-                print(f"   -> ⚠️  [WARNING] Raw forex data missing at {raw_forex_dir}.")
-                print(f"   -> To download training bars, connect MT5 and run: python data/mt5_pipeline.py --mode download")
+                print(f"   -> [AUTO-ACQUISITION] Raw forex shards missing. Connecting to MetaTrader 5 pipeline...")
+                try:
+                    ts_dir = Path(__file__).parent.parent / "lemgendary-training-suite"
+                    if str(ts_dir) not in sys.path:
+                        sys.path.insert(0, str(ts_dir))
+                    from data.mt5_pipeline import run_download_pipeline # type: ignore
+                    
+                    run_download_pipeline(
+                        pairs=pairs_list,
+                        timeframes=tfs_list,
+                        out_dir=str(target_forex_dir),
+                        n_bars=model_config.get('n_bars', 50000),
+                        start_date=start_date_str,
+                        build_folds=True
+                    )
+                    
+                    if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
+                        print(f"   -> [OK] Successfully downloaded and built {len(list(target_forex_dir.iterdir()))} currency pair directories from MT5.")
+                        # Mirror to lemgendary-training-suite/data/forex for local suite reuse
+                        ts_forex_dir.mkdir(parents=True, exist_ok=True)
+                        for item in target_forex_dir.iterdir():
+                            if item.is_dir():
+                                dest = ts_forex_dir / item.name
+                                if dest.exists():
+                                    shutil.rmtree(dest)
+                                shutil.copytree(item, dest)
+                    else:
+                        print(f"   -> [WARNING] MT5 download did not produce shards. Ensure MT5 terminal is open and connected to an account.")
+                except Exception as e:
+                    print(f"   -> [ERROR] Automated MT5 acquisition failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    print(f"   -> To run manually, connect MT5 and run: python data/mt5_pipeline.py --mode download")
 
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
             with open(output_root / "category.txt", "w", encoding="utf-8") as f:
@@ -1461,48 +1504,44 @@ def process_dataset():
             with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
                 f.write("SELL\nHOLD\nBUY\n")
             
-            pairs_list = model_config.get('pairs', ['AUDUSD', 'EURUSD', 'GBPUSD', 'NZDUSD', 'USDCAD', 'USDCHF', 'USDJPY', 'XAUUSD'])
-            tfs_list = model_config.get('timeframe_rungs', [60, 240])
-            
             yaml_info = f"""name: {pascal_name}
 dataset_type: forex
 category: {category_str}
 pairs: {pairs_list}
 timeframe_rungs: {tfs_list}
+start_date: '{start_date_str}'
 lookback_bars: {model_config.get('lookback_bars', 168)}
 last_processed: '{datetime.now().isoformat()}'
 """
             with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
                 f.write(yaml_info)
 
+            tf_names = {1: 'M1 (1min)', 5: 'M5 (5min)', 15: 'M15 (15min)', 60: 'H1 (60min)', 240: 'H4 (240min)', 1440: 'D1 (1440min)'}
+            tf_labels = [tf_names.get(tf, f'{tf}min') for tf in tfs_list]
+            tree_pairs = '\n'.join([f"|   |-- {p}/" for p in pairs_list])
+
             readme_text = f"""# {output_root.name}
 
-## 📈 LemGendary Forex Predictor Dataset Manifold
+## LemGendary Forex Predictor Dataset Manifold
 
 - **Category**: {category_str}
-- **Acquisition Mode**: MetaTrader 5 Terminal API
+- **Acquisition Mode**: MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
 - **Pairs Included**: {', '.join(pairs_list)}
-- **Timeframe Rungs**: H1 (60min), H4 (240min)
+- **Timeframe Rungs**: {', '.join(tf_labels)}
+- **Historical Horizon**: {start_date_str} to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)
 - **Lookback Window**: {model_config.get('lookback_bars', 168)} bars
 - **Output Classes**: `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)
 
 ## Structure
 ```
 {output_root.name}/
-├── forex/
-│   ├── AUDUSD/
-│   ├── EURUSD/
-│   ├── GBPUSD/
-│   ├── NZDUSD/
-│   ├── USDCAD/
-│   ├── USDCHF/
-│   ├── USDJPY/
-│   └── XAUUSD/
-├── category.txt
-├── classes.txt
-├── dataset_info.yaml
-├── README.md
-└── forex_predictor_training.ipynb
+|-- forex/
+{tree_pairs}
+|-- category.txt
+|-- classes.txt
+|-- dataset_info.yaml
+|-- README.md
++-- forex_predictor_training.ipynb
 ```
 
 ## Training Usage
@@ -1514,7 +1553,7 @@ python training/train.py --model forex_predictor
                 f.write(readme_text)
 
             generate_kaggle_notebook(output_root, pascal_name, model_key)
-            print(f"✅ [SUCCESS] Manifold {output_root.name} compiled successfully!\n")
+            print(f"[SUCCESS] Manifold {output_root.name} compiled successfully!\n")
             continue
 
         index = []
@@ -1529,20 +1568,20 @@ python training/train.py --model forex_predictor
         # RESUMPTION LOGIC: Load existing entries from SQLite to bypass already processed samples
         existing_names = set()
         if db_path.exists():
-            print(f"🔄 [RESUMPTION] Scanning {pascal_name} registry for existing entries...")
+            print(f"[RESUMPTION] Scanning {pascal_name} registry for existing entries...")
             try:
                 rows = conn.execute("SELECT name FROM registry").fetchall()
                 existing_names = {r[0] for r in rows}
                 if existing_names:
-                    print(f"✅ Found {len(existing_names)} existing samples. Resuming from checkpoint.")
+                    print(f"[OK] Found {len(existing_names)} existing samples. Resuming from checkpoint.")
             except Exception as e:
-                print(f"⚠️ Resumption scan failed: {e}")
+                print(f"[WARNING] Resumption scan failed: {e}")
 
         # 2026 Resilience: High-Speed Physical Scan (SOTA v6.2)
         existing_on_disk = set()
         img_dir = output_root / "images"
         if img_dir.exists():
-            print(f"🔄 [RESUMPTION] Surgical scan of {pascal_name} manifold for physical consistency...")
+            print(f"[RESUMPTION] Surgical scan of {pascal_name} manifold for physical consistency...")
             count = 0
             # Use a buffer for faster set building
             _buf = []
@@ -1568,7 +1607,7 @@ python training/train.py --model forex_predictor
             # 2026 Warp-Speed: Inject physical index into worker globals
             global PHYSICAL_INDEX
             PHYSICAL_INDEX = existing_on_disk
-            print(f"✅ Physical discovery complete: {len(existing_on_disk)} samples verified on disk.")
+            print(f"[OK] Physical discovery complete: {len(existing_on_disk)} samples verified on disk.")
 
         # Start the matrix executor with the physical index correctly anchored
         if args.no_vetting and args.no_labeling:
@@ -1585,7 +1624,7 @@ python training/train.py --model forex_predictor
         lower_registry = None # Free memory
 
         if orphans:
-            print(f"🩹 [REPAIR] Found {len(orphans)} orphans on disk. Commencing batch adoption...")
+            print(f"[REPAIR] Found {len(orphans)} orphans on disk. Commencing batch adoption...")
             # Batch adoption to prevent memory spikes
             CHUNK_SIZE = 100000
             total_adopted = 0
@@ -1608,7 +1647,7 @@ python training/train.py --model forex_predictor
                 total_adopted += len(orphan_entries)
                 print(f"   -> Adopted {total_adopted // 1000}k / {len(orphans) // 1000}k orphans...", flush=True)
 
-            print(f"✅ [REPAIR] {total_adopted} orphans successfully merged into registry.")
+            print(f"[OK] [REPAIR] {total_adopted} orphans successfully merged into registry.")
             # Refresh existing_names (we only add the names, not the whole tuples to save memory)
             existing_names.update(orphans)
             orphans = None # Free memory
@@ -1651,9 +1690,9 @@ python training/train.py --model forex_predictor
                         "ParseNet": "face_parser"
                     }
                     task_tag = mapping.get(m_name)
-                    print(f"🔄 [RECIRCULATION] Using compiled manifold: {m_name} | Task Tag: {task_tag}")
+                    print(f"[RECIRCULATION] Using compiled manifold: {m_name} | Task Tag: {task_tag}")
                 else:
-                    print(f"⚠️ [SKIP] Manifold {m_name} not found at {m_path}")
+                    print(f"[SKIP] Manifold {m_name} not found at {m_path}")
                     continue
             else:
                 slug = ref.replace('hf://', '').replace('gh://', '').replace('kaggle://', '').split('/')[-1]
@@ -1679,12 +1718,12 @@ python training/train.py --model forex_predictor
                         matches = [d for d in shared_root.iterdir() if d.is_dir() and slug.lower() in d.name.lower()]
                         if matches:
                             dataset = matches[0]
-                            print(f"🔍 [DISCOVERY] Mapping {ref} -> {dataset.name}")
+                            print(f"[DISCOVERY] Mapping {ref} -> {dataset.name}")
                     except:
                         pass
 
             if not dataset.is_dir():
-                print(f"⚠️ [SKIP] Source {ref} not found in {shared_root}")
+                print(f"[SKIP] Source {ref} not found in {shared_root}")
                 continue
 
             fmt, ann_path = detect_annotations(dataset)
@@ -1700,7 +1739,7 @@ python training/train.py --model forex_predictor
                     try:
                         ann_data_list.append(parse_parquet(ap))
                     except Exception as e:
-                        print(f"⚠️ [WARNING] Failed to parse {ap}: {e}")
+                        print(f"[WARNING] Failed to parse {ap}: {e}")
                 ann_data = ann_data_list[0] if ann_data_list else None
             elif fmt == "matlab":
                 ann_data = parse_matlab(ann_path)
@@ -1729,7 +1768,7 @@ python training/train.py --model forex_predictor
                 for pq_path, _, cols in ann_data_list:
                     if "image" in cols or "pixel_values" in cols:
                         is_virtual = True
-                        print(f"✨ [VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
+                        print(f"[VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
                         break
             
             # LAZY DATASET SUPPORT: If no images and no embedded bytes, check for URLs
@@ -1738,7 +1777,7 @@ python training/train.py --model forex_predictor
                 for pq_path, _, cols in ann_data_list:
                     if "url" in cols:
                         is_lazy = True
-                        print(f"📡 [LAZY] {slug} identified as URL-based manifest. Commencing background retrieval...")
+                        print(f"[LAZY] {slug} identified as URL-based manifest. Commencing background retrieval...")
                         break
             
             if is_lazy:
@@ -1754,7 +1793,7 @@ python training/train.py --model forex_predictor
                         try:
                             df = pd.read_parquet(pq_path)
                         except Exception as e:
-                            print(f"⚠️ [WARNING] Skipping corrupted lazy parquet shard {pq_path}: {e}")
+                            print(f"[WARNING] Skipping corrupted lazy parquet shard {pq_path}: {e}")
                             continue
                         for row in df.itertuples():
                             url = getattr(row, url_col)
@@ -1765,7 +1804,7 @@ python training/train.py --model forex_predictor
                                 to_download.append((url, str(dest)))
                 
                 if to_download:
-                    print(f"📥 [RETRIEVAL] Downloading {len(to_download)} missing images for {slug}...")
+                    print(f"[RETRIEVAL] Downloading {len(to_download)} missing images for {slug}...")
                     with requests.Session() as session:
                         with ThreadPoolExecutor(max_workers=16) as dl_executor:
                             dl_tasks = [dl_executor.submit(download_image, url, dest, session) for url, dest in to_download]
@@ -1789,7 +1828,7 @@ python training/train.py --model forex_predictor
                 try:
                     df = pd.read_parquet(str(pq_path))
                 except Exception as e:
-                    print(f"⚠️ [WARNING] Skipping corrupted parquet {pq_path}: {e}")
+                    print(f"[WARNING] Skipping corrupted parquet {pq_path}: {e}")
                     df = pd.DataFrame()
                 file_col = mapping.get("file_name", "file_name")
                 # Only group if the column is hashable (e.g. filename strings)
@@ -1839,7 +1878,7 @@ python training/train.py --model forex_predictor
                         try:
                             num_rows = pd.read_parquet(pq_path, columns=[]).shape[0]
                         except Exception as e:
-                            print(f"⚠️ [WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
+                            print(f"[WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
                             continue
                             
                     if num_rows == 0: continue
@@ -1944,7 +1983,7 @@ python training/train.py --model forex_predictor
         if target_nsfw_ratio > 0 and nsfw_count > 0:
             max_nsfw = int(sfw_count * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
             if nsfw_count > max_nsfw:
-                print(f"⚖️  [BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
+                print(f"[BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
                 nsfw_keep_prob = max_nsfw / nsfw_count
                 
                 # Apply drop directly
@@ -1966,17 +2005,17 @@ python training/train.py --model forex_predictor
         # random.shuffle(all_tasks)
 
         if not all_tasks:
-            print(f"⚠️  [NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
+            print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
             continue
 
-        print(f"📡 [MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
+        print(f"[MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
 
         compiled_bytes = 0
         processed_count = len(existing_names)
         # CPU Resilience: Auto-bypass if CUDA is missing and dataset is massive
         if not torch.cuda.is_available() and len(all_tasks) > 50000:
             if not args.no_labeling or not args.no_vetting:
-                print(f"⚠️ [CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling High-Speed Mode.", flush=True)
+                print(f"[CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling High-Speed Mode.", flush=True)
                 args.no_labeling = True
                 args.no_vetting = True
 
@@ -1994,7 +2033,7 @@ python training/train.py --model forex_predictor
                 # --- 2026 Resilience: SAFE-START WARMUP (SOTA v6.3) ---
                 warmup_limit = min(500, len(all_tasks))
                 if warmup_limit > 0:
-                    print(f"🛡️ [SAFE-START] Warming up manifold (Serial Pass: {warmup_limit} samples)...")
+                    print(f"[SAFE-START] Warming up manifold (Serial Pass: {warmup_limit} samples)...")
                     for i in range(warmup_limit):
                         task_args = all_tasks[i]
                         res = task_args[0](*task_args[1:])
@@ -2017,7 +2056,7 @@ python training/train.py --model forex_predictor
                                 """, batch_entries)
                         if i % 100 == 99:
                             conn.commit()
-                    print(f"✅ [SAFE-START] Warmup complete. Engaging Parallel Matrix.")
+                    print(f"[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
 
                 remaining_tasks = all_tasks[warmup_limit:]
                 task_batches = [remaining_tasks[i:i + BATCH_SIZE] for i in range(0, len(remaining_tasks), BATCH_SIZE)]
@@ -2076,7 +2115,7 @@ python training/train.py --model forex_predictor
 
         compiled_gb = compiled_bytes / (1024**3)
         if compiled_gb < min_gb:
-            print(f"⚠️  [WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold constraint ({min_gb:.2f}GB).")
+            print(f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold constraint ({min_gb:.2f}GB).")
 
         # STEP 2: Style Clustering (v5.0 Global Manifold)
         print(f"[STYLING] Commencing Style Clustering on all extracted latents...")
@@ -2097,7 +2136,7 @@ python training/train.py --model forex_predictor
                 conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (int(cid), i))
             conn.commit()
         else:
-            print(f"ℹ️  [STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
+            print(f"[STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
 
         # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
         print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
@@ -2511,10 +2550,10 @@ def generate_kaggle_notebook(output_root, target_name, model_key=None):
 
 
 def reduce_dataset():
-    print("\n🔍 [SCANNING] Locating existing manifolds in LemGendaryDatasets...")
+    print("\n[SCANNING] Locating existing manifolds in LemGendaryDatasets...")
     manifolds = [d for d in OUT_PARENT.iterdir() if d.is_dir() and ((d / "images").exists() or (d / "targets").exists()) and d.name.endswith("Large")]
     if not manifolds:
-        print("❌ No valid Large datasets found to reduce.")
+        print("[ERROR] No valid Large datasets found to reduce.")
         return
 
     for i, m in enumerate(manifolds):
@@ -2537,20 +2576,20 @@ def reduce_dataset():
                 if idx < 0 or idx >= len(manifolds): raise ValueError
                 target_indices.append(idx)
     except (ValueError, IndexError):
-        print("❌ Invalid selection.")
+        print("[ERROR] Invalid selection.")
         return
     except KeyboardInterrupt:
-        print("\n🚫 [ABORTED] Operation cancelled by user.")
+        print("\n[ABORTED] Operation cancelled by user.")
         return
 
     try:
         max_gb = float(input("Target max size in GB (e.g. 15.0): "))
         suffix = input("New suffix (e.g. Mini): ").strip()
     except ValueError:
-        print("❌ Invalid input.")
+        print("[ERROR] Invalid input.")
         return
     except KeyboardInterrupt:
-        print("\n🚫 [ABORTED] Operation cancelled by user.")
+        print("\n[ABORTED] Operation cancelled by user.")
         return
 
     for idx in target_indices:
@@ -2565,7 +2604,7 @@ def reduce_dataset():
         target_name = f"{base_name}{suffix}"
         target_root = OUT_PARENT / target_name
 
-        print(f"\n⚡ [REDUCING] {source_root.name} -> {target_name} ({max_gb} GB)...")
+        print(f"\n[REDUCING] {source_root.name} -> {target_name} ({max_gb} GB)...")
 
         for d in ["images", "labels", "targets", "masks"]:
             for s in ["train", "val"]: (target_root / d / s).mkdir(parents=True, exist_ok=True)
@@ -2686,7 +2725,7 @@ def reduce_dataset():
                             "task": task_type
                         })
             except KeyboardInterrupt:
-                print(f"\n🚫 [ABORTED] Reduction cancelled by user.")
+                print(f"\n[ABORTED] Reduction cancelled by user.")
                 return
 
         with open(target_root / "index.json", "w", encoding="utf-8") as f:
@@ -2696,14 +2735,14 @@ def reduce_dataset():
         generate_metadata_files(target_root, new_index, target_name)
         generate_readme(target_root)
         generate_kaggle_notebook(target_root, target_name)
-        print(f"\n✅ [SUCCESS] Reduced manifold created at {target_root.name}")
+        print(f"\n[SUCCESS] Reduced manifold created at {target_root.name}")
 
 def purge_ghost_manifolds():
     """
     2026 Ghost Manifold Audit (v1.0).
     Identifies and removes folders containing only notebooks with no manifold data.
     """
-    print("\n👻 [GHOST-AUDIT] Scanning for empty manifold folders in LemGendaryDatasets...")
+    print("\n[GHOST-AUDIT] Scanning for empty manifold folders in LemGendaryDatasets...")
     ghosts = []
     if not OUT_PARENT.exists(): return
     for item in OUT_PARENT.iterdir():
@@ -2732,11 +2771,11 @@ def smart_cleanup():
     that consume it in unified_data.yaml.
     """
     if not INPUT_ROOT.exists():
-        print("🛡️ No raw sources found. Proceeding to Ghost Audit...")
+        print("[INFO] No raw sources found. Proceeding to Ghost Audit...")
         purge_ghost_manifolds()
         return
 
-    print("\n🧹 [JANITOR] Evaluating source dataset redundancy...")
+    print("\n[JANITOR] Evaluating source dataset redundancy...")
     raw_sources = [d for d in INPUT_ROOT.iterdir() if d.is_dir()]
     safe_to_purge = []
     protected = []
@@ -2777,23 +2816,23 @@ def smart_cleanup():
             protected.append((slug, f"Needed by: {', '.join(unsatisfied_models)}"))
 
     if not safe_to_purge:
-        print("✅ All raw sources are currently required. Proceeding to Ghost Audit...")
+        print("[OK] All raw sources are currently required. Proceeding to Ghost Audit...")
         purge_ghost_manifolds()
         return
 
-    print("\n📦 [SAFE TO PURGE] The following raw sources are fully compiled and not needed elsewhere:")
+    print("\n[SAFE TO PURGE] The following raw sources are fully compiled and not needed elsewhere:")
     for slug, reason in safe_to_purge:
         print(f"  - {slug.ljust(40)} | {reason}")
 
     if protected:
-        print("\n🛡️ [PROTECTED] The following sources will be KEPT (Shared with other models):")
+        print("\n[PROTECTED] The following sources will be KEPT (Shared with other models):")
         for slug, reason in protected:
             print(f"  - {slug.ljust(40)} | {reason}")
 
     try:
-        confirm = input(f"\n⚠️  Purge these {len(safe_to_purge)} raw sources to save space? (y/n): ").strip().lower()
+        confirm = input(f"\n[WARNING] Purge these {len(safe_to_purge)} raw sources to save space? (y/n): ").strip().lower()
     except KeyboardInterrupt:
-        print("\n🛑 [INTERRUPT] Ctrl+C detected. Cleanup aborted. Sources preserved.")
+        print("\n[INTERRUPT] Ctrl+C detected. Cleanup aborted. Sources preserved.")
         return
     if confirm == 'y':
         for slug, _ in safe_to_purge:
@@ -2802,18 +2841,18 @@ def smart_cleanup():
                 print(f"  [DELETED] {slug}")
             except Exception as e:
                 print(f"  [ERROR] Failed to delete {slug}: {e}")
-        print("\n🧹 [JANITOR] Cleanup complete.")
+        print("\n[JANITOR] Cleanup complete.")
     else:
-        print("\n🛡️ Cleanup aborted. Sources preserved.")
+        print("\n[INFO] Cleanup aborted. Sources preserved.")
         
     # Always finalize with Ghost Audit
     purge_ghost_manifolds()
 
 def cleanup_sources():
-    print("\n🧹 [CLEANUP] Evaluating source dataset redundancy...")
-    confirm = input("⚠️  Are you sure you want to PURGE raw sources? This cannot be undone! (y/n): ").strip().lower()
+    print("\n[CLEANUP] Evaluating source dataset redundancy...")
+    confirm = input("[WARNING] Are you sure you want to PURGE raw sources? This cannot be undone! (y/n): ").strip().lower()
     if confirm != 'y':
-        print("🛡️ Purge aborted.")
+        print("[INFO] Purge aborted.")
         return
 
     if not INPUT_ROOT.exists(): return
@@ -2834,7 +2873,7 @@ def cleanup_sources():
 
         if not consumers:
             # Orphaned source (not in config) - safe to delete if processed
-            print(f"🗑️ Deleting orphaned source: {slug}")
+            print(f"[DELETE] Deleting orphaned source: {slug}")
             shutil.rmtree(source_dir)
             deleted.append(f"{slug} (Not found in manifest)")
             continue
@@ -2857,29 +2896,29 @@ def cleanup_sources():
                 missing_models.append(mk)
 
         if all_compiled:
-            print(f"🗑️ Purging {slug} (Satisfied by compiled manifolds for {consumers})")
+            print(f"[PURGE] Purging {slug} (Satisfied by compiled manifolds for {consumers})")
             shutil.rmtree(source_dir)
             deleted.append(f"{slug} (Consumers {consumers} are verified in {OUT_PARENT.name})")
         else:
             reason = f"Required by pending models: {missing_models}"
-            print(f"🛡️ Keeping {slug} ({reason})")
+            print(f"[KEEP] Keeping {slug} ({reason})")
             kept.append(f"{slug} ({reason})")
 
-    print("\n📊 [CLEANUP SUMMARY]")
+    print("\n[CLEANUP SUMMARY]")
     if deleted:
-        print("✅ DELETED:")
+        print("[DELETED]:")
         for d in deleted: print(f"  - {d}")
     if kept:
-        print("🛡️ KEPT:")
+        print("[KEPT]:")
         for k in kept: print(f"  - {k}")
     print("="*50)
 
 def acquire_datasets():
-    print("\n🌐 [ACQUISITION] Fetching remote source manifests from unified_data.yaml...")
+    print("\n[ACQUISITION] Fetching remote source manifests from unified_data.yaml...")
     try:
         from huggingface_hub import snapshot_download
     except ImportError:
-        print("❌ Error: 'huggingface_hub' library not found. Run: pip install huggingface_hub")
+        print("[ERROR] Error: 'huggingface_hub' library not found. Run: pip install huggingface_hub")
         return
 
     datasets = list(DATASETS_META.items())
@@ -2898,7 +2937,7 @@ def acquire_datasets():
             targets = [datasets[idx]]
 
         for model_key, model_config in targets:
-            print(f"\n📡 Pulling {model_key} sources...")
+            print(f"\n[PULL] Pulling {model_key} sources...")
             for ref_entry in model_config.get("refs", []):
                 ref = ref_entry["ref"]
                 repo_id = ref.replace('hf://', '')
@@ -2913,14 +2952,14 @@ def acquire_datasets():
                     
                     revision="main"
                 )
-        print("\n✅ [SUCCESS] Acquisition complete.")
+        print("\n[SUCCESS] Acquisition complete.")
     except Exception as e:
-        print(f"❌ Acquisition failed: {e}")
+        print(f"[ERROR] Acquisition failed: {e}")
 
 def main_menu():
     while True:
         print("\n" + "="*50)
-        print("🚀 [LemGendary Dataset Orchestrator v5.7]")
+        print("[LemGendary Dataset Orchestrator v5.7]")
         print("="*50)
         print("1. [ACQUIRE] Pull remote datasets from Hugging Face")
         print("2. [COMPILE] Build new SOTA manifold from raw sources")
@@ -2930,7 +2969,7 @@ def main_menu():
         try:
             choice = input("\nSelect directive: ").strip()
         except KeyboardInterrupt:
-            print("\n👋 Exiting Orchestrator.")
+            print("\nExiting Orchestrator.")
             break
         if choice == '1':
             acquire_datasets()
@@ -2939,10 +2978,10 @@ def main_menu():
         elif choice == '3':
             reduce_dataset()
         elif choice == '4':
-            print("👋 Exiting Orchestrator.")
+            print("Exiting Orchestrator.")
             break
         else:
-            print("❌ Invalid directive.")
+            print("[ERROR] Invalid directive.")
 
 if __name__ == "__main__":
     if args.reduce:
@@ -2953,4 +2992,5 @@ if __name__ == "__main__":
         process_dataset()
     else:
         main_menu()
+
 
