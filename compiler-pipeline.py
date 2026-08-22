@@ -1487,13 +1487,13 @@ def process_dataset():
                         if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
                             print(f"   -> [OK] Successfully downloaded and built missing currency pair directories from MT5.")
                             # Mirror to lemgendary-training-suite/data/forex for local suite reuse
-                            ts_forex_dir.mkdir(parents=True, exist_ok=True)
-                            for item in target_forex_dir.iterdir():
-                                if item.is_dir():
-                                    dest = ts_forex_dir / item.name
-                                    if dest.exists():
-                                        shutil.rmtree(dest)
-                                    shutil.copytree(item, dest)
+                            # ts_forex_dir.mkdir(parents=True, exist_ok=True)
+                            # for item in target_forex_dir.iterdir():
+                            #     if item.is_dir():
+                            #         dest = ts_forex_dir / item.name
+                            #         if dest.exists():
+                            #             shutil.rmtree(dest)
+                            #         shutil.copytree(item, dest)
                     except Exception as e:
                         print(f"   -> [ERROR] MT5 Auto-Acquisition failed: {e}")
                 else:
@@ -1520,31 +1520,61 @@ last_processed: '{datetime.now().isoformat()}'
             tf_labels = [tf_names.get(tf, f'{tf}min') for tf in tfs_list]
             tree_pairs = '\n'.join([f"|   |-- {p}/" for p in pairs_list])
 
-            readme_text = f"""# {output_root.name}
+            readme_text = f"""<!-- markdownlint-disable MD051 MD013 -->
+# {output_root.name}
 
-## LemGendary Forex Predictor Dataset Manifold
+> High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.
 
-- **Category**: {category_str}
-- **Acquisition Mode**: MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
-- **Pairs Included**: {', '.join(pairs_list)}
-- **Timeframe Rungs**: {', '.join(tf_labels)}
-- **Historical Horizon**: {start_date_str} to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)
-- **Lookback Window**: {model_config.get('lookback_bars', 168)} bars
-- **Output Classes**: `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)
+## Dataset Overview
 
-## Structure
-```
-{output_root.name}/
-|-- forex/
-{tree_pairs}
-|-- category.txt
-|-- classes.txt
-|-- dataset_info.yaml
-|-- README.md
-+-- forex_predictor_training.ipynb
-```
+- **Category:** {category_str}
+- **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
+- **Pairs Included:** {', '.join(pairs_list)}
+- **Timeframe Rungs:** {', '.join(tf_labels)}
+- **Historical Horizon:** {start_date_str} to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)
+- **Lookback Window:** {model_config.get('lookback_bars', 168)} bars
+- **Total Samples:** [Computed Dynamically During Training]
+- **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)
+- **Architecture Base:** Causal TCN + Cross-Timeframe Multi-Head Attention
+- **Primary Task:** Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss boundaries.
+
+## Composition & Lineage
+
+This manifold is a high-fidelity merge of the following original sources:
+
+| Source Dataset | Train | Val | Total Contribution |
+| :--- | :--- | :--- | :--- |
+| **MT5 Live Extractor** | - | - | [Computed Dynamically] samples |
+
+## Model Training Profile
+
+- **Target Architectures**: ForexPredictor (Multi-Scale CNN-Transformer)
+- **Optimization Strategy**: Cross-Entropy Loss (Direction), Huber Loss (Magnitude)
+
+### Benchmark Metrics [SOTA]
+
+| Metric | Baseline | Advanced | SOTA |
+| :--- | :--- | :--- | :--- |
+| **Direction Accuracy** | ~55.0% | > 65.0% | **> 75.0%** |
+| **Profit Factor** | ~1.10 | > 1.50 | **> 2.00** |
+
+## Repository Structure
+
+Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
+
+- **`forex/`**: Shards containing serialized manifold data.
+- **`category.txt`**: Top-level categorization tag.
+- **`classes.txt`**: Class labels mapping.
+- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.
+- **`forex_predictor_training.ipynb`**: Auto-generated Jupyter notebook for model training.
+- **`README.md`**: This documentation file.
+
+---
+
+**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')})
 
 ## Training Usage
+
 ```bash
 python training/train.py --model forex_predictor
 ```
