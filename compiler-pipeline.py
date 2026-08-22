@@ -2494,7 +2494,8 @@ def generate_readme(output_root):
                 
     structure_text = "\n".join(structure_lines)
 
-    readme = f"""# {output_root.name}
+    readme = f"""<!-- markdownlint-disable MD051 MD013 -->
+# {output_root.name}
 
 > {resolved_desc}
 
@@ -2544,7 +2545,8 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
 def generate_kaggle_notebook(output_root, target_name, model_key=None):
     try:
         from notebook_generator import generate_training_notebook as gen_nb # type: ignore
-    except ImportError:
+    except Exception as e:
+        print(f"\n[ERROR] Silent Failure Detected! Could not import notebook_generator: {e}\n")
         def gen_nb(*args, **kwargs): pass
     # 2026 Resilience: Auto-resolve model name if not provided
     resolved_model = model_key

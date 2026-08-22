@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import argparse
+import yaml
 
 def build_training_notebook_content(model_key, config=None):
     """
