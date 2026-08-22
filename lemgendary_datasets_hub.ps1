@@ -242,11 +242,9 @@ function Get-RefStatus {
     if ($Ref -match 'competition:(.*)') { $repoId = $Matches[1] }
     $repoId = $repoId.Trim('/')
     
-    $targetFile = $null
     if ($repoId -match ':' -and -not ($repoId -match '^[A-Za-z]:')) {
         $parts = $repoId.Split(':')
         $repoId = $parts[0]
-        $targetFile = $parts[1]
         $dn = $repoId.Split('/')[-1]
     } else {
         # 2026: SOTA Path Normalization - extract the core slug from potentially deep hf/kaggle paths
@@ -689,7 +687,7 @@ while ($true) {
             }
         }
         
-        if ($TargetModels -contains 'forex_predictor') {
+        if ($TargetModels -match 'forex_') {
             $RawForex = Join-Path $Raw 'forex'
             $TsForex = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'lemgendary-training-suite') 'data\forex'
             if (!(Test-Path $RawForex) -and !(Test-Path $TsForex)) {

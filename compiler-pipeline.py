@@ -1450,54 +1450,54 @@ def process_dataset():
             start_date_str = model_config.get('start_date', '2019-01-01')
 
             existing_pairs = [d.name for d in target_forex_dir.iterdir() if d.is_dir() and not d.name.startswith('.')] if target_forex_dir.exists() else []
-            if len(existing_pairs) >= len(pairs_list):
+            if len(existing_pairs) >= len(pairs_list) and all(p in existing_pairs for p in pairs_list):
                 print(f"   -> [OK] Found existing complete manifold pair shards at {target_forex_dir} ({len(existing_pairs)} pairs).")
-            elif (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) or (ts_forex_dir.exists() and any(ts_forex_dir.iterdir())):
-                source_dir = raw_forex_dir if (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) else ts_forex_dir
-                print(f"   -> Transferring forex pair shards from {source_dir} to {target_forex_dir}...")
-                import shutil
-                for item in source_dir.iterdir():
-                    if item.is_dir():
-                        dest = target_forex_dir / item.name
-                        if dest.exists():
-                            shutil.rmtree(dest)
-                        shutil.copytree(item, dest)
-                print(f"   -> [OK] Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
             else:
-                print(f"   -> [AUTO-ACQUISITION] Raw forex shards missing. Connecting to MetaTrader 5 pipeline...")
-                try:
-                    ts_dir = Path(__file__).parent.parent / "lemgendary-training-suite"
-                    if str(ts_dir) not in sys.path:
-                        sys.path.insert(0, str(ts_dir))
-                    from data.mt5_pipeline import run_download_pipeline # type: ignore
-                    
-                    run_download_pipeline(
-                        pairs=pairs_list,
-                        timeframes=tfs_list,
-                        out_dir=str(target_forex_dir),
-                        n_bars=model_config.get('n_bars', 50000),
-                        start_date=start_date_str,
-                        build_folds=True
-                    )
-                    
-                    if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
-                        print(f"   -> [OK] Successfully downloaded and built {len(list(target_forex_dir.iterdir()))} currency pair directories from MT5.")
-                        # Mirror to lemgendary-training-suite/data/forex for local suite reuse
-                        ts_forex_dir.mkdir(parents=True, exist_ok=True)
-                        for item in target_forex_dir.iterdir():
-                            if item.is_dir():
-                                dest = ts_forex_dir / item.name
-                                if dest.exists():
-                                    shutil.rmtree(dest)
-                                shutil.copytree(item, dest)
-                    else:
-                        print(f"   -> [WARNING] MT5 download did not produce shards. Ensure MT5 terminal is open and connected to an account.")
-                except Exception as e:
-                    print(f"   -> [ERROR] Automated MT5 acquisition failed: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    print(f"   -> To run manually, connect MT5 and run: python data/mt5_pipeline.py --mode download")
-
+                source_dir = raw_forex_dir if (raw_forex_dir.exists() and any(raw_forex_dir.iterdir())) else ts_forex_dir
+                if source_dir.exists() and any(source_dir.iterdir()):
+                    print(f"   -> Transferring existing forex pair shards from {source_dir} to {target_forex_dir}...")
+                    import shutil
+                    for item in source_dir.iterdir():
+                        if item.is_dir() and item.name in pairs_list:
+                            dest = target_forex_dir / item.name
+                            if dest.exists():
+                                shutil.rmtree(dest)
+                            shutil.copytree(item, dest)
+                
+                currently_in_target = [d.name for d in target_forex_dir.iterdir() if d.is_dir() and not d.name.startswith('.')] if target_forex_dir.exists() else []
+                missing_pairs = [p for p in pairs_list if p not in currently_in_target]
+                
+                if missing_pairs:
+                    print(f"   -> [AUTO-ACQUISITION] Missing {len(missing_pairs)} forex shards. Connecting to MetaTrader 5 pipeline...")
+                    try:
+                        ts_dir = Path(__file__).parent.parent / "lemgendary-training-suite"
+                        if str(ts_dir) not in sys.path:
+                            sys.path.insert(0, str(ts_dir))
+                        from data.mt5_pipeline import run_download_pipeline # type: ignore
+                        
+                        run_download_pipeline(
+                            pairs=missing_pairs,
+                            timeframes=tfs_list,
+                            out_dir=str(target_forex_dir),
+                            n_bars=model_config.get('n_bars', 50000),
+                            start_date=start_date_str,
+                            build_folds=True
+                        )
+                        
+                        if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
+                            print(f"   -> [OK] Successfully downloaded and built missing currency pair directories from MT5.")
+                            # Mirror to lemgendary-training-suite/data/forex for local suite reuse
+                            ts_forex_dir.mkdir(parents=True, exist_ok=True)
+                            for item in target_forex_dir.iterdir():
+                                if item.is_dir():
+                                    dest = ts_forex_dir / item.name
+                                    if dest.exists():
+                                        shutil.rmtree(dest)
+                                    shutil.copytree(item, dest)
+                    except Exception as e:
+                        print(f"   -> [ERROR] MT5 Auto-Acquisition failed: {e}")
+                else:
+                    print(f"   -> [OK] Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
             with open(output_root / "category.txt", "w", encoding="utf-8") as f:
                 f.write(f"{category_str}\n")
@@ -2212,7 +2212,8 @@ last_processed: '{datetime.now().isoformat()}'
         "restoration": "Image Restoration",
         "detection": "Object Detection",
         "classification": "Image Classification",
-        "segmentation": "Image Segmentation"
+        "segmentation": "Image Segmentation",
+        "forex": "Financial Time-Series & Forex Prediction"
     }
     cat_str = category_map.get(task, "Object Detection")
     with open(output_root / "category.txt", "w", encoding="utf-8") as f:
@@ -2220,8 +2221,11 @@ last_processed: '{datetime.now().isoformat()}'
 
     # classes.txt
     with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
-        class_name = "face" if task == "pose" else task
-        f.write(f"{class_name}\n")
+        if task == "forex":
+            f.write("Sell\nHold\nBuy\n")
+        else:
+            class_name = "face" if task == "pose" else task
+            f.write(f"{class_name}\n")
 
 def generate_readme(output_root):
     if not (output_root / "index.json").exists(): return
@@ -2394,6 +2398,17 @@ def generate_readme(output_root):
             "metrics": "| **mAP** | ~0.600 | > 0.750 | **> 0.880** |",
             "targets": "EXPLICITLY OMITTED",
             "targets_desc": "Landmark coordinates are stored as normalized vectors within the `labels/` directory, removing the need for physical target bitmaps."
+        },
+        "forex": {
+            "category": "Financial Time-Series & Forex Prediction",
+            "desc": "High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.",
+            "obj": "Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss boundaries.",
+            "models": "ForexPredictor (Multi-Scale CNN-Transformer)",
+            "arch": "Causal TCN + Cross-Timeframe Multi-Head Attention",
+            "loss": "Cross-Entropy Loss (Direction), Huber Loss (Magnitude)",
+            "metrics": "| **Direction Accuracy** | ~55.0% | > 65.0% | **> 75.0%** |\n| **Profit Factor** | ~1.10 | > 1.50 | **> 2.00** |",
+            "targets": "EXPLICITLY OMITTED",
+            "targets_desc": "Time-series manifolds natively compute targets dynamically via causal window boundaries. Physical image targets are completely inapplicable to this domain."
         }
     }
 
