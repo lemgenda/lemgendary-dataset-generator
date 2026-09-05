@@ -3,6 +3,13 @@ $Env:PYTHONUNBUFFERED = "1"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+if (-not (Test-Path $Vpy)) {
+    $EnvMgrScript = Join-Path (Split-Path -Parent $PSScriptRoot) "lemgendary-env-manager\lemgendary_env_manager.ps1"
+    if (Test-Path $EnvMgrScript) {
+        Write-Host "[INIT] Initializing environment via LemGendary Environment Manager..." -ForegroundColor Cyan
+        & $EnvMgrScript install --project lemgendary-datasets
+    }
+}
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
 $Raw = Join-Path $PSScriptRoot 'raw-sets'
 $hfManagerPath = Join-Path $PSScriptRoot 'hf_manager.py'
