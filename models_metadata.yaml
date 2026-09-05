@@ -64,6 +64,7 @@ models_metadata:
       accuracy: 0.96
   upn_v2:
     name: LemGendary UPN v2 Parameter Predictor
+    arch: UPN_v2 (Standard Backbone)
     loss: smooth_l1
     datasets:
     - LemGendizedUpnV2Large
@@ -71,6 +72,7 @@ models_metadata:
       mae: 0.05
   film_restorer:
     name: LemGendary Universal Film Restorer
+    arch: UniversalFilmRestorer (Standard Backbone)
     loss: l1_lpips
     datasets:
     - LemGendizedFilmRestorerLarge
@@ -80,6 +82,7 @@ models_metadata:
       lpips: 0.25
   codeformer:
     name: LemGendary CodeFormer Face Restoration
+    arch: CodeFormer (Standard Backbone)
     loss: mse
     datasets:
     - LemGendizedCodeFormerLarge
@@ -89,6 +92,7 @@ models_metadata:
       ssim: 0.93
   parsenet:
     name: LemGendary ParseNet Face Parsing
+    arch: ParseNet (Standard Backbone)
     loss: cross_entropy
     datasets:
     - LemGendizedParseNetLarge
@@ -96,6 +100,7 @@ models_metadata:
       miou: 0.86
   retinaface_mobilenet:
     name: LemGendary RetinaFace MobileNet Detection
+    arch: RetinaFace (MobileNet Backbone)
     loss: retinaface
     datasets:
     - LemGendizedRetinaFaceMobileNetLarge
@@ -105,6 +110,7 @@ models_metadata:
       map_hard: 0.75
   ffanet_indoor:
     name: LemGendary FFANet Dehazing (Indoor)
+    arch: BranchedFFANet (Standard Backbone)
     loss: l1
     datasets:
     - LemGendizedFfaNetIndoorLarge
@@ -115,6 +121,7 @@ models_metadata:
       fid: 12.0
   ffanet_outdoor:
     name: LemGendary FFANet Dehazing (Outdoor)
+    arch: BranchedFFANet (Standard Backbone)
     loss: l1
     datasets:
     - LemGendizedFfaNetOutdoorLarge
@@ -125,6 +132,7 @@ models_metadata:
       fid: 12.0
   mirnet_lowlight:
     name: LemGendary MIRNet v2 Low-Light Enhancement
+    arch: MIRNet (Standard Backbone)
     loss: l1_lpips
     datasets:
     - LemGendizedMirNetLowLightLarge
@@ -135,6 +143,7 @@ models_metadata:
       fid: 12.0
   mirnet_exposure:
     name: LemGendary MIRNet v2 Exposure Correction
+    arch: MIRNet (Standard Backbone)
     loss: l1_lpips
     datasets:
     - LemGendizedMirNetExposureLarge
@@ -145,6 +154,7 @@ models_metadata:
       fid: 12.0
   mprnet_deraining:
     name: LemGendary MPRNet Deraining
+    arch: MPRNet (Standard Backbone)
     loss: l1
     datasets:
     - LemGendizedMprNetDerainingLarge
@@ -155,6 +165,7 @@ models_metadata:
       fid: 12.0
   nafnet_debluring:
     name: LemGendary NAFNet Debluring
+    arch: NAFNet (Standard Backbone)
     loss: l1
     datasets:
     - LemGendizedNafNetDebluringLarge
@@ -165,6 +176,7 @@ models_metadata:
       fid: 6.0
   nafnet_denoising:
     name: LemGendary NAFNet Denoising
+    arch: NAFNet (Standard Backbone)
     loss: l1
     datasets:
     - LemGendizedNafNetDenoisingLarge
@@ -175,6 +187,7 @@ models_metadata:
       fid: 4.0
   yolov8n:
     name: LemGendary YOLOv8n Multi-Task Model
+    arch: YOLO (Standard Backbone)
     loss: yolo
     datasets:
     - LemGendizedYoloV8nLarge
@@ -183,6 +196,7 @@ models_metadata:
       map50_95: 0.39
   professional_multitask_restoration:
     name: LemGendary Professional Multi-Task Restoration Model
+    arch: MultiTaskRestorer (Standard Backbone)
     loss: hybrid_restoration
     datasets:
     - LemGendizedNafNetDebluringLarge
@@ -196,6 +210,7 @@ models_metadata:
       fid: 12.0
   ultrazoom:
     name: LemGendary UltraZoom Master Model
+    arch: UltraZoomMaster (Standard Backbone)
     loss: mse
     datasets:
     - LemGendizedUltraZoomLarge

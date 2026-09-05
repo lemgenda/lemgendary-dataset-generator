@@ -1,0 +1,522 @@
+{
+  "LemGendizedClassificationMasterManifoldLarge": {
+    "total_samples": 788034,
+    "sources": {
+      "anime_dbrating": {
+        "train": 544611,
+        "val": 74903,
+        "total": 619514
+      },
+      "NSFW": {
+        "train": 59324,
+        "val": 8168,
+        "total": 67520
+      },
+      "food101": {
+        "train": 89105,
+        "val": 11894,
+        "total": 101000
+      }
+    }
+  },
+  "LemGendizedCodeFormerLarge": {
+    "total_samples": 22000,
+    "sources": {
+      "CodeFormer-manifold": {
+        "train": 19790,
+        "val": 2210,
+        "total": 22000
+      }
+    }
+  },
+  "LemGendizedFfaNetIndoorLarge": {
+    "total_samples": 196304,
+    "sources": {
+      "dehazing-and-desmoking": {
+        "train": 134574,
+        "val": 18351,
+        "total": 152925
+      },
+      "indoor-training-set-its-residestandard": {
+        "train": 25854,
+        "val": 3525,
+        "total": 29379
+      },
+      "reside-6k": {
+        "train": 12320,
+        "val": 1680,
+        "total": 14000
+      }
+    }
+  },
+  "LemGendizedFfaNetOutdoorLarge": {
+    "total_samples": 217113,
+    "sources": {
+      "outdoor-dehazing-dataset": {
+        "train": 190708,
+        "val": 26005,
+        "total": 216713
+      },
+      "ntire20202021ohaze": {
+        "train": 159,
+        "val": 21,
+        "total": 180
+      },
+      "nhhaze": {
+        "train": 97,
+        "val": 13,
+        "total": 110
+      },
+      "hazing-images-dataset-cvpr-2019": {
+        "train": 97,
+        "val": 13,
+        "total": 110
+      }
+    }
+  },
+  "LemGendizedFilmRestorerLarge": {
+    "total_samples": 67542,
+    "sources": {
+      "old": {
+        "train": 56210,
+        "val": 7690,
+        "total": 63900
+      },
+      "div2k": {
+        "train": 1036,
+        "val": 242,
+        "total": 1278
+      },
+      "vintage": {
+        "train": 1235,
+        "val": 333,
+        "total": 1568
+      },
+      "smartphone-image-denoising-dataset": {
+        "train": 508,
+        "val": 132,
+        "total": 640
+      },
+      "photo": {
+        "train": 33,
+        "val": 9,
+        "total": 42
+      },
+      "dnd-nam-noise-data": {
+        "train": 93,
+        "val": 21,
+        "total": 114
+      }
+    }
+  },
+  "LemGendizedMirNetLowLightLarge": {
+    "total_samples": 15070,
+    "sources": {
+      "lol-v2-dataset": {
+        "train": 3149,
+        "val": 429,
+        "total": 3578
+      },
+      "exdark-dataset": {
+        "train": 6480,
+        "val": 883,
+        "total": 7363
+      },
+      "low-light-image-enhancement-datasets": {
+        "train": 2269,
+        "val": 309,
+        "total": 2578
+      },
+      "learning-to-see-in-the-dark-long-exposure-npy": {
+        "train": 204,
+        "val": 27,
+        "total": 231
+      },
+      "lol-dataset": {
+        "train": 880,
+        "val": 120,
+        "total": 1000
+      },
+      "smartphone-image-denoising-dataset": {
+        "train": 282,
+        "val": 38,
+        "total": 320
+      }
+    }
+  },
+  "LemGendizedNimaAestheticLarge": {
+    "total_samples": 321369,
+    "sources": {
+      "ava": {
+        "train": 216675,
+        "val": 29614,
+        "total": 246289
+      },
+      "TAD66K_for_Image_Aesthetics_Assessment": {
+        "train": 48386,
+        "val": 6579,
+        "total": 54965
+      },
+      "koniq-10k-dataset": {
+        "train": 7925,
+        "val": 1070,
+        "total": 8995
+      },
+      "spaq": {
+        "train": 9787,
+        "val": 1333,
+        "total": 11120
+      }
+    }
+  },
+  "LemGendizedNimaTechnicalLarge": {
+    "total_samples": 26093,
+    "sources": {
+      "koniq": {
+        "train": 8289,
+        "val": 2076,
+        "total": 10365
+      },
+      "tid2013": {
+        "train": 2138,
+        "val": 506,
+        "total": 2644
+      },
+      "spaq": {
+        "train": 8862,
+        "val": 2258,
+        "total": 11120
+      },
+      "live": {
+        "train": 790,
+        "val": 221,
+        "total": 1011
+      },
+      "dnd": {
+        "train": 46,
+        "val": 11,
+        "total": 57
+      },
+      "csiq": {
+        "train": 721,
+        "val": 175,
+        "total": 896
+      }
+    }
+  },
+  "LemGendizedParseNetLarge": {
+    "total_samples": 853546,
+    "sources": {
+      "synthetic-faces-high-quality-sfhq-part-3": {
+        "train": 208930,
+        "val": 28666,
+        "total": 237596
+      },
+      "synthetic-faces-high-quality-sfhq-part-4": {
+        "train": 222166,
+        "val": 30122,
+        "total": 252288
+      },
+      "synthetic-faces-high-quality-sfhq-part-2": {
+        "train": 161388,
+        "val": 22124,
+        "total": 183512
+      },
+      "synthetic-faces-high-quality-sfhq-part-1": {
+        "train": 158499,
+        "val": 21651,
+        "total": 180150
+      }
+    }
+  },
+  "LemGendizedProfessionalMultitaskRestorationLarge": {
+    "total_samples": 343911,
+    "sources": {
+      "compiled_FfaNetOutdoorMultiTask": {
+        "train": 140791,
+        "val": 19229,
+        "total": 160020
+      },
+      "compiled_FfaNetIndoorMultiTask": {
+        "train": 41258,
+        "val": 5530,
+        "total": 46788
+      },
+      "compiled_MprNetDerainingMultiTask": {
+        "train": 30193,
+        "val": 4214,
+        "total": 34407
+      },
+      "compiled_ParseNetMultiTask": {
+        "train": 58368,
+        "val": 7930,
+        "total": 66298
+      },
+      "compiled_CodeFormerMultiTask": {
+        "train": 11832,
+        "val": 1575,
+        "total": 13407
+      },
+      "compiled_NafNetDenoisingMultiTask": {
+        "train": 977,
+        "val": 150,
+        "total": 1127
+      },
+      "compiled_NafNetDebluringMultiTask": {
+        "train": 5867,
+        "val": 812,
+        "total": 6679
+      },
+      "compiled_MirNetExposureMultiTask": {
+        "train": 9837,
+        "val": 1305,
+        "total": 11142
+      },
+      "compiled_UltraZoomMultiTask": {
+        "train": 1666,
+        "val": 239,
+        "total": 1905
+      },
+      "compiled_MirNetLowLightMultiTask": {
+        "train": 1047,
+        "val": 163,
+        "total": 1210
+      },
+      "compiled_FilmRestorerMultiTask": {
+        "train": 828,
+        "val": 100,
+        "total": 928
+      }
+    }
+  },
+  "LemGendizedRetinaFaceMobileNetLarge": {
+    "total_samples": 853546,
+    "sources": {
+      "synthetic-faces-high-quality-sfhq-part-3": {
+        "train": 209119,
+        "val": 28477,
+        "total": 237596
+      },
+      "synthetic-faces-high-quality-sfhq-part-4": {
+        "train": 221930,
+        "val": 30358,
+        "total": 252288
+      },
+      "synthetic-faces-high-quality-sfhq-part-2": {
+        "train": 161509,
+        "val": 22003,
+        "total": 183512
+      },
+      "synthetic-faces-high-quality-sfhq-part-1": {
+        "train": 158595,
+        "val": 21555,
+        "total": 180150
+      }
+    }
+  },
+  "LemGendizedUltraZoomLarge": {
+    "total_samples": 17724,
+    "sources": {
+      "DF2K-OST": {
+        "train": 12172,
+        "val": 1602,
+        "total": 13774
+      },
+      "flickr2k": {
+        "train": 2349,
+        "val": 301,
+        "total": 2650
+      },
+      "div2k-dataset": {
+        "train": 792,
+        "val": 108,
+        "total": 900
+      },
+      "urban100": {
+        "train": 349,
+        "val": 51,
+        "total": 400
+      }
+    }
+  },
+  "LemGendizedUpnV2Large": {
+    "total_samples": 1378070,
+    "sources": {
+      "DPED": {
+        "train": 1277236,
+        "val": 67284,
+        "total": 1344520
+      },
+      "adobe": {
+        "train": 28447,
+        "val": 1553,
+        "total": 30000
+      },
+      "flickr": {
+        "train": 2537,
+        "val": 113,
+        "total": 2650
+      },
+      "div2k": {
+        "train": 853,
+        "val": 47,
+        "total": 900
+      }
+    }
+  },
+  "LemGendizedYoloV8nLarge": {
+    "total_samples": 153972,
+    "sources": {
+      "kitti-dataset": {
+        "train": 26431,
+        "val": 3567,
+        "total": 29998
+      },
+      "pascal-voc-2012-dataset": {
+        "train": 34380,
+        "val": 4694,
+        "total": 39074
+      },
+      "coco-2017-dataset": {
+        "train": 35173,
+        "val": 4743,
+        "total": 39916
+      },
+      "crowdpose": {
+        "train": 17661,
+        "val": 2339,
+        "total": 20000
+      },
+      "mpii-human-pose": {
+        "train": 22014,
+        "val": 2970,
+        "total": 24984
+      }
+    }
+  },
+  "LemGendizedMprNetDerainingLarge": {
+    "total_samples": 34407,
+    "task": "restoration",
+    "sources": {
+      "Rain Dataset": {
+        "train": 16304,
+        "val": 2276,
+        "total": 18580
+      },
+      "Rain100L": {
+        "train": 4800,
+        "val": 670,
+        "total": 5470
+      },
+      "Rain100H": {
+        "train": 4800,
+        "val": 670,
+        "total": 5470
+      },
+      "High-Resolution Rainy Image": {
+        "train": 4289,
+        "val": 598,
+        "total": 4887
+      }
+    }
+  },
+  "LemGendizedMirNetExposureLarge": {
+    "total_samples": 11142,
+    "task": "restoration",
+    "sources": {
+      "Adobe FiveK": {
+        "train": 6886,
+        "val": 914,
+        "total": 7800
+      },
+      "DPED": {
+        "train": 2951,
+        "val": 391,
+        "total": 3342
+      }
+    }
+  },
+  "LemGendizedNafNetDebluringLarge": {
+    "total_samples": 6679,
+    "task": "restoration",
+    "sources": {
+      "GoPro Image Deblurring": {
+        "train": 2800,
+        "val": 388,
+        "total": 3188
+      },
+      "RealBlur": {
+        "train": 1750,
+        "val": 242,
+        "total": 1992
+      },
+      "HiDeBlur": {
+        "train": 880,
+        "val": 122,
+        "total": 1002
+      },
+      "Image Deblurring Performance": {
+        "train": 437,
+        "val": 60,
+        "total": 497
+      }
+    }
+  },
+  "LemGendizedNafNetDenoisingLarge": {
+    "total_samples": 1127,
+    "task": "restoration",
+    "sources": {
+      "SIDD (Smartphone Image Denoising)": {
+        "train": 320,
+        "val": 49,
+        "total": 369
+      },
+      "DND & NAM Noise Data": {
+        "train": 250,
+        "val": 38,
+        "total": 288
+      },
+      "Multiple ISO Denoising Dataset": {
+        "train": 180,
+        "val": 28,
+        "total": 208
+      },
+      "9-Classes Noisy Image Dataset": {
+        "train": 100,
+        "val": 15,
+        "total": 115
+      },
+      "Multi-Noise Synthetic Dataset": {
+        "train": 80,
+        "val": 12,
+        "total": 92
+      },
+      "Salt-and-Pepper Noise": {
+        "train": 47,
+        "val": 8,
+        "total": 55
+      }
+    }
+  },
+  "LemGendizedNimaAuthenticityLarge": {
+    "total_samples": 6180,
+    "task": "authenticity",
+    "sources": {
+      "AI Generated vs Real": {
+        "train": 2763,
+        "val": 377,
+        "total": 3140
+      },
+      "Real vs Fake Faces": {
+        "train": 1795,
+        "val": 245,
+        "total": 2040
+      },
+      "SUT Project": {
+        "train": 880,
+        "val": 120,
+        "total": 1000
+      }
+    }
+  }
+}
