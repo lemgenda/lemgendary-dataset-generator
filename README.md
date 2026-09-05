@@ -33,6 +33,7 @@ The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for pro
 
 - **Atomic Registry Resumption**: Integrated SQLite-based checkpoints allow for instantaneous resumption of interrupted 1M-sample runs without redundant I/O.
 - **KaggleHub & HF Sync**: Automated synchronization of compiled manifolds to Kaggle/HF via native API managers (`kaggle_manager.py`, `hf_manager.py`).
+- **Real-Time Cloud Extraction Tracking & Disk Cleanup (v16.6.1)**: Upgraded post-upload telemetry with version-specific server-side extraction tracking in `kaggle_manager.py` and `manifold_sync.py`. Pre-detects target version increments ($V_{\text{target}}$) to prevent premature exit against historical dataset readiness, rendering a live, cyan byte-level `tqdm` progress bar with uncompressed file count telemetry until cloud extraction reaches 100% Ready. Automatically purges staging archives, dangling temporary files, and duplicate `~/.cache/kagglehub` directories, preventing tens of gigabytes of disk leakage.
 - **Standardized `dataset_info.yaml`**: Every manifold generates a suite-compliant metadata package for immediate ingestion by the LemGendary Training Suite.
 - **Decoupled Documentation Generation (v16.4.1)**: Extracted all dataset documentation generation (`README.md`, `dataset_info.yaml`, `category.txt`, `classes.txt`, `index.json`) from the monolithic compiler pipeline into a dedicated `doc_generator.py` module for robust maintainability and standardized outputs. It dynamically generates model-specific architecture mapping and extrapolated baseline metric tables directly from `models_metadata` and `task_metadata` residing in `unified_data.yaml`.
 - **UPNv2 Large Space-Recovery (v16.2.9)**: Autonomously purged **1.36 million empty labels** and compiled physical **NTFS hardlinks** in `targets/` mapping back to `images/` on duplicate synthetic structures, successfully recovering **~1.06 TB** of disk space with zero pipeline disruption.
@@ -102,6 +103,15 @@ The modernized interactive dashboard for end-to-end manifold management:
 ./lemgendary_datasets_hub.ps1
 ```
 
+Dashboard operations:
+
+- **`1. [COMPILE]`**: Build new SOTA manifold across Vision and Forex models.
+- **`2. [REDUCE]`**: Create downsampled variants with custom fold and timeframe selection.
+- **`3. [SYNC]`**: Kaggle Manifolds Sync submenu:
+  - **`1. [SYNC] Sync to Kaggle`**: Pre-archives manifolds exceeding 50 files with real-time byte progress, uploads via KaggleHub, and monitors server extraction.
+  - **`2. [GET]  Get from Kaggle`**: Downloads precompiled LemGendized manifolds from Kaggle and automatically extracts archives to local dataset storage.
+- **`Q. [QUIT]`**: Exit Dashboard.
+
 ### 2. Manual Orchestration
 
 The python engine supports direct CLI hooks for automation via its modular, decoupled architecture (`compiler_core.py`):
@@ -118,6 +128,9 @@ python manifold_reduce.py --reduce --max_gb 10
 # Kaggle Sync Orchestrator
 python manifold_sync.py --action sync --model nima_aesthetic  # Zip & Upload
 python manifold_sync.py --action get --url username/slug      # Download & Extract
+python kaggle_manager.py --action upload --repo_id username/dataset --output_dir ../LemGendaryDatasets/MyManifold
+python kaggle_manager.py --action download --repo_id username/dataset --output_dir ../LemGendaryDatasets/MyManifold
+python kaggle_manager.py --action status --repo_id username/dataset
 ```
 
 ### 3. Hardware Acceleration & Resilience

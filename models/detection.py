@@ -86,7 +86,7 @@ class AutoLabeler:
             # mediapipe expects RGB, np.array from RGB PIL is RGB
             pass
         elif img_pil.mode == 'RGBA':
-            img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)
+            img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)  # pylint: disable=no-member
             
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
         detection_result = self.face_detector.detect(mp_image)

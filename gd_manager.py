@@ -1,7 +1,11 @@
 import argparse
-import gdown
 import os
 import shutil
+
+try:
+    import gdown
+except ImportError:
+    gdown = None
 
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
@@ -12,6 +16,9 @@ def main():
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory path (will be converted to .zip in parent dir)")
     parser.add_argument("--action", type=str, default="download")
     args = parser.parse_args()
+
+    if gdown is None:
+        raise RuntimeError("gdown package is required for Google Drive operations. Please install via pip: pip install gdown")
 
     if args.action == "download":
         print(f"STATUS:GD-PULLING {args.repo_id}")

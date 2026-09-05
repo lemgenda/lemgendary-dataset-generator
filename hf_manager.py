@@ -114,22 +114,9 @@ def main():
                             pbar.update(size)
                             
                     # Auto-Extract to dedicated_dir
-                    if t_file.endswith(('.tgz', '.tar.gz')):
-                        print(f"  [UNPACK] Extracting TGZ: {t_file}...")
-                        import tarfile
-                        with tarfile.open(path, "r:gz") as tar:
-                            # Python 3.12+ requires explicit filter to prevent DeprecationWarning crashes
-                            if hasattr(tarfile, 'data_filter'):
-                                tar.extractall(path=dedicated_dir, filter='data')
-                            else:
-                                tar.extractall(path=dedicated_dir)
-                        os.remove(path)
-                    elif t_file.endswith('.zip'):
-                        print(f"  [UNPACK] Extracting ZIP: {t_file}...")
-                        import zipfile
-                        with zipfile.ZipFile(path, 'r') as zip_ref:
-                            zip_ref.extractall(dedicated_dir)
-                        os.remove(path)
+                    if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
+                        from archive_manager import smart_extract
+                        smart_extract(path, dedicated_dir, delete_after=True)
                 except Exception as e:
                     print(f"  [WARN] Requests failed, falling back to basic HF-Hub: {e}")
                     from huggingface_hub import hf_hub_download
@@ -137,28 +124,13 @@ def main():
 
         # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
         print(f"[SWEEP] Scanning {args.output_dir} for unextracted archives...")
+        from archive_manager import smart_extract
         for root, dirs, files in os.walk(args.output_dir):
             for f in files:
                 f_path = Path(root) / f
-                if f.endswith(('.tgz', '.tar.gz')):
-                    print(f"  [UNPACK] Found TGZ: {f}")
-                    import tarfile
+                if f.endswith(('.tgz', '.tar.gz', '.zip')):
                     try:
-                        with tarfile.open(f_path, "r:gz") as tar:
-                            if hasattr(tarfile, 'data_filter'):
-                                tar.extractall(path=root, filter='data')
-                            else:
-                                tar.extractall(path=root)
-                        os.remove(f_path)
-                    except Exception as ex:
-                        print(f"  [ERR] Failed to extract {f}: {ex}")
-                elif f.endswith('.zip'):
-                    print(f"  [UNPACK] Found ZIP: {f}")
-                    import zipfile
-                    try:
-                        with zipfile.ZipFile(f_path, 'r') as zip_ref:
-                            zip_ref.extractall(root)
-                        os.remove(f_path)
+                        smart_extract(f_path, root, delete_after=True)
                     except Exception as ex:
                         print(f"  [ERR] Failed to extract {f}: {ex}")
 

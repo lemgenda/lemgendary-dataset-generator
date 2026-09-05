@@ -1,4 +1,5 @@
 $Env:PYTHONUTF8 = "1"
+$Env:PYTHONUNBUFFERED = "1"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
@@ -649,7 +650,7 @@ while ($true) {
     Show-Stats
     Write-Host '1. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
     Write-Host '2. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
-    Write-Host '3. [SYNC]    Push compiled manifold to Kaggle' -ForegroundColor Gray
+    Write-Host '3. [SYNC]    Kaggle Manifolds Sync (Push / Get)' -ForegroundColor Gray
     Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
     $I = Read-Host 'Selection'
     if ($I -eq '1') {
@@ -753,49 +754,155 @@ while ($true) {
         & $Vpy manifold_reduce.py --reduce
     }
     elseif ($I -eq '3') {
-        $RegData = Get-RegData
-        $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
-        
-        Write-Host "`n--- SELECT MANIFOLD TO SYNC TO KAGGLE ---" -ForegroundColor Cyan
-        for ($i=0; $i -lt $DatasetNames.Count; $i++) {
-            Write-Host "$($i+1). $($DatasetNames[$i])"
-        }
-        $Sel = Read-Host "Selection"
-        $Idx = -1
-        try { $Idx = [int]$Sel - 1 } catch {}
-        if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
-            $tm = $DatasetNames[$Idx]
-            $ds_info = $RegData.datasets.$tm
-            $Slug = $ds_info.name
-            $Prefix = $RegData._registry_metadata.name_prefix
-            $Suffix = $RegData._registry_metadata.name_suffix
-            $ManifoldName = $Prefix + $Slug + $Suffix
-            $ManifoldPath = Join-Path $Out $ManifoldName
-            
-            if (!(Test-Path $ManifoldPath)) {
-                Write-Host "  [ERROR] Compiled manifold not found at $ManifoldPath" -Fore Red
-                Read-Host "Press Enter to return"
-                continue
-            }
-            
-            $KagHandle = $ds_info.kaggle_ref
-            if (!$KagHandle) {
-                $KagHandle = Read-Host "Enter Kaggle Dataset Handle (e.g. username/dataset-name)"
-            } else {
-                $KagHandle = $KagHandle.Replace("kaggle://", "")
-                Write-Host "  [INFO] Target Kaggle Handle: $KagHandle" -ForegroundColor Gray
-            }
-            
-            if ($KagHandle) {
-                Write-Host "`n[SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
-                & $Vpy $kagManagerPath --action upload --repo_id $KagHandle --output_dir $ManifoldPath 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
-                } else {
-                    Write-Host "[FAILED] [SYNC] Synchronization failed." -ForegroundColor Red
+        while ($true) {
+            Write-Host "`n--- KAGGLE MANIFOLDS SYNC ---" -ForegroundColor Cyan
+            Write-Host "1. [SYNC] Sync to Kaggle (Push compiled manifold to Kaggle)" -ForegroundColor Gray
+            Write-Host "2. [GET]  Get from Kaggle (Download precompiled LemGendized set from Kaggle)" -ForegroundColor Gray
+            Write-Host "B. [BACK] Return to Dashboard" -ForegroundColor Gray
+            $SyncChoice = Read-Host "Selection"
+
+            if ($SyncChoice -eq '1') {
+                $RegData = Get-RegData
+                $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
+                $Prefix = $RegData._registry_metadata.name_prefix
+                $Suffix = $RegData._registry_metadata.name_suffix
+                
+                Write-Host "`n--- SELECT MANIFOLD TO SYNC TO KAGGLE ---" -ForegroundColor Cyan
+                for ($i=0; $i -lt $DatasetNames.Count; $i++) {
+                    $dsName = $DatasetNames[$i]
+                    $slug = $RegData.datasets.$dsName.name
+                    $ManifoldName = $Prefix + $slug + $Suffix
+                    $ManifoldPath = Join-Path $Out $ManifoldName
+                    if (Test-Path $ManifoldPath) {
+                        Write-Host "$($i+1). $dsName [READY] ($ManifoldName)" -ForegroundColor Green
+                    } else {
+                        Write-Host "$($i+1). $dsName [NOT COMPILED]" -ForegroundColor DarkGray
+                    }
+                }
+                $Sel = Read-Host "Selection (or 'b' to cancel)"
+                if ($Sel -match '^[bB]') { continue }
+                $Idx = -1
+                try { $Idx = [int]$Sel - 1 } catch {}
+                if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
+                    $tm = $DatasetNames[$Idx]
+                    $ds_info = $RegData.datasets.$tm
+                    $Slug = $ds_info.name
+                    $ManifoldName = $Prefix + $Slug + $Suffix
+                    $ManifoldPath = Join-Path $Out $ManifoldName
+                    
+                    if (!(Test-Path $ManifoldPath)) {
+                        Write-Host "  [ERROR] Compiled manifold not found at $ManifoldPath" -ForegroundColor Red
+                        Read-Host "Press Enter to return"
+                        continue
+                    }
+                    
+                    $KagHandle = $ds_info.kaggle_ref
+                    if (!$KagHandle) {
+                        $KagHandle = Read-Host "Enter Kaggle Dataset Handle (e.g. username/dataset-name)"
+                    } else {
+                        $KagHandle = $KagHandle.Replace("kaggle://", "")
+                        Write-Host "  [INFO] Target Kaggle Handle: $KagHandle" -ForegroundColor Gray
+                    }
+                    
+                    if ($KagHandle) {
+                        Write-Host "`n[SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
+                        & $Vpy $kagManagerPath --action upload --repo_id $KagHandle --output_dir $ManifoldPath
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "[OK] [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
+                        } else {
+                            Write-Host "[FAILED] [SYNC] Synchronization failed." -ForegroundColor Red
+                        }
+                    }
+                    Read-Host "Press Enter to return"
                 }
             }
-            Read-Host "Press Enter to return"
+            elseif ($SyncChoice -eq '2') {
+                $RegData = Get-RegData
+                $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
+                $Prefix = $RegData._registry_metadata.name_prefix
+                $Suffix = $RegData._registry_metadata.name_suffix
+                
+                Write-Host "`n--- SELECT MANIFOLD TO GET FROM KAGGLE ---" -ForegroundColor Cyan
+                for ($i=0; $i -lt $DatasetNames.Count; $i++) {
+                    $dsName = $DatasetNames[$i]
+                    $ds_info = $RegData.datasets.$dsName
+                    $slug = $ds_info.name
+                    $ManifoldName = $Prefix + $slug + $Suffix
+                    $ManifoldPath = Join-Path $Out $ManifoldName
+                    $KagRef = if ($ds_info.kaggle_ref) { $ds_info.kaggle_ref.Replace("kaggle://", "") } else { "NOT CONFIGURED" }
+                    
+                    if (Test-Path $ManifoldPath) {
+                        Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: READY]" -ForegroundColor Green
+                    } else {
+                        Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NOT FOUND]" -ForegroundColor DarkGray
+                    }
+                }
+                Write-Host "c. Custom Kaggle Handle (e.g. username/dataset-slug)" -ForegroundColor Gray
+                $Sel = Read-Host "Selection (or 'b' to cancel)"
+                if ($Sel -match '^[bB]') { continue }
+                
+                $TargetHandle = ""
+                $TargetFolder = ""
+                
+                if ($Sel -eq 'c') {
+                    $TargetHandle = Read-Host "Enter Kaggle Dataset Handle or URL"
+                    $TargetHandle = $TargetHandle.Replace("https://www.kaggle.com/datasets/", "").Replace("kaggle://", "").Trim()
+                    $TargetFolder = Read-Host "Enter local folder name under LemGendaryDatasets [Default: $($TargetHandle.Split('/')[-1])]"
+                    if ([string]::IsNullOrWhiteSpace($TargetFolder)) {
+                        $TargetFolder = $TargetHandle.Split('/')[-1]
+                    }
+                } else {
+                    $Idx = -1
+                    try { $Idx = [int]$Sel - 1 } catch {}
+                    if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
+                        $tm = $DatasetNames[$Idx]
+                        $ds_info = $RegData.datasets.$tm
+                        $Slug = $ds_info.name
+                        $TargetFolder = $Prefix + $Slug + $Suffix
+                        if ($ds_info.kaggle_ref) {
+                            $TargetHandle = $ds_info.kaggle_ref.Replace("kaggle://", "")
+                        } else {
+                            $TargetHandle = Read-Host "No Kaggle ref configured in registry. Enter Kaggle Handle"
+                        }
+                    } else {
+                        Write-Host "Invalid selection." -ForegroundColor Red
+                        Start-Sleep -Seconds 2
+                        continue
+                    }
+                }
+                
+                if ($TargetHandle) {
+                    $DestPath = Join-Path $Out $TargetFolder
+                    if (Test-Path $DestPath) {
+                        Write-Host "`n[WARNING] Local manifold '$TargetFolder' already exists at $DestPath!" -ForegroundColor Yellow
+                        $Confirm = Read-Host "Do you want to overwrite and replace it? (Y/N)"
+                        if ($Confirm -notmatch '^[yY]') {
+                            Write-Host "[ABORTED] Download cancelled." -ForegroundColor Yellow
+                            Read-Host "Press Enter to return"
+                            continue
+                        }
+                    }
+                    
+                    Write-Host "`n[GET] Downloading precompiled LemGendized manifold from Kaggle..." -ForegroundColor Cyan
+                    Write-Host "  Target: $TargetHandle" -ForegroundColor Gray
+                    Write-Host "  Destination: $DestPath" -ForegroundColor Gray
+                    
+                    & $Vpy $kagManagerPath --action download --repo_id $TargetHandle --output_dir $DestPath
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "[OK] [GET] Manifold successfully acquired from Kaggle!" -ForegroundColor Green
+                    } else {
+                        Write-Host "[FAILED] [GET] Download failed." -ForegroundColor Red
+                    }
+                    Read-Host "Press Enter to return"
+                }
+            }
+            elseif ($SyncChoice -match '^[bBqQ]') {
+                break
+            }
+            else {
+                Write-Host "Invalid selection. Please choose 1, 2, or B." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
         }
     }
     elseif ($I -match '^q') { break }
