@@ -1,0 +1,214 @@
+models_metadata:
+  forex_predictor:
+    name: LemGendary Forex Predictor (Multi-Scale CNN-Transformer)
+    arch: Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)
+    loss: forex_dual
+    datasets:
+    - LemGendizedForexTitanCoreLarge
+    - LemGendizedForexG7MajorsLarge
+    - LemGendizedForexHighBetaLarge
+    - LemGendizedForexUniverseLarge
+    sota_targets:
+      dir_acc: 78.7
+      win_rate: 68.2
+      profit_factor: 2.2
+      sharpe_ratio: 2.31
+      sortino_ratio: 2.94
+      max_drawdown: 9.5
+      tp_mae: 3.8
+      sl_mae: 3.8
+  nima_aesthetic_mobile:
+    name: LemGendary NIMA Aesthetic Scorer (Mobile)
+    arch: MobileNetV2 (Global Composition)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAestheticLarge
+    sota_targets:
+      plcc: 0.65
+      srcc: 0.65
+  nima_aesthetic_efficientnet:
+    name: LemGendary NIMA Aesthetic Scorer (EfficientNetV2-S)
+    arch: EfficientNetV2-S (Global Composition)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAestheticLarge
+    sota_targets:
+      plcc: 0.7
+      srcc: 0.7
+  nima_aesthetic_pro:
+    name: LemGendary NIMA Aesthetic Scorer (Pro ViT)
+    arch: Swin-v2-T (Global Multi-Scale Attention)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAestheticLarge
+    sota_targets:
+      plcc: 0.75
+      srcc: 0.75
+  nima_technical:
+    name: LemGendary NIMA Technical Scorer
+    arch: EfficientNetV2-S (Spatial Integrity)
+    loss: emd
+    datasets:
+    - LemGendizedNimaTechnicalLarge
+    sota_targets:
+      plcc: 0.91
+      srcc: 0.91
+      rank_margin: 0.05
+  nima_authenticity:
+    name: LemGendary Authenticity Scorer (AI vs Human)
+    arch: EfficientNetV2-S (Distribution Scorer)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAuthenticityLarge
+    sota_targets:
+      accuracy: 0.96
+  upn_v2:
+    name: LemGendary UPN v2 Parameter Predictor
+    loss: smooth_l1
+    datasets:
+    - LemGendizedUpnV2Large
+    sota_targets:
+      mae: 0.05
+  film_restorer:
+    name: LemGendary Universal Film Restorer
+    loss: l1_lpips
+    datasets:
+    - LemGendizedFilmRestorerLarge
+    sota_targets:
+      psnr: 24.0
+      ssim: 0.8
+      lpips: 0.25
+  codeformer:
+    name: LemGendary CodeFormer Face Restoration
+    loss: mse
+    datasets:
+    - LemGendizedCodeFormerLarge
+    sota_targets:
+      fid: 5.2
+      psnr: 30.5
+      ssim: 0.93
+  parsenet:
+    name: LemGendary ParseNet Face Parsing
+    loss: cross_entropy
+    datasets:
+    - LemGendizedParseNetLarge
+    sota_targets:
+      miou: 0.86
+  retinaface_mobilenet:
+    name: LemGendary RetinaFace MobileNet Detection
+    loss: retinaface
+    datasets:
+    - LemGendizedRetinaFaceMobileNetLarge
+    sota_targets:
+      map_easy: 0.915
+      map_medium: 0.89
+      map_hard: 0.75
+  ffanet_indoor:
+    name: LemGendary FFANet Dehazing (Indoor)
+    loss: l1
+    datasets:
+    - LemGendizedFfaNetIndoorLarge
+    sota_targets:
+      psnr: 36.5
+      ssim: 0.99
+      lpips: 0.08
+      fid: 12.0
+  ffanet_outdoor:
+    name: LemGendary FFANet Dehazing (Outdoor)
+    loss: l1
+    datasets:
+    - LemGendizedFfaNetOutdoorLarge
+    sota_targets:
+      psnr: 33.7
+      ssim: 0.986
+      lpips: 0.08
+      fid: 12.0
+  mirnet_lowlight:
+    name: LemGendary MIRNet v2 Low-Light Enhancement
+    loss: l1_lpips
+    datasets:
+    - LemGendizedMirNetLowLightLarge
+    sota_targets:
+      psnr: 24.3
+      ssim: 0.84
+      lpips: 0.08
+      fid: 12.0
+  mirnet_exposure:
+    name: LemGendary MIRNet v2 Exposure Correction
+    loss: l1_lpips
+    datasets:
+    - LemGendizedMirNetExposureLarge
+    sota_targets:
+      psnr: 24.3
+      ssim: 0.84
+      lpips: 0.08
+      fid: 12.0
+  mprnet_deraining:
+    name: LemGendary MPRNet Deraining
+    loss: l1
+    datasets:
+    - LemGendizedMprNetDerainingLarge
+    sota_targets:
+      psnr: 30.6
+      ssim: 0.9
+      lpips: 0.07
+      fid: 12.0
+  nafnet_debluring:
+    name: LemGendary NAFNet Debluring
+    loss: l1
+    datasets:
+    - LemGendizedNafNetDebluringLarge
+    sota_targets:
+      psnr: 33.9
+      ssim: 0.97
+      lpips: 0.04
+      fid: 6.0
+  nafnet_denoising:
+    name: LemGendary NAFNet Denoising
+    loss: l1
+    datasets:
+    - LemGendizedNafNetDenoisingLarge
+    sota_targets:
+      psnr: 40.2
+      ssim: 0.965
+      lpips: 0.02
+      fid: 4.0
+  yolov8n:
+    name: LemGendary YOLOv8n Multi-Task Model
+    loss: yolo
+    datasets:
+    - LemGendizedYoloV8nLarge
+    sota_targets:
+      map50: 0.54
+      map50_95: 0.39
+  professional_multitask_restoration:
+    name: LemGendary Professional Multi-Task Restoration Model
+    loss: hybrid_restoration
+    datasets:
+    - LemGendizedNafNetDebluringLarge
+    - LemGendizedFfaNetIndoorLarge
+    - LemGendizedMirNetLowLightLarge
+    - LemGendizedNafNetDenoisingLarge
+    sota_targets:
+      psnr: 32.0
+      ssim: 0.93
+      lpips: 0.07
+      fid: 12.0
+  ultrazoom:
+    name: LemGendary UltraZoom Master Model
+    loss: mse
+    datasets:
+    - LemGendizedUltraZoomLarge
+    sota_targets:
+      psnr: 34.0
+      ssim: 0.95
+      lpips: 0.04
+      fid: 10.0
+  universal_nsfw_classification:
+    name: LemGendary Universal NSFW Classifier
+    arch: MobileNetV2 (Categorical Anchor)
+    loss: cross_entropy
+    datasets:
+    - LemGendizedClassificationMasterManifoldLarge
+    sota_targets:
+      accuracy: 0.98

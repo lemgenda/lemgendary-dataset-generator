@@ -733,7 +733,7 @@ while ($true) {
         
         foreach ($tm in $TargetModels) {
             Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
-            & $Vpy compiler-pipeline.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
+            & $Vpy manifold_compile.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
             
             # Post-Compile Verification
             $OutFolder = Join-Path (Get-Location) $OutFolderName
@@ -747,10 +747,10 @@ while ($true) {
         }
         # 2026: Finalized Global Cleanup (Moved outside loop to prevent I/O collisions)
         Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
-        & $Vpy compiler-pipeline.py --cleanup
+        & $Vpy manifold_compile.py --cleanup
     }
     elseif ($I -eq '2') {
-        & $Vpy compiler-pipeline.py --reduce
+        & $Vpy manifold_reduce.py --reduce
     }
     elseif ($I -eq '3') {
         $RegData = Get-RegData

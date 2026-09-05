@@ -34,6 +34,7 @@ The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for pro
 - **Atomic Registry Resumption**: Integrated SQLite-based checkpoints allow for instantaneous resumption of interrupted 1M-sample runs without redundant I/O.
 - **KaggleHub & HF Sync**: Automated synchronization of compiled manifolds to Kaggle/HF via native API managers (`kaggle_manager.py`, `hf_manager.py`).
 - **Standardized `dataset_info.yaml`**: Every manifold generates a suite-compliant metadata package for immediate ingestion by the LemGendary Training Suite.
+- **Decoupled Documentation Generation (v16.4.1)**: Extracted all dataset documentation generation (`README.md`, `dataset_info.yaml`, `category.txt`, `classes.txt`, `index.json`) from the monolithic compiler pipeline into a dedicated `doc_generator.py` module for robust maintainability and standardized outputs. It dynamically generates model-specific architecture mapping and extrapolated baseline metric tables directly from `models_metadata` and `task_metadata` residing in `unified_data.yaml`.
 - **UPNv2 Large Space-Recovery (v16.2.9)**: Autonomously purged **1.36 million empty labels** and compiled physical **NTFS hardlinks** in `targets/` mapping back to `images/` on duplicate synthetic structures, successfully recovering **~1.06 TB** of disk space with zero pipeline disruption.
 
 ### Multi-Modal & Format Resilience
@@ -45,7 +46,7 @@ The v16.2.8 release introduces the **High-Fidelity Compiler**, optimized for pro
 - **Professional Multi-Task Restoration Dataset Integration (v16.3.0)**: Structured unified source pipeline merging 11 individual manifolds with automated filename prefix preservation (e.g. `ProfessionalMultitaskRestoration_deblur_compiled_...`) for downstream regular expression routing. Standardized target hardlinking layout with case-insensitive physically skip-indexed ingestion, and configured strict Lanczos/interpolation ceilings at 256px-640px to feed the Mixture-of-Experts (MoE) routing engine.
 - **ParseNet Semantic Extraction (v16.3.1)**: Compiler explicitly outputs `masks/` directory, resolving paired masks as target images natively for face segmentation tasks rather than generic YOLO polygons.
 - **RetinaFace YOLO Landmarking (v16.3.1)**: Integrated dynamic 5-point landmark extraction directly from `landmarks/` into standard YOLO format and strictly filtered all classes to `face` (index 0).
-- **Forex & Financial Time-Series Automated Acquisition (v16.4.0)**: Integrated direct MetaTrader 5 (MT5) IPC pipeline fallback and synthetic multi-regime generator spanning 2019 to Present. When compiling `forex_predictor`, the compiler intelligently checks the local cache against the requested configuration (`pairs_list`), automatically fetching any missing currency pair shards via MT5 before ingesting the 16-asset universe (Titan 4 Core, G7 Majors, High-Beta Crosses, Commodities, and Global Indices) across 4 active confluence timeframes (`M15`, `H1`, `H4`, `D1`), computing 14 high-fidelity quantitative features (including RSI, MACD, ATR, BBW, Time-Session Encodings, ATR Percentiles, and Bar Range Ratios), building 6-Fold Walk-Forward validation matrices with 14-day embargo gaps, and synchronizing shards end-to-end.
+- **Forex & Financial Time-Series Automated Acquisition (v16.5.0)**: Integrated direct MetaTrader 5 (MT5) IPC pipeline fallback and synthetic multi-regime generator spanning 2019 to Present. When compiling `forex_predictor`, the compiler intelligently fetches missing currency pair shards via MT5 into strictly isolated 4-symbol manifolds (TitanCore, G7Majors, HighBeta, Universe) with zero cross-manifold hardlinking to ensure pristine modularity. The compiler builds a strict 1-Year Progressive Chronological Walk-Forward matrix (Fold 1: 2019-2020, Folds 2-6: 1-Year subsequent blocks) to eliminate physical temporal data duplication, synchronizing shards end-to-end for dynamic stacking in the Training Suite.
 
 ---
 
@@ -103,13 +104,20 @@ The modernized interactive dashboard for end-to-end manifold management:
 
 ### 2. Manual Orchestration
 
-The python engine supports direct CLI hooks for automation:
+The python engine supports direct CLI hooks for automation via its modular, decoupled architecture (`compiler_core.py`):
 
 ```bash
-python compiler-pipeline.py --model nima_aesthetic --max_gb 50 --suffix Large
-python compiler-pipeline.py --workers 16    # Override auto-detected worker cap
-python compiler-pipeline.py --no-labeling  # High-Speed Mode (Bypass YOLO)
-python compiler-pipeline.py --no-hash      # Zero-Latency Mode (Bypass Dedup)
+# Core Compilation Engine
+python manifold_compile.py --model nima_aesthetic --max_gb 50 --suffix Large
+python manifold_compile.py --workers 16    # Override auto-detected worker cap
+python manifold_compile.py --no-labeling  # High-Speed Mode (Bypass YOLO)
+
+# Reduction Engine
+python manifold_reduce.py --reduce --max_gb 10
+
+# Kaggle Sync Orchestrator
+python manifold_sync.py --action sync --model nima_aesthetic  # Zip & Upload
+python manifold_sync.py --action get --url username/slug      # Download & Extract
 ```
 
 ### 3. Hardware Acceleration & Resilience

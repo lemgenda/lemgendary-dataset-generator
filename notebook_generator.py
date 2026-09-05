@@ -980,21 +980,14 @@ if __name__ == "__main__":
             models = DATASET_TO_MODELS.get(d_key, [d_key])
             
             for m_key in models:
-                # 1. Export to LemGendaryModels
-                m_dir = os.path.join(export_root, m_key)
-                os.makedirs(m_dir, exist_ok=True)
-                m_output = os.path.join(m_dir, f"{m_key}_training.ipynb")
-                generate_training_notebook(target_name, m_key, m_output)
-                m_colab_output = os.path.join(m_dir, f"{m_key}_colab_training.ipynb")
-                generate_colab_training_notebook(target_name, m_key, m_colab_output)
-                
+
                 # 2. Export to LemGendaryDatasets
                 d_manifold_dir = os.path.join(dataset_root, folder_name)
-                if os.path.exists(d_manifold_dir):
-                    d_output = os.path.join(d_manifold_dir, f"{m_key}_training.ipynb")
-                    generate_training_notebook(target_name, m_key, d_output)
-                    d_colab_output = os.path.join(d_manifold_dir, f"{m_key}_colab_training.ipynb")
-                    generate_colab_training_notebook(target_name, m_key, d_colab_output)
+                os.makedirs(d_manifold_dir, exist_ok=True)
+                d_output = os.path.join(d_manifold_dir, f"{m_key}_training.ipynb")
+                generate_training_notebook(target_name, m_key, d_output)
+                d_colab_output = os.path.join(d_manifold_dir, f"{m_key}_colab_training.ipynb")
+                generate_colab_training_notebook(target_name, m_key, d_colab_output)
 
         print("\n[SUCCESS] Dataset Notebook Matrix Synchronized.")
     elif args.dataset and args.model and args.output:

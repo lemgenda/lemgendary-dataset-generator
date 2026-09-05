@@ -284,3 +284,295 @@ datasets:
     lookback_bars: 168
     description: Global Equity Indices extension subset of the multi-pair multi-timeframe
       OHLCV dataset.
+task_metadata:
+  quality:
+    category: Image Quality Assessment
+    desc: Unified dataset for training SOTA quality models and evaluation systems.
+    obj: Predict human-perceptual quality score.
+    targets_desc: Because this specific task organically maps abstracted analytical
+      endpoints sequentially without complex masks or explicit spatial localizations,
+      target artifacts are bypassed to maximize storage density.
+  authenticity:
+    category: Image Authenticity Assessment
+    desc: Unified dataset for training SOTA models to distinguish between AI-generated
+      images and real photographs.
+    obj: Predict image authenticity score and map to binary categorical distribution.
+    targets_desc: Because this specific task organically maps abstracted analytical
+      endpoints sequentially without complex masks or explicit spatial localizations,
+      target artifacts are bypassed to maximize storage density.
+  classification:
+    category: Image Classification
+    desc: High-throughput dataset for image classification and content tagging.
+    obj: Predict categorical classes and safety content labels.
+    targets_desc: Classification tasks utilize simple class labels natively stored
+      inside `labels/`. Target images are not required.
+  restoration:
+    category: Image Restoration
+    desc: Standardized dataset for image restoration, denoising, and enhancement models.
+    obj: Restore degraded images and enhance visual quality.
+    targets_desc: Because this dataset natively inherently evaluates pixel-to-pixel
+      structural auto-encoder derivations, the `targets/` folder physically houses
+      the uncorrupted High-Resolution matrices strictly mapped identically 1-to-1
+      against `images/`.
+  super-resolution:
+    category: Super-Resolution
+    desc: High-fidelity dataset for image super-resolution and ultra-zoom models.
+    obj: Scale low-resolution images to high-resolution while preserving details.
+    targets_desc: The `targets/` folder houses the original high-resolution ground
+      truth images strictly mapped identically to the downscaled counterparts in `images/`.
+  diffusion:
+    category: Generative Modeling
+    desc: Massive manifold for training Latent Diffusion Models and text-to-image
+      systems.
+    obj: Generate high-fidelity images from text prompts or latent seeds.
+    targets_desc: Diffusion manifolds utilize latent space representations and textual
+      captions. Data is natively stored in compressed `.parquet` blocks natively bypassing
+      `images/` architectures.
+  vlm:
+    category: Vision-Language Modeling
+    desc: Multimodal conversational dataset for training Large Vision-Language Models
+      (VLMs).
+    obj: Align visual token extraction with causal language generation.
+    targets_desc: VLM manifolds utilize structured multi-turn conversation arrays
+      alongside `image_bytes`. Data is natively stored in compressed `.parquet` blocks.
+  detection:
+    category: Object Detection
+    desc: Industrial dataset for object detection and localization.
+    obj: Detect and localize multiple object classes with high precision.
+    targets_desc: Detection tasks map bounding boxes and classification labels stored
+      in `labels/`; physical image targets are not required for this modality.
+  segmentation:
+    category: Image Segmentation
+    desc: Detailed dataset for semantic and instance segmentation.
+    obj: Assign categorical labels to every pixel in the image manifold.
+    targets_desc: The `targets/` folder contains pixel-perfect segmentation masks
+      or parsed category maps identically mapped to `images/`.
+  pose:
+    category: Pose Estimation / Face Landmarks
+    desc: High-fidelity dataset for human pose estimation and dense face landmarking.
+    obj: Regress exact coordinate points for biological landmarks.
+    targets_desc: Landmark coordinates are stored as normalized vectors within the
+      `labels/` directory, removing the need for physical target bitmaps.
+  forex:
+    category: Financial Time-Series & Forex Prediction
+    desc: High-fidelity OHLCV temporal manifold for training multi-scale financial
+      prediction models.
+    obj: Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss
+      boundaries.
+    targets_desc: Time-series manifolds natively compute targets dynamically via causal
+      window boundaries. Physical image targets are completely inapplicable to this
+      domain.
+models_metadata:
+  forex_predictor:
+    name: LemGendary Forex Predictor (Multi-Scale CNN-Transformer)
+    arch: Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)
+    loss: forex_dual
+    datasets:
+    - LemGendizedForexTitanCoreLarge
+    - LemGendizedForexG7MajorsLarge
+    - LemGendizedForexHighBetaLarge
+    - LemGendizedForexUniverseLarge
+    sota_targets:
+      dir_acc: 78.7
+      win_rate: 68.2
+      profit_factor: 2.2
+      sharpe_ratio: 2.31
+      sortino_ratio: 2.94
+      max_drawdown: 9.5
+      tp_mae: 3.8
+      sl_mae: 3.8
+  nima_aesthetic_mobile:
+    name: LemGendary NIMA Aesthetic Scorer (Mobile)
+    arch: MobileNetV2 (Global Composition)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAestheticLarge
+    sota_targets:
+      plcc: 0.65
+      srcc: 0.65
+  nima_aesthetic_efficientnet:
+    name: LemGendary NIMA Aesthetic Scorer (EfficientNetV2-S)
+    arch: EfficientNetV2-S (Global Composition)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAestheticLarge
+    sota_targets:
+      plcc: 0.7
+      srcc: 0.7
+  nima_aesthetic_pro:
+    name: LemGendary NIMA Aesthetic Scorer (Pro ViT)
+    arch: Swin-v2-T (Global Multi-Scale Attention)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAestheticLarge
+    sota_targets:
+      plcc: 0.75
+      srcc: 0.75
+  nima_technical:
+    name: LemGendary NIMA Technical Scorer
+    arch: EfficientNetV2-S (Spatial Integrity)
+    loss: emd
+    datasets:
+    - LemGendizedNimaTechnicalLarge
+    sota_targets:
+      plcc: 0.91
+      srcc: 0.91
+      rank_margin: 0.05
+  nima_authenticity:
+    name: LemGendary Authenticity Scorer (AI vs Human)
+    arch: EfficientNetV2-S (Distribution Scorer)
+    loss: emd
+    datasets:
+    - LemGendizedNimaAuthenticityLarge
+    sota_targets:
+      accuracy: 0.96
+  upn_v2:
+    name: LemGendary UPN v2 Parameter Predictor
+    loss: smooth_l1
+    datasets:
+    - LemGendizedUpnV2Large
+    sota_targets:
+      mae: 0.05
+  film_restorer:
+    name: LemGendary Universal Film Restorer
+    loss: l1_lpips
+    datasets:
+    - LemGendizedFilmRestorerLarge
+    sota_targets:
+      psnr: 24.0
+      ssim: 0.8
+      lpips: 0.25
+  codeformer:
+    name: LemGendary CodeFormer Face Restoration
+    loss: mse
+    datasets:
+    - LemGendizedCodeFormerLarge
+    sota_targets:
+      fid: 5.2
+      psnr: 30.5
+      ssim: 0.93
+  parsenet:
+    name: LemGendary ParseNet Face Parsing
+    loss: cross_entropy
+    datasets:
+    - LemGendizedParseNetLarge
+    sota_targets:
+      miou: 0.86
+  retinaface_mobilenet:
+    name: LemGendary RetinaFace MobileNet Detection
+    loss: retinaface
+    datasets:
+    - LemGendizedRetinaFaceMobileNetLarge
+    sota_targets:
+      map_easy: 0.915
+      map_medium: 0.89
+      map_hard: 0.75
+  ffanet_indoor:
+    name: LemGendary FFANet Dehazing (Indoor)
+    loss: l1
+    datasets:
+    - LemGendizedFfaNetIndoorLarge
+    sota_targets:
+      psnr: 36.5
+      ssim: 0.99
+      lpips: 0.08
+      fid: 12.0
+  ffanet_outdoor:
+    name: LemGendary FFANet Dehazing (Outdoor)
+    loss: l1
+    datasets:
+    - LemGendizedFfaNetOutdoorLarge
+    sota_targets:
+      psnr: 33.7
+      ssim: 0.986
+      lpips: 0.08
+      fid: 12.0
+  mirnet_lowlight:
+    name: LemGendary MIRNet v2 Low-Light Enhancement
+    loss: l1_lpips
+    datasets:
+    - LemGendizedMirNetLowLightLarge
+    sota_targets:
+      psnr: 24.3
+      ssim: 0.84
+      lpips: 0.08
+      fid: 12.0
+  mirnet_exposure:
+    name: LemGendary MIRNet v2 Exposure Correction
+    loss: l1_lpips
+    datasets:
+    - LemGendizedMirNetExposureLarge
+    sota_targets:
+      psnr: 24.3
+      ssim: 0.84
+      lpips: 0.08
+      fid: 12.0
+  mprnet_deraining:
+    name: LemGendary MPRNet Deraining
+    loss: l1
+    datasets:
+    - LemGendizedMprNetDerainingLarge
+    sota_targets:
+      psnr: 30.6
+      ssim: 0.9
+      lpips: 0.07
+      fid: 12.0
+  nafnet_debluring:
+    name: LemGendary NAFNet Debluring
+    loss: l1
+    datasets:
+    - LemGendizedNafNetDebluringLarge
+    sota_targets:
+      psnr: 33.9
+      ssim: 0.97
+      lpips: 0.04
+      fid: 6.0
+  nafnet_denoising:
+    name: LemGendary NAFNet Denoising
+    loss: l1
+    datasets:
+    - LemGendizedNafNetDenoisingLarge
+    sota_targets:
+      psnr: 40.2
+      ssim: 0.965
+      lpips: 0.02
+      fid: 4.0
+  yolov8n:
+    name: LemGendary YOLOv8n Multi-Task Model
+    loss: yolo
+    datasets:
+    - LemGendizedYoloV8nLarge
+    sota_targets:
+      map50: 0.54
+      map50_95: 0.39
+  professional_multitask_restoration:
+    name: LemGendary Professional Multi-Task Restoration Model
+    loss: hybrid_restoration
+    datasets:
+    - LemGendizedNafNetDebluringLarge
+    - LemGendizedFfaNetIndoorLarge
+    - LemGendizedMirNetLowLightLarge
+    - LemGendizedNafNetDenoisingLarge
+    sota_targets:
+      psnr: 32.0
+      ssim: 0.93
+      lpips: 0.07
+      fid: 12.0
+  ultrazoom:
+    name: LemGendary UltraZoom Master Model
+    loss: mse
+    datasets:
+    - LemGendizedUltraZoomLarge
+    sota_targets:
+      psnr: 34.0
+      ssim: 0.95
+      lpips: 0.04
+      fid: 10.0
+  universal_nsfw_classification:
+    name: LemGendary Universal NSFW Classifier
+    arch: MobileNetV2 (Categorical Anchor)
+    loss: cross_entropy
+    datasets:
+    - LemGendizedClassificationMasterManifoldLarge
+    sota_targets:
+      accuracy: 0.98
