@@ -1540,23 +1540,29 @@ last_processed: '{datetime.now().isoformat()}'
 
 ## Composition & Lineage
 
-This manifold is a high-fidelity merge of the following original sources:
+This manifold is dynamically assembled from the following temporal specifications:
 
-| Source Dataset | Train | Val | Total Contribution |
-| :--- | :--- | :--- | :--- |
-| **MT5 Live Extractor** | - | - | [Computed Dynamically] samples |
+- **Currency Pairs**: {', '.join(pairs_list)}
+- **Timeframes (Minutes)**: {', '.join(tf_labels)}
+- **Historical Horizon**: {start_date_str} to Present
+- **Chronology Strategy**: 6-Fold Walk-Forward Matrix
+- **Fold Embargo**: 14 Days
 
 ## Model Training Profile
 
 - **Target Architectures**: ForexPredictor (Multi-Scale CNN-Transformer)
-- **Optimization Strategy**: Cross-Entropy Loss (Direction), Huber Loss (Magnitude)
+- **Optimization Strategy**: Focal Loss (Direction), Huber Loss (Magnitude)
 
 ### Benchmark Metrics [SOTA]
 
 | Metric | Baseline | Advanced | SOTA |
 | :--- | :--- | :--- | :--- |
 | **Direction Accuracy** | ~55.0% | > 65.0% | **> 75.0%** |
+| **Trade Win Rate** | ~50.0% | > 54.0% | **> 56.0%** |
 | **Profit Factor** | ~1.10 | > 1.50 | **> 2.00** |
+| **Sharpe Ratio** | ~0.80 | > 1.50 | **> 2.50** |
+| **Max Drawdown** | ~30.0% | < 20.0% | **< 10.0%** |
+| **Quality Score** | ~100.0 | > 125.0 | **> 150.0** |
 
 ## Repository Structure
 
