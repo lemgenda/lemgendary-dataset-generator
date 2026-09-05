@@ -7,6 +7,7 @@ import sys
 import time
 import warnings
 from pathlib import Path
+from typing import TypedDict
 import kagglehub
 from tqdm import tqdm
 
@@ -14,6 +15,12 @@ warnings.filterwarnings("ignore", message=".*outdated.*")
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 CHUNK_SIZE = 1024 * 1024  # 1MB chunks
+
+
+class DatasetVersionInfo(TypedDict):
+    current_version: int
+    latest_version: int
+    versions: dict[int, str]
 
 def setup_kaggle_auth(default_user="lemtreursi"):
     """Ensure Kaggle credentials from environment or .kaggle_token are initialized."""
@@ -78,7 +85,7 @@ def cleanup_temp_archives(manifold_name=None, base_dir=None):
 
     return cleaned_count, cleaned_bytes
 
-def get_dataset_version_info(repo_id):
+def get_dataset_version_info(repo_id: str) -> DatasetVersionInfo:
     """Retrieve current version number, latest version number, and per-version status."""
     clean_handle = repo_id.replace("kaggle://", "")
     owner = clean_handle.split("/")[0] if "/" in clean_handle else "lemtreursi"
@@ -93,13 +100,18 @@ def get_dataset_version_info(repo_id):
             req.owner_slug = owner
             req.dataset_slug = slug
             resp = client.datasets.dataset_api_client.get_dataset(req)
-            curr = resp.current_version_number or 0
-            versions = resp.versions or []
-            max_v = max([v.version_number for v in versions], default=curr)
+            curr = int(resp.current_version_number or 0)
+            raw_versions = resp.versions or []
+            valid_versions = [v for v in raw_versions if v is not None and v.version_number is not None]
+            max_v = max([int(v.version_number) for v in valid_versions], default=curr)
+            versions_dict: dict[int, str] = {
+                int(v.version_number): str(v.status or "")
+                for v in valid_versions
+            }
             return {
                 "current_version": curr,
                 "latest_version": max_v,
-                "versions": {v.version_number: v.status for v in versions}
+                "versions": versions_dict
             }
     except Exception:
         # Fallback to KaggleApi CLI format
@@ -109,11 +121,14 @@ def get_dataset_version_info(repo_id):
             api.authenticate()
             res = api.dataset_status(clean_handle)
             if isinstance(res, dict):
-                curr = res.get("current_version_number") or 0
+                curr = int(res.get("current_version_number") or 0)
                 status = str(res.get("status") or "")
+            elif isinstance(res, str):
+                curr = 0
+                status = res
             else:
                 curr = 0
-                status = str(res)
+                status = str(res or "")
             return {"current_version": curr, "latest_version": curr, "versions": {curr: status}}
         except Exception:
             return {"current_version": 0, "latest_version": 0, "versions": {}}
@@ -156,7 +171,13 @@ def get_dataset_status(repo_id):
 
     return None
 
-def track_kaggle_dataset_status(repo_id, target_version=None, expected_files=0, timeout=1800, poll_interval=4):
+def track_kaggle_dataset_status(
+    repo_id: str,
+    target_version: int | None = None,
+    expected_files: int = 0,
+    timeout: int = 1800,
+    poll_interval: int = 4
+) -> bool:
     """Monitor Kaggle server-side extraction/processing with real-time tqdm progress tracking."""
     clean_handle = repo_id.replace("kaggle://", "")
     owner = clean_handle.split("/")[0] if "/" in clean_handle else "lemtreursi"
@@ -165,18 +186,19 @@ def track_kaggle_dataset_status(repo_id, target_version=None, expected_files=0, 
 
     if target_version is None:
         info = get_dataset_version_info(clean_handle)
-        target_version = info.get("latest_version") or 1
-        versions = info.get("versions", {})
+        target_version = int(info["latest_version"] or 1)
+        versions = info["versions"]
         if target_version in versions and str(versions[target_version]).lower() == "ready":
             print(f"[KAGGLE STATUS] Dataset '{clean_handle}' version {target_version} is READY.")
             return True
 
-    print(f"\n[KAGGLE] Monitoring server-side extraction for '{clean_handle}' (Target Version: {target_version})...")
+    target_ver: int = int(target_version)
+    print(f"\n[KAGGLE] Monitoring server-side extraction for '{clean_handle}' (Target Version: {target_ver})...")
     start_time = time.time()
 
     pbar = tqdm(
         total=100,
-        desc=f"KAGGLE EXTRACTION (v{target_version})",
+        desc=f"KAGGLE EXTRACTION (v{target_ver})",
         unit="%",
         colour="cyan",
         dynamic_ncols=True,
@@ -188,22 +210,22 @@ def track_kaggle_dataset_status(repo_id, target_version=None, expected_files=0, 
     while time.time() - start_time < timeout:
         elapsed = time.time() - start_time
         info = get_dataset_version_info(clean_handle)
-        versions = info.get("versions", {})
+        versions = info["versions"]
 
-        if target_version in versions:
-            status_val = str(versions[target_version]).lower()
+        if target_ver in versions:
+            status_val = str(versions[target_ver]).lower()
             if status_val == "ready":
                 pbar.n = 100
                 pbar.set_postfix_str("COMPLETE")
                 pbar.refresh()
                 pbar.close()
-                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' version {target_version} is ready.")
+                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' version {target_ver} is ready.")
                 return True
             elif status_val in ["error", "failed"]:
                 pbar.set_postfix_str("FAILED")
                 pbar.refresh()
                 pbar.close()
-                print(f"\n[ERROR] Kaggle reports extraction/processing failed for version {target_version}.")
+                print(f"\n[ERROR] Kaggle reports extraction/processing failed for version {target_ver}.")
                 return False
             else:
                 # In progress: check file summary if available
@@ -216,7 +238,7 @@ def track_kaggle_dataset_status(repo_id, target_version=None, expected_files=0, 
                             sreq = ApiGetDatasetFilesSummaryRequest()
                             sreq.owner_slug = owner
                             sreq.dataset_slug = slug
-                            sreq.dataset_version_number = target_version
+                            sreq.dataset_version_number = target_ver
                             sresp = client.datasets.dataset_api_client.get_dataset_files_summary(sreq)
                             cnt = sresp.file_summary_info.total_file_count if sresp.file_summary_info else 0
                             if cnt > 0:
@@ -365,7 +387,7 @@ def main():
 
         # Detect pre-upload version state to identify target version
         version_info = get_dataset_version_info(clean_repo_id)
-        target_version = (version_info.get("latest_version") or 0) + 1
+        target_version: int = int(version_info["latest_version"] or 0) + 1
 
         file_count = 0
         for _, _, files in os.walk(src_path):
