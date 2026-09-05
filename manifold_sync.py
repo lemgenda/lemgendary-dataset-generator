@@ -93,62 +93,86 @@ def action_sync(manifold_name, repo_id, no_wait=False):
     if not src_dir.exists():
         print(f"[ERROR] Local manifold '{manifold_name}' not found at {src_dir}")
         return
-        
+
     clean_repo_id = repo_id.replace("kaggle://", "")
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     setup_auth(default_user=owner)
 
     from kaggle_manager import get_dataset_version_info, track_kaggle_dataset_status, cleanup_temp_archives
 
-    # Pre-cleanup any dangling staging directories
-    cleanup_temp_archives(manifold_name=manifold_name, base_dir=OUT_PARENT)
+    # Pre-cleanup any dangling staging directories (preserves recent archives for resumption)
+    cleanup_temp_archives(manifold_name=manifold_name, base_dir=OUT_PARENT, force=False)
 
     # Detect version before upload to identify target version
     version_info = get_dataset_version_info(clean_repo_id)
     target_version = (version_info.get("latest_version") or 0) + 1
 
     print(f"\n[SYNC] Preparing to upload '{manifold_name}' to Kaggle ({clean_repo_id})")
-    
+
     file_count = 0
-    for _, _, files in os.walk(src_dir):
+    newest_src_mtime = 0.0
+    for root, _, files in os.walk(src_dir):
         file_count += len(files)
+        for f in files:
+            try:
+                mt = (Path(root) / f).stat().st_mtime
+                if mt > newest_src_mtime:
+                    newest_src_mtime = mt
+            except OSError:
+                pass
 
     staging_dir = None
     if file_count > 50:
-        print(f"[SYNC] Detected {file_count} files (>50 threshold). Archiving manifold with progress tracking...")
         staging_dir = OUT_PARENT / f".staging_{manifold_name}"
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir, ignore_errors=True)
         staging_dir.mkdir(parents=True, exist_ok=True)
-
         target_zip = staging_dir / f"{manifold_name}.zip"
-        try:
-            from archive_manager import create_archive
-            success = create_archive(src_dir, target_zip, format="zip")
-            if not success or not target_zip.exists():
-                raise RuntimeError(f"Archive creation failed for {src_dir}")
 
-            zip_size_gb = target_zip.stat().st_size / (1024**3)
-            print(f"[SYNC] Archive created: {target_zip.name} ({zip_size_gb:.2f} GB)")
-            print(f"[SYNC] Uploading archive to Kaggle via KaggleHub API...")
-            import kagglehub
-            kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
-        except Exception as e:
-            print(f"[ERROR] Upload failed: {e}")
-            return
-        finally:
-            if target_zip.exists():
+        from archive_manager import verify_archive, create_archive
+        can_reuse = False
+        if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
+            print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
+            if target_zip.stat().st_mtime >= newest_src_mtime and verify_archive(target_zip):
+                can_reuse = True
+                print(f"[SYNC] Existing staging archive is valid and up to date. Skipping compression and resuming upload...")
+            else:
+                print(f"[SYNC] Existing archive is outdated or invalid. Re-creating...")
                 try:
                     target_zip.unlink()
                 except OSError:
                     pass
-            if staging_dir and staging_dir.exists():
-                print(f"[SYNC] Cleaning up local staging archive...")
-                try:
-                    shutil.rmtree(staging_dir, ignore_errors=True)
-                except OSError as ex:
-                    print(f"[WARN] Could not remove staging directory: {ex}")
-            cleanup_temp_archives(manifold_name=manifold_name, base_dir=OUT_PARENT)
+
+        if not can_reuse:
+            print(f"[SYNC] Detected {file_count} files (>50 threshold). Archiving manifold with progress tracking...")
+            success = create_archive(src_dir, target_zip, format="zip")
+            if not success or not target_zip.exists():
+                raise RuntimeError(f"Archive creation failed for {src_dir}")
+
+        zip_size_gb = target_zip.stat().st_size / (1024**3)
+        print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
+
+        upload_success = False
+        try:
+            print(f"[SYNC] Uploading archive to Kaggle via KaggleHub API...")
+            import kagglehub
+            kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
+            upload_success = True
+        except Exception as e:
+            print(f"[ERROR] Upload failed: {e}")
+            print(f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next attempt.")
+            return
+        finally:
+            if upload_success:
+                print(f"[SYNC] Upload succeeded. Cleaning up local staging archive...")
+                if target_zip.exists():
+                    try:
+                        target_zip.unlink()
+                    except OSError:
+                        pass
+                if staging_dir.exists():
+                    try:
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                    except OSError:
+                        pass
     else:
         print(f"[SYNC] Uploading {file_count} files directly to Kaggle via KaggleHub API...")
         import kagglehub
@@ -170,20 +194,46 @@ def action_sync(manifold_name, repo_id, no_wait=False):
             sys.exit(1)
 
 def action_get(repo_id, output_name=None):
-    """Download and extract a manifold from Kaggle with byte-level progress."""
+    """Download and extract a manifold from Kaggle with byte-level progress and full resumption."""
     clean_repo_id = repo_id.replace("kaggle://", "")
     if not output_name:
         output_name = clean_repo_id.split("/")[-1]
-        
+
     dest_dir = OUT_PARENT / output_name
-    
+    slug = clean_repo_id.split("/")[-1]
+
     print(f"\n[GET] Requesting LemGendized Manifold: {clean_repo_id}")
-    
-    # Collision check
-    if dest_dir.exists():
+
+    from archive_manager import verify_archive, smart_extract
+
+    # Check for candidate archives already downloaded
+    archive_candidates = [
+        OUT_PARENT / f"{output_name}.zip",
+        OUT_PARENT / f"{slug}.zip",
+        dest_dir / f"{output_name}.zip",
+        dest_dir / f"{slug}.zip",
+    ]
+
+    existing_archive = None
+    for cand in archive_candidates:
+        if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
+            print(f"[GET] Inspecting existing archive: {cand.name} ({cand.stat().st_size / (1024**3):.2f} GB)...")
+            if verify_archive(cand):
+                existing_archive = cand
+                print(f"[GET] Existing archive is valid. Skipping download and resuming extraction directly...")
+                break
+            else:
+                print(f"[WARN] Existing archive {cand.name} is incomplete. Re-downloading...")
+                try:
+                    cand.unlink()
+                except OSError:
+                    pass
+
+    # Collision check if directory already exists
+    if dest_dir.exists() and not existing_archive:
         print(f"[WARNING] Local manifold '{output_name}' already exists at {dest_dir}!")
-        ans = input("Do you want to OVERRIDE and delete the existing local manifold? (y/N): ").strip().lower()
-        if ans == 'y':
+        ans = input("Do you want to RESUME extraction or overwrite? (R/o/n): ").strip().lower()
+        if ans == 'o':
             confirm = input(f"[CRITICAL] Are you ABSOLUTELY sure? Type 'YES' to delete {dest_dir}: ").strip()
             if confirm == 'YES':
                 print(f"[GET] Purging existing manifold...")
@@ -191,14 +241,14 @@ def action_get(repo_id, output_name=None):
             else:
                 print("[GET] Override cancelled. Aborting.")
                 return
-        else:
+        elif ans == 'n':
             print("[GET] Aborting.")
             return
 
     # Disk space check (Require at least 20GB free as a baseline safeguard)
     total, used, free = shutil.disk_usage(OUT_PARENT)
     free_gb = free / (1024**3)
-    if free_gb < 20.0:
+    if free_gb < 20.0 and not existing_archive:
         print(f"[WARNING] Low disk space! Only {free_gb:.2f} GB free on {OUT_PARENT.drive}.")
         ans = input("Continue anyway? (y/N): ").strip().lower()
         if ans != 'y':
@@ -207,56 +257,64 @@ def action_get(repo_id, output_name=None):
     else:
         print(f"[GET] Disk check passed ({free_gb:.2f} GB free).")
 
-    print(f"[GET] Downloading from Kaggle via KaggleHub API...")
-    import kagglehub
-    from kaggle_manager import copy_with_progress, copy_tree_with_progress
-    from archive_manager import smart_extract
-
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     setup_auth(default_user=owner)
 
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        path = kagglehub.dataset_download(clean_repo_id)
-        print("Downloaded to cache. Finalizing manifold...")
-        if os.path.isfile(path):
-            target = dest_dir / os.path.basename(path)
-            copy_with_progress(path, target)
+    archive_to_extract = existing_archive
+
+    if not archive_to_extract:
+        print(f"[GET] Downloading from Kaggle directly to {OUT_PARENT}...")
+        downloaded = False
+        try:
+            from kaggle.api.kaggle_api_extended import KaggleApi
+            api = KaggleApi()
+            api.authenticate()
+            print(f"[GET] Streaming dataset archive directly to {OUT_PARENT} via Kaggle API...")
+            api.dataset_download_files(clean_repo_id, path=str(OUT_PARENT), unzip=False, quiet=False)
+            downloaded = True
+        except Exception as ex:
+            print(f"[WARN] Kaggle API direct download encountered an issue: {ex}. Trying Kaggle CLI...")
             try:
-                os.remove(path)
-            except OSError:
-                pass
-        else:
-            for item in os.listdir(path):
-                s = os.path.join(path, item)
-                d = dest_dir / item
-                if os.path.isdir(s):
-                    copy_tree_with_progress(s, d)
+                import subprocess
+                subprocess.run(["kaggle", "datasets", "download", clean_repo_id, "-p", str(OUT_PARENT)], check=True)
+                downloaded = True
+            except Exception as cli_ex:
+                print(f"[WARN] Kaggle CLI download also failed: {cli_ex}. Falling back to kagglehub...")
+                import kagglehub
+                path = kagglehub.dataset_download(clean_repo_id)
+                if os.path.isfile(path):
+                    archive_to_extract = Path(path)
                 else:
-                    copy_with_progress(s, d)
-            try:
-                shutil.rmtree(path, ignore_errors=True)
-            except OSError:
-                pass
+                    items = os.listdir(path)
+                    src_move = os.path.join(path, items[0]) if (len(items) == 1 and items[0] == dest_dir.name) else path
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    for item in os.listdir(src_move):
+                        target_item = dest_dir / item
+                        if target_item.exists():
+                            if target_item.is_dir():
+                                shutil.rmtree(target_item, ignore_errors=True)
+                            else:
+                                target_item.unlink(missing_ok=True)
+                        shutil.move(os.path.join(src_move, item), str(target_item))
+                    shutil.rmtree(path, ignore_errors=True)
 
-        # Clean up kagglehub download cache to reclaim disk space
-        hub_cache = Path.home() / ".cache" / "kagglehub" / "datasets" / clean_repo_id.replace("/", os.sep)
-        if hub_cache.exists():
-            shutil.rmtree(hub_cache, ignore_errors=True)
+        if downloaded:
+            for cand in archive_candidates:
+                if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
+                    archive_to_extract = cand
+                    break
+            if not archive_to_extract:
+                recent_zips = sorted(OUT_PARENT.glob("*.zip"), key=lambda f: f.stat().st_mtime, reverse=True)
+                if recent_zips:
+                    archive_to_extract = recent_zips[0]
 
-        zip_files = list(dest_dir.glob("*.zip"))
-        for zf in zip_files:
-            print(f"[EXTRACT] Unpacking manifold archive: {zf.name}")
-            smart_extract(zf, dest_dir, delete_after=True)
-
-        print(f"[SUCCESS] Manifold extracted to {dest_dir}")
-    except Exception as e:
-        print(f"[ERROR] Failed to download manifold: {e}")
-        if not any(dest_dir.iterdir()):
-            try:
-                dest_dir.rmdir()
-            except OSError:
-                pass
+    if archive_to_extract and archive_to_extract.exists():
+        print(f"[EXTRACT] Unpacking manifold archive: {archive_to_extract.name}")
+        success = smart_extract(archive_to_extract, str(OUT_PARENT), delete_after=True)
+        if not success:
+            print(f"[ERROR] Extraction failed or interrupted. Archive preserved at {archive_to_extract} for resumption.")
+        else:
+            print(f"[SUCCESS] Manifold extracted successfully into {dest_dir}")
 
 def main():
     parser = argparse.ArgumentParser(description="LemGendary Manifold Sync Manager")

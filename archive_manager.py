@@ -63,8 +63,8 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
                 elif root_dir is not None:
                     arcname = str(full_path.relative_to(Path(root_dir).resolve())).replace("\\", "/")
                 else:
-                    # Default: archive contents relative to source directory
-                    arcname = str(full_path.relative_to(source_path)).replace("\\", "/")
+                    # Default: archive includes manifold root folder relative to source parent
+                    arcname = str(full_path.relative_to(source_path.parent)).replace("\\", "/")
                 file_entries.append((full_path, arcname, size))
                 total_bytes += size
             except OSError:
@@ -78,10 +78,21 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
     print(f"Archiving {len(file_entries)} files ({total_bytes / (1024**2):.2f} MB) -> {archive_name}")
 
     try:
+        pbar_kwargs = {
+            "total": total_bytes,
+            "unit": "B",
+            "unit_scale": True,
+            "unit_divisor": 1024,
+            "desc": f"ARCHIVING: {archive_name}",
+            "colour": "cyan",
+            "file": sys.stdout,
+            "dynamic_ncols": True,
+            "mininterval": 0.25,
+        }
         if format.lower() in ["tar", "tar.gz", "tgz"]:
             mode = "w:gz" if format.lower() in ["tar.gz", "tgz"] else "w:"
             with tarfile.open(output_path, mode) as tf:
-                with tqdm(total=total_bytes, unit="B", unit_scale=True, unit_divisor=1024, desc=f"ARCHIVING: {archive_name}", colour="cyan") as pbar:
+                with tqdm(**pbar_kwargs) as pbar:
                     for full_path, arcname, size in file_entries:
                         tar_info = tf.gettarinfo(str(full_path), arcname=arcname)
                         if size > LARGE_FILE_THRESHOLD:
@@ -93,7 +104,7 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
                             pbar.update(size)
         else:
             with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-                with tqdm(total=total_bytes, unit="B", unit_scale=True, unit_divisor=1024, desc=f"ARCHIVING: {archive_name}", colour="cyan") as pbar:
+                with tqdm(**pbar_kwargs) as pbar:
                     for full_path, arcname, size in file_entries:
                         if size > LARGE_FILE_THRESHOLD:
                             with open(full_path, "rb") as f_in:
@@ -139,11 +150,21 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
             with tarfile.open(archive_str, mode) as tf:
                 members = [m for m in tf.getmembers() if m.isfile()]
                 total_files = len(members)
+
+                # Detect if archive contains a common top-level directory
+                all_names = [m.name for m in members]
+                first_parts = {Path(name).parts[0] for name in all_names if len(Path(name).parts) > 1}
+                common_root = first_parts.pop() if len(first_parts) == 1 else None
+
+                # Prevent double nesting if dest_path already matches the archive root folder
+                effective_dest = dest_path.parent if (common_root and dest_path.name == common_root) else dest_path
+                effective_dest.mkdir(parents=True, exist_ok=True)
+
                 to_extract = []
                 total_bytes = 0
 
                 for member in members:
-                    target_file = dest_path / member.name
+                    target_file = effective_dest / member.name
                     if not target_file.exists() or target_file.stat().st_size == 0:
                         to_extract.append(member)
                         total_bytes += member.size
@@ -151,9 +172,20 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                 print(f"Found {len(to_extract)} missing files ({total_bytes / (1024**2):.2f} MB) out of {total_files} total.")
 
                 if to_extract:
-                    with tqdm(total=total_bytes, unit="B", unit_scale=True, unit_divisor=1024, desc=f"EXTRACTING: {archive_path.name}", colour="green") as pbar:
+                    pbar_kwargs = {
+                        "total": total_bytes,
+                        "unit": "B",
+                        "unit_scale": True,
+                        "unit_divisor": 1024,
+                        "desc": f"EXTRACTING: {archive_path.name}",
+                        "colour": "green",
+                        "file": sys.stdout,
+                        "dynamic_ncols": True,
+                        "mininterval": 0.25,
+                    }
+                    with tqdm(**pbar_kwargs) as pbar:
                         for member in to_extract:
-                            target_file = dest_path / member.name
+                            target_file = effective_dest / member.name
                             target_file.parent.mkdir(parents=True, exist_ok=True)
                             source = tf.extractfile(member)
                             if source is not None:
@@ -172,11 +204,21 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                 members = zf.infolist()
                 file_members = [m for m in members if not m.is_dir()]
                 total_files = len(file_members)
+
+                # Detect if archive contains a common top-level directory
+                all_names = [m.filename for m in file_members]
+                first_parts = {Path(name).parts[0] for name in all_names if len(Path(name).parts) > 1}
+                common_root = first_parts.pop() if len(first_parts) == 1 else None
+
+                # Prevent double nesting if dest_path already matches the archive root folder
+                effective_dest = dest_path.parent if (common_root and dest_path.name == common_root) else dest_path
+                effective_dest.mkdir(parents=True, exist_ok=True)
+
                 to_extract = []
                 total_bytes = 0
 
                 for member in file_members:
-                    target_file = dest_path / member.filename
+                    target_file = effective_dest / member.filename
                     if not target_file.exists() or target_file.stat().st_size == 0:
                         to_extract.append(member)
                         total_bytes += member.file_size
@@ -184,11 +226,22 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                 print(f"Found {len(to_extract)} missing files ({total_bytes / (1024**2):.2f} MB) out of {total_files} total.")
 
                 if to_extract:
-                    with tqdm(total=total_bytes, unit="B", unit_scale=True, unit_divisor=1024, desc=f"EXTRACTING: {archive_path.name}", colour="green") as pbar:
+                    pbar_kwargs = {
+                        "total": total_bytes,
+                        "unit": "B",
+                        "unit_scale": True,
+                        "unit_divisor": 1024,
+                        "desc": f"EXTRACTING: {archive_path.name}",
+                        "colour": "green",
+                        "file": sys.stdout,
+                        "dynamic_ncols": True,
+                        "mininterval": 0.25,
+                    }
+                    with tqdm(**pbar_kwargs) as pbar:
                         for member in to_extract:
+                            target_file = effective_dest / member.filename
+                            target_file.parent.mkdir(parents=True, exist_ok=True)
                             if member.file_size > LARGE_FILE_THRESHOLD:
-                                target_file = dest_path / member.filename
-                                target_file.parent.mkdir(parents=True, exist_ok=True)
                                 with zf.open(member) as source, open(target_file, "wb") as target:
                                     while True:
                                         chunk = source.read(CHUNK_SIZE)
@@ -197,8 +250,13 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                                         target.write(chunk)
                                         pbar.update(len(chunk))
                             else:
-                                zf.extract(member, dest_path)
-                                pbar.update(member.file_size)
+                                with zf.open(member) as source, open(target_file, "wb") as target:
+                                    while True:
+                                        chunk = source.read(CHUNK_SIZE)
+                                        if not chunk:
+                                            break
+                                        target.write(chunk)
+                                        pbar.update(len(chunk))
                 else:
                     print("All files already extracted.")
 

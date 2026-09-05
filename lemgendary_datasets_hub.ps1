@@ -25,9 +25,9 @@ $DownloadSB = {
     
     Write-Output "STATUS:KAG-PULLING"
     if ($isC) {
-        & $vpy $kagManager --repo_id $ref --output_dir $fold --is_competition 2>&1
+        & $vpy $kagManager --repo_id $ref --output_dir $fold --is_competition
     } else {
-        & $vpy $kagManager --repo_id $ref --output_dir $fold 2>&1
+        & $vpy $kagManager --repo_id $ref --output_dir $fold
     }
     
     $z = Join-Path $sharedPath ($dn + '.zip')
@@ -873,25 +873,39 @@ while ($true) {
                 
                 if ($TargetHandle) {
                     $DestPath = Join-Path $Out $TargetFolder
+                    $ExistingZip = Join-Path $Out ($TargetFolder + ".zip")
+                    $Slug = $TargetHandle.Split('/')[-1]
+                    $SlugZip = Join-Path $Out ($Slug + ".zip")
+
                     if (Test-Path $DestPath) {
-                        Write-Host "`n[WARNING] Local manifold '$TargetFolder' already exists at $DestPath!" -ForegroundColor Yellow
-                        $Confirm = Read-Host "Do you want to overwrite and replace it? (Y/N)"
-                        if ($Confirm -notmatch '^[yY]') {
+                        Write-Host "`n[INFO] Local manifold '$TargetFolder' exists at $DestPath." -ForegroundColor Cyan
+                        $Confirm = Read-Host "Resume extraction / synchronize missing files? (Y/n/overwrite)"
+                        if ($Confirm -match '^[oO]') {
+                            $Really = Read-Host "[CRITICAL] Type 'YES' to delete existing manifold folder"
+                            if ($Really -eq 'YES') {
+                                Remove-Item -Path $DestPath -Recurse -Force
+                            } else {
+                                Write-Host "[ABORTED] Cancellation confirmed." -ForegroundColor Yellow
+                                continue
+                            }
+                        } elseif ($Confirm -match '^[nN]') {
                             Write-Host "[ABORTED] Download cancelled." -ForegroundColor Yellow
                             Read-Host "Press Enter to return"
                             continue
                         }
+                    } elseif ((Test-Path $ExistingZip) -or (Test-Path $SlugZip)) {
+                        Write-Host "`n[RESUME] Found existing downloaded archive in LemGendaryDatasets root! Resuming extraction..." -ForegroundColor Green
                     }
-                    
+
                     Write-Host "`n[GET] Downloading precompiled LemGendized manifold from Kaggle..." -ForegroundColor Cyan
                     Write-Host "  Target: $TargetHandle" -ForegroundColor Gray
                     Write-Host "  Destination: $DestPath" -ForegroundColor Gray
-                    
+
                     & $Vpy $kagManagerPath --action download --repo_id $TargetHandle --output_dir $DestPath
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host "[OK] [GET] Manifold successfully acquired from Kaggle!" -ForegroundColor Green
                     } else {
-                        Write-Host "[FAILED] [GET] Download failed." -ForegroundColor Red
+                        Write-Host "[FAILED] [GET] Download or extraction interrupted. Archive preserved for resumption." -ForegroundColor Yellow
                     }
                     Read-Host "Press Enter to return"
                 }
