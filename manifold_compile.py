@@ -200,8 +200,34 @@ last_processed: '{datetime.now().isoformat()}'
             tf_labels = [tf_names.get(tf, f'{tf}min') for tf in tfs_list]
             tree_pairs = '\n'.join([f"|   |-- {p}/" for p in pairs_list])
 
-            readme_text = f"""<!-- markdownlint-disable MD051 MD013 -->
-# {output_root.name}
+            generate_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_training.ipynb"))
+            generate_colab_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_colab_training.ipynb"))
+
+            desc_map = {
+                "forex": "Shards containing serialized manifold data.",
+                "category.txt": "Top-level categorization tag.",
+                "classes.txt": "Class labels mapping.",
+                "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
+                "README.md": "This documentation file."
+            }
+            structure_lines = []
+            if output_root.exists():
+                for item in sorted(output_root.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+                    name = item.name
+                    if name.endswith("_colab_training.ipynb"):
+                        desc = "Auto-generated Google Colab notebook for cloud training."
+                    elif "_training" in name and name.endswith(".ipynb"):
+                        desc = "Auto-generated Jupyter notebook for model training."
+                    else:
+                        desc = desc_map.get(name, "Dataset component.")
+
+                    if item.is_dir():
+                        structure_lines.append(f"- **`{name}/`**: {desc}")
+                    else:
+                        structure_lines.append(f"- **`{name}`**: {desc}")
+            structure_text = "\n".join(structure_lines)
+
+            readme_text = f"""# {output_root.name}
 
 > High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.
 
@@ -248,12 +274,7 @@ This manifold is dynamically assembled from the following temporal specification
 
 Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
 
-- **`forex/`**: Shards containing serialized manifold data.
-- **`category.txt`**: Top-level categorization tag.
-- **`classes.txt`**: Class labels mapping.
-- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.
-- **`forex_predictor_training.ipynb`**: Auto-generated Jupyter notebook for model training.
-- **`README.md`**: This documentation file.
+{structure_text}
 
 ---
 
@@ -268,8 +289,6 @@ python training/train.py --model forex_predictor
             with open(output_root / "README.md", "w", encoding="utf-8") as f:
                 f.write(readme_text)
 
-            generate_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_training.ipynb"))
-            generate_colab_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_colab_training.ipynb"))
             print(f"[SUCCESS] Manifold {output_root.name} compiled successfully!\n")
             continue
 
@@ -537,11 +556,11 @@ python training/train.py --model forex_predictor
             matlab_map = {}
 
             if fmt == "coco" and ann_data:
-                images_meta, anns_meta = ann_data
+                images_meta, anns_meta = ann_data  # type: ignore
                 for k, v in images_meta.items():
                     coco_file_to_id[v["file_name"]] = k
             elif fmt == "parquet" and ann_data and not is_virtual:
-                pq_path, mapping, cols = ann_data # type: ignore
+                pq_path, mapping, cols = ann_data  # type: ignore
                 try:
                     df = pd.read_parquet(str(pq_path))
                 except Exception as e:
@@ -553,7 +572,7 @@ python training/train.py --model forex_predictor
                     for fname, group in df.groupby(file_col):
                         parquet_map[fname] = group
             elif fmt == "matlab" and ann_data:
-                data, key = ann_data
+                data, key = ann_data  # type: ignore
                 if key in data:
                     for entry in data[key]:
                         try:
@@ -658,12 +677,12 @@ python training/train.py --model forex_predictor
 
                     specific_ann_data = None
                     if fmt == "coco" and ann_data:
-                        images_meta, anns_meta = ann_data
+                        images_meta, anns_meta = ann_data  # type: ignore
                         img_id = coco_file_to_id.get(img_path.name)
                         if img_id is not None:
                             specific_ann_data = anns_meta.get(img_id, [])
                     elif fmt == "parquet" and ann_data:
-                        pq_path, mapping, cols = ann_data # type: ignore
+                        pq_path, mapping, cols = ann_data  # type: ignore
                         df_subset = parquet_map.get(img_path.name)
                         if df_subset is not None and not df_subset.empty:
                             specific_ann_data = (df_subset, mapping)
@@ -671,7 +690,7 @@ python training/train.py --model forex_predictor
                         specific_ann_data = matlab_map.get(img_path.name, [])
                     elif fmt == "safetensors" and ann_data:
                         specific_ann_data = ann_data
-                    elif fmt in ["xml", "yolo", "npz"] and ann_data:
+                    elif fmt in ["xml", "yolo", "npz"] and ann_data and ann_path:
                         # ann_data is the Path to the annotations/labels directory
                         ext = ".xml" if fmt == "xml" else (".txt" if fmt == "yolo" else ".npz")
                         ann_file = ann_path / f"{img_path.stem}{ext}"

@@ -23,7 +23,7 @@ annotated-doc
 regex
 hf-xet
 h11
-kaggle>=2.2.3
+kaggle>=2.2.4
 kagglehub>=1.0.2
 gdown>=5.1.0
 pandas>=2.2.0

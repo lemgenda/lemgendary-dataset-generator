@@ -177,7 +177,9 @@ last_processed: '{datetime.now().isoformat()}'
     if output_root.exists():
         for item in sorted(output_root.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
             name = item.name
-            if "_training" in name and name.endswith(".ipynb"):
+            if name.endswith("_colab_training.ipynb"):
+                desc = "Auto-generated Google Colab notebook for cloud training."
+            elif "_training" in name and name.endswith(".ipynb"):
                 desc = "Auto-generated Jupyter notebook for model training."
             else:
                 desc = desc_map.get(name, "Dataset component.")
@@ -231,7 +233,7 @@ last_processed: '{datetime.now().isoformat()}'
             models_markdown += "\n"
 
     if not models_markdown:
-        models_markdown = "*(No models explicitly bound to this dataset in unified_models_v2.yaml)*\n"
+        models_markdown = "No models are explicitly bound to this dataset in unified_models_v2.yaml.\n"
 
     if task == "forex":
         yaml_path = output_root / "dataset_info.yaml"
@@ -247,8 +249,8 @@ last_processed: '{datetime.now().isoformat()}'
         tf_names = {1: 'M1 (1min)', 5: 'M5 (5min)', 15: 'M15 (15min)', 60: 'H1 (60min)', 240: 'H4 (240min)', 1440: 'D1 (1440min)'}
         tf_labels = [tf_names.get(tf, f'{tf}min') for tf in tfs_list]
         
-        readme = f"""<!-- markdownlint-disable MD051 MD013 -->
-# {output_root.name}
+        models_block = models_markdown.strip()
+        readme = f"""# {output_root.name}
 
 > {m.get('desc', 'High-fidelity temporal manifold.')}
 
@@ -276,7 +278,8 @@ This manifold is dynamically assembled from the following temporal specification
 
 ## Model Training Profiles
 
-{models_markdown}
+{models_block}
+
 ## Repository Structure
 
 Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
@@ -288,8 +291,13 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
 **Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')})
 """
     else:
-        readme = f"""<!-- markdownlint-disable MD051 MD013 -->
-# {output_root.name}
+        models_block = models_markdown.strip()
+        table_rows = []
+        for src, counts in sorted(sources.items(), key=lambda x: str(x[1].get('total', 0)), reverse=True):
+            table_rows.append(f"| **{src}** | {counts['train']} | {counts['val']} | {counts['total']} samples |")
+        table_text = "\n".join(table_rows)
+
+        readme = f"""# {output_root.name}
 
 > {resolved_desc}
 
@@ -305,14 +313,12 @@ This manifold is a high-fidelity merge of the following original sources:
 
 | Source Dataset | Train | Val | Total Contribution |
 | :--- | :--- | :--- | :--- |
-"""
-        for src, counts in sorted(sources.items(), key=lambda x: str(x[1].get('total', 0)), reverse=True):
-            readme += f"| **{src}** | {counts['train']} | {counts['val']} | {counts['total']} samples |\n"
+{table_text}
 
-        readme += f"""
 ## Model Training Profiles
 
-{models_markdown}
+{models_block}
+
 ## Repository Structure
 
 Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
