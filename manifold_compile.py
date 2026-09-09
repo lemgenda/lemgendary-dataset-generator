@@ -2,6 +2,23 @@ import os, sys, argparse, json, yaml, shutil, multiprocessing
 from pathlib import Path
 from compiler_core import *
 
+# Import generate_dataset_docs at the top – fixes uninitialized warning
+from doc_generator import generate_dataset_docs
+
+# ─── ARGUMENT PARSER ─────────────────────────────────────────────────────────
+parser = argparse.ArgumentParser(description='LemGendary Datasets Compiler')
+parser.add_argument('--model', help='Model to compile (e.g., nima_aesthetic)')
+parser.add_argument('--max_gb', type=float, help='Max size in GB for the manifold')
+parser.add_argument('--suffix', help='Suffix to append to the manifold name')
+parser.add_argument('--workers', type=int, help='Number of worker threads')
+parser.add_argument('--cleanup', action='store_true', help='Cleanup temporary files and exit')
+parser.add_argument('--no_vetting', action='store_true', help='Skip quality vetting (NIMA)')
+parser.add_argument('--no_labeling', action='store_true', help='Skip auto-labeling (detection)')
+parser.add_argument('--no_hash', action='store_true', help='Skip duplicate detection via hash')
+parser.add_argument('--finalize', action='store_true', help='Finalize without processing (use existing registry)')
+args = parser.parse_args()
+# ────────────────────────────────────────────────────────────────────────────
+
 def process_dataset():
     # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
     if os.name == 'nt':
@@ -121,177 +138,76 @@ def process_dataset():
 
         print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
+        # ─── FOREX MANIFOLD (Refactored for 16-Symbol Temporal Chunks) ───────────
         if model_config.get("dataset_type") == "forex" or model_config.get("acquisition_mode") == "mt5_terminal":
-            print(f"\n[FOREX MANIFOLD] Packaging LemGendized Forex Predictor Manifold: {output_root.name}...")
+            print(f"\n[FOREX MANIFOLD] Compiling Foundation Matrix: {output_root.name}...")
             output_root.mkdir(parents=True, exist_ok=True)
-            import shutil
+
+            # Purge accidental directory generation boilerplate
             for empty_dir in [output_root / "images", output_root / "labels", output_root / "masks", output_root / "targets"]:
                 if empty_dir.exists():
                     shutil.rmtree(empty_dir)
-            target_forex_dir = output_root / "forex"
-            target_forex_dir.mkdir(parents=True, exist_ok=True)
-            
-            raw_forex_dir = INPUT_ROOT / "forex"
-            default_pairs = [
-                'EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD',
-                'USDCAD', 'USDCHF', 'AUDUSD', 'NZDUSD',
-                'EURJPY', 'GBPJPY', 'EURGBP',
-                'XAGUSD', 'USOIL',
-                'US500', 'USTEC', 'GER40'
-            ]
-            pairs_list = model_config.get('pairs', default_pairs)
+
+            # Extract unified parameters out of config blocks
+            pairs_list = model_config.get('pairs', [])
             tfs_list = model_config.get('timeframe_rungs', [1, 5, 15, 60, 240, 1440])
             start_date_str = model_config.get('start_date', '2019-01-01')
+            lookback_bars = model_config.get('lookback_bars', 168)
 
-            existing_pairs = [d.name for d in target_forex_dir.iterdir() if d.is_dir() and not d.name.startswith('.')] if target_forex_dir.exists() else []
-            if len(existing_pairs) >= len(pairs_list) and all(p in existing_pairs for p in pairs_list):
-                print(f"   -> [OK] Found existing complete manifold pair shards at {target_forex_dir} ({len(existing_pairs)} pairs).")
-            else:
-                if raw_forex_dir.exists() and any(raw_forex_dir.iterdir()):
-                    print(f"   -> Transferring existing forex pair shards from {raw_forex_dir} to {target_forex_dir}...")
-                    for item in raw_forex_dir.iterdir():
-                        if item.is_dir() and item.name in pairs_list:
-                            dest = target_forex_dir / item.name
-                            if dest.exists():
-                                shutil.rmtree(dest)
-                            shutil.copytree(item, dest)
-                currently_in_target = [d.name for d in target_forex_dir.iterdir() if d.is_dir() and not d.name.startswith('.')] if target_forex_dir.exists() else []
-                missing_pairs = [p for p in pairs_list if p not in currently_in_target]
-                
-                if missing_pairs:
-                    print(f"   -> [AUTO-ACQUISITION] Missing {len(missing_pairs)} forex shards. Connecting to MetaTrader 5 pipeline...")
-                    try:
-                        import mt5_pipeline
-                        
-                        mt5_pipeline.run_download_pipeline(
-                            pairs=missing_pairs,
-                            timeframes=tfs_list,
-                            out_dir=str(target_forex_dir),
-                            n_bars=model_config.get('n_bars', 50000),
-                            start_date=start_date_str,
-                            build_folds=True
-                        )
-                        
-                        if target_forex_dir.exists() and any(target_forex_dir.iterdir()):
-                            print(f"   -> [OK] Successfully downloaded and built missing currency pair directories from MT5.")
-                    except Exception as e:
-                        print(f"   -> [ERROR] MT5 Auto-Acquisition failed: {e}")
-                else:
-                    print(f"   -> [OK] Successfully transferred {len(list(target_forex_dir.iterdir()))} currency pair directories.")
-            category_str = model_config.get('category', 'Forex & Financial Time-Series')
-            with open(output_root / "category.txt", "w", encoding="utf-8") as f:
-                f.write(f"{category_str}\n")
-            with open(output_root / "classes.txt", "w", encoding="utf-8") as f:
-                f.write("SELL\nHOLD\nBUY\n")
-            
-            yaml_info = f"""name: {pascal_name}
-dataset_type: forex
-category: {category_str}
-pairs: {pairs_list}
-timeframe_rungs: {tfs_list}
-start_date: '{start_date_str}'
-lookback_bars: {model_config.get('lookback_bars', 168)}
-last_processed: '{datetime.now().isoformat()}'
-"""
-            with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
-                f.write(yaml_info)
+            # Use the full name (with prefix and suffix) as the dataset folder name
+            full_name = prefix_str + pascal_name + suffix_str
 
-            tf_names = {1: 'M1 (1min)', 5: 'M5 (5min)', 15: 'M15 (15min)', 60: 'H1 (60min)', 240: 'H4 (240min)', 1440: 'D1 (1440min)'}
-            tf_labels = [tf_names.get(tf, f'{tf}min') for tf in tfs_list]
-            tree_pairs = '\n'.join([f"|   |-- {p}/" for p in pairs_list])
+            print(f" -> Engaging MT5 Auto-Acquisition Bridge for {len(pairs_list)} symbols across {len(tfs_list)} timeframes...")
+            try:
+                from mt5_pipeline import run_download_pipeline
 
+                # Wrap definition block – use full_name so it writes into the correct folder
+                dataset_defs = [{
+                    "name": full_name,   # <-- FIX: use full_name here
+                    "pairs": pairs_list,
+                    "timeframes": tfs_list,
+                    "start_date": start_date_str
+                }]
+
+                # Write directly to the parent of the manifold folder
+                run_download_pipeline(
+                    dataset_defs=dataset_defs,
+                    out_dir=str(output_root.parent),  # OUT_PARENT
+                    login=None, password=None, server=None
+                )
+            except Exception as e:
+                print(f" -> [CRITICAL FAILURE] Temporal compilation dropped: {e}")
+                raise e
+
+            # Create notebook files for Kaggle execution steps
+            from notebook_generator import generate_training_notebook, generate_colab_training_notebook
             generate_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_training.ipynb"))
             generate_colab_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_colab_training.ipynb"))
 
-            desc_map = {
-                "forex": "Shards containing serialized manifold data.",
-                "category.txt": "Top-level categorization tag.",
-                "classes.txt": "Class labels mapping.",
-                "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
-                "README.md": "This documentation file."
+            # Create deployment manifests
+            category_str = model_config.get('category', 'Forex & Financial Time-Series')
+            yaml_info = {
+                'name': pascal_name,
+                'dataset_type': 'forex',
+                'category': category_str,
+                'pairs': pairs_list,
+                'timeframe_rungs': tfs_list,
+                'start_date': start_date_str,
+                'lookback_bars': lookback_bars,
+                'last_processed': datetime.now().isoformat()
             }
-            structure_lines = []
-            if output_root.exists():
-                for item in sorted(output_root.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
-                    name = item.name
-                    if name.endswith("_colab_training.ipynb"):
-                        desc = "Auto-generated Google Colab notebook for cloud training."
-                    elif "_training" in name and name.endswith(".ipynb"):
-                        desc = "Auto-generated Jupyter notebook for model training."
-                    else:
-                        desc = desc_map.get(name, "Dataset component.")
+            with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
+                yaml.dump(yaml_info, f, default_flow_style=False)
 
-                    if item.is_dir():
-                        structure_lines.append(f"- **`{name}/`**: {desc}")
-                    else:
-                        structure_lines.append(f"- **`{name}`**: {desc}")
-            structure_text = "\n".join(structure_lines)
+            try:
+                generate_dataset_docs(output_root, final_index=None, pascal_name=pascal_name, overrides=yaml_info)
+            except Exception as e:
+                print(f" -> [WARNING] Documentation engine skipped: {e}")
 
-            readme_text = f"""# {output_root.name}
-
-> High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.
-
-## Dataset Overview
-
-- **Category:** {category_str}
-- **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
-- **Pairs Included:** {', '.join(pairs_list)}
-- **Timeframe Rungs:** {', '.join(tf_labels)}
-- **Historical Horizon:** {start_date_str} to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)
-- **Lookback Window:** {model_config.get('lookback_bars', 168)} bars
-- **Total Samples:** [Computed Dynamically During Training]
-- **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)
-- **Architecture Base:** Causal TCN + Cross-Timeframe Multi-Head Attention
-- **Primary Task:** Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss boundaries.
-
-## Composition & Lineage
-
-This manifold is dynamically assembled from the following temporal specifications:
-
-- **Currency Pairs**: {', '.join(pairs_list)}
-- **Timeframes (Minutes)**: {', '.join(tf_labels)}
-- **Historical Horizon**: {start_date_str} to Present
-- **Chronology Strategy**: 6-Fold Walk-Forward Matrix
-- **Fold Embargo**: 14 Days
-
-## Model Training Profile
-
-- **Target Architectures**: ForexPredictor (Multi-Scale CNN-Transformer)
-- **Optimization Strategy**: Focal Loss (Direction), Huber Loss (Magnitude)
-
-### Benchmark Metrics [SOTA]
-
-| Metric | Baseline | Advanced | SOTA |
-| :--- | :--- | :--- | :--- |
-| **Direction Accuracy** | ~55.0% | > 65.0% | **> 75.0%** |
-| **Trade Win Rate** | ~50.0% | > 54.0% | **> 56.0%** |
-| **Profit Factor** | ~1.10 | > 1.50 | **> 2.00** |
-| **Sharpe Ratio** | ~0.80 | > 1.50 | **> 2.50** |
-| **Max Drawdown** | ~30.0% | < 20.0% | **< 10.0%** |
-| **Quality Score** | ~100.0 | > 125.0 | **> 150.0** |
-
-## Repository Structure
-
-Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
-
-{structure_text}
-
----
-
-**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{output_root.name.lower().replace('_', '-')})
-
-## Training Usage
-
-```bash
-python training/train.py --model forex_predictor
-```
-"""
-            with open(output_root / "README.md", "w", encoding="utf-8") as f:
-                f.write(readme_text)
-
-            print(f"[SUCCESS] Manifold {output_root.name} compiled successfully!\n")
+            print(f"[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n")
             continue
 
+        # ─── NON‑FOREX MANIFOLDS ──────────────────────────────────────────────
         index = []
         seen_hashes = set()
 
@@ -388,7 +304,6 @@ python training/train.py --model forex_predictor
             existing_names.update(orphans)
             orphans = None # Free memory
 
-
         sfw_tasks = []
         nsfw_tasks = []
 
@@ -400,17 +315,17 @@ python training/train.py --model forex_predictor
             m_name = ""
             if ref.startswith("manifold://"):
                 m_name = ref.replace("manifold://", "")
-                
+
                 # MultiTask manifolds don't have the global suffix
                 current_suffix = "" if m_name.endswith("MultiTask") else suffix_str
                 m_path = OUT_PARENT / f"{prefix_str}{m_name}{current_suffix}"
-                
+
                 if m_path.exists():
                     # 2026 Resilience: Dynamically attach to targets/ or masks/ if images/ is missing
                     dataset = m_path / "images"
                     if not dataset.exists(): dataset = m_path / "targets"
                     if not dataset.exists(): dataset = m_path / "masks"
-                    
+
                     slug = f"compiled_{m_name}"
                     mapping = {
                         "NafNetDebluring": "deblur",
@@ -496,7 +411,6 @@ python training/train.py --model forex_predictor
 
             images = list(fast_scan(str(dataset)))
 
-
             # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
             is_virtual = False
             if not images and fmt == "parquet" and ann_data_list:
@@ -506,7 +420,7 @@ python training/train.py --model forex_predictor
                         is_virtual = True
                         print(f"[VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
                         break
-            
+
             # LAZY DATASET SUPPORT: If no images and no embedded bytes, check for URLs
             is_lazy = False
             if not images and not is_virtual and fmt == "parquet" and ann_data_list:
@@ -515,11 +429,11 @@ python training/train.py --model forex_predictor
                         is_lazy = True
                         print(f"[LAZY] {slug} identified as URL-based manifest. Commencing background retrieval...")
                         break
-            
+
             if is_lazy:
                 dl_dir = dataset / "downloads"
                 dl_dir.mkdir(exist_ok=True)
-                
+
                 # Collect all missing URLs
                 to_download = []
                 for pq_path, mapping, cols in ann_data_list:
@@ -538,7 +452,7 @@ python training/train.py --model forex_predictor
                             dest = dl_dir / f"{key}{ext}"
                             if not dest.exists():
                                 to_download.append((url, str(dest)))
-                
+
                 if to_download:
                     print(f"[RETRIEVAL] Downloading {len(to_download)} missing images for {slug}...")
                     with requests.Session() as session:
@@ -546,7 +460,7 @@ python training/train.py --model forex_predictor
                             dl_tasks = [dl_executor.submit(download_image, url, dest, session) for url, dest in to_download]
                             for _ in tqdm(as_completed(dl_tasks), total=len(dl_tasks), desc="   -> Downloading", leave=False):
                                 pass
-                
+
                 # Now scan the downloads directory for the standard physical loop
                 images = list(fast_scan(str(dl_dir)))
 
@@ -616,15 +530,15 @@ python training/train.py --model forex_predictor
                         except Exception as e:
                             print(f"[WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
                             continue
-                            
+
                     if num_rows == 0: continue
-                    
+
                     # We pass num_rows explicitly so we can use it for balancing and tqdm later
                     task_item = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, None, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
-                    
+
                     if tag == "nsfw": nsfw_tasks.append(task_item)
                     else: sfw_tasks.append(task_item)
-                    
+
                     global_idx += num_rows
 
             else:
@@ -643,7 +557,7 @@ python training/train.py --model forex_predictor
                         continue
 
                     img_path = Path(img_path_str)
-                    
+
                     # 2026 Integrity Guard: Eliminate cross-contamination in specialized restoration manifolds
                     if task == "restoration":
                         p_low = img_path_str.lower()
@@ -659,7 +573,7 @@ python training/train.py --model forex_predictor
                             if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]): continue
 
                     split = "train" if random.random() < train_prob else "val"
-                    
+
                     # 2026 CodeFormer Exact Split Injection
                     if model_key == "codeformer" and "realvsfakefaces" in prefix.lower():
                         if "real" in img_path.parent.name.lower():
@@ -709,19 +623,19 @@ python training/train.py --model forex_predictor
 
         # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
         target_nsfw_ratio = float(model_config.get("nsfw_ratio", 0))
-        
+
         def get_count(task_list):
             return sum(args[14] if args[0].__name__ == "process_parquet_shard" else 1 for args in task_list)
-            
+
         sfw_count = get_count(sfw_tasks)
         nsfw_count = get_count(nsfw_tasks)
-        
+
         if target_nsfw_ratio > 0 and nsfw_count > 0:
             max_nsfw = int(sfw_count * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
             if nsfw_count > max_nsfw:
                 print(f"[BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
                 nsfw_keep_prob = max_nsfw / nsfw_count
-                
+
                 # Apply drop directly
                 new_nsfw_tasks = []
                 for item in nsfw_tasks:
@@ -735,7 +649,7 @@ python training/train.py --model forex_predictor
                         if random.random() <= nsfw_keep_prob:
                             new_nsfw_tasks.append(item)
                 nsfw_tasks = new_nsfw_tasks
-                
+
         all_tasks = sfw_tasks + nsfw_tasks
         # 2026 Optimization: Disable global shuffle to maintain disk locality (High-Speed HDD support)
         # random.shuffle(all_tasks)
@@ -876,7 +790,7 @@ python training/train.py --model forex_predictor
 
         # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
         print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
-        
+
         shard_dir = None
         has_diffusion = conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone() is not None
         if has_diffusion:
@@ -889,14 +803,14 @@ python training/train.py --model forex_predictor
         for source in unique_sources:
             cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
             rows = cursor.fetchall()
-            
+
             if has_diffusion and shard_dir is not None:
                 shard_name = f"{prefix_str}{source}{suffix_str}.tar"
                 print(f"[SHARD] Writing {shard_name}...")
                 sink = wds.TarWriter(str(shard_dir / shard_name))
             else:
                 sink = None
-                
+
             for row in rows:
                 res = {"id": row[0], "name": row[1], "source": row[2], "task": row[3], "split": row[4],
                        "hash": row[5], "nima_score": row[6], "caption": row[7], "style_tag": row[8], "cluster_id": row[11]}
@@ -909,7 +823,7 @@ python training/train.py --model forex_predictor
                         "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
                     })
                 final_index.append(res)
-                
+
             if sink:
                 sink.close()
 
@@ -919,13 +833,13 @@ python training/train.py --model forex_predictor
             json.dump(final_index, f, indent=2)
 
         remove_empty_dirs(output_root)
-        
+
         generate_dataset_docs(output_root, final_index, pascal_name)
 
         try:
             from notebook_generator import generate_training_notebook as gen_nb
             from notebook_generator import generate_colab_training_notebook as gen_colab_nb
-            
+
             resolved_model = model_key
             if not resolved_model:
                 clean_name = pascal_name.replace("LemGendized", "").replace("KaggleReady", "").replace("Large", "").replace("Mini", "")

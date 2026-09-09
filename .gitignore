@@ -13,14 +13,17 @@ LemGendizedDatasets/
 .huggingface_token
 .kaggle_token
 .kaggle/
+.mt5_credentials
 
 # Python & Environment
 .cache/
+__init__.py
 __pycache__/
 *.py[cod]
 *$py.class
 .venv*/
 .env
+typings/*
 
 # IDEs
 .vscode/

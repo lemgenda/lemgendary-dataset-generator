@@ -1,12 +1,68 @@
+# ── Task Metadata (for documentation & README generation) ──
+task_metadata:
+  quality:
+    category: Image Quality Assessment
+    desc: Unified dataset for training SOTA quality models and evaluation systems.
+    obj: Predict human-perceptual quality score.
+    targets_desc: Because this specific task organically maps abstracted analytical endpoints sequentially without complex masks or explicit spatial localizations, target artifacts are bypassed to maximize storage density.
+  authenticity:
+    category: Image Authenticity Assessment
+    desc: Unified dataset for training SOTA models to distinguish between AI-generated images and real photographs.
+    obj: Predict image authenticity score and map to binary categorical distribution.
+    targets_desc: Because this specific task organically maps abstracted analytical endpoints sequentially without complex masks or explicit spatial localizations, target artifacts are bypassed to maximize storage density.
+  classification:
+    category: Image Classification
+    desc: High-throughput dataset for image classification and content tagging.
+    obj: Predict categorical classes and safety content labels.
+    targets_desc: Classification tasks utilize simple class labels natively stored inside `labels/`. Target images are not required.
+  restoration:
+    category: Image Restoration
+    desc: Standardized dataset for image restoration, denoising, and enhancement models.
+    obj: Restore degraded images and enhance visual quality.
+    targets_desc: Because this dataset natively inherently evaluates pixel-to-pixel structural auto-encoder derivations, the `targets/` folder physically houses the uncorrupted High-Resolution matrices strictly mapped identically 1-to-1 against `images/`.
+  super-resolution:
+    category: Super-Resolution
+    desc: High-fidelity dataset for image super-resolution and ultra-zoom models.
+    obj: Scale low-resolution images to high-resolution while preserving details.
+    targets_desc: The `targets/` folder houses the original high-resolution ground truth images strictly mapped identically to the downscaled counterparts in `images/`.
+  diffusion:
+    category: Generative Modeling
+    desc: Massive manifold for training Latent Diffusion Models and text-to-image systems.
+    obj: Generate high-fidelity images from text prompts or latent seeds.
+    targets_desc: Diffusion manifolds utilize latent space representations and textual captions. Data is natively stored in compressed `.parquet` blocks natively bypassing `images/` architectures.
+  vlm:
+    category: Vision-Language Modeling
+    desc: Multimodal conversational dataset for training Large Vision-Language Models (VLMs).
+    obj: Align visual token extraction with causal language generation.
+    targets_desc: VLM manifolds utilize structured multi-turn conversation arrays alongside `image_bytes`. Data is natively stored in compressed `.parquet` blocks.
+  detection:
+    category: Object Detection
+    desc: Industrial dataset for object detection and localization.
+    obj: Detect and localize multiple object classes with high precision.
+    targets_desc: Detection tasks map bounding boxes and classification labels stored in `labels/`; physical image targets are not required for this modality.
+  segmentation:
+    category: Image Segmentation
+    desc: Detailed dataset for semantic and instance segmentation.
+    obj: Assign categorical labels to every pixel in the image manifold.
+    targets_desc: The `targets/` folder contains pixel-perfect segmentation masks or parsed category maps identically mapped to `images/`.
+  pose:
+    category: Pose Estimation / Face Landmarks
+    desc: High-fidelity dataset for human pose estimation and dense face landmarking.
+    obj: Regress exact coordinate points for biological landmarks.
+    targets_desc: Landmark coordinates are stored as normalized vectors within the `labels/` directory, removing the need for physical target bitmaps.
+  forex:
+    category: Financial Time-Series & Forex Prediction
+    desc: High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.
+    obj: Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss boundaries.
+    targets_desc: Time-series manifolds natively compute targets dynamically via causal window boundaries. Physical image targets are completely inapplicable to this domain.
+
+# ── Model Metadata (for README model profiles) ──
 models_metadata:
   forex_predictor:
     name: LemGendary Forex Predictor (Multi-Scale CNN-Transformer)
     arch: Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)
     loss: forex_dual
     datasets:
-    - LemGendizedForexTitanCoreLarge
-    - LemGendizedForexG7MajorsLarge
-    - LemGendizedForexHighBetaLarge
     - LemGendizedForexUniverseLarge
     sota_targets:
       dir_acc: 78.7

@@ -39,9 +39,6 @@ def _prompt_multiselect(label, options, default_all=True):
 
 def reduce_dataset():
     print("\n[SCANNING] Locating existing manifolds in LemGendaryDatasets...")
-    # Accept any compiled LemGendized*Large folder regardless of internal layout.
-    # Vision manifolds use images/ or targets/; Forex manifolds use forex/.
-    # Empty stub folders (no subdirectories at all) are excluded as not yet compiled.
     manifolds = [
         d for d in sorted(OUT_PARENT.iterdir())
         if d.is_dir()
@@ -90,7 +87,6 @@ def reduce_dataset():
         else:
             base_name = source_root.name
 
-        # Detect dataset type from dataset_info.yaml before asking type-specific questions.
         dataset_type = "quality"
         info = {}
         info_path = source_root / "dataset_info.yaml"
@@ -103,7 +99,7 @@ def reduce_dataset():
             _reduce_forex_dataset(source_root, base_name, info)
             continue
 
-        # --- Vision / quality manifold flow ---
+        # --- Vision / quality manifold flow (unchanged) ---
         try:
             raw_gb = input("Target max size in GB [Default: 190.0]: ").strip()
             max_gb = float(raw_gb) if raw_gb else 190.0
@@ -128,7 +124,6 @@ def reduce_dataset():
         new_index = []
         valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
-        # Calculate dynamic physical train_prob to enforce disjoint subsets perfectly.
         primary_dir_name = "images" if (source_root / "images").exists() else "targets"
         train_dir = source_root / primary_dir_name / "train"
         val_dir = source_root / primary_dir_name / "val"
@@ -147,18 +142,15 @@ def reduce_dataset():
             if not primary_split_dir.exists():
                 continue
 
-            # Single-pass iteration for extreme speed (165k+ files).
             all_imgs = [p for p in primary_split_dir.iterdir() if p.suffix.lower() in valid_exts]
 
             if not all_imgs:
                 continue
 
-            # Group by source slug to ensure balanced representation from all sources.
             from collections import defaultdict
             images_by_slug = defaultdict(list)
             for img in all_imgs:
                 try:
-                    # Filename format: prefix_slug_idx.ext (e.g. data_koniq_000000000.jpg)
                     slug = img.name.split('_')[1]
                 except IndexError:
                     slug = "unknown"
@@ -167,7 +159,6 @@ def reduce_dataset():
             for slug in images_by_slug:
                 random.shuffle(images_by_slug[slug])
 
-            # Round-robin interleaved sampling: pulls 1 image per dataset sequentially.
             sampled_imgs = []
             lists = list(images_by_slug.values())
             while lists:
@@ -256,13 +247,14 @@ def _reduce_forex_dataset(source_root, base_name, info):
 
     print(f"\n--- Forex Reduction: {source_root.name} ---")
 
-    # Discover available timeframes from the forex directory on disk.
+    # Discover available years from the forex directory structure.
     forex_src = source_root / "forex"
     avail_pairs = sorted(
         d.name for d in forex_src.iterdir() if d.is_dir()
     ) if forex_src.exists() else []
 
     avail_tfs_raw = set()
+    avail_years = set()
     if forex_src.exists():
         for pair_dir in forex_src.iterdir():
             if not pair_dir.is_dir():
@@ -273,25 +265,44 @@ def _reduce_forex_dataset(source_root, base_name, info):
                 try:
                     avail_tfs_raw.add(int(tf_dir.name))
                 except ValueError:
-                    pass
+                    continue
+                # Now look for year subdirectories under the timeframe
+                for year_dir in tf_dir.iterdir():
+                    if year_dir.is_dir() and year_dir.name.isdigit():
+                        avail_years.add(int(year_dir.name))
     avail_tfs = sorted(avail_tfs_raw)
+    avail_years = sorted(avail_years)
 
-    if not avail_pairs or not avail_tfs:
-        print(f"[ERROR] No compiled forex data found under {forex_src}. Cannot reduce.")
+    if not avail_pairs or not avail_tfs or not avail_years:
+        print(f"[ERROR] No compiled forex data found under {forex_src} (missing pairs, timeframes, or year folders).")
         return
 
-    # 1. Number of folds
+    # Ask user for year range to keep.
+    print(f"\nAvailable years: {avail_years}")
+    default_start = avail_years[0]
+    default_end = avail_years[-1]
     try:
-        fold_raw = input("\nEnter target number of folds (1 to 6) [Default: 6]: ").strip()
-        target_folds = int(fold_raw) if fold_raw else 6
+        start_raw = input(f"Enter start year [Default: {default_start}]: ").strip()
+        start_year = int(start_raw) if start_raw else default_start
+        end_raw = input(f"Enter end year [Default: {default_end}]: ").strip()
+        end_year = int(end_raw) if end_raw else default_end
     except ValueError:
-        target_folds = 6
+        start_year, end_year = default_start, default_end
     except KeyboardInterrupt:
         print("\n[ABORTED] Operation cancelled by user.")
         return
-    target_folds = max(1, min(6, target_folds))
 
-    # 2. Timeframe multiselect (built from what is actually on disk)
+    if start_year > end_year:
+        print("[ERROR] Start year must be <= end year.")
+        return
+
+    # Filter years that actually exist within the range.
+    kept_years = [y for y in avail_years if start_year <= y <= end_year]
+    if not kept_years:
+        print("[ERROR] No years in the specified range exist in the source.")
+        return
+
+    # Timeframe multiselect (unchanged)
     tf_labels = [str(tf) for tf in avail_tfs]
     try:
         kept_tf_strs = _prompt_multiselect("Select timeframes to include:", tf_labels)
@@ -300,11 +311,10 @@ def _reduce_forex_dataset(source_root, base_name, info):
         return
     kept_tfs = set(int(x) for x in kept_tf_strs)
 
-    # All pairs present in the source manifold are always included.
-    # Pair scope is fixed per manifold by design and is not configurable at reduction time.
+    # All pairs are kept (unchanged)
     kept_pairs = set(avail_pairs)
 
-    # 3. Output suffix
+    # Output suffix
     try:
         raw_suffix = input("\nNew suffix [Default: Reduced]: ").strip()
         suffix = raw_suffix if raw_suffix else "Reduced"
@@ -316,22 +326,7 @@ def _reduce_forex_dataset(source_root, base_name, info):
     target_root = OUT_PARENT / target_name
 
     print(f"\n[FOREX REDUCING] {source_root.name} -> {target_name}")
-    print(f"  Folds: {target_folds}  |  Timeframes: {sorted(kept_tfs)}  |  Pairs: all ({len(kept_pairs)})")
-
-    # Determine the sliding window of original folds.
-    # For N=3 we take the most recent 4 original folds [3,4,5,6].
-    # window[0] and window[1] are merged into new fold 1; subsequent folds shift down.
-    orig_start = max(1, 7 - target_folds - 1)
-    window = list(range(orig_start, 7))
-
-    fold_mapping = {}
-    if len(window) > 1:
-        fold_mapping[window[0]] = 1
-        fold_mapping[window[1]] = 1
-        for i in range(2, len(window)):
-            fold_mapping[window[i]] = i
-    else:
-        fold_mapping[window[0]] = 1
+    print(f"  Years: {kept_years[0]} – {kept_years[-1]}  |  Timeframes: {sorted(kept_tfs)}  |  Pairs: all ({len(kept_pairs)})")
 
     forex_dst = target_root / "forex"
     actual_copied_pairs = set()
@@ -352,51 +347,31 @@ def _reduce_forex_dataset(source_root, base_name, info):
                 except ValueError:
                     continue
 
-                folds_src = tf_dir / "folds"
-                folds_dst = forex_dst / pair_dir.name / tf_dir.name / "folds"
-                folds_dst.mkdir(parents=True, exist_ok=True)
-
-                # Copy val fold.
-                val_src = folds_src / "val"
-                if val_src.exists():
-                    shutil.copytree(val_src, folds_dst / "val", dirs_exist_ok=True)
-
-                # Process numbered folds.
-                merged_fold_1_srcs = []
-                for orig_f, new_f in fold_mapping.items():
-                    f_src = folds_src / f"fold_{orig_f}"
-                    if not f_src.exists():
+                # Copy only the years we want.
+                for year_dir in sorted(tf_dir.iterdir()):
+                    if not year_dir.is_dir() or not year_dir.name.isdigit():
+                        continue
+                    year_int = int(year_dir.name)
+                    if year_int not in kept_years:
                         continue
 
-                    f_dst = folds_dst / f"fold_{new_f}"
-                    if new_f == 1 and target_folds < 6:
-                        merged_fold_1_srcs.append(f_src)
-                    else:
-                        shutil.copytree(f_src, f_dst, dirs_exist_ok=True)
+                    dst_year = forex_dst / pair_dir.name / tf_dir.name / year_dir.name
+                    dst_year.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(year_dir, dst_year, dirs_exist_ok=True)
 
-                # Merge source folds into fold_1 when compressing the timeline.
-                if merged_fold_1_srcs:
-                    f1_dst = folds_dst / "fold_1"
-                    f1_dst.mkdir(parents=True, exist_ok=True)
-
-                    for fname in ["X.npy", "y_dir.npy", "y_mag.npy", "timestamps.npy"]:
-                        arrs = []
-                        for m_src in merged_fold_1_srcs:
-                            fpath = m_src / fname
-                            if fpath.exists():
-                                arrs.append(np.load(fpath))
-                        if arrs:
-                            np.save(f1_dst / fname, np.concatenate(arrs, axis=0))
-
-    # Write updated dataset_info.yaml.
+    # Write updated dataset_info.yaml with the new year range.
     new_info = info.copy()
     new_info["pairs"] = sorted(actual_copied_pairs)
     new_info["timeframe_rungs"] = sorted(kept_tfs)
+    # Adjust start_date to the first kept year (January 1st)
+    new_info["start_date"] = f"{kept_years[0]}-01-01"
+    # Optionally add an end_date or years field (optional)
+    # new_info["years"] = kept_years
+
     with open(target_root / "dataset_info.yaml", "w") as f:
         yaml.dump(new_info, f, sort_keys=False)
 
-    # Copy companion flat files from source so the Reduced manifold is self-contained.
-    # Includes: category.txt, classes.txt, README.md, training notebooks (*.ipynb).
+    # Copy companion flat files from source.
     companion_globs = ["*.txt", "*.md", "*.ipynb"]
     for pattern in companion_globs:
         for src_file in source_root.glob(pattern):
