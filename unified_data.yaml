@@ -220,15 +220,7 @@ datasets:
   # ── Unified Forex Foundation (16 symbols) ──
   forex_universe:
     name: ForexUniverse
-    kaggle_ref:
-    - kaggle://lemtreursi/forexuniverse2019
-    - kaggle://lemtreursi/forexuniverse2020
-    - kaggle://lemtreursi/forexuniverse2021
-    - kaggle://lemtreursi/forexuniverse2022
-    - kaggle://lemtreursi/forexuniverse2023
-    - kaggle://lemtreursi/forexuniverse2024
-    - kaggle://lemtreursi/forexuniverse2025
-    - kaggle://lemtreursi/forexuniverse2026
+    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverselarge
     acquisition_mode: mt5_terminal
     dataset_type: forex
     category: Forex & Financial Time-Series
