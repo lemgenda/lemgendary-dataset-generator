@@ -47,7 +47,7 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
     if root_dir is not None:
         root_path = Path(root_dir).resolve()
     else:
-        root_path = source_path
+        root_path = source_path.parent
 
     for root, _, files in os.walk(source_path):
         for f in files:
@@ -56,15 +56,16 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
                 size = full_path.stat().st_size
                 if root_dir is not None and base_dir is not None:
                     # shutil.make_archive compatibility: root_dir=OUT_PARENT, base_dir=manifold_name
-                    arcname = str(full_path.relative_to(Path(root_dir).resolve())).replace("\\", "/")
+                    arcname = full_path.relative_to(Path(root_dir).resolve()).as_posix()
                 elif base_dir:
                     rel_to_source = full_path.relative_to(source_path)
-                    arcname = str(Path(base_dir) / rel_to_source).replace("\\", "/")
+                    arcname = (Path(base_dir) / rel_to_source).as_posix()
                 elif root_dir is not None:
-                    arcname = str(full_path.relative_to(Path(root_dir).resolve())).replace("\\", "/")
+                    arcname = full_path.relative_to(Path(root_dir).resolve()).as_posix()
                 else:
-                    # Default: archive entries are relative to source_path (no extra outer nesting)
-                    arcname = str(full_path.relative_to(source_path)).replace("\\", "/")
+                    # Default: archive entries retain manifold directory name
+                    arcname = full_path.relative_to(source_path.parent).as_posix()
+
                 file_entries.append((full_path, arcname, size))
                 total_bytes += size
             except OSError:

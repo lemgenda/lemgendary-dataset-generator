@@ -892,6 +892,13 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
     if is_forex:
         for y in range(2019, 2027):
             resources.append({
+                "path": f"{manifold_name}/ForexUniverse{y}.parquet",
+                "description": f"Annual OHLCV and feature tensor shards for year {y}",
+                "schema": {
+                    "fields": FOREX_COLUMN_FIELDS
+                }
+            })
+            resources.append({
                 "path": f"ForexUniverse{y}.parquet",
                 "description": f"Annual OHLCV and feature tensor shards for year {y}",
                 "schema": {
