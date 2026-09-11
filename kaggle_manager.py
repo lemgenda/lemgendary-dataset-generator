@@ -112,12 +112,12 @@ def get_dataset_version_info(repo_id: str) -> DatasetVersionInfo:
             req.owner_slug = owner
             req.dataset_slug = slug
             resp = client.datasets.dataset_api_client.get_dataset(req)
-            curr = int(resp.current_version_number or 0)
+            curr = resp.current_version_number or 0
             raw_versions = resp.versions or []
             valid_versions = [v for v in raw_versions if v is not None and v.version_number is not None]
-            max_v = max([int(v.version_number) for v in valid_versions], default=curr)
+            max_v = max([v.version_number for v in valid_versions], default=curr)
             versions_dict: dict[int, str] = {
-                int(v.version_number): str(v.status or "")
+                v.version_number: v.status or ""
                 for v in valid_versions
             }
             return {
@@ -346,21 +346,40 @@ def main():
         print(f"PULLING: {clean_repo_id}")
         target_dir = Path(args.output_dir).resolve()
 
-        # Determine root datasets directory and manifold name
+        # Determine root datasets directory and canonical manifold directory
+        slug = clean_repo_id.split("/")[-1]
         if target_dir.name.startswith("LemGendized"):
             root_datasets_dir = target_dir.parent
             manifold_name = target_dir.name
         else:
             root_datasets_dir = target_dir
-            manifold_name = clean_repo_id.split("/")[-1]
+            manifold_name = slug
+            try:
+                import yaml
+                yd_path = Path(__file__).parent / "unified_data.yaml"
+                if yd_path.exists():
+                    with open(yd_path, "r", encoding="utf-8") as yf:
+                        ydata = yaml.safe_load(yf) or {}
+                    prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
+                    suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "Large")
+                    for _, entry in ydata.get("datasets", {}).items():
+                        ref = entry.get("kaggle_ref", "")
+                        if slug.lower() in ref.lower():
+                            manifold_name = f"{prefix}{entry.get('name', '')}{suffix}"
+                            break
+            except Exception:
+                pass
+            target_dir = root_datasets_dir / manifold_name
 
         root_datasets_dir.mkdir(parents=True, exist_ok=True)
-        slug = clean_repo_id.split("/")[-1]
+        target_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Resumption check: check if an unextracted or partially extracted archive already exists
         archive_candidates = [
             root_datasets_dir / f"{manifold_name}.zip",
             root_datasets_dir / f"{slug}.zip",
+            root_datasets_dir / f"{manifold_name.lower()}.zip",
+            root_datasets_dir / f"{slug.lower()}.zip",
             target_dir / f"{manifold_name}.zip",
             target_dir / f"{slug}.zip",
         ]
@@ -434,12 +453,12 @@ def main():
 
         if archive_to_extract and archive_to_extract.exists():
             print(f"[EXTRACT] Unpacking manifold archive: {archive_to_extract.name}")
-            success = smart_extract(archive_to_extract, str(root_datasets_dir), delete_after=True)
+            success = smart_extract(archive_to_extract, str(target_dir), delete_after=True)
             if not success:
                 print(f"[ERROR] Extraction failed or interrupted. Archive preserved at {archive_to_extract} for resumption.")
                 sys.exit(1)
             else:
-                print(f"[SUCCESS] Manifold extracted successfully into {root_datasets_dir / manifold_name}")
+                print(f"[SUCCESS] Manifold extracted successfully into {target_dir}")
 
     elif args.action == "upload":
         print(f"PUSHING: {clean_repo_id}")
@@ -464,64 +483,75 @@ def main():
                 except OSError:
                     pass
 
-        staging_dir = None
-        if file_count > 50:
-            manifold_name = src_path.name
-            staging_dir = src_path.parent / f".staging_{manifold_name}"
-            staging_dir.mkdir(parents=True, exist_ok=True)
-            target_zip = staging_dir / f"{manifold_name}.zip"
+        manifold_name = src_path.name
+        root_datasets_dir = src_path.parent
+        staging_dir = root_datasets_dir / f".staging_{manifold_name}"
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        target_zip = staging_dir / f"{manifold_name}.zip"
 
-            # Check if valid staging archive already exists for resumption
-            from archive_manager import verify_archive, create_archive
-            can_reuse = False
-            if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
-                print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
-                if target_zip.stat().st_mtime >= newest_src_mtime and verify_archive(target_zip):
-                    can_reuse = True
-                    print(f"[SYNC] Existing staging archive is valid and up to date. Skipping compression and resuming upload...")
-                else:
-                    print(f"[SYNC] Existing archive is outdated or invalid. Re-creating...")
+        # Check if valid staging archive already exists for resumption
+        from archive_manager import verify_archive, create_archive
+        can_reuse = False
+        if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
+            print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
+            if target_zip.stat().st_mtime >= newest_src_mtime and verify_archive(target_zip):
+                can_reuse = True
+                print(f"[SYNC] Existing staging archive is valid and up to date. Skipping compression and resuming upload...")
+            else:
+                print(f"[SYNC] Existing archive is outdated or invalid. Re-creating...")
+                try:
+                    target_zip.unlink()
+                except OSError:
+                    pass
+
+        if not can_reuse:
+            print(f"[SYNC] Archiving manifold '{manifold_name}' ({file_count} files) from root {root_datasets_dir.name}...")
+            success = create_archive(src_path, target_zip, format="zip", root_dir=root_datasets_dir)
+            if not success or not target_zip.exists():
+                raise RuntimeError(f"Archive creation failed for {src_path}")
+
+        zip_size_gb = target_zip.stat().st_size / (1024**3)
+        print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
+
+        meta_src = src_path / "dataset-metadata.json"
+        if meta_src.exists():
+            shutil.copy2(meta_src, staging_dir / "dataset-metadata.json")
+
+        upload_success = False
+        try:
+            print(f"[SYNC] Uploading archive to Kaggle via KaggleHub API...")
+            kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
+            upload_success = True
+        except Exception as e:
+            print(f"[ERROR] Upload failed: {e}")
+            print(f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next attempt.")
+            sys.exit(1)
+        finally:
+            if upload_success:
+                print(f"[SYNC] Upload succeeded. Cleaning up local staging archive...")
+                if target_zip.exists():
                     try:
                         target_zip.unlink()
                     except OSError:
                         pass
-
-            if not can_reuse:
-                print(f"[SYNC] Detected {file_count} files (>50 threshold). Archiving manifold with progress tracking...")
-                success = create_archive(src_path, target_zip, format="zip")
-                if not success or not target_zip.exists():
-                    raise RuntimeError(f"Archive creation failed for {src_path}")
-
-            zip_size_gb = target_zip.stat().st_size / (1024**3)
-            print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
-
-            upload_success = False
-            try:
-                print(f"[SYNC] Uploading archive to Kaggle via KaggleHub API...")
-                kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
-                upload_success = True
-            except Exception as e:
-                print(f"[ERROR] Upload failed: {e}")
-                print(f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next attempt.")
-                sys.exit(1)
-            finally:
-                if upload_success:
-                    print(f"[SYNC] Upload succeeded. Cleaning up local staging archive...")
-                    if target_zip.exists():
-                        try:
-                            target_zip.unlink()
-                        except OSError:
-                            pass
-                    if staging_dir.exists():
-                        try:
-                            shutil.rmtree(staging_dir, ignore_errors=True)
-                        except OSError:
-                            pass
-        else:
-            print(f"[SYNC] Uploading {file_count} files directly to Kaggle via KaggleHub API...")
-            kagglehub.dataset_upload(clean_repo_id, str(src_path))
+                if staging_dir.exists():
+                    try:
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                    except OSError:
+                        pass
 
         print(f"[SUCCESS] Dataset upload payload transferred to Kaggle.")
+
+        if meta_src.exists():
+            try:
+                from kaggle.api.kaggle_api_extended import KaggleApi
+                api = KaggleApi()
+                api.authenticate()
+                print(f"[SYNC] Pushing Kaggle dataset-metadata with column definitions...")
+                api.dataset_metadata_update(clean_repo_id, str(src_path))
+                print(f"[SUCCESS] Kaggle dataset metadata & column descriptions synced.")
+            except Exception as meta_ex:
+                print(f"[WARN] Kaggle metadata update notice: {meta_ex}")
 
         if not args.no_wait:
             success = track_kaggle_dataset_status(

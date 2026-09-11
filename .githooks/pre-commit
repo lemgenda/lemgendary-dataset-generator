@@ -1,0 +1,10 @@
+#!/bin/sh
+# Pre-commit hook for lemgendary-datasets
+echo "[PRE-COMMIT] Running LemGendary Datasets Verification Suite..."
+python verify_datasets.py --staged
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "[PRE-COMMIT] Verification failed with exit code $EXIT_CODE. Aborting commit."
+    exit $EXIT_CODE
+fi
+exit 0

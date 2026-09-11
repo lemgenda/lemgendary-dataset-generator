@@ -13,6 +13,7 @@ LemGendary MT5 Data Pipeline v5.4 (Final – NAS100 renamed, Disk‑Error Resili
 
 import os
 import sys
+import json
 import argparse
 import numpy as np
 import pandas as pd
@@ -20,8 +21,42 @@ from datetime import datetime
 from typing import Any, List, Dict, Optional
 import time
 import yaml
+import pyarrow as pa
+import pyarrow.parquet as pq
 
-# ─── Internal Constants ────────────────────────────────────────────────────
+# ─── Internal Constants & Schema Metadata ──────────────────────────────────
+COLUMN_DESCRIPTIONS = {
+    "pair": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500).",
+    "timeframe": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min).",
+    "timestamp": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close.",
+    "y_dir": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up).",
+    "tp_pips": "Optimal forward Take-Profit target excursion magnitude in pips.",
+    "sl_pips": "Maximum adverse excursion Stop-Loss safety threshold in pips.",
+    "seq_len": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure).",
+    "n_features": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio).",
+    "features": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+}
+
+PARQUET_SCHEMA = pa.schema([
+    pa.field("pair", pa.string(), metadata={"description": COLUMN_DESCRIPTIONS["pair"]}),
+    pa.field("timeframe", pa.int32(), metadata={"description": COLUMN_DESCRIPTIONS["timeframe"]}),
+    pa.field("timestamp", pa.int64(), metadata={"description": COLUMN_DESCRIPTIONS["timestamp"]}),
+    pa.field("y_dir", pa.int8(), metadata={"description": COLUMN_DESCRIPTIONS["y_dir"]}),
+    pa.field("tp_pips", pa.float32(), metadata={"description": COLUMN_DESCRIPTIONS["tp_pips"]}),
+    pa.field("sl_pips", pa.float32(), metadata={"description": COLUMN_DESCRIPTIONS["sl_pips"]}),
+    pa.field("seq_len", pa.int16(), metadata={"description": COLUMN_DESCRIPTIONS["seq_len"]}),
+    pa.field("n_features", pa.int16(), metadata={"description": COLUMN_DESCRIPTIONS["n_features"]}),
+    pa.field("features", pa.binary(), metadata={"description": COLUMN_DESCRIPTIONS["features"]}),
+], metadata={
+    b"description": b"LemGendary Forex Universe High-Fidelity OHLCV Temporal Manifold",
+    b"columns": json.dumps(COLUMN_DESCRIPTIONS).encode("utf-8"),
+    b"domain": b"Financial & Time-Series",
+    b"task": b"forex_prediction",
+    b"timeframe_rungs": b"[1, 5, 15, 60, 240, 1440]",
+    b"features_list": b'["open", "high", "low", "close", "volume", "rsi", "macd", "macd_signal", "atr", "bb_width", "session_sin", "session_cos", "atr_percentile", "bar_range_ratio"]',
+    b"author": b"LemGendary AI",
+    b"created_by": b"LemGendary MT5 Compiler Pipeline"
+})
 FEATURES = [
     "open", "high", "low", "close", "volume",
     "rsi", "macd", "macd_signal", "atr", "bb_width",
@@ -471,13 +506,19 @@ def normalize_ohlcv(df):
     return df
 
 
-# ─── Sharding with Resumption and Disk‑Error Resilience ─────────────────
+# ─── Sharding with Resumption and Parquet Compilation ────────────────────
 
 def year_chunk_complete(out_dir, year, pair, tf, chunk_suffix=None):
+    year_parquet = os.path.join(out_dir, f"ForexUniverse{year}.parquet")
+    if os.path.isfile(year_parquet):
+        return True
     shard_dir = os.path.join(out_dir, f"ForexUniverse{year}", pair, str(tf))
     if not os.path.isdir(shard_dir):
         return False
     suffix = f"_chunk{chunk_suffix}" if chunk_suffix is not None else ""
+    parquet_shard = os.path.join(shard_dir, f"shard{suffix}.parquet")
+    if os.path.isfile(parquet_shard):
+        return True
     x_file = os.path.join(shard_dir, f"X{suffix}.npy")
     y_dir_file = os.path.join(shard_dir, f"y_dir{suffix}.npy")
     y_mag_file = os.path.join(shard_dir, f"y_mag{suffix}.npy")
@@ -490,30 +531,52 @@ def save_shards(X, y_dir, y_mag, out_dir, pair, timeframe_min, year_split,
     os.makedirs(shard_dir, exist_ok=True)
 
     suffix = f"_chunk{chunk_suffix}" if chunk_suffix is not None else ""
-    x_path = os.path.join(shard_dir, f"X{suffix}.npy")
-    y_dir_path = os.path.join(shard_dir, f"y_dir{suffix}.npy")
-    y_mag_path = os.path.join(shard_dir, f"y_mag{suffix}.npy")
+    parquet_path = os.path.join(shard_dir, f"shard{suffix}.parquet")
 
-    # ─── Retry logic for OSError (disk full, permissions, etc.) ────
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            np.save(x_path, X)
-            np.save(y_dir_path, y_dir)
-            np.save(y_mag_path, y_mag)
-            if timestamps is not None:
-                ts_path = os.path.join(shard_dir, f"timestamps{suffix}.npy")
-                np.save(ts_path, timestamps)
-            print(f" [MT5Pipeline] Shard Written -> {shard_dir} ({len(X)} samples)")
-            return  # success
-        except OSError as e:
-            print(f" [ERROR] Disk write failed for {shard_dir} (attempt {attempt+1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(0.5)
-            else:
-                print(f" [ERROR] Giving up on chunk {year_split}-{pair}-{timeframe_min}-{chunk_suffix}")
-                # We skip this chunk – the file will be missing, so resumption will retry later
-                return
+    num_samples = len(X)
+    seq_len = X.shape[1] if len(X.shape) > 1 else 168
+    n_features = X.shape[2] if len(X.shape) > 2 else 14
+    ts_arr = timestamps if timestamps is not None else np.zeros(num_samples, dtype=np.int64)
+
+    x_bytes = [sample.tobytes() for sample in X]
+    table = pa.Table.from_arrays([
+        pa.array([pair] * num_samples, type=pa.string()),
+        pa.array([timeframe_min] * num_samples, type=pa.int32()),
+        pa.array(ts_arr, type=pa.int64()),
+        pa.array(y_dir, type=pa.int8()),
+        pa.array(y_mag[:, 0], type=pa.float32()),
+        pa.array(y_mag[:, 1], type=pa.float32()),
+        pa.array([seq_len] * num_samples, type=pa.int16()),
+        pa.array([n_features] * num_samples, type=pa.int16()),
+        pa.array(x_bytes, type=pa.binary()),
+    ], schema=PARQUET_SCHEMA)
+
+    pq.write_table(table, parquet_path, compression="zstd", compression_level=3)
+    print(f" [MT5Pipeline] Parquet Shard Written -> {parquet_path} ({num_samples} samples)")
+
+
+def consolidate_year_parquet(out_dir, year):
+    """Consolidates all pair/tf parquet shards into single ForexUniverse{year}.parquet."""
+    year_dir = os.path.join(out_dir, f"ForexUniverse{year}")
+    final_parquet = os.path.join(out_dir, f"ForexUniverse{year}.parquet")
+    if not os.path.isdir(year_dir):
+        return
+    shard_files = []
+    for root, _, files in os.walk(year_dir):
+        for f in files:
+            if f.endswith(".parquet"):
+                shard_files.append(os.path.join(root, f))
+    if not shard_files:
+        return
+    print(f" [MT5Pipeline] Consolidating {len(shard_files)} shards into {final_parquet}...")
+    writer = pq.ParquetWriter(final_parquet, schema=PARQUET_SCHEMA, compression="zstd", compression_level=3)
+    for sf in sorted(shard_files):
+        tbl = pq.read_table(sf)
+        writer.write_table(tbl, row_group_size=5000)
+    writer.close()
+    import shutil
+    shutil.rmtree(year_dir, ignore_errors=True)
+    print(f" [MT5Pipeline] Consolidated -> {final_parquet}")
 
 
 def build_windows_and_save_by_year(df, seq_len, out_dir, pair, tf,
@@ -638,11 +701,18 @@ def run_download_pipeline(
             for ds_name in set(dataset_names):
                 all_years_present = True
                 for year in range(int(start_date.split('-')[0]), current_year + 1):
+                    year_parquet = os.path.join(out_dir, ds_name, f"ForexUniverse{year}.parquet")
+                    if os.path.isfile(year_parquet):
+                        continue
                     shard_dir = os.path.join(out_dir, ds_name, f"ForexUniverse{year}", pair, str(tf))
                     if not os.path.isdir(shard_dir):
                         all_years_present = False
                         break
-                    any_file = any(f.endswith('.npy') for f in os.listdir(shard_dir) if os.path.isfile(os.path.join(shard_dir, f)))
+                    any_file = any(
+                        (f.endswith('.npy') or f.endswith('.parquet'))
+                        for f in os.listdir(shard_dir)
+                        if os.path.isfile(os.path.join(shard_dir, f))
+                    )
                     if not any_file:
                         all_years_present = False
                         break

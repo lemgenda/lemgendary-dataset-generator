@@ -151,22 +151,25 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                 members = [m for m in tf.getmembers() if m.isfile()]
                 total_files = len(members)
 
-                # Detect if archive contains a common top-level directory
+                # Detect if archive contains a common top-level directory covering all files
                 all_names = [m.name for m in members]
-                first_parts = {Path(name).parts[0] for name in all_names if len(Path(name).parts) > 1}
-                common_root = first_parts.pop() if len(first_parts) == 1 else None
+                has_common_root = len(all_names) > 0 and all(len(Path(name).parts) > 1 for name in all_names)
+                common_root = None
+                if has_common_root:
+                    first_parts = {Path(name).parts[0] for name in all_names}
+                    if len(first_parts) == 1:
+                        common_root = first_parts.pop()
 
-                # Prevent double nesting if dest_path already matches the archive root folder
-                effective_dest = dest_path.parent if (common_root and dest_path.name == common_root) else dest_path
-                effective_dest.mkdir(parents=True, exist_ok=True)
+                strip_root = bool(common_root and (dest_path.name.lower() == common_root.lower() or dest_path.name.startswith("LemGendized")))
 
                 to_extract = []
                 total_bytes = 0
 
                 for member in members:
-                    target_file = effective_dest / member.name
+                    rel_name = Path(member.name).relative_to(common_root) if (strip_root and common_root) else Path(member.name)
+                    target_file = dest_path / rel_name
                     if not target_file.exists() or target_file.stat().st_size == 0:
-                        to_extract.append(member)
+                        to_extract.append((member, target_file))
                         total_bytes += member.size
 
                 print(f"Found {len(to_extract)} missing files ({total_bytes / (1024**2):.2f} MB) out of {total_files} total.")
@@ -184,8 +187,7 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                         "mininterval": 0.25,
                     }
                     with tqdm(**pbar_kwargs) as pbar:
-                        for member in to_extract:
-                            target_file = effective_dest / member.name
+                        for member, target_file in to_extract:
                             target_file.parent.mkdir(parents=True, exist_ok=True)
                             source = tf.extractfile(member)
                             if source is not None:
@@ -205,22 +207,25 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                 file_members = [m for m in members if not m.is_dir()]
                 total_files = len(file_members)
 
-                # Detect if archive contains a common top-level directory
+                # Detect if archive contains a common top-level directory covering all files
                 all_names = [m.filename for m in file_members]
-                first_parts = {Path(name).parts[0] for name in all_names if len(Path(name).parts) > 1}
-                common_root = first_parts.pop() if len(first_parts) == 1 else None
+                has_common_root = len(all_names) > 0 and all(len(Path(name).parts) > 1 for name in all_names)
+                common_root = None
+                if has_common_root:
+                    first_parts = {Path(name).parts[0] for name in all_names}
+                    if len(first_parts) == 1:
+                        common_root = first_parts.pop()
 
-                # Prevent double nesting if dest_path already matches the archive root folder
-                effective_dest = dest_path.parent if (common_root and dest_path.name == common_root) else dest_path
-                effective_dest.mkdir(parents=True, exist_ok=True)
+                strip_root = bool(common_root and (dest_path.name.lower() == common_root.lower() or dest_path.name.startswith("LemGendized")))
 
                 to_extract = []
                 total_bytes = 0
 
                 for member in file_members:
-                    target_file = effective_dest / member.filename
+                    rel_name = Path(member.filename).relative_to(common_root) if (strip_root and common_root) else Path(member.filename)
+                    target_file = dest_path / rel_name
                     if not target_file.exists() or target_file.stat().st_size == 0:
-                        to_extract.append(member)
+                        to_extract.append((member, target_file))
                         total_bytes += member.file_size
 
                 print(f"Found {len(to_extract)} missing files ({total_bytes / (1024**2):.2f} MB) out of {total_files} total.")
@@ -238,8 +243,7 @@ def smart_extract(archive_path, dest_dir, delete_after=True):
                         "mininterval": 0.25,
                     }
                     with tqdm(**pbar_kwargs) as pbar:
-                        for member in to_extract:
-                            target_file = effective_dest / member.filename
+                        for member, target_file in to_extract:
                             target_file.parent.mkdir(parents=True, exist_ok=True)
                             if member.file_size > LARGE_FILE_THRESHOLD:
                                 with zf.open(member) as source, open(target_file, "wb") as target:

@@ -221,24 +221,8 @@ datasets:
   forex_universe:
     name: ForexUniverse
     kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverselarge
-    kaggle_annual_refs:
-      2019: kaggle://lemtreursi/lemgendizedforexuniverse2019
-      2020: kaggle://lemtreursi/lemgendizedforexuniverse2020
-      2021: kaggle://lemtreursi/lemgendizedforexuniverse2021
-      2022: kaggle://lemtreursi/lemgendizedforexuniverse2022
-      2023: kaggle://lemtreursi/lemgendizedforexuniverse2023
-      2024: kaggle://lemtreursi/lemgendizedforexuniverse2024
-      2025: kaggle://lemtreursi/lemgendizedforexuniverse2025
-      2026: kaggle://lemtreursi/lemgendizedforexuniverse2026
     kaggle_dataset_urls:
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2019
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2020
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2021
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2022
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2023
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2024
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2025
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverse2026
+      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
     acquisition_mode: mt5_terminal
     dataset_type: forex
     category: Forex & Financial Time-Series
@@ -268,46 +252,7 @@ datasets:
     - 1440
     start_date: '2019-01-01'
     lookback_bars: 168
-    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal Year Chunks.
-
-  # Individual Annual Forex Manifolds (for Kaggle sync & per-year retrieval)
-  forex_universe_2019:
-    name: ForexUniverse2019
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2019
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2020:
-    name: ForexUniverse2020
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2020
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2021:
-    name: ForexUniverse2021
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2021
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2022:
-    name: ForexUniverse2022
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2022
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2023:
-    name: ForexUniverse2023
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2023
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2024:
-    name: ForexUniverse2024
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2024
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2025:
-    name: ForexUniverse2025
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2025
-    dataset_type: forex
-    category: Forex & Financial Time-Series
-  forex_universe_2026:
-    name: ForexUniverse2026
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse2026
-    dataset_type: forex
-    category: Forex & Financial Time-Series
+    format: parquet
+    compression: zstd
+    storage_size_approx: 5.3 GB
+    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal Year Parquet Files.

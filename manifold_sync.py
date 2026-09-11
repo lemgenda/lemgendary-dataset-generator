@@ -7,11 +7,11 @@ import json
 from pathlib import Path
 
 # Load dataset registry directly from YAML
-OUT_PARENT = Path("../LemGendaryDatasets").resolve()
+OUT_PARENT = (Path(__file__).parent.parent / "LemGendaryDatasets").resolve()
 DATASETS_META = {}
 YAML_DATA = {}
 META = {}
-yaml_file = Path("unified_data.yaml")
+yaml_file = Path(__file__).parent / "unified_data.yaml"
 if yaml_file.exists():
     import yaml
     with open(yaml_file, "r", encoding="utf-8") as f:
@@ -121,68 +121,73 @@ def action_sync(manifold_name, repo_id, no_wait=False):
             except OSError:
                 pass
 
-    staging_dir = None
-    if file_count > 50:
-        staging_dir = OUT_PARENT / f".staging_{manifold_name}"
-        staging_dir.mkdir(parents=True, exist_ok=True)
-        target_zip = staging_dir / f"{manifold_name}.zip"
+    staging_dir = OUT_PARENT / f".staging_{manifold_name}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    target_zip = staging_dir / f"{manifold_name}.zip"
 
-        from archive_manager import verify_archive, create_archive
-        can_reuse = False
-        if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
-            print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
-            if target_zip.stat().st_mtime >= newest_src_mtime and verify_archive(target_zip):
-                can_reuse = True
-                print(f"[SYNC] Existing staging archive is valid and up to date. Skipping compression and resuming upload...")
-            else:
-                print(f"[SYNC] Existing archive is outdated or invalid. Re-creating...")
+    from archive_manager import verify_archive, create_archive
+    can_reuse = False
+    if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
+        print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
+        if target_zip.stat().st_mtime >= newest_src_mtime and verify_archive(target_zip):
+            can_reuse = True
+            print(f"[SYNC] Existing staging archive is valid and up to date. Skipping compression and resuming upload...")
+        else:
+            print(f"[SYNC] Existing archive is outdated or invalid. Re-creating...")
+            try:
+                target_zip.unlink()
+            except OSError:
+                pass
+
+    if not can_reuse:
+        print(f"[SYNC] Archiving manifold '{manifold_name}' ({file_count} files) from root {OUT_PARENT.name}...")
+        success = create_archive(src_dir, target_zip, format="zip", root_dir=OUT_PARENT)
+        if not success or not target_zip.exists():
+            raise RuntimeError(f"Archive creation failed for {src_dir}")
+
+    zip_size_gb = target_zip.stat().st_size / (1024**3)
+    print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
+
+    meta_src = src_dir / "dataset-metadata.json"
+    if meta_src.exists():
+        shutil.copy2(meta_src, staging_dir / "dataset-metadata.json")
+
+    upload_success = False
+    try:
+        print(f"[SYNC] Uploading archive to Kaggle via KaggleHub API...")
+        import kagglehub
+        kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
+        upload_success = True
+    except Exception as e:
+        print(f"[ERROR] Upload failed: {e}")
+        print(f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next attempt.")
+        return
+    finally:
+        if upload_success:
+            print(f"[SYNC] Upload succeeded. Cleaning up local staging archive...")
+            if target_zip.exists():
                 try:
                     target_zip.unlink()
                 except OSError:
                     pass
-
-        if not can_reuse:
-            print(f"[SYNC] Detected {file_count} files (>50 threshold). Archiving manifold with progress tracking...")
-            success = create_archive(src_dir, target_zip, format="zip")
-            if not success or not target_zip.exists():
-                raise RuntimeError(f"Archive creation failed for {src_dir}")
-
-        zip_size_gb = target_zip.stat().st_size / (1024**3)
-        print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
-
-        upload_success = False
-        try:
-            print(f"[SYNC] Uploading archive to Kaggle via KaggleHub API...")
-            import kagglehub
-            kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
-            upload_success = True
-        except Exception as e:
-            print(f"[ERROR] Upload failed: {e}")
-            print(f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next attempt.")
-            return
-        finally:
-            if upload_success:
-                print(f"[SYNC] Upload succeeded. Cleaning up local staging archive...")
-                if target_zip.exists():
-                    try:
-                        target_zip.unlink()
-                    except OSError:
-                        pass
-                if staging_dir.exists():
-                    try:
-                        shutil.rmtree(staging_dir, ignore_errors=True)
-                    except OSError:
-                        pass
-    else:
-        print(f"[SYNC] Uploading {file_count} files directly to Kaggle via KaggleHub API...")
-        import kagglehub
-        try:
-            kagglehub.dataset_upload(clean_repo_id, str(src_dir))
-        except Exception as e:
-            print(f"[ERROR] Upload failed: {e}")
-            return
+            if staging_dir.exists():
+                try:
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                except OSError:
+                    pass
 
     print(f"[SUCCESS] Manifold uploaded successfully! Kaggle will process it server-side.")
+
+    if meta_src.exists():
+        try:
+            from kaggle.api.kaggle_api_extended import KaggleApi
+            api = KaggleApi()
+            api.authenticate()
+            print(f"[SYNC] Pushing Kaggle dataset-metadata with column definitions...")
+            api.dataset_metadata_update(clean_repo_id, str(src_dir))
+            print(f"[SUCCESS] Kaggle dataset metadata & column descriptions synced.")
+        except Exception as meta_ex:
+            print(f"[WARN] Kaggle metadata update notice: {meta_ex}")
 
     if not no_wait:
         success = track_kaggle_dataset_status(
@@ -196,11 +201,18 @@ def action_sync(manifold_name, repo_id, no_wait=False):
 def action_get(repo_id, output_name=None):
     """Download and extract a manifold from Kaggle with byte-level progress and full resumption."""
     clean_repo_id = repo_id.replace("kaggle://", "")
+    slug = clean_repo_id.split("/")[-1]
     if not output_name:
-        output_name = clean_repo_id.split("/")[-1]
+        output_name = slug
+        prefix = META.get("name_prefix", "LemGendized")
+        suffix = META.get("name_suffix", "Large")
+        for k, v in DATASETS_META.items():
+            ref = v.get("kaggle_ref", "")
+            if clean_repo_id.lower() in ref.lower():
+                output_name = f"{prefix}{v.get('name', '')}{suffix}"
+                break
 
     dest_dir = OUT_PARENT / output_name
-    slug = clean_repo_id.split("/")[-1]
 
     print(f"\n[GET] Requesting LemGendized Manifold: {clean_repo_id}")
 
@@ -210,6 +222,8 @@ def action_get(repo_id, output_name=None):
     archive_candidates = [
         OUT_PARENT / f"{output_name}.zip",
         OUT_PARENT / f"{slug}.zip",
+        OUT_PARENT / f"{output_name.lower()}.zip",
+        OUT_PARENT / f"{slug.lower()}.zip",
         dest_dir / f"{output_name}.zip",
         dest_dir / f"{slug}.zip",
     ]
@@ -310,7 +324,7 @@ def action_get(repo_id, output_name=None):
 
     if archive_to_extract and archive_to_extract.exists():
         print(f"[EXTRACT] Unpacking manifold archive: {archive_to_extract.name}")
-        success = smart_extract(archive_to_extract, str(OUT_PARENT), delete_after=True)
+        success = smart_extract(archive_to_extract, str(dest_dir), delete_after=True)
         if not success:
             print(f"[ERROR] Extraction failed or interrupted. Archive preserved at {archive_to_extract} for resumption.")
         else:
@@ -396,7 +410,24 @@ def main():
         # Quick parse of URL
         parts = repo_id.rstrip("/").split("/")
         repo_id = f"{parts[-2]}/{parts[-1]}"
-        
+
+    # Auto-resolve model directory name if a key, slug, or repo_id was given
+    if model and not (OUT_PARENT / model).exists():
+        for k, v in DATASETS_META.items():
+            slug = v.get("name", "")
+            compiled = f"{prefix}{slug}{suffix}"
+            if model in [k, slug, compiled] or model.lower() in [k.lower(), slug.lower(), compiled.lower()]:
+                model = compiled
+                break
+
+    if not model and repo_id:
+        for k, v in DATASETS_META.items():
+            k_ref = get_kaggle_ref(k)
+            if k_ref and k_ref.lower() in repo_id.lower():
+                slug = v.get("name", "")
+                model = f"{prefix}{slug}{suffix}"
+                break
+
     # Setup Auth
     default_user = repo_id.split("/")[0] if repo_id and "/" in repo_id else None
     if not setup_auth(args.user, args.token, default_user):

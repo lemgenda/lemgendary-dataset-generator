@@ -12,15 +12,91 @@ import re
 
 # ─── Load metadata ──────────────────────────────────────────────────────
 MODELS_META_FILE = Path(__file__).parent / "models_metadata.yaml"
+_meta_data = {}
 if MODELS_META_FILE.exists():
     with open(MODELS_META_FILE, "r", encoding="utf-8") as f:
         _meta_data = yaml.safe_load(f) or {}
-else:
-    with open(Path(__file__).parent / "unified_data.yaml", "r", encoding="utf-8") as f:
-        _meta_data = yaml.safe_load(f) or {}
+
+UNIFIED_DATA_FILE = Path(__file__).parent / "unified_data.yaml"
+UNIFIED_DATA = {}
+if UNIFIED_DATA_FILE.exists():
+    with open(UNIFIED_DATA_FILE, "r", encoding="utf-8") as f:
+        UNIFIED_DATA = yaml.safe_load(f) or {}
 
 TASK_META = _meta_data.get("task_metadata", {})  # type: ignore
 MODELS_META = _meta_data.get("models_metadata", {})  # type: ignore
+
+MANIFOLD_TASK_MAP = {
+    "LemGendizedForexUniverseLarge": "forex",
+    "LemGendizedClassificationMasterManifoldLarge": "classification",
+    "LemGendizedNimaAestheticLarge": "quality",
+    "LemGendizedNimaTechnicalLarge": "quality",
+    "LemGendizedNimaAuthenticityLarge": "authenticity",
+    "LemGendizedUpnV2Large": "parameter_prediction",
+    "LemGendizedFilmRestorerLarge": "restoration",
+    "LemGendizedCodeFormerLarge": "restoration",
+    "LemGendizedParseNetLarge": "segmentation",
+    "LemGendizedRetinaFaceMobileNetLarge": "detection",
+    "LemGendizedFfaNetIndoorLarge": "restoration",
+    "LemGendizedFfaNetOutdoorLarge": "restoration",
+    "LemGendizedMirNetLowLightLarge": "restoration",
+    "LemGendizedMirNetExposureLarge": "restoration",
+    "LemGendizedMprNetDerainingLarge": "restoration",
+    "LemGendizedNafNetDebluringLarge": "restoration",
+    "LemGendizedNafNetDenoisingLarge": "restoration",
+    "LemGendizedUltraZoomLarge": "super-resolution",
+    "LemGendizedYoloV8nLarge": "detection",
+    "LemGendizedProfessionalMultitaskRestorationLarge": "restoration",
+}
+
+FOREX_COLUMN_FIELDS = [
+    {
+        "name": "pair",
+        "type": "string",
+        "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+    },
+    {
+        "name": "timeframe",
+        "type": "integer",
+        "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+    },
+    {
+        "name": "timestamp",
+        "type": "integer",
+        "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+    },
+    {
+        "name": "y_dir",
+        "type": "integer",
+        "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+    },
+    {
+        "name": "tp_pips",
+        "type": "number",
+        "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+    },
+    {
+        "name": "sl_pips",
+        "type": "number",
+        "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+    },
+    {
+        "name": "seq_len",
+        "type": "integer",
+        "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+    },
+    {
+        "name": "n_features",
+        "type": "integer",
+        "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+    },
+    {
+        "name": "features",
+        "type": "bytes",
+        "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+    }
+]
+
 
 # ─── Manifest cache ──────────────────────────────────────────────────
 MANIFEST_CACHE_PATH = Path(__file__).parent / "manifest_cache.json"
@@ -133,6 +209,42 @@ def scan_forex_manifold(root_path):
     pair_set = set()
     tf_set = set()
 
+    # 1. Scan unified Parquet files first (ForexUniverseYYYY.parquet)
+    for pq_file in sorted(root_path.glob("ForexUniverse*.parquet")):
+        year_str = pq_file.stem.replace("ForexUniverse", "")
+        try:
+            year = int(year_str)
+        except ValueError:
+            continue
+        year_set.add(year)
+
+        try:
+            import pyarrow.parquet as pq
+            pf = pq.ParquetFile(str(pq_file))
+            tbl = pf.read(columns=["pair", "timeframe"])
+            p_arr = tbl["pair"].to_numpy(zero_copy_only=False)
+            tf_arr = tbl["timeframe"].to_numpy()
+
+            # Count occurrences of (pair, tf)
+            from collections import Counter
+            counts = Counter(zip(p_arr, tf_arr))
+            for (pair, tf), count in counts.items():
+                pair_set.add(pair)
+                tf_set.add(int(tf))
+                entry = {
+                    "year": year,
+                    "pair": pair,
+                    "timeframe": int(tf),
+                    "count": count
+                }
+                result["details"].append(entry)
+                result["samples_per_year"][year] = result["samples_per_year"].get(year, 0) + count
+                result["samples_per_pair"][pair] = result["samples_per_pair"].get(pair, 0) + count
+                result["samples_per_tf"][int(tf)] = result["samples_per_tf"].get(int(tf), 0) + count
+        except Exception as e:
+            print(f" [WARNING] Error scanning {pq_file.name}: {e}")
+
+    # 2. Scan legacy directories if not already scanned as Parquet
     for chunk_dir in root_path.glob("ForexUniverse*"):
         if not chunk_dir.is_dir():
             continue
@@ -140,6 +252,9 @@ def scan_forex_manifold(root_path):
         try:
             year = int(year_str)
         except ValueError:
+            continue
+
+        if year in year_set:
             continue
         year_set.add(year)
 
@@ -201,7 +316,7 @@ def _clean_readme(content):
     # Remove trailing blank lines
     while cleaned and cleaned[-1].strip() == "":
         cleaned.pop()
-    return "\n".join(cleaned)
+    return "\n".join(cleaned) + "\n"
 
 
 def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overrides=None):
@@ -211,23 +326,49 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
         pascal_name = manifold_name
 
     # Determine task
-    task = "quality"
+    task = None
     yaml_path = output_root / "dataset_info.yaml"
     existing_info = {}
     if yaml_path.exists():
         try:
             with open(yaml_path, "r", encoding="utf-8") as f:
                 existing_info = yaml.safe_load(f) or {}
-                task = existing_info.get("task", existing_info.get("dataset_type", "quality"))
+                cached_t = existing_info.get("task", existing_info.get("dataset_type"))
+                if cached_t and cached_t != "quality":
+                    task = cached_t
         except Exception:
             pass
 
-    if final_index and len(final_index) > 0:
+    if overrides and overrides.get('dataset_type'):
+        task = overrides.get('dataset_type')
+    elif overrides and overrides.get('task'):
+        task = overrides.get('task')
+    elif final_index and len(final_index) > 0:
         task = final_index[0].get("task", task)
-    elif "authenticity" in manifold_name.lower():
-        task = "authenticity"
-    elif "forex" in manifold_name.lower() or (overrides and overrides.get('dataset_type') == 'forex'):
-        task = "forex"
+
+    # High-precision task mapping from registered manifold specification
+    if manifold_name in MANIFOLD_TASK_MAP:
+        task = MANIFOLD_TASK_MAP[manifold_name]
+    elif not task:
+        name_lower = manifold_name.lower()
+        if "forex" in name_lower:
+            task = "forex"
+        elif "authenticity" in name_lower:
+            task = "authenticity"
+        elif "restoration" in name_lower or any(x in name_lower for x in ["ffanet", "mirnet", "mprnet", "nafnet", "film", "codeformer"]):
+            task = "restoration"
+        elif "ultrazoom" in name_lower or "superresolution" in name_lower:
+            task = "super-resolution"
+        elif "parsenet" in name_lower or "segmentation" in name_lower:
+            task = "segmentation"
+        elif "retinaface" in name_lower or "yolo" in name_lower or "detection" in name_lower:
+            task = "detection"
+        elif "upn" in name_lower or "parameter" in name_lower:
+            task = "parameter_prediction"
+        elif "classification" in name_lower or "nsfw" in name_lower:
+            task = "classification"
+        else:
+            task = "quality"
 
     task_key = str(task)   # ensure string
 
@@ -268,18 +409,18 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
             }
         }
         existing_info["forex_scan"] = forex_data
+        if not existing_info.get("pairs"):
+            existing_info["pairs"] = list(forex_data.get("pairs", []))
+        if not existing_info.get("timeframe_rungs"):
+            existing_info["timeframe_rungs"] = list(forex_data.get("timeframes", []))
+        if not existing_info.get("start_date"):
+            existing_info["start_date"] = "2019-01-01"
+        if not existing_info.get("lookback_bars"):
+            existing_info["lookback_bars"] = 168
+        if not existing_info.get("category"):
+            existing_info["category"] = "Forex & Financial Time-Series"
         if overrides:
             existing_info.update(overrides)
-        elif not existing_info:
-            existing_info = {
-                "task": "forex",
-                "dataset_type": "forex",
-                "pairs": list(forex_data.get("pairs", [])),
-                "timeframe_rungs": list(forex_data.get("timeframes", [])),
-                "start_date": "2019-01-01",
-                "lookback_bars": 168,
-                "category": "Forex & Financial Time-Series"
-            }
     elif manifold_name in MANIFEST_CACHE:
         cache_entry = MANIFEST_CACHE[manifold_name]
         total_samples = cache_entry.get("total_samples", 0)
@@ -322,9 +463,8 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
                 sources[fmt] = {"train": train_c, "val": val_c, "total": per_src}
 
     # 3. dataset_info.yaml
-    if not yaml_path.exists() or (final_index and len(final_index) > 0):
-        src_keys = list(sources.keys()) if sources else [f"{pascal_name}-source"]
-        yaml_content = f"""count: {total_samples if isinstance(total_samples, int) else 0}
+    src_keys = list(sources.keys()) if sources else [f"{pascal_name}-source"]
+    yaml_content = f"""count: {total_samples if isinstance(total_samples, int) else 0}
 task: {task_key}
 original_sources:
 {chr(10).join(f"- {s}" for s in src_keys)}
@@ -332,8 +472,8 @@ path: {str(output_root.resolve())}
 source: {pascal_name}-manifold
 last_processed: '{datetime.now().isoformat()}'
 """
-        with open(yaml_path, "w", encoding="utf-8") as f:
-            f.write(yaml_content)
+    with open(yaml_path, "w", encoding="utf-8") as f:
+        f.write(yaml_content)
 
     # 4. category.txt
     cat_str = "General Dataset"
@@ -412,11 +552,15 @@ last_processed: '{datetime.now().isoformat()}'
 
         # Safely extract pairs and timeframes, ensuring they are lists
         pairs_raw = existing_info.get('pairs', []) or (overrides.get('pairs') if overrides else [])
+        if not pairs_raw and isinstance(forex_scan, dict):
+            pairs_raw = forex_scan.get('pairs', [])
         if not isinstance(pairs_raw, list):
             pairs_raw = []
         pairs_list = [str(p) for p in pairs_raw]
 
         tfs_raw = existing_info.get('timeframe_rungs', []) or (overrides.get('timeframe_rungs') if overrides else [])
+        if not tfs_raw and isinstance(forex_scan, dict):
+            tfs_raw = forex_scan.get('timeframes', [])
         if not isinstance(tfs_raw, list):
             tfs_raw = []
         tfs_list = [int(tf) for tf in tfs_raw]
@@ -427,6 +571,8 @@ last_processed: '{datetime.now().isoformat()}'
 
         tf_names = {1: 'M1 (1min)', 5: 'M5 (5min)', 15: 'M15 (15min)', 60: 'H1 (60min)', 240: 'H4 (240min)', 1440: 'D1 (1440min)'}
         tf_labels = [tf_names.get(tf, f'{tf}min') for tf in tfs_list]
+        pairs_display = ', '.join(pairs_list) if pairs_list else 'All Primary & Secondary FX Pairs'
+        tfs_display = ', '.join(tf_labels) if tf_labels else 'M1 (1min), M5 (5min), M15 (15min), H1 (60min), H4 (240min), D1 (1440min)'
 
         # Models
         applicable_models = []
@@ -507,7 +653,10 @@ last_processed: '{datetime.now().isoformat()}'
             elif "_training" in name and name.endswith(".ipynb"):
                 desc = "Auto-generated Jupyter notebook for model training."
             elif name.startswith("ForexUniverse"):
-                desc = f"Year‑chunked shard directory: {name}"
+                if name.endswith(".parquet"):
+                    desc = f"Year‑chunked unified Parquet manifold: {name}"
+                else:
+                    desc = f"Year‑chunked shard directory: {name}"
             elif name == "category.txt":
                 desc = "Top-level categorization tag."
             elif name == "classes.txt":
@@ -532,8 +681,8 @@ last_processed: '{datetime.now().isoformat()}'
 
 - **Category:** {category_str}
 - **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
-- **Pairs Included:** {', '.join(pairs_list)}
-- **Timeframe Rungs:** {', '.join(tf_labels)}
+- **Pairs Included:** {pairs_display}
+- **Timeframe Rungs:** {tfs_display}
 - **Historical Horizon:** {start_date_str} to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)
 - **Lookback Window:** {lookback_bars} bars
 - **Total Samples:** {total_samples:,}
@@ -543,7 +692,7 @@ last_processed: '{datetime.now().isoformat()}'
 
 ## Year‑Chunked Shard Breakdown
 
-The dataset is organised by year in `ForexUniverseYYYY` directories, each containing all pairs and timeframes for that year.
+The dataset is organised by year into unified Apache Parquet files (`ForexUniverseYYYY.parquet`), each containing all pairs and timeframes for that year with Zstandard compression.
 
 {year_table}
 
@@ -736,27 +885,77 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
     with open(output_root / "README.md", "w", encoding="utf-8") as f:
         f.write(readme)
 
+    # ─── Generate dataset-metadata.json for Kaggle ──────────────────────
+    slug = manifold_name.lower().replace("_", "")
+    resources = []
+    is_forex = (task_key == "forex")
+    if is_forex:
+        for y in range(2019, 2027):
+            resources.append({
+                "path": f"ForexUniverse{y}.parquet",
+                "description": f"Annual OHLCV and feature tensor shards for year {y}",
+                "schema": {
+                    "fields": FOREX_COLUMN_FIELDS
+                }
+            })
+            resources.append({
+                "path": f"{manifold_name}/ForexUniverse{y}.parquet",
+                "description": f"Annual OHLCV and feature tensor shards for year {y}",
+                "schema": {
+                    "fields": FOREX_COLUMN_FIELDS
+                }
+            })
+
+    metadata_payload = {
+        "title": manifold_name.replace("Large", "").replace("LemGendized", "LemGendized "),
+        "id": f"lemtreursi/{slug}",
+        "subtitle": f"High-fidelity manifold for {cat_str} machine learning models",
+        "description": readme,
+        "licenses": [{"name": "CC0-1.0"}],
+        "resources": resources
+    }
+    with open(output_root / "dataset-metadata.json", "w", encoding="utf-8") as f:
+        json.dump(metadata_payload, f, indent=2)
+
     return total_samples
 
 
-def regenerate_all_non_forex(datasets_dir=None):
+def regenerate_all_docs(datasets_dir=None):
     if datasets_dir is None:
         datasets_dir = Path(__file__).parent.parent / "LemGendaryDatasets"
     datasets_dir = Path(datasets_dir)
 
     print(f"Scanning manifolds in {datasets_dir}...")
+    
+    # Discover all target manifolds from unified_data.yaml
+    prefix = UNIFIED_DATA.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
+    suffix = UNIFIED_DATA.get("_registry_metadata", {}).get("name_suffix", "Large")
+    target_names = set()
+    for d_key, d_info in UNIFIED_DATA.get("datasets", {}).items():
+        t_name = d_info.get("name", d_key)
+        target_names.add(f"{prefix}{t_name}{suffix}")
+    
+    # Also include any existing folders in LemGendaryDatasets
+    if datasets_dir.exists():
+        for p in datasets_dir.iterdir():
+            if p.is_dir() and not p.name.startswith("."):
+                target_names.add(p.name)
+
     count = 0
-    for p in sorted(datasets_dir.iterdir()):
-        if not p.is_dir() or p.name.startswith("."):
-            continue
-        print(f"Regenerating docs for {p.name}...")
+    for name in sorted(target_names):
+        p = datasets_dir / name
+        p.mkdir(parents=True, exist_ok=True)
+        print(f"Regenerating docs for {name}...")
         try:
-            samples = generate_dataset_docs(p, None, p.name)
-            print(f"  Success: {p.name} -> Total Samples: {samples}")
+            samples = generate_dataset_docs(p, None, name)
+            print(f"  Success: {name} -> Total Samples: {samples}")
             count += 1
         except Exception as e:
-            print(f"  Error on {p.name}: {e}")
+            print(f"  Error on {name}: {e}")
     print(f"Regeneration complete for {count} manifolds.")
+
+
+regenerate_all_non_forex = regenerate_all_docs
 
 
 if __name__ == '__main__':
@@ -770,4 +969,4 @@ if __name__ == '__main__':
         m_path = Path(__file__).parent.parent / "LemGendaryDatasets" / args.manifold
         generate_dataset_docs(m_path, None, args.manifold)
     else:
-        regenerate_all_non_forex()
+        regenerate_all_docs()
