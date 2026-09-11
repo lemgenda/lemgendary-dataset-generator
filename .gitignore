@@ -23,13 +23,25 @@ __pycache__/
 *$py.class
 .venv*/
 .env
-typings/*
+typings/
 
-# IDEs
+# Local Tooling & Linters
+pyrightconfig.json
+.markdownlint.json
+
+# IDEs & Editors
 .vscode/
 .idea/
 .gemini/
 .antigravity/
+
+# Caches & Testing
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.tmp
 
 # Logs
 log.txt
