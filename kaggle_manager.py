@@ -505,8 +505,8 @@ def main():
                     pass
 
         if not can_reuse:
-            print(f"[SYNC] Archiving manifold '{manifold_name}' ({file_count} files) from root {root_datasets_dir.name}...")
-            success = create_archive(src_path, target_zip, format="zip", root_dir=root_datasets_dir)
+            print(f"[SYNC] Archiving manifold '{manifold_name}' ({file_count} files)...")
+            success = create_archive(src_path, target_zip, format="zip", root_dir=src_path)
             if not success or not target_zip.exists():
                 raise RuntimeError(f"Archive creation failed for {src_path}")
 

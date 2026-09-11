@@ -47,7 +47,7 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
     if root_dir is not None:
         root_path = Path(root_dir).resolve()
     else:
-        root_path = source_path.parent
+        root_path = source_path
 
     for root, _, files in os.walk(source_path):
         for f in files:
@@ -63,8 +63,8 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
                 elif root_dir is not None:
                     arcname = str(full_path.relative_to(Path(root_dir).resolve())).replace("\\", "/")
                 else:
-                    # Default: archive includes manifold root folder relative to source parent
-                    arcname = str(full_path.relative_to(source_path.parent)).replace("\\", "/")
+                    # Default: archive entries are relative to source_path (no extra outer nesting)
+                    arcname = str(full_path.relative_to(source_path)).replace("\\", "/")
                 file_entries.append((full_path, arcname, size))
                 total_bytes += size
             except OSError:

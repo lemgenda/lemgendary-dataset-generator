@@ -140,8 +140,8 @@ def action_sync(manifold_name, repo_id, no_wait=False):
                 pass
 
     if not can_reuse:
-        print(f"[SYNC] Archiving manifold '{manifold_name}' ({file_count} files) from root {OUT_PARENT.name}...")
-        success = create_archive(src_dir, target_zip, format="zip", root_dir=OUT_PARENT)
+        print(f"[SYNC] Archiving manifold '{manifold_name}' ({file_count} files)...")
+        success = create_archive(src_dir, target_zip, format="zip", root_dir=src_dir)
         if not success or not target_zip.exists():
             raise RuntimeError(f"Archive creation failed for {src_dir}")
 

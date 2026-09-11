@@ -898,18 +898,19 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
                     "fields": FOREX_COLUMN_FIELDS
                 }
             })
-            resources.append({
-                "path": f"{manifold_name}/ForexUniverse{y}.parquet",
-                "description": f"Annual OHLCV and feature tensor shards for year {y}",
-                "schema": {
-                    "fields": FOREX_COLUMN_FIELDS
-                }
-            })
+
+    subtitle = f"High-fidelity manifold for {cat_str} machine learning models"
+    if len(subtitle) > 80:
+        subtitle = f"High-fidelity manifold for {cat_str} models"
+    if len(subtitle) > 80:
+        subtitle = subtitle[:77] + "..."
+    if len(subtitle) < 20:
+        subtitle = "High-fidelity machine learning training manifold"
 
     metadata_payload = {
         "title": manifold_name.replace("Large", "").replace("LemGendized", "LemGendized "),
         "id": f"lemtreursi/{slug}",
-        "subtitle": f"High-fidelity manifold for {cat_str} machine learning models",
+        "subtitle": subtitle,
         "description": readme,
         "licenses": [{"name": "CC0-1.0"}],
         "resources": resources
