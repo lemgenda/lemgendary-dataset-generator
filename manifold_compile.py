@@ -181,8 +181,9 @@ def process_dataset():
 
             # Create notebook files for Kaggle execution steps
             from notebook_generator import generate_training_notebook, generate_colab_training_notebook
-            generate_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_training.ipynb"))
-            generate_colab_training_notebook(pascal_name, model_key, str(output_root / f"{model_key}_colab_training.ipynb"))
+            target_model = "forex_predictor" if model_key == "forex_universe" else model_key
+            generate_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_training.ipynb"))
+            generate_colab_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
 
             # Create deployment manifests
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
@@ -807,7 +808,7 @@ def process_dataset():
             if has_diffusion and shard_dir is not None:
                 shard_name = f"{prefix_str}{source}{suffix_str}.tar"
                 print(f"[SHARD] Writing {shard_name}...")
-                sink = wds.TarWriter(str(shard_dir / shard_name))
+                sink = wds.TarWriter(str(shard_dir / shard_name))  # type: ignore
             else:
                 sink = None
 

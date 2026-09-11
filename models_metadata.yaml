@@ -283,3 +283,18 @@ models_metadata:
     - LemGendizedClassificationMasterManifoldLarge
     sota_targets:
       accuracy: 0.98
+  forex_predictor:
+    name: LemGendary Forex Predictor
+    arch: Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)
+    loss: forex_dual
+    datasets:
+    - LemGendizedForexUniverseLarge
+    sota_targets:
+      dir_acc: 58.5
+      win_rate: 56.0
+      profit_factor: 1.65
+      sharpe_ratio: 1.85
+      sortino_ratio: 2.10
+      max_drawdown: 12.0
+      tp_mae: 12.5
+      sl_mae: 12.5

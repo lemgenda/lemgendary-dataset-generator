@@ -232,8 +232,9 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                     df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
                     df['volume'] = df['tick_volume']
                     df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
+                    time_s = pd.Series(df['time'])
                     print(f" [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min "
-                          f"(Spans {df['time'].iloc[0].strftime('%Y-%m-%d')} -> {df['time'].iloc[-1].strftime('%Y-%m-%d')})")
+                          f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})")
                     # Cache the successful symbol for this pair
                     _SYMBOL_CACHE[pair] = mt5_symbol
                     return df
@@ -268,15 +269,16 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                 df['volume'] = df['tick_volume']
                 df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
                 df = df[df['time'] >= dt_from]
-                if df.empty:
+                if len(df) == 0:
                     print(f" [MT5] No bars after filtering from {start_date}; using all available data.")
                     df = pd.DataFrame(rates)
                     df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
                     df['volume'] = df['tick_volume']
                     df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
 
+                time_s = pd.Series(df['time'])
                 print(f"\n [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min via fallback "
-                      f"(Spans {df['time'].iloc[0].strftime('%Y-%m-%d')} -> {df['time'].iloc[-1].strftime('%Y-%m-%d')})")
+                      f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})")
                 _SYMBOL_CACHE[pair] = mt5_symbol
                 return df
 

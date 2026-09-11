@@ -10,7 +10,7 @@ class CLIPManifold:
         self.device = device
         self.model_id = "openai/clip-vit-base-patch32"
         self.processor = CLIPProcessor.from_pretrained(self.model_id)
-        self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)
+        self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)  # type: ignore
         self.model.eval()
         
         # Standard Style Manifold for Zero-Shot Tagging
@@ -19,16 +19,16 @@ class CLIPManifold:
     @torch.no_grad()
     def extract_features(self, img_pil):
         """Extracts latent vector for style clustering"""
-        inputs = self.processor(images=img_pil, return_tensors="pt").to(self.device)
+        inputs = self.processor(images=img_pil, return_tensors="pt").to(self.device)  # type: ignore
         image_features = self.model.get_image_features(**inputs)
         # Normalize for cosine similarity / clustering stability
-        return image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+        return image_features / image_features.norm(p=2, dim=-1, keepdim=True)  # type: ignore
 
     @torch.no_grad()
     def tag_style(self, img_pil):
         """Zero-shot style classification"""
-        inputs = self.processor(
-            text=self.styles, images=img_pil, return_tensors="pt", padding=True
+        inputs = self.processor(  # type: ignore
+            text=self.styles, images=img_pil, return_tensors="pt", padding=True  # type: ignore
         ).to(self.device)
         outputs = self.model(**inputs)
         logits_per_image = outputs.logits_per_image 

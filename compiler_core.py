@@ -137,7 +137,7 @@ def load_ground_truth(model_name=""):
         import pandas as pd
         df = pd.read_csv(ava_csv)
         vote_cols = [f"vote_{i}" for i in range(1, 11)]
-        AVA_LOOKUP = df.set_index("image_num")[vote_cols].to_dict("index")
+        AVA_LOOKUP = df.set_index("image_num")[vote_cols].to_dict("index")  # type: ignore
         print(f"[GT] {len(AVA_LOOKUP)} AVA Aesthetic ratings cached.")
 
     aadb_csv = Path("./raw-sets/aadb-imagedatabase/Dataset.csv")
@@ -170,7 +170,7 @@ def load_ground_truth(model_name=""):
         df = pd.read_csv(koniq_csv)
         for _, row in df.iterrows():
             # Map KonIQ 1-100 scale down to NIMA 1-10 scale
-            val = float(row['MOS']) / 10.0
+            val = float(row['MOS']) / 10.0  # type: ignore
             TID_LOOKUP[str(row['image_name']).lower()] = max(1.0, min(10.0, val))
         print(f"[GT] KonIQ-10k ratings cached.")
 
@@ -182,7 +182,7 @@ def load_ground_truth(model_name=""):
         import pandas as pd
         df = pd.read_csv(spaq_csv)
         for _, row in df.iterrows():
-            TID_LOOKUP[str(row['Image name']).lower()] = 1.0 + float(row['MOS']) * 0.09
+            TID_LOOKUP[str(row['Image name']).lower()] = 1.0 + float(row['MOS']) * 0.09  # type: ignore
         print(f"[GT] SPAQ ratings cached.")
 
     # TID2013
@@ -201,7 +201,7 @@ def load_ground_truth(model_name=""):
         import pandas as pd
         df = pd.read_csv(live_csv)
         for _, row in df.iterrows():
-            orig = min(100.0, float(row['dmos']))
+            orig = min(100.0, float(row['dmos']))  # type: ignore
             TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - orig/100.0) * 9.0
         print(f"[GT] LIVE IQA ratings cached.")
 
@@ -211,7 +211,7 @@ def load_ground_truth(model_name=""):
         import pandas as pd
         df = pd.read_csv(csiq_csv)
         for _, row in df.iterrows():
-            TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - float(row['dmos'])) * 9.0
+            TID_LOOKUP[str(row['image_name']).lower()] = 1.0 + (1.0 - float(row['dmos'])) * 9.0  # type: ignore
         print(f"[GT] CSIQ ratings cached.")
 
     # TAD66K
@@ -230,7 +230,7 @@ def load_ground_truth(model_name=""):
                     df = pd.read_csv(os.path.join(root, f))
                     for _, row in df.iterrows():
                         if 'image' in row and 'score' in row:
-                            TID_LOOKUP[str(row['image']).lower()] = max(1.0, min(10.0, float(row['score'])))
+                            TID_LOOKUP[str(row['image']).lower()] = max(1.0, min(10.0, float(row['score'])))  # type: ignore
                             tad_count += 1
         print(f"[GT] {tad_count} TAD66K ratings cached.")
 
@@ -469,7 +469,7 @@ class ShardWriter:
     def __init__(self, output_dir, prefix="data", max_size=1e9):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.sink = wds.ShardWriter(str(self.output_dir / f"{prefix}-%05d.tar"), maxsize=max_size)
+        self.sink = wds.ShardWriter(str(self.output_dir / f"{prefix}-%05d.tar"), maxsize=max_size)  # type: ignore
 
     def write(self, name, img_bytes, caption):
         self.sink.write({
@@ -544,7 +544,7 @@ def parse_parquet(pq_path):
     return pq_path, mapping, cols
 
 def parse_matlab(mat_path):
-    import scipy.io as sio
+    import scipy.io as sio  # type: ignore[import-untyped]
     data = sio.loadmat(mat_path)
     # Heuristic for finding the annotation key
     key = [k for k in data.keys() if not k.startswith("__")][0]
@@ -1263,7 +1263,7 @@ def process_diffusion(
         caption = "a high quality image"
         if CAPTIONER:
             # Check for native captions first (DiffusionDB convention)
-            caption_file = img_path.parent / (img_path.stem + ".txt") if not is_virtual else None
+            caption_file = Path(img_path).parent / (Path(img_path).stem + ".txt") if not is_virtual and isinstance(img_path, (str, Path)) else None
             if caption_file and caption_file.exists():
                 caption = caption_file.read_text().strip()
             else:
@@ -1290,9 +1290,10 @@ def process_diffusion(
         if clip_latent:
             latent_blob = sqlite3.Binary(np.array(clip_latent).astype(np.float32).tobytes())
 
+        nima_val = float(nima_score[0]) if isinstance(nima_score, (tuple, list)) else float(nima_score)
         return {
             "name": name, "source": slug, "task": "diffusion", "split": split,
-            "hash": h, "nima_score": round(nima_score, 3),
+            "hash": h, "nima_score": round(nima_val, 3),
             "caption": caption, "style_tag": style_tag, "clip_latent": latent_blob,
             "img_bytes": img_bytes, "size": len(img_bytes)
         }

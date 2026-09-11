@@ -30,7 +30,7 @@ def main():
         try:
             print(f"Attempting to download {args.repo_id} as a file archive to {zip_path}...")
             # fuzzy=True helps if the URL is provided instead of an ID
-            res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)
+            res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)  # type: ignore
             if res is None:
                 raise Exception("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
@@ -41,7 +41,7 @@ def main():
                 except: pass
                 
             try:
-                res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)
+                res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)  # type: ignore
                 if res is None:
                     raise Exception("Failed to download as a folder.")
                 print("STATUS:COMPLETED")
