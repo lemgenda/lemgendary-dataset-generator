@@ -149,8 +149,6 @@ def action_sync(manifold_name, repo_id, no_wait=False):
     print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
 
     meta_src = src_dir / "dataset-metadata.json"
-    if meta_src.exists():
-        shutil.copy2(meta_src, staging_dir / "dataset-metadata.json")
 
     upload_success = False
     try:
