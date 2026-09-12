@@ -7,7 +7,7 @@ import yaml
 
 def build_training_notebook_content(model_key, config=None):
     """
-    Builds the exact v16.2 Nuclear-Hardened Training Notebook JSON content.
+    Builds the exact v16.2.9 Nuclear-Hardened Training Notebook JSON content.
     Identical across lemgendary-training-suite and lemgendary-datasets.
     """
     pascal_model_name = model_key.replace("_", " ").title().replace(" ", "")
@@ -525,7 +525,7 @@ def build_training_notebook_content(model_key, config=None):
             {
                 "cell_type": "markdown",
                 "source": [
-                    f"# LemGendary Master Execution: {pascal_model_name} (v16.2 Nuclear-Hardened)\n",
+                    f"# LemGendary Master Execution: {pascal_model_name} (v16.2.9 Nuclear-Hardened)\n",
                     "This unified notebook handles environment synchronization and automated cloud training.\n"
                 ],
                 "metadata": {}
@@ -612,7 +612,7 @@ def build_training_notebook_content(model_key, config=None):
 
 def generate_training_notebook(target_name, resolved_model, output_path, config=None):
     """
-    Generates a v16.2 Nuclear-Hardened Training Notebook for Kaggle.
+    Generates a v16.2.9 Nuclear-Hardened Training Notebook for Kaggle.
     Guaranteed 100% parity with lemgendary-training-suite.
     """
     notebook_content = build_training_notebook_content(resolved_model, config=config)
@@ -625,12 +625,12 @@ def generate_training_notebook(target_name, resolved_model, output_path, config=
     
     with open(output_path, "w", encoding='utf-8') as f:
         f.write(json_str)
-    print(f"[OK] Generated v16.2 Nuclear Training Notebook: {output_path}")
+    print(f"[OK] Generated v16.2.9 Nuclear Training Notebook: {output_path}")
 
 
 def build_colab_training_notebook_content(model_key, config=None):
     """
-    Builds the exact v16.2 Nuclear-Hardened Colab-Edition Training Notebook JSON content.
+    Builds the exact v16.2.9 Nuclear-Hardened Colab-Edition Training Notebook JSON content.
     Identical across lemgendary-training-suite and lemgendary-datasets.
     """
     pascal_model_name = model_key.replace("_", " ").title().replace(" ", "")
@@ -1191,7 +1191,7 @@ def build_colab_training_notebook_content(model_key, config=None):
             {
                 "cell_type": "markdown",
                 "source": [
-                    f"# LemGendary Master Execution: {pascal_model_name} (v16.2 Nuclear-Hardened Colab-Edition)\n",
+                    f"# LemGendary Master Execution: {pascal_model_name} (v16.2.9 Nuclear-Hardened Colab-Edition)\n",
                     "This unified notebook handles environment synchronization and automated cloud training.\n"
                 ],
                 "metadata": {}
@@ -1309,12 +1309,12 @@ def generate_colab_training_notebook(target_name, resolved_model, output_path, c
     
     with open(output_path, "w", encoding='utf-8') as f:
         f.write(json_str)
-    print(f"[OK] Generated v16.2 Nuclear Colab Training Notebook: {output_path}")
+    print(f"[OK] Generated v16.2.9 Nuclear Colab Training Notebook: {output_path}")
 
 
 if __name__ == "__main__":
     import yaml
-    parser = argparse.ArgumentParser(description="LemGendary Dataset Notebook Orchestrator (v16.2 Nuclear)")
+    parser = argparse.ArgumentParser(description="LemGendary Dataset Notebook Orchestrator (v16.2.9 Nuclear)")
     parser.add_argument("--dataset", type=str, help="Dataset key for single notebook generation.")
     parser.add_argument("--model", type=str, help="Model key for single notebook generation.")
     parser.add_argument("--all", action="store_true", help="Regenerate the entire Training Notebook Matrix for all datasets.")
