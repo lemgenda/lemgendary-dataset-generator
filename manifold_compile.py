@@ -1,9 +1,61 @@
-import os, sys, argparse, json, yaml, shutil, multiprocessing
+import os
+import sys
+import argparse
+import json
+import yaml
+import shutil
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from compiler_core import *
 
-# Import generate_dataset_docs at the top – fixes uninitialized warning
+from datetime import datetime
+import hashlib
+import random
+from sklearn.cluster import MiniBatchKMeans
+import webdataset as wds
+import numpy as np
+import pandas as pd
+import requests
+import torch
+from tqdm import tqdm
+
+PHYSICAL_INDEX = set()
+
+from compiler_core import (
+    CONFIG,
+    DATASETS_META,
+    INPUT_ROOT,
+    META,
+    OUT_PARENT,
+    batch_worker,
+    clean_slug,
+    detect_annotations,
+    detect_task,
+    download_image,
+    generate_colab_training_notebook,
+    generate_training_notebook,
+    get_device_info,
+    init_worker,
+    initialize_registry,
+    parse_coco,
+    parse_matlab,
+    parse_parquet,
+    process_diffusion,
+    process_image,
+    process_parquet_shard,
+    remove_empty_dirs,
+)
 from doc_generator import generate_dataset_docs
+
+
+def _fast_scan(path, valid_exts):
+    for entry in os.scandir(path):
+        if entry.is_dir():
+            yield from _fast_scan(entry.path, valid_exts)
+        elif entry.is_file():
+            ext = entry.name[entry.name.rfind('.'):].lower()
+            if ext in valid_exts:
+                yield entry.path
 
 # ─── ARGUMENT PARSER ─────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(description='LemGendary Datasets Compiler')
@@ -399,18 +451,7 @@ def process_dataset():
                 ann_data = ann_path
 
             valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp", ".npy"}
-            images = []
-            # 2026 Warp-Speed: Use os.scandir and string paths to avoid 1.4M Path object overhead
-            def fast_scan(path):
-                for entry in os.scandir(path):
-                    if entry.is_dir():
-                        yield from fast_scan(entry.path)
-                    elif entry.is_file():
-                        ext = entry.name[entry.name.rfind('.'):].lower()
-                        if ext in valid_exts:
-                            yield entry.path
-
-            images = list(fast_scan(str(dataset)))
+            images = list(_fast_scan(str(dataset), valid_exts))
 
             # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
             is_virtual = False
@@ -463,7 +504,7 @@ def process_dataset():
                                 pass
 
                 # Now scan the downloads directory for the standard physical loop
-                images = list(fast_scan(str(dl_dir)))
+                images = list(_fast_scan(str(dl_dir), valid_exts))
 
             # PRE-COMPUTE ANNOTATION LOOKUPS TO AVOID O(N^2) BOTTLENECKS
             coco_file_to_id = {}

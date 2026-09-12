@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 from huggingface_hub import snapshot_download, login
 from pathlib import Path
@@ -89,7 +90,7 @@ def main():
                         headers["Range"] = f"bytes={existing_size}-"
                         print(f"  [RESUME] Found partial file ({existing_size/(1024*1024):.2f} MB). Picking up...")
 
-                    response = requests.get(url, headers=headers, stream=True)
+                    response = requests.get(url, headers=headers, stream=True, timeout=60)
                     # If 206 Partial Content, we are resuming
                     total_size = int(response.headers.get('content-length', 0))
                     if response.status_code == 200 and existing_size > 0:
@@ -137,7 +138,7 @@ def main():
         print(f"[SUCCESS] {args.repo_id} processed to {args.output_dir}")
     except Exception as e:
         print(f"[ERROR] Failed to download {args.repo_id}: {e}")
-        exit(1)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

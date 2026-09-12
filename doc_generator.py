@@ -125,72 +125,84 @@ TASK_ARCH_BASE = {
 
 def format_source(name):
     lower_name = name.lower()
-    if lower_name == 'celebamask': return 'CelebAMask'
-    elif lower_name == 'affectnet': return 'AffectNet'
-    elif lower_name == 'wflw': return 'WFLW'
-    elif lower_name == 'ffhq' or 'flickr-faces-hq' in lower_name: return 'FFHQ (Flickr-Faces-HQ)'
-    elif lower_name == 'helen': return 'Helen'
-    elif lower_name in ['ava', 'aadb', 'coco', 'csiq', 'spaq', 'live']: return lower_name.upper()
-    elif lower_name == 'koniq10k' or 'koniq' in lower_name: return 'KonIQ-10k'
-    elif lower_name == 'tid2013': return 'TID2013'
-    elif lower_name == 'laion': return 'LAION'
-    elif lower_name == 'laion-5b': return 'LAION-5B'
-    elif 'smartphone' in lower_name or 'sidd' in lower_name: return 'SIDD (Smartphone Image Denoising)'
-    elif 'dnd' in lower_name or 'nam' in lower_name: return 'DND & NAM Noise Data'
-    elif '9-classes' in lower_name: return '9-Classes Noisy Image Dataset'
-    elif 'multi-noises' in lower_name: return 'Multi-Noise Synthetic Dataset'
-    elif 'salt-and-pepper' in lower_name: return 'Salt-and-Pepper Noise'
-    elif 'iso-levels' in lower_name: return 'Multiple ISO Denoising Dataset'
-    elif 'gopro' in lower_name: return 'GoPro Deblurring Dataset'
-    elif 'hideblur' in lower_name: return 'HiDeBlur Dataset'
-    elif 'realblur' in lower_name: return 'RealBlur Dataset'
-    elif 'df2k' in lower_name: return 'DF2K-OST'
-    elif 'flickr2k' in lower_name: return 'Flickr2K'
-    elif 'div2k' in lower_name: return 'DIV2K Dataset'
-    elif 'urban100' in lower_name: return 'Urban100'
-    elif 'synthetic-faces' in lower_name or 'sfhq' in lower_name:
+    exact_map = {
+        'celebamask': 'CelebAMask',
+        'affectnet': 'AffectNet',
+        'wflw': 'WFLW',
+        'helen': 'Helen',
+        'tid2013': 'TID2013',
+        'laion': 'LAION',
+        'laion-5b': 'LAION-5B',
+        'df2k': 'DF2K-OST',
+        'flickr2k': 'Flickr2K',
+        'div2k': 'DIV2K Dataset',
+        'urban100': 'Urban100',
+        'coco': 'COCO 2017',
+        'rain100h': 'Rain100H',
+        'rain100l': 'Rain100L',
+        'nsfw': 'NSFW Dataset',
+        'food101': 'Food-101',
+        'tad66k': 'TAD66K Aesthetics',
+        'adobe': 'Adobe FiveK',
+        'dped': 'DPED (Smartphone Photography)',
+    }
+    if lower_name in exact_map:
+        return exact_map[lower_name]
+    if lower_name in ['ava', 'aadb', 'coco', 'csiq', 'spaq', 'live']:
+        return lower_name.upper()
+
+    if 'synthetic-faces' in lower_name or 'sfhq' in lower_name:
         parts = lower_name.split('-')
-        part_num = parts[-1] if parts[-1].isdigit() else ''
-        if part_num:
-            return f"SFHQ (Synthetic Faces High Quality) Part {part_num}"
-        return "SFHQ (Synthetic Faces High Quality)"
-    elif 'coco-2017' in lower_name or lower_name == 'coco': return 'COCO 2017'
-    elif 'pascal' in lower_name or 'voc' in lower_name: return 'Pascal VOC 2012'
-    elif 'kitti' in lower_name: return 'KITTI Vision Benchmark'
-    elif 'crowdpose' in lower_name: return 'CrowdPose Dataset'
-    elif 'mpii' in lower_name: return 'MPII Human Pose'
-    elif 'reside' in lower_name or 'indoor-training-set' in lower_name: return 'RESIDE Standard Indoor'
-    elif 'dehazing-and-desmoking' in lower_name: return 'Dehazing and Desmoking'
-    elif 'outdoor-dehazing' in lower_name: return 'Outdoor Dehazing Dataset'
-    elif 'ohaze' in lower_name or 'ntire' in lower_name: return 'O-HAZE / NTIRE Dehazing'
-    elif 'nhhaze' in lower_name: return 'NH-HAZE Dataset'
-    elif 'hazing-images' in lower_name: return 'Hazing Images Dataset (CVPR)'
-    elif 'lol-v2' in lower_name: return 'LOL-v2 Dataset'
-    elif 'lol' in lower_name: return 'LOL (Low-Light) Dataset'
-    elif 'exdark' in lower_name: return 'ExDark (Exclusively Dark)'
-    elif 'learning-to-see-in-the-dark' in lower_name or 'sid' in lower_name: return 'Learning to See in the Dark (SID)'
-    elif 'anime_dbrating' in lower_name: return 'Anime DB Rating (Danbooru)'
-    elif 'nsfw' in lower_name: return 'NSFW Dataset'
-    elif 'food101' in lower_name: return 'Food-101'
-    elif 'tad66k' in lower_name: return 'TAD66K Aesthetics'
-    elif 'adobe' in lower_name: return 'Adobe FiveK'
-    elif 'dped' in lower_name: return 'DPED (Smartphone Photography)'
-    elif 'rain100h' in lower_name: return 'Rain100H'
-    elif 'rain100l' in lower_name: return 'Rain100L'
-    elif 'high-resolution' in lower_name or 'high_resolution' in lower_name: return 'High-Resolution Rainy Images'
-    elif 'rain-dataset' in lower_name or 'rain_dataset' in lower_name or lower_name == 'rain dataset': return 'Balraj Rain Dataset'
-    elif 'rain' in lower_name: return 'Rain Streaks Dataset'
-    elif 'vintage' in lower_name: return 'Vintage Degraded Photos'
-    elif 'old-photo' in lower_name or 'old_photo' in lower_name or 'old-film' in lower_name or lower_name == 'old': return 'Vintage & Degraded Film Archive'
-    elif 'photo-restoration' in lower_name or lower_name == 'photo': return 'Photo Restoration Dataset'
-    elif 'realvsfake' in lower_name or 'real_vs_fake' in lower_name: return 'Real vs Fake Faces'
-    elif 'sut-project' in lower_name: return 'SUT Project Authenticity'
-    elif 'ai-generated' in lower_name: return 'AI Generated vs Real Images'
-    elif lower_name.startswith('compiled_'):
+        suffix = f" Part {parts[-1]}" if parts[-1].isdigit() else ""
+        return f"SFHQ (Synthetic Faces High Quality){suffix}"
+
+    if lower_name.startswith('compiled_'):
         clean = lower_name.replace('compiled_', '').replace('multitask', '').replace('MultiTask', '')
         return f"{clean} Multi-Task Sub-Manifold"
-    else:
-        return name.replace('-', ' ').replace('_', ' ').title()
+
+    patterns = [
+        (['ffhq', 'flickr-faces-hq'], 'FFHQ (Flickr-Faces-HQ)'),
+        (['koniq10k', 'koniq'], 'KonIQ-10k'),
+        (['smartphone', 'sidd'], 'SIDD (Smartphone Image Denoising)'),
+        (['dnd', 'nam'], 'DND & NAM Noise Data'),
+        (['9-classes'], '9-Classes Noisy Image Dataset'),
+        (['multi-noises'], 'Multi-Noise Synthetic Dataset'),
+        (['salt-and-pepper'], 'Salt-and-Pepper Noise'),
+        (['iso-levels'], 'Multiple ISO Denoising Dataset'),
+        (['gopro'], 'GoPro Deblurring Dataset'),
+        (['hideblur'], 'HiDeBlur Dataset'),
+        (['realblur'], 'RealBlur Dataset'),
+        (['coco-2017'], 'COCO 2017'),
+        (['pascal', 'voc'], 'Pascal VOC 2012'),
+        (['kitti'], 'KITTI Vision Benchmark'),
+        (['crowdpose'], 'CrowdPose Dataset'),
+        (['mpii'], 'MPII Human Pose'),
+        (['reside', 'indoor-training-set'], 'RESIDE Standard Indoor'),
+        (['dehazing-and-desmoking'], 'Dehazing and Desmoking'),
+        (['outdoor-dehazing'], 'Outdoor Dehazing Dataset'),
+        (['ohaze', 'ntire'], 'O-HAZE / NTIRE Dehazing'),
+        (['nhhaze'], 'NH-HAZE Dataset'),
+        (['hazing-images'], 'Hazing Images Dataset (CVPR)'),
+        (['lol-v2'], 'LOL-v2 Dataset'),
+        (['lol'], 'LOL (Low-Light) Dataset'),
+        (['exdark'], 'ExDark (Exclusively Dark)'),
+        (['learning-to-see-in-the-dark', 'sid'], 'Learning to See in the Dark (SID)'),
+        (['anime_dbrating'], 'Anime DB Rating (Danbooru)'),
+        (['high-resolution', 'high_resolution'], 'High-Resolution Rainy Images'),
+        (['rain-dataset', 'rain_dataset', 'rain dataset'], 'Balraj Rain Dataset'),
+        (['rain'], 'Rain Streaks Dataset'),
+        (['vintage'], 'Vintage Degraded Photos'),
+        (['old-photo', 'old_photo', 'old-film', 'old'], 'Vintage & Degraded Film Archive'),
+        (['photo-restoration', 'photo'], 'Photo Restoration Dataset'),
+        (['realvsfake', 'real_vs_fake'], 'Real vs Fake Faces'),
+        (['sut-project'], 'SUT Project Authenticity'),
+        (['ai-generated'], 'AI Generated vs Real Images'),
+    ]
+    for keys, title in patterns:
+        if any(k in lower_name for k in keys):
+            return title
+
+    return name.replace('-', ' ').replace('_', ' ').title()
 
 
 # ─── Forex scanner ──────────────────────────────────────────────────────
@@ -611,7 +623,7 @@ last_processed: '{datetime.now().isoformat()}'
                             adv = val * 0.95
                             models_markdown += f"| **{met_name}** | ~{base:.4f} | > {adv:.4f} | **> {val:.4f}** |\n"
                         else:
-                            is_pct = any(x in met.lower() for x in ['acc', 'win', 'rate']) or (val > 20.0 and val <= 100.0)
+                            is_pct = any(x in met.lower() for x in ['acc', 'win', 'rate']) or (20.0 < val <= 100.0)
                             if is_pct and val > 10.0:
                                 base = val * 0.8
                                 adv = val * 0.9
@@ -663,6 +675,8 @@ last_processed: '{datetime.now().isoformat()}'
                 desc = "Class labels mapping."
             elif name == "dataset_info.yaml":
                 desc = "Manifest metadata for automated PyTorch loaders."
+            elif name == "dataset-metadata.json":
+                desc = "Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors."
             elif name == "README.md":
                 desc = "This documentation file."
             else:
@@ -758,6 +772,7 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
             "shards": "WebDataset `.tar` shards containing serialized manifold data.",
             "forex": "Shards containing serialized manifold data.",
             "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
+            "dataset-metadata.json": "Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.",
             "category.txt": "Top-level categorization tag.",
             "classes.txt": "Class labels mapping.",
             "index.json": "Compiled metadata index mapping all dataset samples.",
@@ -820,7 +835,7 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
                             adv = val * 0.95
                             models_markdown += f"| **{met_name}** | ~{base:.4f} | > {adv:.4f} | **> {val:.4f}** |\n"
                         else:
-                            is_pct = any(x in met.lower() for x in ['acc', 'win', 'rate']) or (val > 20.0 and val <= 100.0)
+                            is_pct = any(x in met.lower() for x in ['acc', 'win', 'rate']) or (20.0 < val <= 100.0)
                             if is_pct and val > 10.0:
                                 base = val * 0.8
                                 adv = val * 0.9

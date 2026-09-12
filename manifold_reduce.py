@@ -1,6 +1,18 @@
-import sys, yaml, shutil
+import sys
+import json
+import random
+import yaml
+import shutil
 from pathlib import Path
-from compiler_core import *
+from tqdm import tqdm
+
+from compiler_core import (
+    CONFIG,
+    DATASETS_META,
+    OUT_PARENT,
+    remove_empty_dirs,
+)
+from doc_generator import generate_dataset_docs
 
 
 def _prompt_multiselect(label, options, default_all=True):
@@ -37,6 +49,43 @@ def _prompt_multiselect(label, options, default_all=True):
     return selected if selected else list(options)
 
 
+def _select_manifolds(manifolds):
+    try:
+        sel = input("\nSelect manifold to reduce (number, comma-separated, or 'a' for all): ").strip()
+        if not sel:
+            return None
+        if sel.lower() == 'a':
+            return list(range(len(manifolds)))
+        target_indices = []
+        for part in sel.split(','):
+            idx = int(part.strip()) - 1
+            if idx < 0 or idx >= len(manifolds):
+                raise ValueError
+            target_indices.append(idx)
+        return target_indices
+    except (ValueError, IndexError):
+        print("[ERROR] Invalid selection.")
+        return None
+    except KeyboardInterrupt:
+        print("\n[ABORTED] Operation cancelled by user.")
+        return None
+
+
+def _prompt_reduction_params():
+    try:
+        raw_gb = input("Target max size in GB [Default: 190.0]: ").strip()
+        max_gb = float(raw_gb) if raw_gb else 190.0
+        raw_suffix = input("New suffix [Default: Reduced]: ").strip()
+        suffix = raw_suffix if raw_suffix else "Reduced"
+        return max_gb, suffix
+    except ValueError:
+        print("[ERROR] Invalid input.")
+        return None, None
+    except KeyboardInterrupt:
+        print("\n[ABORTED] Operation cancelled by user.")
+        return None, None
+
+
 def reduce_dataset():
     print("\n[SCANNING] Locating existing manifolds in LemGendaryDatasets...")
     manifolds = [
@@ -58,24 +107,8 @@ def reduce_dataset():
         else:
             print(f"\033[93m{i + 1}. {m.name}\033[0m")
 
-    try:
-        sel = input("\nSelect manifold to reduce (number, comma-separated, or 'a' for all): ").strip()
-        if not sel:
-            return
-        if sel.lower() == 'a':
-            target_indices = list(range(len(manifolds)))
-        else:
-            target_indices = []
-            for part in sel.split(','):
-                idx = int(part.strip()) - 1
-                if idx < 0 or idx >= len(manifolds):
-                    raise ValueError
-                target_indices.append(idx)
-    except (ValueError, IndexError):
-        print("[ERROR] Invalid selection.")
-        return
-    except KeyboardInterrupt:
-        print("\n[ABORTED] Operation cancelled by user.")
+    target_indices = _select_manifolds(manifolds)
+    if not target_indices:
         return
 
     for idx in target_indices:
@@ -100,16 +133,8 @@ def reduce_dataset():
             continue
 
         # --- Vision / quality manifold flow (unchanged) ---
-        try:
-            raw_gb = input("Target max size in GB [Default: 190.0]: ").strip()
-            max_gb = float(raw_gb) if raw_gb else 190.0
-            raw_suffix = input("New suffix [Default: Reduced]: ").strip()
-            suffix = raw_suffix if raw_suffix else "Reduced"
-        except ValueError:
-            print("[ERROR] Invalid input.")
-            return
-        except KeyboardInterrupt:
-            print("\n[ABORTED] Operation cancelled by user.")
+        max_gb, suffix = _prompt_reduction_params()
+        if max_gb is None:
             return
 
         target_name = f"{base_name}{suffix}"

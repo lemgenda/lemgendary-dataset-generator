@@ -128,7 +128,7 @@ def get_gaussian_probs(mean_score, sigma=1.0):
     return probs.tolist()
 
 def load_ground_truth(model_name=""):
-    global AVA_LOOKUP, AADB_LOOKUP, TID_LOOKUP
+    global AVA_LOOKUP, AADB_LOOKUP
     m_low = model_name.lower()
 
     # 1. Aesthetic Sources
@@ -235,38 +235,41 @@ def load_ground_truth(model_name=""):
         print(f"[GT] {tad_count} TAD66K ratings cached.")
 
 def detect_task(model_dir_name):
-    if not model_dir_name: return "quality"
+    if not model_dir_name:
+        return "quality"
     name = str(model_dir_name).lower()
-    
+
     # 2026: Check for explicit task_override in dataset config
     if DATASETS_META:
         for ds_key, ds_cfg in DATASETS_META.items():
-            if ds_key.lower() == name or (ds_cfg.get('name', '').lower() == name):
-                override = ds_cfg.get('task_override')
+            if ds_key.lower() == name or (ds_cfg.get("name", "").lower() == name):
+                override = ds_cfg.get("task_override")
                 if override:
                     return override
-    
-    if "diffusion" in name: return "diffusion"
-    if any(k in name for k in ["seg", "mask", "parsenet"]): return "segmentation"
-    if any(k in name for k in ["pose", "face"]): return "pose"
-    if any(k in name for k in ["nima", "aesthetic", "quality"]): return "quality"
-    if any(k in name for k in ["classify", "classification", "authentic", "authenticity"]): return "classification"
-    if any(k in name for k in ["vlm", "vision_language"]): return "diffusion"
-    if any(k in name for k in ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]): return "super-resolution"
-    
-    # 2026: Surgical Restoration Detection (Purity-First)
-    # Note: 'upn' removed -- UPN models use task_override for parameter_prediction
-    if any(k in name for k in ["deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure"]):
-        return "restoration"
-    if any(k in name for k in ["restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet", "upn", "codeformer"]):
-        return "restoration"
+
+    task_patterns = [
+        (["diffusion", "vlm", "vision_language"], "diffusion"),
+        (["seg", "mask", "parsenet"], "segmentation"),
+        (["pose", "face"], "pose"),
+        (["nima", "aesthetic", "quality"], "quality"),
+        (["classify", "classification", "authentic", "authenticity"], "classification"),
+        (["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"], "super-resolution"),
+        ([
+            "deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure",
+            "restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet",
+            "upn", "codeformer"
+        ], "restoration"),
+    ]
+    for patterns, t_name in task_patterns:
+        if any(k in name for k in patterns):
+            return t_name
     return "detection"
 
 DPED_CACHE = set()
 PHYSICAL_INDEX = set()
 
 def init_worker(config, dped_cache=None, physical_index=None):
-    global SENTRY, LABELER, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX
+    global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX
     if dped_cache: DPED_CACHE = dped_cache
     if physical_index: PHYSICAL_INDEX = physical_index
     # 2026 Modular Alignment: Local imports from encapsulated modules
@@ -482,26 +485,39 @@ class ShardWriter:
         self.sink.close()
 
 # ---------------- FORMAT PARSERS ----------------
+def _detect_in_subdir(sub):
+    for f in sub.glob("*.json"):
+        if "coco" in f.name.lower() or "instances" in f.name.lower():
+            return "coco", f
+    for f in sub.glob("*.parquet"):
+        return "parquet", f
+    for ext, fmt in [("*.xml", "xml"), ("*.txt", "yolo"), ("*.npz", "npz")]:
+        if any(sub.glob(ext)):
+            return fmt, sub
+    return None, None
+
+
 def detect_annotations(path):
     path = Path(path)
     # 2026 Resilience: Multi-format annotation discovery
-    # 2026 Optimization: Avoid recursive rglob on 1.4M folders; check common top-level locations
     for f in path.glob("*.json"):
-        if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
-    for f in path.glob("*.parquet"): return "parquet", f
-    for f in path.glob("*.mat"): return "matlab", f
+        if "coco" in f.name.lower() or "instances" in f.name.lower():
+            return "coco", f
+    for f in path.glob("*.parquet"):
+        return "parquet", f
+    for f in path.glob("*.mat"):
+        return "matlab", f
 
-    # Check one level deeper for common structures (e.g. annotations/instances.json)
-    for sub in [path / "annotations", path / "Annotations", path / "labels", path / "metadata", path / "data", path / "landmarks"]:
+    # Check one level deeper for common structures
+    candidates = [
+        path / "annotations", path / "Annotations", path / "labels",
+        path / "metadata", path / "data", path / "landmarks"
+    ]
+    for sub in candidates:
         if sub.exists():
-            for f in sub.glob("*.json"):
-                if "coco" in f.name.lower() or "instances" in f.name.lower(): return "coco", f
-            for f in sub.glob("*.parquet"): return "parquet", f
-            
-            # 2026: Directory-level annotation formats (1 file per image)
-            if any(sub.glob("*.xml")): return "xml", sub
-            if any(sub.glob("*.txt")): return "yolo", sub
-            if any(sub.glob("*.npz")): return "npz", sub
+            fmt, match = _detect_in_subdir(sub)
+            if fmt is not None:
+                return fmt, match
 
     return None, None
 
@@ -547,7 +563,7 @@ def parse_matlab(mat_path):
     import scipy.io as sio  # type: ignore[import-untyped]
     data = sio.loadmat(mat_path)
     # Heuristic for finding the annotation key
-    key = [k for k in data.keys() if not k.startswith("__")][0]
+    key = [k for k in data if not k.startswith("__")][0]
     return data, key
 
 def parse_safetensors(st_path):
@@ -669,6 +685,30 @@ def batch_worker(tasks):
     return results
 
 # ---------------- PROCESSORS ----------------
+def _is_image_valid_for_dataset(img, w, hgt, task, slug):
+    if img and task == "quality" and "laion" not in slug and "ava" not in slug:
+        if is_black_image(img):
+            return False
+    if task in ["diffusion"]:
+        min_dim = 512
+    elif task in ["quality", "classification", "restoration", "super-resolution"]:
+        min_dim = 128 if "artifact" in slug.lower() else 224
+    else:
+        min_dim = 128
+    return w >= min_dim and hgt >= min_dim
+
+
+def _passes_nima_filter(task, slug, is_authenticity, nima_score, nima_probs, current_threshold, idx):
+    if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
+        if CONFIG.get("strict_ground_truth", True) and task == "quality" and "laion" not in slug:
+            return False
+    if task in ["quality", "diffusion"] and nima_score < current_threshold and not is_authenticity:
+        if idx < 5:
+            print(f"DEBUG: {slug} skipped because nima {nima_score} < {current_threshold}")
+        return False
+    return True
+
+
 def process_image(
     img_input, prefix, slug, idx, task, fmt, ann_data, split, output_root_str, skip_labeling=False):
     """
@@ -845,21 +885,7 @@ def process_image(
             else:
                 img = Image.open(io.BytesIO(img_data)) # type: ignore
             img = ensure_srgb(img)
-            w, hgt = img.size
-            if task == "quality" and "laion" not in slug and "ava" not in slug:
-                if is_black_image(img): return None
-
-            # 2026 High-Fidelity Floor (v16.2.8 Hardened)
-            # Never start below the training suite's minimum floor to prevent blur pathologies.
-            # Restoration/SR floor at 224px; Diffusion floor at 512px for SOTA parity.
-            if task in ["diffusion"]:
-                min_dim = 512
-            elif task in ["quality", "classification", "restoration", "super-resolution"]:
-                min_dim = 128 if "artifact" in slug.lower() else 224
-            else:
-                min_dim = 128
-            
-            if w < min_dim or hgt < min_dim:
+            if not _is_image_valid_for_dataset(img, w, hgt, task, slug):
                 return None
 
         # NIMA Quality Logic: Prioritize Ground Truth over AI Guessing
@@ -936,22 +962,11 @@ def process_image(
 
         # 5. AI Vetting Fallback (Only if not in Strict Human mode)
         if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
-            # If we are here, no human ground truth was found.
-            # 2026 Strategy: Allow AI fallback for LAION-branded sources if strict mode is disabled
-            if CONFIG.get("strict_ground_truth", True):
-                # Critical Gate: LAION and other internet-scale sets MUST have labels unless specifically bypassed
-                if task == "quality" and "laion" not in slug:
-                    return None
-
             if SENTRY:
                 nima_score, nima_probs = SENTRY.score(img, return_probs=True)
-                if idx < 10:
-                    pass # print(f"[LIVE TRACE] {slug}_{idx:09d} | AI Score: {nima_score:.4f}")
 
-        # 2026 Quality Gate: Enforce higher aesthetic standards for Diffusion manifolds
         current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
-        if task in ["quality", "diffusion"] and nima_score < current_threshold and not is_authenticity:
-            if idx < 5: print(f"DEBUG: {slug} skipped because nima {nima_score} < {current_threshold}")
+        if not _passes_nima_filter(task, slug, is_authenticity, nima_score, nima_probs, current_threshold, idx):
             return None
 
         # Meta Preparation
@@ -1131,24 +1146,26 @@ def process_image(
             except Exception as e:
                 print(f"Error parsing NPZ {ann_data}: {e}")
 
-        elif fmt == "safetensors" and ann_data:
+        elif fmt == "safetensors" and isinstance(ann_data, dict):
             metadata = ann_data
             # Extract tags from common metadata keys (Kohya/Civitai style)
             tags = []
             if "ss_tag_frequency" in metadata:
                 try:
-                    freqs = json.loads(metadata["ss_tag_frequency"])
+                    freqs = json.loads(str(metadata["ss_tag_frequency"]))
                     for bucket in freqs.values():
                         tags.extend(bucket.keys())
-                except: pass
+                except Exception:
+                    pass
 
             if not tags and "ss_datasets" in metadata:
                 try:
-                    ds_info = json.loads(metadata["ss_datasets"])
+                    ds_info = json.loads(str(metadata["ss_datasets"]))
                     for ds in ds_info:
                         if "tag_frequency" in ds:
                             tags.extend(ds["tag_frequency"].keys())
-                except: pass
+                except Exception:
+                    pass
 
             if tags:
                 # Diffusion YOLO: Convert categories to classification-style labels

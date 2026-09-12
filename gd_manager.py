@@ -32,18 +32,20 @@ def main():
             # fuzzy=True helps if the URL is provided instead of an ID
             res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)  # type: ignore
             if res is None:
-                raise Exception("Failed to download as a file.")
+                raise RuntimeError("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
         except Exception as e:
             print(f"WARNING: File download failed ({e}). Attempting folder download...")
             if os.path.exists(zip_path):
-                try: os.remove(zip_path)
-                except: pass
-                
+                try:
+                    os.remove(zip_path)
+                except OSError:
+                    pass
+
             try:
                 res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)  # type: ignore
                 if res is None:
-                    raise Exception("Failed to download as a folder.")
+                    raise RuntimeError("Failed to download as a folder.") from e
                 print("STATUS:COMPLETED")
             except Exception as e2:
                 print(f"ERROR: Could not download Google Drive source {args.repo_id}: {e2}")

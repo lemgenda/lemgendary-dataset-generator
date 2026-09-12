@@ -18,56 +18,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-
-TIMEFRAME_LOOKBACK = {
-    1: 512,
-    5: 288,
-    15: 192,
-    60: 168,
-    240: 90,
-    1440: 252,
-}
-
-EXTENDED_PAIRS = [
-    "EURUSD", "GBPUSD", "USDJPY", "XAUUSD",
-    "USDCAD", "USDCHF", "AUDUSD", "NZDUSD",
-    "EURJPY", "GBPJPY", "EURGBP",
-    "XAGUSD", "USOIL",
-    "US500", "NAS100", "DE40"
-]
-
-COLUMN_DESCRIPTIONS = {
-    "pair": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500).",
-    "timeframe": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min).",
-    "timestamp": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close.",
-    "y_dir": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up).",
-    "tp_pips": "Optimal forward Take-Profit target excursion magnitude in pips.",
-    "sl_pips": "Maximum adverse excursion Stop-Loss safety threshold in pips.",
-    "seq_len": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure).",
-    "n_features": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio).",
-    "features": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
-}
-
-PARQUET_SCHEMA = pa.schema([
-    pa.field("pair", pa.string(), metadata={"description": COLUMN_DESCRIPTIONS["pair"]}),
-    pa.field("timeframe", pa.int32(), metadata={"description": COLUMN_DESCRIPTIONS["timeframe"]}),
-    pa.field("timestamp", pa.int64(), metadata={"description": COLUMN_DESCRIPTIONS["timestamp"]}),
-    pa.field("y_dir", pa.int8(), metadata={"description": COLUMN_DESCRIPTIONS["y_dir"]}),
-    pa.field("tp_pips", pa.float32(), metadata={"description": COLUMN_DESCRIPTIONS["tp_pips"]}),
-    pa.field("sl_pips", pa.float32(), metadata={"description": COLUMN_DESCRIPTIONS["sl_pips"]}),
-    pa.field("seq_len", pa.int16(), metadata={"description": COLUMN_DESCRIPTIONS["seq_len"]}),
-    pa.field("n_features", pa.int16(), metadata={"description": COLUMN_DESCRIPTIONS["n_features"]}),
-    pa.field("features", pa.binary(), metadata={"description": COLUMN_DESCRIPTIONS["features"]}),
-], metadata={
-    b"description": b"LemGendary Forex Universe High-Fidelity OHLCV Temporal Manifold",
-    b"columns": json.dumps(COLUMN_DESCRIPTIONS).encode("utf-8"),
-    b"domain": b"Financial & Time-Series",
-    b"task": b"forex_prediction",
-    b"timeframe_rungs": b"[1, 5, 15, 60, 240, 1440]",
-    b"features_list": b'["open", "high", "low", "close", "volume", "rsi", "macd", "macd_signal", "atr", "bb_width", "session_sin", "session_cos", "atr_percentile", "bar_range_ratio"]',
-    b"author": b"LemGendary AI",
-    b"created_by": b"LemGendary MT5 Compiler Pipeline"
-})
+from forex_schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA, TIMEFRAME_LOOKBACK, EXTENDED_PAIRS
 
 ROW_GROUP_SIZE = 5000
 CHUNK_BATCH_SIZE = 20000
@@ -92,6 +43,50 @@ def get_file_size_gb(file_path: Path) -> float:
         return os.path.getsize(file_path) / (1024 ** 3)
     except OSError:
         return 0.0
+
+
+def _verify_converted_parquet(temp_parquet: Path, total_written: int, year: int) -> bool:
+    print(f" [VERIFY] Commencing bit-exact validation for ForexUniverse{year}...")
+    v_start = time.time()
+
+    pf = pq.ParquetFile(str(temp_parquet))
+    if pf.metadata.num_rows != total_written:
+        print(f" [FAIL] Row count mismatch: {pf.metadata.num_rows} in file vs {total_written} written.")
+        temp_parquet.unlink(missing_ok=True)
+        return False
+
+    # Read random sample rows across the Parquet file to verify tensor parity
+    for idx in [0, total_written // 2, total_written - 1]:
+        curr_row = 0
+        target_rg = 0
+        rg_offset = 0
+        for rg_i in range(pf.num_row_groups):
+            rg_rows = pf.metadata.row_group(rg_i).num_rows
+            if curr_row <= idx < curr_row + rg_rows:
+                target_rg = rg_i
+                rg_offset = idx - curr_row
+                break
+            curr_row += rg_rows
+
+        rg_table = pf.read_row_group(target_rg)
+        row_feat = rg_table["features"][rg_offset].as_buffer()
+        row_seq_len = rg_table["seq_len"][rg_offset].as_py()
+        row_n_feat = rg_table["n_features"][rg_offset].as_py()
+        recovered_arr = np.frombuffer(row_feat, dtype=np.float32).reshape(row_seq_len, row_n_feat)
+
+        if recovered_arr.shape != (row_seq_len, row_n_feat) or not np.isfinite(recovered_arr).all():
+            print(f" [FAIL] Invalid recovered array at global row {idx}")
+            del rg_table, row_feat, pf
+            gc.collect()
+            temp_parquet.unlink(missing_ok=True)
+            return False
+
+    v_duration = time.time() - v_start
+    print(f" [PASS] Bit-exact verification PASSED in {v_duration:.2f}s ({pf.metadata.num_rows:,} rows verified).")
+    del rg_table, row_feat, pf
+    gc.collect()
+    time.sleep(0.5)
+    return True
 
 
 def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cleanup: bool = False) -> bool:
@@ -240,49 +235,8 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
     print(f" [SUCCESS] Written {total_written:,} samples to temporary Parquet in {write_duration:.1f}s")
     print(f" [METRICS] Size: {initial_size_gb:.2f} GB -> {parquet_size_gb:.2f} GB ({(1 - parquet_size_gb / max(initial_size_gb, 0.001)) * 100:.1f}% reduction)")
 
-    # ─── Verification Gate ──────────────────────────────────────────────────
-    print(f" [VERIFY] Commencing bit-exact validation for ForexUniverse{year}...")
-    v_start = time.time()
-
-    pf = pq.ParquetFile(str(temp_parquet))
-    if pf.metadata.num_rows != total_written:
-        print(f" [FAIL] Row count mismatch: {pf.metadata.num_rows} in file vs {total_written} written.")
-        temp_parquet.unlink(missing_ok=True)
+    if not _verify_converted_parquet(temp_parquet, total_written, year):
         return False
-
-    # Read random sample rows across the Parquet file to verify tensor parity
-    for idx in [0, total_written // 2, total_written - 1]:
-        curr_row = 0
-        target_rg = 0
-        rg_offset = 0
-        for rg_i in range(pf.num_row_groups):
-            rg_rows = pf.metadata.row_group(rg_i).num_rows
-            if curr_row <= idx < curr_row + rg_rows:
-                target_rg = rg_i
-                rg_offset = idx - curr_row
-                break
-            curr_row += rg_rows
-
-        rg_table = pf.read_row_group(target_rg)
-        row_feat = rg_table["features"][rg_offset].as_buffer()
-        row_seq_len = rg_table["seq_len"][rg_offset].as_py()
-        row_n_feat = rg_table["n_features"][rg_offset].as_py()
-        recovered_arr = np.frombuffer(row_feat, dtype=np.float32).reshape(row_seq_len, row_n_feat)
-
-        if recovered_arr.shape != (row_seq_len, row_n_feat) or not np.isfinite(recovered_arr).all():
-            print(f" [FAIL] Invalid recovered array at global row {idx}")
-            del rg_table, row_feat, pf
-            gc.collect()
-            temp_parquet.unlink(missing_ok=True)
-            return False
-
-    v_duration = time.time() - v_start
-    print(f" [PASS] Bit-exact verification PASSED in {v_duration:.2f}s ({pf.metadata.num_rows:,} rows verified).")
-
-    # Release file handle for Windows OS file renaming
-    del rg_table, row_feat, pf
-    gc.collect()
-    time.sleep(0.5)
 
     # Finalize by renaming temp to target
     if target_parquet.exists():

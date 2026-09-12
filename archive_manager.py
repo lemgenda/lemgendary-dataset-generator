@@ -30,7 +30,7 @@ def verify_archive(archive_path):
         print(f"[ERROR] Invalid archive file {archive_path}: {e}")
         return False
 
-def create_archive(source_dir, output_path, format="zip", root_dir=None, base_dir=None):
+def create_archive(source_dir, output_path, archive_format="zip", root_dir=None, base_dir=None):
     """Create a zip or tar archive with uniform real-time byte-level progress bar."""
     source_path = Path(source_dir).resolve()
     output_path = Path(output_path).resolve()
@@ -90,8 +90,8 @@ def create_archive(source_dir, output_path, format="zip", root_dir=None, base_di
             "dynamic_ncols": True,
             "mininterval": 0.25,
         }
-        if format.lower() in ["tar", "tar.gz", "tgz"]:
-            mode = "w:gz" if format.lower() in ["tar.gz", "tgz"] else "w:"
+        if archive_format.lower() in ["tar", "tar.gz", "tgz"]:
+            mode = "w:gz" if archive_format.lower() in ["tar.gz", "tgz"] else "w:"
             with tarfile.open(output_path, mode) as tf:
                 with tqdm(**pbar_kwargs) as pbar:
                     for full_path, arcname, size in file_entries:
@@ -310,6 +310,5 @@ if __name__ == "__main__":
         if not source_dir or not dest_archive:
             print("[ERROR] --source and --dest are required for archive action.")
             sys.exit(1)
-        success = create_archive(source_dir, dest_archive, format=args.format)
+        success = create_archive(source_dir, dest_archive, archive_format=args.format)
         sys.exit(0 if success else 1)
-

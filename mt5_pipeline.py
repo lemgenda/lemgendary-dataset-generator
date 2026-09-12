@@ -24,39 +24,7 @@ import yaml
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-# ─── Internal Constants & Schema Metadata ──────────────────────────────────
-COLUMN_DESCRIPTIONS = {
-    "pair": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500).",
-    "timeframe": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min).",
-    "timestamp": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close.",
-    "y_dir": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up).",
-    "tp_pips": "Optimal forward Take-Profit target excursion magnitude in pips.",
-    "sl_pips": "Maximum adverse excursion Stop-Loss safety threshold in pips.",
-    "seq_len": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure).",
-    "n_features": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio).",
-    "features": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
-}
-
-PARQUET_SCHEMA = pa.schema([
-    pa.field("pair", pa.string(), metadata={"description": COLUMN_DESCRIPTIONS["pair"]}),
-    pa.field("timeframe", pa.int32(), metadata={"description": COLUMN_DESCRIPTIONS["timeframe"]}),
-    pa.field("timestamp", pa.int64(), metadata={"description": COLUMN_DESCRIPTIONS["timestamp"]}),
-    pa.field("y_dir", pa.int8(), metadata={"description": COLUMN_DESCRIPTIONS["y_dir"]}),
-    pa.field("tp_pips", pa.float32(), metadata={"description": COLUMN_DESCRIPTIONS["tp_pips"]}),
-    pa.field("sl_pips", pa.float32(), metadata={"description": COLUMN_DESCRIPTIONS["sl_pips"]}),
-    pa.field("seq_len", pa.int16(), metadata={"description": COLUMN_DESCRIPTIONS["seq_len"]}),
-    pa.field("n_features", pa.int16(), metadata={"description": COLUMN_DESCRIPTIONS["n_features"]}),
-    pa.field("features", pa.binary(), metadata={"description": COLUMN_DESCRIPTIONS["features"]}),
-], metadata={
-    b"description": b"LemGendary Forex Universe High-Fidelity OHLCV Temporal Manifold",
-    b"columns": json.dumps(COLUMN_DESCRIPTIONS).encode("utf-8"),
-    b"domain": b"Financial & Time-Series",
-    b"task": b"forex_prediction",
-    b"timeframe_rungs": b"[1, 5, 15, 60, 240, 1440]",
-    b"features_list": b'["open", "high", "low", "close", "volume", "rsi", "macd", "macd_signal", "atr", "bb_width", "session_sin", "session_cos", "atr_percentile", "bar_range_ratio"]',
-    b"author": b"LemGendary AI",
-    b"created_by": b"LemGendary MT5 Compiler Pipeline"
-})
+from forex_schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA
 FEATURES = [
     "open", "high", "low", "close", "volume",
     "rsi", "macd", "macd_signal", "atr", "bb_width",
@@ -101,17 +69,23 @@ CHUNK_SIZE = 20000
 
 # ─── MT5 Connection ────────────────────────────────────────────────────────
 
-def connect_mt5(login=None, password=None, server=None, api_key=None):
+def _mt5_call(method_name: str, *args: Any, **kwargs: Any) -> Any:
     try:
-        import MetaTrader5 as mt5  # type: ignore
-    except ImportError:
+        import MetaTrader5 as mt5_mod  # type: ignore
+    except ImportError as exc:
         raise RuntimeError(
             "[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5"
-        )
+        ) from exc
+    func = getattr(mt5_mod, method_name, None)
+    if func is None:
+        raise AttributeError(f"[MT5] Method '{method_name}' not found on MetaTrader5")
+    return func(*args, **kwargs)
 
+
+def connect_mt5(login=None, password=None, server=None, api_key=None):
     try:
-        if mt5.initialize():  # type: ignore
-            info = mt5.account_info()  # type: ignore
+        if _mt5_call("initialize"):
+            info = _mt5_call("account_info")
             if info:
                 print(f" [MT5] Connected -> Account: {info.login} | Server: {info.server} | Balance: {info.balance} {info.currency}")
                 return True
@@ -134,18 +108,16 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
     if login and password and server:
         init_kwargs.update({"login": login, "password": password, "server": server})
         try:
-            if mt5.initialize(**init_kwargs):  # type: ignore
-                info = mt5.account_info()  # type: ignore
+            if _mt5_call("initialize", **init_kwargs):
+                info = _mt5_call("account_info")
                 if info:
                     print(f" [MT5] Connected -> Account: {info.login} | Server: {info.server} | Balance: {info.balance} {info.currency}")
                     return True
-                else:
-                    raise RuntimeError("[MT5] Connected but no account info.")
-            else:
-                err = mt5.last_error()  # type: ignore
-                raise RuntimeError(f"[MT5] Initialize failed: {err}")
+                raise RuntimeError("[MT5] Connected but no account info.")
+            err = _mt5_call("last_error")
+            raise RuntimeError(f"[MT5] Initialize failed: {err}")
         except Exception as e:
-            raise RuntimeError(f"[MT5] Initialize exception: {e}")
+            raise RuntimeError(f"[MT5] Initialize exception: {e}") from e
     else:
         raise RuntimeError(
             "[MT5] Could not connect to MetaTrader 5.\n"
@@ -158,11 +130,7 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
 
 def disconnect_mt5():
     try:
-        import MetaTrader5 as mt5  # type: ignore
-    except ImportError:
-        return
-    try:
-        mt5.shutdown()  # type: ignore
+        _mt5_call("shutdown")
         print(" [MT5] Disconnected.")
     except Exception:
         pass
@@ -172,63 +140,62 @@ def disconnect_mt5():
 
 _SYMBOL_CACHE = {}  # pair -> resolved symbol name
 
-def resolve_symbol(pair: str) -> Optional[str]:
-    """Find the actual MT5 symbol name for a given logical pair."""
-    try:
-        import MetaTrader5 as mt5  # type: ignore
-    except ImportError:
-        return None
 
-    if pair in _SYMBOL_CACHE:
-        return _SYMBOL_CACHE[pair]
-
-    all_symbols = mt5.symbols_get()  # type: ignore
-    if not all_symbols:
-        return None
-
-    pair_upper = pair.upper()
-    candidates = [pair_upper] + [alt.upper() for alt in ALTERNATIVE_KEYWORDS.get(pair, [])]
-
-    # 1. Exact match
+def _find_matching_symbol(all_symbols, candidates):
     for sym in all_symbols:
         if sym.name.upper() in candidates:
-            _SYMBOL_CACHE[pair] = sym.name
             return sym.name
 
-    # 2. Starts with (for symbols with suffixes like .F)
     for alt in candidates:
         if len(alt) < 3:
             continue
         for sym in all_symbols:
             name_upper = sym.name.upper()
             if name_upper.startswith(alt) and (len(name_upper) == len(alt) or name_upper[len(alt)] in ('.', '_', '-')):
-                _SYMBOL_CACHE[pair] = sym.name
                 return sym.name
 
-    # 3. Substring (only if alt is long enough)
     for alt in candidates:
         if len(alt) < 3:
             continue
         for sym in all_symbols:
             if alt in sym.name.upper():
-                _SYMBOL_CACHE[pair] = sym.name
                 return sym.name
+    return None
 
+
+def resolve_symbol(pair: str) -> Optional[str]:
+    """Find the actual MT5 symbol name for a given logical pair."""
+    if pair in _SYMBOL_CACHE:
+        return _SYMBOL_CACHE[pair]
+
+    try:
+        all_symbols = _mt5_call("symbols_get")
+    except Exception:
+        return None
+
+    if not all_symbols:
+        return None
+
+    pair_upper = pair.upper()
+    candidates = [pair_upper] + [alt.upper() for alt in ALTERNATIVE_KEYWORDS.get(pair, [])]
+    matched = _find_matching_symbol(all_symbols, candidates)
+    if matched:
+        _SYMBOL_CACHE[pair] = matched
+        return matched
     return None
 
 
 # ─── Data Download with Fallbacks ────────────────────────────────────────
 
 def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
-    try:
-        import MetaTrader5 as mt5  # type: ignore
-    except ImportError:
-        raise RuntimeError("MetaTrader5 package not installed. Run: pip install MetaTrader5")
-
     tf_attr = MT5_TIMEFRAMES.get(timeframe_min)
     if tf_attr is None:
         raise ValueError(f"Unsupported timeframe: {timeframe_min}min")
-    tf = getattr(mt5, tf_attr)
+    try:
+        import MetaTrader5 as mt5  # type: ignore
+        tf = getattr(mt5, tf_attr)
+    except ImportError as exc:
+        raise RuntimeError("MetaTrader5 package not installed. Run: pip install MetaTrader5") from exc
 
     dt_from = datetime.strptime(start_date, "%Y-%m-%d")
     dt_to = datetime.now()
@@ -245,22 +212,19 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
     # Try each candidate until we get data
     for mt5_symbol in candidates:
         print(f" [MT5] Trying symbol '{mt5_symbol}' for pair '{pair}'")
-        # Attempt to select/enable the symbol
-        selected = mt5.symbol_select(mt5_symbol, True)  # type: ignore
+        selected = _mt5_call("symbol_select", mt5_symbol, True)
         if not selected:
-            # If selection fails, check if it exists anyway via symbol_info
-            info = mt5.symbol_info(mt5_symbol)  # type: ignore
+            info = _mt5_call("symbol_info", mt5_symbol)
             if info is None:
                 print(f" [MT5] Symbol '{mt5_symbol}' not found. Trying next candidate.")
                 continue
-            else:
-                print(f" [MT5] Symbol '{mt5_symbol}' exists but not in Market Watch; will attempt to fetch data anyway.")
+            print(f" [MT5] Symbol '{mt5_symbol}' exists but not in Market Watch; will attempt to fetch data anyway.")
 
         # Try to fetch data
         for attempt in range(retries):
             try:
                 print(f" [MT5] Fetching historical range for {mt5_symbol} {timeframe_min}min via Range API...")
-                rates = mt5.copy_rates_range(mt5_symbol, tf, dt_from, dt_to)  # type: ignore
+                rates = _mt5_call("copy_rates_range", mt5_symbol, tf, dt_from, dt_to)
 
                 if rates is not None and len(rates) > 0:
                     df = pd.DataFrame(rates)
@@ -283,7 +247,7 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                 max_bars = 5_000_000
 
                 while total_fetched < max_bars:
-                    chunk = mt5.copy_rates_from_pos(mt5_symbol, tf, start_pos, chunk_size)  # type: ignore
+                    chunk = _mt5_call("copy_rates_from_pos", mt5_symbol, tf, start_pos, chunk_size)
                     if chunk is None or len(chunk) == 0:
                         break
                     all_rates.append(chunk)
@@ -295,7 +259,7 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                         break
 
                 if not all_rates:
-                    err = mt5.last_error()  # type: ignore
+                    err = _mt5_call("last_error")
                     raise RuntimeError(f"No data returned from fallback. MT5 Error: {err}")
 
                 rates = np.concatenate(all_rates)
