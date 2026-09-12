@@ -19,8 +19,21 @@ import argparse
 import hashlib
 import shutil
 import numpy as np
-import torch
 import cv2
+import torch
+# 2026: Enable PTX JIT execution and architecture targets for Tesla P100 (Pascal sm_60)
+os.environ["CUDA_FORCE_PTX_JIT"] = "1"
+os.environ["TORCH_CUDA_ARCH_LIST"] = "6.0;7.0;7.5;8.0;8.6;9.0"
+if hasattr(torch, "cuda"):
+    if hasattr(torch.cuda, "_queued_calls") and isinstance(torch.cuda._queued_calls, list):
+        torch.cuda._queued_calls = [
+            _c for _c in torch.cuda._queued_calls
+            if getattr(_c[0], "__name__", "") not in ("_check_capability", "_check_cubins")
+        ]
+    if hasattr(torch.cuda, "_check_capability"):
+        torch.cuda._check_capability = lambda *args, **kwargs: None
+    if hasattr(torch.cuda, "_check_cubins"):
+        torch.cuda._check_cubins = lambda *args, **kwargs: None
 from pathlib import Path
 from PIL import Image, ImageOps, ImageFile
 from doc_generator import generate_dataset_docs
