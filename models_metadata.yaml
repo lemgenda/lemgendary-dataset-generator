@@ -1,3 +1,4 @@
+---
 task_metadata:
   quality:
     category: Image Quality Assessment
@@ -89,7 +90,7 @@ models_metadata:
     arch: Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)
     loss: forex_dual
     datasets:
-    - LemGendizedForexUniverseLarge
+      - LemGendizedForexUniverseLarge
     sota_targets:
       dir_acc: 58.5
       win_rate: 56.0
@@ -104,7 +105,7 @@ models_metadata:
     arch: MobileNetV2 (Global Composition)
     loss: emd
     datasets:
-    - LemGendizedNimaAestheticLarge
+      - LemGendizedNimaAestheticLarge
     sota_targets:
       plcc: 0.65
       srcc: 0.65
@@ -113,7 +114,7 @@ models_metadata:
     arch: EfficientNetV2-S (Global Composition)
     loss: emd
     datasets:
-    - LemGendizedNimaAestheticLarge
+      - LemGendizedNimaAestheticLarge
     sota_targets:
       plcc: 0.7
       srcc: 0.7
@@ -122,7 +123,7 @@ models_metadata:
     arch: Swin-v2-T (Global Multi-Scale Attention)
     loss: emd
     datasets:
-    - LemGendizedNimaAestheticLarge
+      - LemGendizedNimaAestheticLarge
     sota_targets:
       plcc: 0.75
       srcc: 0.75
@@ -131,7 +132,7 @@ models_metadata:
     arch: EfficientNetV2-S (Spatial Integrity)
     loss: emd
     datasets:
-    - LemGendizedNimaTechnicalLarge
+      - LemGendizedNimaTechnicalLarge
     sota_targets:
       plcc: 0.91
       srcc: 0.91
@@ -141,7 +142,7 @@ models_metadata:
     arch: EfficientNetV2-S (Distribution Scorer)
     loss: emd
     datasets:
-    - LemGendizedNimaAuthenticityLarge
+      - LemGendizedNimaAuthenticityLarge
     sota_targets:
       accuracy: 0.96
   upn_v2:
@@ -149,7 +150,7 @@ models_metadata:
     arch: UPN_v2 (MobileNet-Lite Parameter Regressor)
     loss: smooth_l1
     datasets:
-    - LemGendizedUpnV2Large
+      - LemGendizedUpnV2Large
     sota_targets:
       mae: 0.05
   film_restorer:
@@ -157,7 +158,7 @@ models_metadata:
     arch: UniversalFilmRestorer (Residual Dense Autoencoder)
     loss: l1_lpips
     datasets:
-    - LemGendizedFilmRestorerLarge
+      - LemGendizedFilmRestorerLarge
     sota_targets:
       psnr: 24.0
       ssim: 0.8
@@ -168,7 +169,7 @@ models_metadata:
     arch: CodeFormer (Transformer-Based Face Restoration)
     loss: mse
     datasets:
-    - LemGendizedCodeFormerLarge
+      - LemGendizedCodeFormerLarge
     sota_targets:
       fid: 5.2
       psnr: 30.5
@@ -179,7 +180,7 @@ models_metadata:
     arch: ParseNet (Bilateral Face Segmentation Network)
     loss: cross_entropy
     datasets:
-    - LemGendizedParseNetLarge
+      - LemGendizedParseNetLarge
     sota_targets:
       miou: 0.86
   ffanet_indoor:
@@ -187,7 +188,7 @@ models_metadata:
     arch: BranchedFFANet (Feature Fusion Attention)
     loss: l1
     datasets:
-    - LemGendizedFfaNetIndoorLarge
+      - LemGendizedFfaNetIndoorLarge
     sota_targets:
       psnr: 36.5
       ssim: 0.99
@@ -198,7 +199,7 @@ models_metadata:
     arch: BranchedFFANet (Feature Fusion Attention)
     loss: l1
     datasets:
-    - LemGendizedFfaNetOutdoorLarge
+      - LemGendizedFfaNetOutdoorLarge
     sota_targets:
       psnr: 33.7
       ssim: 0.986
@@ -209,7 +210,7 @@ models_metadata:
     arch: MIRNet_v2 (Multi-Scale Residual Network)
     loss: l1_lpips
     datasets:
-    - LemGendizedMirNetLowLightLarge
+      - LemGendizedMirNetLowLightLarge
     sota_targets:
       psnr: 24.3
       ssim: 0.84
@@ -220,7 +221,7 @@ models_metadata:
     arch: MIRNet_v2 (Multi-Scale Residual Network)
     loss: l1_lpips
     datasets:
-    - LemGendizedMirNetExposureLarge
+      - LemGendizedMirNetExposureLarge
     sota_targets:
       psnr: 24.3
       ssim: 0.84
@@ -231,7 +232,7 @@ models_metadata:
     arch: MPRNet (Multi-Stage Progressive Network)
     loss: l1
     datasets:
-    - LemGendizedMprNetDerainingLarge
+      - LemGendizedMprNetDerainingLarge
     sota_targets:
       psnr: 30.6
       ssim: 0.9
@@ -242,7 +243,7 @@ models_metadata:
     arch: NAFNet (Nonlinear Activation-Free Network)
     loss: l1
     datasets:
-    - LemGendizedNafNetDebluringLarge
+      - LemGendizedNafNetDebluringLarge
     sota_targets:
       psnr: 33.9
       ssim: 0.97
@@ -253,7 +254,7 @@ models_metadata:
     arch: NAFNet (Nonlinear Activation-Free Network)
     loss: l1
     datasets:
-    - LemGendizedNafNetDenoisingLarge
+      - LemGendizedNafNetDenoisingLarge
     sota_targets:
       psnr: 40.2
       ssim: 0.965
@@ -264,7 +265,7 @@ models_metadata:
     arch: YOLOv8n (CSPDarknet53 + PANet)
     loss: yolo
     datasets:
-    - LemGendizedYoloV8nLarge
+      - LemGendizedYoloV8nLarge
     sota_targets:
       map50: 0.54
       map50_95: 0.39
@@ -273,7 +274,7 @@ models_metadata:
     arch: MultiTaskRestorer (Shared Encoder Multi-Task MoE)
     loss: hybrid_restoration
     datasets:
-    - LemGendizedProfessionalMultitaskRestorationLarge
+      - LemGendizedProfessionalMultitaskRestorationLarge
     sota_targets:
       psnr: 32.0
       ssim: 0.93
@@ -284,7 +285,7 @@ models_metadata:
     arch: UltraZoomMaster (Sub-Pixel ESPCN Super-Resolution)
     loss: mse
     datasets:
-    - LemGendizedUltraZoomLarge
+      - LemGendizedUltraZoomLarge
     sota_targets:
       psnr: 34.0
       ssim: 0.95
@@ -295,7 +296,7 @@ models_metadata:
     arch: EfficientNetV2-S (Multi-Class Categorical Head)
     loss: cross_entropy
     datasets:
-    - LemGendizedClassificationMasterManifoldLarge
+      - LemGendizedClassificationMasterManifoldLarge
     sota_targets:
       accuracy: 0.98
   retinaface:
@@ -303,7 +304,7 @@ models_metadata:
     arch: RetinaFace (MobileNetV1-0.25 FPN Backbone)
     loss: retinaface
     datasets:
-    - LemGendizedRetinaFaceMobileNetLarge
+      - LemGendizedRetinaFaceMobileNetLarge
     sota_targets:
       map_easy: 0.915
       map_medium: 0.89
