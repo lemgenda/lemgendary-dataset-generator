@@ -306,7 +306,7 @@ def compute_indicators(df):
 
     computed_ta = False
     try:
-        import pandas_ta as ta
+        import pandas_ta_classic as ta
         df_ta = df.copy()
         df_ta.ta.rsi(length=14, append=True)
         df_ta.ta.macd(fast=12, slow=26, signal=9, append=True)
