@@ -6,9 +6,9 @@ Owns the compile-time pipeline:
   - parallel batch dispatch (batch_worker / process_parquet_shard)
   - per-sample processing (process_image / process_diffusion)
 
-Re-exports the utility, audit, registry, and converter symbols extracted in
-Phases 1.4, 1.5.5, 2.0 so existing call sites in manifold_compile.py keep
-working unchanged.
+Re-exports the utility, audit, registry, converter, and transcode symbols
+extracted in Phases 1.4, 1.5.5, 2.0, and 3.0 so existing call sites in
+manifold_compile.py keep working unchanged.
 
 Import-order contract
 ---------------------
@@ -39,7 +39,7 @@ import multiprocessing
 import random
 import shutil
 import sqlite3
-from typing import Any, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -77,6 +77,8 @@ __all__ = [
     "parse_yolo", "parse_matlab", "parse_safetensors",
     # Audit (Phase 2)
     "VisionAuditor", "ExactHasher", "PerceptualHasher", "RejectLog",
+    # Transcode (Phase 3)
+    "ImageTranscoder", "KeepFormatError", "ImageFormatPolicy",
     # Core API (defined below)
     "ShardWriter", "detect_task", "get_labeler",
     "init_worker", "batch_worker",
@@ -97,6 +99,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enable_perceptual_dedup": False,   # Phase 2
     "audit_debug_rejects": False,       # Phase 2
     "strict_ground_truth": False,
+    "image_format": "webp",             # Phase 3
+    "image_quality": 92,                # Phase 3
+    "target_quality": 95,               # Phase 3
+    "mask_format": "webp-lossless",     # Phase 3
 }
 
 if CONFIG_PATH.exists():
@@ -107,7 +113,7 @@ else:
 
 
 # ─── YAML schema validation (Phase 1.1) ─────────────────────────────────────
-from config_schema import UnifiedData, load_unified_data
+from config_schema import ImageFormatPolicy, UnifiedData, load_unified_data
 
 try:
     _UNIFIED: UnifiedData = load_unified_data(Path("./unified_data.yaml"))
@@ -146,8 +152,18 @@ DATASETS_META: dict[str, Any] = YAML_DATA.get("datasets", {})
 if args.workers:
     CONFIG["num_workers"] = args.workers
 
+# Phase 3: CLI overrides for transcode policy.
+if getattr(args, "image_format", None):
+    CONFIG["image_format"] = args.image_format
+if getattr(args, "image_quality", None) is not None:
+    CONFIG["image_quality"] = args.image_quality
+if getattr(args, "target_quality", None) is not None:
+    CONFIG["target_quality"] = args.target_quality
+if getattr(args, "mask_format", None):
+    CONFIG["mask_format"] = args.mask_format
 
-# ─── Package re-exports (Phase 1.4 / 1.5.5 / 2.0) ──────────────────────────
+
+# ─── Package re-exports (Phase 1.4 / 1.5.5 / 2.0 / 3.0) ────────────────────
 # Every symbol below is declared in __all__ above, so linters correctly
 # recognise these as re-exports rather than unused imports.
 from converters import (
@@ -171,6 +187,7 @@ from audit.ground_truth import GroundTruthCaches
 from audit.vision_audit import VisionAuditor
 from audit.dedup import ExactHasher, PerceptualHasher
 from audit.reject_log import RejectLog
+from formats.transcode import ImageTranscoder, KeepFormatError
 from runtime.environment import get_device_info
 
 
@@ -187,6 +204,9 @@ _GT_CACHE = GroundTruthCaches()
 AUDITOR: VisionAuditor | None = None
 EXACT_HASHER: ExactHasher | None = None
 PERCEPTUAL_HASHER: PerceptualHasher | None = None
+
+# 2026 Phase 3: transcoder instantiated once per worker in init_worker.
+TRANSCODER: ImageTranscoder | None = None
 
 
 class _Annotation(TypedDict):
@@ -282,7 +302,7 @@ def init_worker(
 ) -> None:
     """Per-process worker bootstrap. Loads models, GT caches, device config."""
     global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX, _GT_CACHE
-    global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER
+    global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER, TRANSCODER
 
     if dped_cache:
         DPED_CACHE = dped_cache
@@ -323,6 +343,15 @@ def init_worker(
     AUDITOR = VisionAuditor(CONFIG)
     EXACT_HASHER = ExactHasher(no_hash=args.no_hash)
     PERCEPTUAL_HASHER = PerceptualHasher(no_hash=args.no_hash)
+
+    # Phase 3 transcoder (one instance per worker).
+    policy = ImageFormatPolicy(
+        format=CONFIG.get("image_format", "webp"),
+        quality=int(CONFIG.get("image_quality", 92)),
+        target_quality=int(CONFIG.get("target_quality", 95)),
+        mask_format=CONFIG.get("mask_format", "webp-lossless"),
+    )
+    TRANSCODER = ImageTranscoder(policy)
 
     # NIMA quality vetting.
     mission = detect_task(args.model)
@@ -477,6 +506,69 @@ def _passes_nima_filter(
         task, slug, is_authenticity, nima_score,
         nima_probs, current_threshold, idx,
     )
+
+
+# ─── Phase 3 write helper ───────────────────────────────────────────────────
+def _write_image_phase3(
+    *,
+    loaded_img: Image.Image | None,
+    source_bytes: bytes,
+    source_path: Path,
+    out_path: Path,
+    kind: Literal["image", "target", "mask"],
+) -> Path:
+    """Write a single image to disk, honoring the Phase 3 transcode policy.
+
+    Returns the actual output path. When transcoding is enabled, the
+    extension may change (e.g. `.jpg` becomes `.webp`). When transcoding
+    is disabled, preserves the pre-Phase-3 hardlink-first behavior with
+    copy / PIL-save fallbacks.
+
+    Never raises — any transcode failure silently falls back to the
+    copy path so a single corrupt source cannot abort a full compile.
+    """
+    if TRANSCODER is not None and TRANSCODER.enabled:
+        try:
+            img = loaded_img
+            if img is None:
+                if source_bytes:
+                    img = Image.open(io.BytesIO(source_bytes))
+                else:
+                    img = Image.open(source_path)
+            img = ensure_srgb(img)
+
+            encoded, fmt = TRANSCODER.encode(img, kind=kind)
+            new_ext = TRANSCODER.extension_for(fmt)
+            final_path = out_path.with_suffix(new_ext)
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(final_path, "wb") as f:
+                f.write(encoded)
+            return final_path
+        except KeepFormatError:
+            pass
+        except Exception as e:
+            print(f"[WARN] Transcode failed for {source_path.name}: {e}; using copy fallback.")
+
+    # Pre-Phase-3 behavior.
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if loaded_img is not None:
+        save_fmt = "PNG" if out_path.suffix == ".png" else "JPEG"
+        loaded_img.save(out_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+        return out_path
+    if source_bytes:
+        with open(out_path, "wb") as f:
+            f.write(source_bytes)
+        return out_path
+    try:
+        os.link(str(source_path), str(out_path))
+        return out_path
+    except (OSError, AttributeError):
+        pass
+    try:
+        shutil.copy2(str(source_path), str(out_path))
+    except (shutil.SameFileError, OSError):
+        pass
+    return out_path
 
 
 # ─── Per-sample processors ──────────────────────────────────────────────────
@@ -781,43 +873,43 @@ def process_image(
             target_img_path = str(img_path)
 
         if not is_already_on_disk and not is_clean_only:
-            if not img and isinstance(img_input, (str, Path)):
-                try:
-                    os.link(str(img_path), str(out_img_path))
-                except (OSError, AttributeError):
-                    try:
-                        shutil.copy2(str(img_path), str(out_img_path))
-                    except (shutil.SameFileError, OSError):
-                        pass
-            elif img:
-                save_fmt = "PNG" if ext == ".png" else "JPEG"
-                img.save(out_img_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
-            elif isinstance(img_input, (bytes, dict)):
-                with open(out_img_path, "wb") as f:
-                    f.write(img_data)
+            out_img_path = _write_image_phase3(
+                loaded_img=img,
+                source_bytes=img_data,
+                source_path=img_path,
+                out_path=out_img_path,
+                kind="image",
+            )
 
         if task in ["restoration", "super-resolution", "segmentation"]:
             if target_img_path:
-                try:
-                    os.link(target_img_path, str(out_tgt_path))
-                except (OSError, AttributeError):
-                    try:
-                        shutil.copy(target_img_path, out_tgt_path)
-                    except OSError:
-                        pass
+                out_tgt_path = _write_image_phase3(
+                    loaded_img=None,
+                    source_bytes=b"",
+                    source_path=Path(target_img_path),
+                    out_path=out_tgt_path,
+                    kind="target",
+                )
             elif target_img:
-                save_fmt = "PNG" if ext == ".png" else "JPEG"
-                target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+                out_tgt_path = _write_image_phase3(
+                    loaded_img=target_img,
+                    source_bytes=b"",
+                    source_path=img_path,
+                    out_path=out_tgt_path,
+                    kind="target",
+                )
             else:
                 if is_clean_only:
-                    if isinstance(img_input, (bytes, dict)):
-                        with open(out_tgt_path, "wb") as f:
-                            f.write(img_data)
-                    elif img:
-                        save_fmt = "PNG" if ext == ".png" else "JPEG"
-                        img.save(out_tgt_path, save_fmt,
-                                 quality=95 if save_fmt == "JPEG" else None)
+                    out_tgt_path = _write_image_phase3(
+                        loaded_img=img,
+                        source_bytes=img_data,
+                        source_path=img_path,
+                        out_path=out_tgt_path,
+                        kind="image",
+                    )
                 else:
+                    # Synthetic mode: target bytes equal image bytes.
+                    # Hardlink so both paths share the transcoded inode.
                     try:
                         os.link(str(out_img_path), str(out_tgt_path))
                     except (OSError, AttributeError):
@@ -828,16 +920,21 @@ def process_image(
 
         elif task == "parameter_prediction":
             if target_img_path:
-                try:
-                    os.link(target_img_path, str(out_tgt_path))
-                except (OSError, AttributeError):
-                    try:
-                        shutil.copy(target_img_path, out_tgt_path)
-                    except OSError:
-                        pass
+                out_tgt_path = _write_image_phase3(
+                    loaded_img=None,
+                    source_bytes=b"",
+                    source_path=Path(target_img_path),
+                    out_path=out_tgt_path,
+                    kind="target",
+                )
             elif target_img:
-                save_fmt = "PNG" if ext == ".png" else "JPEG"
-                target_img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+                out_tgt_path = _write_image_phase3(
+                    loaded_img=target_img,
+                    source_bytes=b"",
+                    source_path=img_path,
+                    out_path=out_tgt_path,
+                    kind="target",
+                )
             else:
                 try:
                     os.link(str(out_img_path), str(out_tgt_path))
@@ -1132,9 +1229,13 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
         name = f"{prefix}_{idx:09d}"
 
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=95)
-        img_bytes = buffer.getvalue()
+        # Phase 3: transcode diffusion images via the shared transcoder.
+        if TRANSCODER is not None and TRANSCODER.enabled:
+            img_bytes, _fmt = TRANSCODER.encode(img, kind="image")
+        else:
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=95)
+            img_bytes = buffer.getvalue()
 
         latent_blob = None
         if clip_latent:
@@ -1161,4 +1262,3 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
 
 # ─── ORCHESTRATOR ───────────────────────────────────────────────────────────
-# The orchestration body lives in manifold_compile.py.

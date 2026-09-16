@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -258,6 +259,61 @@ def config_show() -> None:
 
 
 app.add_typer(config_app, name="config")
+
+
+# ─── Transcode (Phase 3) ────────────────────────────────────────────────────
+def _resolve_manifold_path(model: str) -> Path | None:
+    """Resolve a registry key to its manifold folder on disk."""
+    import yaml as _yaml
+    p = Path("./unified_data.yaml")
+    if not p.exists():
+        return None
+    with open(p, "r", encoding="utf-8") as f:
+        reg = _yaml.safe_load(f) or {}
+    meta = reg.get("_registry_metadata", {})
+    entry = reg.get("datasets", {}).get(model)
+    if entry is None:
+        return None
+    name = entry.get("name", model)
+    prefix = meta.get("name_prefix", "LemGendized")
+    suffix = meta.get("name_suffix", "")
+    out = Path(meta.get("output_folder_name", "../LemGendaryDatasets"))
+    return out / f"{prefix}{name}{suffix}"
+
+
+@app.command()
+def transcode(
+    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
+    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    image_format: str = typer.Option("webp", "--image-format", help="Output format (webp/jpeg/png/keep)"),
+    image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
+    target_quality: int = typer.Option(95, "--target-quality", help="Quality for targets (1-100)"),
+    mask_format: str = typer.Option("webp-lossless", "--mask-format", help="Mask format (webp-lossless/png)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
+) -> None:
+    """Retroactively transcode an existing manifold's images, in place."""
+    if manifold:
+        target = Path(manifold)
+    elif model:
+        target = _resolve_manifold_path(model)
+    else:
+        console.print("[red]Provide --model or --manifold[/red]")
+        raise typer.Exit(code=1)
+    if target is None or not target.exists():
+        console.print(f"[red]Manifold not found: {target}[/red]")
+        raise typer.Exit(code=1)
+
+    cmd = [
+        venv_python(), "migrate_manifold_image_format.py",
+        "--manifold", str(target),
+        "--image-format", image_format,
+        "--image-quality", str(image_quality),
+        "--target-quality", str(target_quality),
+        "--mask-format", mask_format,
+    ]
+    if dry_run:
+        cmd += ["--dry-run"]
+    raise typer.Exit(code=_run(cmd))
 
 
 # ─── Stubs for future phases ────────────────────────────────────────────────

@@ -79,6 +79,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-hash", dest="no_hash", action="store_true",
                         help="Disable deduplication hash for maximum I/O speed")
 
+    # Transcode controls (Phase 3)
+    parser.add_argument("--image-format", dest="image_format", type=str,
+                        choices=["webp", "jpeg", "png", "keep"], default=None,
+                        help="Image output format (default: webp)")
+    parser.add_argument("--image-quality", dest="image_quality", type=int, default=None,
+                        help="Quality for images 1-100 (default: 92)")
+    parser.add_argument("--target-quality", dest="target_quality", type=int, default=None,
+                        help="Quality for restoration targets (default: 95)")
+    parser.add_argument("--mask-format", dest="mask_format", type=str,
+                        choices=["webp-lossless", "png"], default=None,
+                        help="Format for segmentation masks (default: webp-lossless)")
+
     return parser
 
 

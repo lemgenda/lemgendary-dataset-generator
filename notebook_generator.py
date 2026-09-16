@@ -7,33 +7,45 @@ from pathlib import Path
 
 
 # ─── Runtime environment SSOT (Phase 1.7) ────────────────────────────────────
-# Values are loaded from lem-gendary-env-manager/requirements/runtime_env.yaml at
+# Values are loaded from lemgendary-env-manager/requirements/runtime_env.yaml at
 # notebook-generation time and embedded as literal Python source into each
 # generated notebook's first cell. Kaggle/Colab do not have access to the
 # env-manager repo, so the values must travel inside the notebook.
+#
+# IMPORTANT: only runtime-safe variables belong here. Build-time CUDA knobs
+# (CUDA_FORCE_PTX_JIT, TORCH_CUDA_ARCH_LIST, CUDA_CACHE_*) force JIT
+# compilation of every CUDA kernel at import time and blow out the compute
+# cache — that is what filled the Kaggle disk during `import torch`.
 
 _RUNTIME_ENV_FALLBACK: dict[str, str] = {
     "PYTHONUTF8": "1",
     "PYTHONUNBUFFERED": "1",
     "PYTHONIOENCODING": "utf-8",
     "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-    "CUDA_FORCE_PTX_JIT": "1",
-    "TORCH_CUDA_ARCH_LIST": "6.0;7.0;7.5;8.0;8.6;9.0",
+}
+
+_BLOCKED_RUNTIME_ENV: set[str] = {
+    "CUDA_FORCE_PTX_JIT",
+    "TORCH_CUDA_ARCH_LIST",
+    "CUDA_CACHE_PATH",
+    "CUDA_CACHE_MAXSIZE",
 }
 
 
 def _load_runtime_env() -> dict[str, str]:
     """Read runtime_env.yaml from env-manager if present, else return defaults.
 
-    From the datasets repo, env-manager sits at ../lemgendary-env-manager/.
+    Tries several candidate paths so this works regardless of how deeply the
+    generator is nested relative to the env-manager repo.
     """
-    yaml_path = (
-        Path(__file__).parent.parent
-        / "lemgendary-env-manager"
-        / "requirements"
-        / "runtime_env.yaml"
-    )
-    if not yaml_path.exists():
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parent.parent / "lemgendary-env-manager" / "requirements" / "runtime_env.yaml",
+        here.parent.parent.parent / "lemgendary-env-manager" / "requirements" / "runtime_env.yaml",
+        here.parent.parent.parent.parent / "lemgendary-env-manager" / "requirements" / "runtime_env.yaml",
+    ]
+    yaml_path = next((p for p in candidates if p.exists()), None)
+    if yaml_path is None:
         return dict(_RUNTIME_ENV_FALLBACK)
 
     try:
@@ -56,6 +68,11 @@ def _load_runtime_env() -> dict[str, str]:
     for name, spec in (data.get("variables") or {}).items():
         if isinstance(spec, dict) and "value" in spec:
             result[str(name)] = str(spec["value"])
+
+    # Never inject build-time-only vars at runtime — they force JIT compilation
+    # of every CUDA kernel and blow out the compute cache.
+    result = {k: v for k, v in result.items() if k not in _BLOCKED_RUNTIME_ENV}
+    result.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
     return result if result else dict(_RUNTIME_ENV_FALLBACK)
 
@@ -2126,13 +2143,13 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, help="Dataset key for single notebook generation.")
     parser.add_argument("--model", type=str, help="Model key for single notebook generation.")
     parser.add_argument("--all", action="store_true", help="Regenerate the entire Notebook Matrix for all datasets.")
-    parser.add_argument("--output", type=str, help="Override export path (single) or export root (all).")
+    parser.add_argument("--output", type=str, help="Override output path (for single) or export root (for all).")
     args = parser.parse_args()
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Load the unified models registry from the sibling training suite if present.
-    # Notebook cells use this only for metadata enrichment; generation works
+    # Load the models registry from the sibling training suite if present.
+    # Cells consume this only for metadata enrichment; generation works
     # without it.
     models_registry: dict = {}
     for candidate in (
@@ -2159,33 +2176,25 @@ if __name__ == "__main__":
     }
 
     export_root = args.output if args.output else os.path.abspath(os.path.join(base_dir, "../LemGendaryModels"))
-    prefix = registry.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
-    suffix = registry.get("_registry_metadata", {}).get("name_suffix", "Large")
+
+    def _emit_for_model(m_key: str, d_info: dict) -> None:
+        m_dir = os.path.join(export_root, m_key)
+        os.makedirs(m_dir, exist_ok=True)
+        generate_inference_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
+        generate_usage_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
+        generate_colab_inference_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
+        generate_colab_usage_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
 
     if args.all:
-        print(f"[NUCLEAR] Initiating Global Dataset Notebook Refresh for {len(datasets)} datasets...")
+        print(f"[NUCLEAR] Initiating Global Notebook Refresh for {len(datasets)} datasets...")
         for d_key, d_info in datasets.items():
-            models = DATASET_TO_MODELS.get(d_key, [d_key])
-            for m_key in models:
-                m_dir = os.path.join(export_root, m_key)
-                os.makedirs(m_dir, exist_ok=True)
-                generate_inference_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
-                generate_usage_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
-                generate_colab_inference_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
-                generate_colab_usage_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
-
-        print("\n[SUCCESS] Dataset Notebook Matrix Synchronized.")
-
-    elif args.model and args.output:
-        m_dir = os.path.dirname(args.output)
-        os.makedirs(m_dir, exist_ok=True)
-        generate_inference_notebook(args.model, m_dir, unified_models_registry=models_registry, config=None)
+            for m_key in DATASET_TO_MODELS.get(d_key, [d_key]):
+                _emit_for_model(m_key, d_info)
+        print("\n[SUCCESS] Notebook Matrix Synchronized.")
 
     elif args.dataset and args.model:
-        m_dir = os.path.join(export_root, args.model)
-        os.makedirs(m_dir, exist_ok=True)
         d_info = datasets.get(args.dataset, {})
-        generate_inference_notebook(args.model, m_dir, unified_models_registry=models_registry, config=d_info)
+        _emit_for_model(args.model, d_info)
 
     else:
         parser.print_help()
