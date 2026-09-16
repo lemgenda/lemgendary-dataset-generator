@@ -59,6 +59,7 @@ from tqdm import tqdm
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 import functools
 from safetensors import safe_open
+from typing import Any, TypedDict, cast
 
 def get_dir_size(path):
     """Calculate recursive directory size in GB."""
@@ -88,8 +89,23 @@ DEFAULT_CONFIG = {
 }
 CONFIG = {**DEFAULT_CONFIG, **json.load(open(CONFIG_PATH))} if CONFIG_PATH.exists() else DEFAULT_CONFIG
 
-# Load YAML for dynamic config
-YAML_DATA = yaml.safe_load(open(Path("./unified_data.yaml")))
+# 2026 Phase 1.1: Route all YAML access through pydantic schema validation.
+# Any typo or constraint violation aborts here, before any filesystem mutation.
+# See config_schema.py for the schema definition and field-level diagnostics.
+from config_schema import load_unified_data, UnifiedData  # type: ignore
+
+try:
+    _UNIFIED: UnifiedData = load_unified_data(Path("./unified_data.yaml"))
+    YAML_DATA = _UNIFIED.to_legacy_dict()  # preserves '_registry_metadata' key shape for downstream code
+except FileNotFoundError as e:
+    print(f"[FATAL] {e}")
+    sys.exit(3)
+except Exception as e:
+    print(f"[FATAL] unified_data.yaml failed schema validation:")
+    print(f"  {type(e).__name__}: {e}")
+    print("[REMEDY] Run `python config_schema.py` to see detailed field diagnostics.")
+    sys.exit(2)
+
 META = YAML_DATA.get("_registry_metadata", {})
 VERSION = META.get("version", "4.2.0")
 
@@ -131,6 +147,26 @@ CLIP_MANIFOLD = None
 AVA_LOOKUP = {}
 AADB_LOOKUP = {}
 TID_LOOKUP = {}
+
+
+class _Annotation(TypedDict):
+    """Typed shape of every record appended to `annotations` in `process_image`.
+
+    `data` is widened to ``list[Any]`` because three source families produce
+    numeric lists of different underlying types:
+
+      * COCO / YOLO       -> list[float]  (normalized coordinates)
+      * Parquet / MATLAB  -> list[Any]    (mixed numeric scalars)
+      * NPZ               -> list[Any]    (NumPy scalar coercion)
+
+    The label-writer loop only performs iteration, mapping, and slicing on
+    `data`, all of which are agnostic to the element type. Typing as
+    ``list[float]`` produced false-positive `bad-assignment` errors across
+    the parquet, npz, and xml branches without catching any real bug.
+    """
+    type: str        # 'bbox' | 'segmentation' | 'pose'
+    cls: int
+    data: list[Any]
 
 def get_gaussian_probs(mean_score, sigma=1.0):
     """SOTA conversion of scalar score to 10-bin distribution."""
@@ -232,7 +268,7 @@ def load_ground_truth(model_name=""):
     if not tad_labels_dir or not tad_labels_dir.exists():
         # Hugging Face manager extracts labels.zip into a 'labels' subfolder, creating 'labels/labels/unmerge'
         tad_labels_dir = find_gt_path("TAD66K_for_Image_Aesthetics_Assessment", "labels/labels/unmerge")
-    
+
     if tad_labels_dir and tad_labels_dir.exists():
         import os
         import pandas as pd
@@ -373,7 +409,7 @@ def ensure_srgb(img):
     if img.mode != "RGB":
         if img.mode in ("RGBA", "P", "LA") or (img.mode == "P" and "transparency" in img.info):
             img = img.convert("RGBA")
-        
+
         # Now safely convert to RGB, dropping alpha without warning
         img = img.convert("RGB")
         img.was_converted = True
@@ -417,11 +453,11 @@ def normalize_points(points, w, h, stride=2):
 def download_image(url, dest_path, session=None):
     """SOTA Lazy Downloader with exponential backoff and image validation."""
     if os.path.exists(dest_path): return True
-    
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
     }
-    
+
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -431,7 +467,7 @@ def download_image(url, dest_path, session=None):
                 content_type = r.headers.get('Content-Type', '')
                 if 'image' not in content_type and 'octet-stream' not in content_type:
                     return False
-                
+
                 with open(dest_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk: f.write(chunk)
@@ -557,7 +593,7 @@ def parse_parquet(pq_path):
     if "url" in cols: mapping["url"] = "url"
     if "key" in cols: mapping["key"] = "key"
     if "label" in cols: mapping["class"] = "label"
-    
+
     # Restoration Targets
     if "target" in cols: mapping["target"] = "target"
     if "sharp" in cols: mapping["target"] = "sharp"
@@ -591,8 +627,8 @@ def parse_xml(xml_path):
     import xml.etree.ElementTree as ET
     tree = ET.parse(xml_path)
     root = tree.getroot()
-    annotations = []
-    
+    annotations: list[dict[str, Any]] = []
+
     for obj in root.findall("object"):
         name_node = obj.find("name")
         cls = name_node.text if name_node is not None else "unknown"
@@ -606,7 +642,7 @@ def parse_xml(xml_path):
             width = xmax - xmin
             height = ymax - ymin
             annotations.append({"class": cls, "bbox": [xmin, ymin, width, height]})
-    
+
     return annotations
 
 def parse_yolo(txt_path, img_w, img_h):
@@ -642,41 +678,41 @@ def process_parquet_shard(pq_path, prefix, c_slug, start_idx, task, fmt, split_f
     except Exception as e:
         print(f"[WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
         return [{"hash": "skipped"}] * num_rows
-    
+
     results = []
     global_idx = start_idx
     for row in df.itertuples():
         current_idx = global_idx
         global_idx += 1
-        
+
         name = f"{prefix}_{c_slug}_{current_idx:09d}"
-        
+
         if keep_prob < 1.0 and random.random() > keep_prob:
             results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "dropped", "nima_score": 1.0, "size": 0})
             continue
-            
+
         if name in existing_names or name.lower() in existing_on_disk:
             results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "skipped", "nima_score": 1.0, "size": 0})
             continue
-            
+
         img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
         if img_bytes is None:
             results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "skipped", "nima_score": 1.0, "size": 0})
             continue
-            
+
         split = "train" if random.random() < train_prob else "val"
         row_dict = {k: getattr(row, k) for k in df.columns}
-        
+
         if task == "diffusion":
             res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split, output_root_str)
         else:
             res = process_image(img_bytes, prefix, c_slug, current_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
-        
+
         if res:
             results.append(res)
         else:
             results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "failed", "nima_score": 1.0, "size": 0})
-            
+
     return results
 
 def batch_worker(tasks):
@@ -761,13 +797,13 @@ def process_image(
         if ext not in [".jpg", ".jpeg", ".png", ".webp", ".npy"]: ext = ".jpg"
 
         name = f"{prefix}_{slug}_{idx:09d}"
-        
+
         # 2026 Resilience: Detect structural parent to avoid forcing targets/masks into images/
         source_parent_name = img_path.parent.parent.name.lower() if isinstance(img_input, (str, Path)) and len(img_path.parts) >= 3 else "images"
         out_dir = source_parent_name if source_parent_name in ["targets", "masks"] else "images"
-        
+
         out_img_path = Path(output_root_str) / out_dir / split / f"{name}{ext}"
-        
+
         tgt_dir = "masks" if task == "segmentation" else "targets"
         out_tgt_path = Path(output_root_str) / tgt_dir / split / f"{name}{ext}"
 
@@ -789,7 +825,7 @@ def process_image(
                 elif isinstance(ann_data, tuple) and len(ann_data) == 2:
                     df_sub, _ = ann_data
                     if not df_sub.empty: row_dict = df_sub.iloc[0].to_dict()
-                
+
                 if row_dict:
                     for k in ["target", "sharp", "ground_truth", "gt", "clean", "original", "mask", "masks"]:
                         val = row_dict.get(k)
@@ -806,10 +842,10 @@ def process_image(
             if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
                 blur_keys = ["blur", "blurry", "input", "lowres", "lr", "rain", "hazy", "noisy", "degraded", "distorted", "low", "images"]
                 sharp_keys = ["sharp", "gt", "ground_truth", "groundtruth", "clean", "clear", "original", "hr", "highres", "target", "norain", "high", "targets", "mask", "masks", "segmentation", "segmentations"]
-                
+
                 p_str = str(img_path).replace("\\", "/")
                 parent = img_path.parent
-                
+
                 # Strategy A: Sibling Folder (e.g. blur/001.png -> sharp/001.png)
                 if any(k in parent.name.lower() for k in blur_keys):
                     try:
@@ -833,7 +869,7 @@ def process_image(
                                         if target_img_path: break
                                 if target_img_path: break
                     except: pass
-                
+
                 # Strategy B: Ancestral Sibling (e.g. train/001.png -> GT/001.png)
                 if not target_img_path:
                     for ancestor in [parent, parent.parent]:
@@ -856,7 +892,7 @@ def process_image(
                                         except: pass
                             except: pass
                             if target_img_path: break
-                
+
                 # Strategy C: Same-Folder Resolution (e.g. rain-001.png -> norain-001.png)
                 if not target_img_path and not isinstance(img_input, (bytes, dict)):
                     for b_k in blur_keys:
@@ -957,13 +993,13 @@ def process_image(
         if is_authenticity:
             parent_name = img_path.parent.name.lower()
             file_name = img_path.name.lower()
-            
+
             # Prevent root dataset folders from biasing the labels
             if parent_name in ["sut-project", "ai-generated-images-vs-real-images", "real vs fake faces", "raw-sets"]:
                 parent_name = ""
-                
+
             path_str = f"{parent_name}/{file_name}".lower()
-            
+
             if any(k in path_str for k in ["sut-project", "midjourney", "diffusion", "ai", "fake", "gan", "generated"]):
                 nima_probs = [0.0] * 10
                 nima_probs[0] = 1.0
@@ -1062,7 +1098,7 @@ def process_image(
                     except: pass
 
         # Annotations
-        annotations = []
+        annotations: list[_Annotation] = []
         if fmt == "coco" and ann_data is not None:
             for a in ann_data:
                 cls = map_category(str(a["category_id"]), prefix) # Placeholder for COCO meta names
@@ -1105,7 +1141,8 @@ def process_image(
             xml_anns = parse_xml(ann_data)
             for a in xml_anns:
                 cls = map_category(a["class"], prefix)
-                annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+                a_bbox = cast(list[Any], a["bbox"])
+                annotations.append({"type": "bbox", "cls": cls, "data": a_bbox})
 
         elif fmt == "yolo" and ann_data:
             yolo_anns = parse_yolo(ann_data, w, hgt)
@@ -1114,10 +1151,12 @@ def process_image(
                     cls = map_category("0", prefix)
                 else:
                     cls = map_category(a["class"], prefix)
+                a_bbox = cast(list[float], a["bbox"])
                 if "keypoints" in a and a["keypoints"]:
-                    annotations.append({"type": "pose", "cls": cls, "data": a["bbox"] + a["keypoints"]})
+                    a_kpts = cast(list[float], a["keypoints"])
+                    annotations.append({"type": "pose", "cls": cls, "data": a_bbox + a_kpts})
                 else:
-                    annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+                    annotations.append({"type": "bbox", "cls": cls, "data": a_bbox})
 
         elif fmt == "npz" and ann_data:
             try:
@@ -1138,14 +1177,14 @@ def process_image(
                         y_max = min(hgt, y_max + pad_h)
                         bbox_w = x_max - x_min
                         bbox_h = y_max - y_min
-                        
+
                         # 5 Keypoints: left_eye, right_eye, nose, left_mouth, right_mouth
                         l_eye = landmarks[36:42].mean(axis=0)
                         r_eye = landmarks[42:48].mean(axis=0)
                         nose = landmarks[30]
                         l_mouth = landmarks[48]
                         r_mouth = landmarks[54]
-                        
+
                         kpts = [
                             l_eye[0], l_eye[1],
                             r_eye[0], r_eye[1],
@@ -1153,7 +1192,7 @@ def process_image(
                             l_mouth[0], l_mouth[1],
                             r_mouth[0], r_mouth[1]
                         ]
-                        
+
                         cls = map_category("0", prefix)
                         annotations.append({"type": "pose", "cls": cls, "data": [x_min, y_min, bbox_w, bbox_h] + kpts})
             except Exception as e:
@@ -1191,7 +1230,7 @@ def process_image(
         if not annotations and task not in ["quality", "classification"] and not args.no_labeling and not skip_labeling:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             labeler = get_labeler(task, device)
-            annotations = labeler.predict(img)
+            annotations = cast(list[_Annotation], labeler.predict(img))
             if annotations: is_autolabeled = True
 
         # Write Label File
@@ -1217,7 +1256,7 @@ def process_image(
                         p_lower = str(img_path).lower()
                         if any(k in p_lower for k in ['fake', 'ai', 'synthetic', 'nsfw', 'porn', 'explicit']):
                             class_label = 0
-                    
+
                     if isinstance(class_label, float):
                         try:
                             import pandas as pd
@@ -1225,7 +1264,7 @@ def process_image(
                                 class_label = int(class_label)
                         except:
                             pass
-                        
+
                     f.write(str(class_label) + "\n")
                 elif annotations:
                     for ann in annotations:
@@ -1345,3 +1384,9 @@ def remove_empty_dirs(path):
             except OSError: pass
 
 # ---------------- ORCHESTRATOR ----------------
+# ⚠️ NOTE: The content below this header was NOT included in your original upload.
+# The file you sent me ended at this exact comment line with "[file content end]".
+# Everything above is verbatim + Phase 1.1 patch applied.
+#
+# If your local compiler_core.py has content under ORCHESTRATOR, append it here
+# unchanged. Phase 1.1 does not touch that section.
