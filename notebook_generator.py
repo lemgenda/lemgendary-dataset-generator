@@ -5,6 +5,7 @@ import base64
 import argparse
 import yaml
 
+
 def build_training_notebook_content(model_key, config=None):
     """
     Builds the exact v16.2.9 Nuclear-Hardened Training Notebook JSON content.
@@ -12,7 +13,7 @@ def build_training_notebook_content(model_key, config=None):
     """
     pascal_model_name = model_key.replace("_", " ").title().replace(" ", "")
     kebab_model_name = model_key.replace("_", "-")
-    
+
     # Derive the actual Kaggle dataset slug
     dataset_slug = f"lemgendary-{kebab_model_name}"
     if config:
@@ -28,7 +29,7 @@ def build_training_notebook_content(model_key, config=None):
     is_forex = "forex" in model_key.lower()
     ds_keys_repr = repr([model_key.lower(), model_key.replace("_", "-"), model_key.replace("_", "")] + (["forex", "lemgendizedforexuniverselarge"] if is_forex else []))
 
-    accel_str = "GPU T4 x2 (30GB total VRAM) or GPU P100 (16GB VRAM)"
+    accel_str = "GPU T4 x2 (30GB total VRAM)"
 
     hardware_sentinel_source = [
         "import os, sys, subprocess, warnings\n",
@@ -307,19 +308,8 @@ def build_training_notebook_content(model_key, config=None):
         "torch_index = 'https://download.pytorch.org/whl/cpu'\n",
         "accel_type = 'cpu'\n",
         "if shutil.which('nvidia-smi'):\n",
-        "    _is_p100_gpu = False\n",
-        "    try:\n",
-        "        _smi_name = subprocess.check_output(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], text=True).strip()\n",
-        "        if 'P100' in _smi_name:\n",
-        "            _is_p100_gpu = True\n",
-        "    except Exception:\n",
-        "        pass\n",
-        "    if _is_p100_gpu:\n",
-        "        torch_index = 'https://download.pytorch.org/whl/cu118'\n",
-        "        accel_type = 'cuda_cu118_p100'\n",
-        "    else:\n",
-        "        torch_index = 'https://download.pytorch.org/whl/cu121'\n",
-        "        accel_type = 'cuda_cu121'\n",
+        "    torch_index = 'https://download.pytorch.org/whl/cu121'\n",
+        "    accel_type = 'cuda_cu121'\n",
         "elif shutil.which('rocm-smi'):\n",
         "    torch_index = 'https://download.pytorch.org/whl/rocm6.1'\n",
         "    accel_type = 'rocm6.1'\n",
@@ -620,13 +610,13 @@ def generate_training_notebook(target_name, resolved_model, output_path, config=
     Guaranteed 100% parity with lemgendary-training-suite.
     """
     notebook_content = build_training_notebook_content(resolved_model, config=config)
-    
+
     export_dir = os.path.dirname(output_path)
     os.makedirs(export_dir, exist_ok=True)
-    
+
     json_str = json.dumps(notebook_content, indent=4)
     json.loads(json_str)  # Validation
-    
+
     with open(output_path, "w", encoding='utf-8') as f:
         f.write(json_str)
     print(f"[OK] Generated v16.2.9 Nuclear Training Notebook: {output_path}")
@@ -639,7 +629,7 @@ def build_colab_training_notebook_content(model_key, config=None):
     """
     pascal_model_name = model_key.replace("_", " ").title().replace(" ", "")
     kebab_model_name = model_key.replace("_", "-")
-    
+
     # Derive the actual Kaggle dataset slug
     dataset_slug = f"lemgendary-{kebab_model_name}"
     if config:
@@ -953,19 +943,8 @@ def build_colab_training_notebook_content(model_key, config=None):
         "torch_index = 'https://download.pytorch.org/whl/cpu'\n",
         "accel_type = 'cpu'\n",
         "if shutil.which('nvidia-smi'):\n",
-        "    _is_p100_gpu = False\n",
-        "    try:\n",
-        "        _smi_name = subprocess.check_output(['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'], text=True).strip()\n",
-        "        if 'P100' in _smi_name:\n",
-        "            _is_p100_gpu = True\n",
-        "    except Exception:\n",
-        "        pass\n",
-        "    if _is_p100_gpu:\n",
-        "        torch_index = 'https://download.pytorch.org/whl/cu118'\n",
-        "        accel_type = 'cuda_cu118_p100'\n",
-        "    else:\n",
-        "        torch_index = 'https://download.pytorch.org/whl/cu121'\n",
-        "        accel_type = 'cuda_cu121'\n",
+        "    torch_index = 'https://download.pytorch.org/whl/cu121'\n",
+        "    accel_type = 'cuda_cu121'\n",
         "elif shutil.which('rocm-smi'):\n",
         "    torch_index = 'https://download.pytorch.org/whl/rocm6.1'\n",
         "    accel_type = 'rocm6.1'\n",
@@ -1317,17 +1296,15 @@ def build_colab_training_notebook_content(model_key, config=None):
     return notebook_content
 
 
-
-
 def generate_colab_training_notebook(target_name, resolved_model, output_path, config=None):
     notebook_content = build_colab_training_notebook_content(resolved_model, config=config)
-    
+
     export_dir = os.path.dirname(output_path)
     os.makedirs(export_dir, exist_ok=True)
-    
+
     json_str = json.dumps(notebook_content, indent=4)
     json.loads(json_str)
-    
+
     with open(output_path, "w", encoding='utf-8') as f:
         f.write(json_str)
     print(f"[OK] Generated v16.2.9 Nuclear Colab Training Notebook: {output_path}")
@@ -1344,12 +1321,12 @@ if __name__ == "__main__":
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     registry_path = os.path.join(base_dir, "unified_data.yaml")
-    
+
     with open(registry_path, "r") as f:
         registry = yaml.safe_load(f)
-    
+
     datasets = registry.get("datasets", {})
-    
+
     # Map dataset keys to corresponding models
     DATASET_TO_MODELS = {
         "nima_aesthetic": ["nima_aesthetic_mobile", "nima_aesthetic_efficientnet", "nima_aesthetic_pro"],
@@ -1358,7 +1335,7 @@ if __name__ == "__main__":
         "forex_universe": ["forex_predictor"],
         "retinaface_mobilenet": ["retinaface"]
     }
-    
+
     export_root = args.output if args.output else os.path.abspath(os.path.join(base_dir, "../LemGendaryModels"))
     dataset_root = os.path.abspath(os.path.join(base_dir, "../LemGendaryDatasets"))
 
@@ -1366,14 +1343,14 @@ if __name__ == "__main__":
         print(f"[NUCLEAR] Initiating Global Dataset Notebook Refresh for {len(datasets)} datasets...")
         prefix = registry.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
         suffix = registry.get("_registry_metadata", {}).get("name_suffix", "Large")
-        
+
         for d_key, d_info in datasets.items():
             target_name = d_info.get("name", d_key)
             pascal_name = target_name
             folder_name = f"{prefix}{pascal_name}{suffix}"
-            
+
             models = DATASET_TO_MODELS.get(d_key, [d_key])
-            
+
             for m_key in models:
 
                 # 2. Export to LemGendaryDatasets
