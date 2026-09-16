@@ -1,109 +1,131 @@
-# 2026: Environment Linter Sync (Last Verified: 2026-05-01)
+"""
+LemGendary Dataset Compiler — Core Coordinator.
+
+Owns the compile-time pipeline:
+  - worker bootstrap (init_worker)
+  - parallel batch dispatch (batch_worker / process_parquet_shard)
+  - per-sample processing (process_image / process_diffusion)
+
+Re-exports the utility, audit, registry, and converter symbols extracted in
+Phases 1.4, 1.5.5, 2.0 so existing call sites in manifold_compile.py keep
+working unchanged.
+
+Import-order contract
+---------------------
+Runtime env vars (TORCH_CUDA_ARCH_LIST, CUDA_FORCE_PTX_JIT,
+PYTORCH_CUDA_ALLOC_CONF) must be set before `import torch`, because torch
+reads them at module-import time. bootstrap_runtime() therefore runs between
+the stdlib imports and the heavy imports. The resulting E402 warnings are
+declared once in pyproject.toml — never inline.
+"""
+
+# ─── Standard library (safe to import anywhere) ─────────────────────────────
 import os
 import sys
+from pathlib import Path
+
+# ─── Runtime bootstrap (MUST run before torch is imported) ─────────────────
+# Extend sys.path so sibling packages resolve regardless of cwd.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 2026 Phase 1.5.5: Runtime environment bootstrap extracted to runtime/.
-# Applies UTF-8 stdio, Fortran env vars, and torch CUDA patches once.
-from runtime.environment import bootstrap_runtime, get_device_info  # noqa: E402
+from runtime.environment import bootstrap_runtime
+
 bootstrap_runtime()
 
-import json
-import pandas as pd
-import random
-import argparse
-import hashlib
-import shutil
-import numpy as np
-import cv2
-import torch
-from pathlib import Path
-from PIL import Image, ImageOps, ImageFile
-from doc_generator import generate_dataset_docs
-from notebook_generator import generate_training_notebook, generate_colab_training_notebook
-# PIL exposes LOAD_TRUNCATED_IMAGES and MAX_IMAGE_PIXELS as module-level
-# module attributes but does not declare them in its type stubs. Use
-# setattr() to bypass the stub without a # type: ignore.
-setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
-setattr(Image, "MAX_IMAGE_PIXELS", None)
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-import requests
-from multiprocessing import Manager
-import multiprocessing
+# ─── Heavy imports (env vars are now in place) ─────────────────────────────
 import io
+import json
+import multiprocessing
+import random
+import shutil
 import sqlite3
-import webdataset as wds
-from datetime import datetime
-import yaml
-from sklearn.cluster import MiniBatchKMeans
-import time
-from tqdm import tqdm
-import functools
-from safetensors import safe_open
 from typing import Any, TypedDict, cast
 
-# 2026 Phase 1.4: Annotation parsers extracted to converters/
-from converters import (  # noqa: E402
-    detect_annotations,
-    parse_coco,
-    parse_parquet,
-    parse_xml,
-    parse_yolo,
-    parse_matlab,
-    parse_safetensors,
-)
+import numpy as np
+import pandas as pd
+import torch
+import webdataset as wds
+from PIL import Image, ImageFile
 
-# 2026 Phase 1.5.5: Utility helpers extracted to utils/ and registry/
-# These re-exports preserve backward compatibility for callers that do
-# `from compiler_core import get_dir_size, compute_hash, ...`.
-from utils.fs import get_dir_size, remove_empty_dirs  # noqa: E402,F401
-from utils.geometry import convert_bbox_xywh_to_yolo, normalize_points  # noqa: E402,F401
-from utils.hashing import compute_hash  # noqa: E402,F401
-from utils.image import ensure_srgb, is_black_image  # noqa: E402,F401
-from utils.math import get_gaussian_probs  # noqa: E402,F401
-from utils.naming import clean_slug, map_category  # noqa: E402,F401
-from utils.net import download_image  # noqa: E402,F401
-from registry import initialize_registry, ensure_registry_schema  # noqa: E402,F401
-from audit.ground_truth import GroundTruthCaches  # noqa: E402
+# PIL safety flags. LOAD_TRUNCATED_IMAGES is declared as Literal[False] in
+# Pillow's type stub because PIL expects its default to remain untouched.
+# setattr assigns it without a static-type conflict while preserving the
+# runtime behavior that truncated images should load instead of raising.
+setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+Image.MAX_IMAGE_PIXELS = None
 
 
-# ---------------- CONFIG ----------------
+# ─── Public surface ─────────────────────────────────────────────────────────
+__all__ = [
+    # Config constants (defined below)
+    "CONFIG", "DEFAULT_CONFIG", "META", "VERSION", "YAML_DATA",
+    "INPUT_ROOT", "OUT_PARENT", "CATEGORY_MAP", "DATASETS_META",
+    "CATEGORY_MAP_PATH", "CONFIG_PATH",
+    # Runtime (Phase 1.7)
+    "bootstrap_runtime", "get_device_info",
+    # Utils (Phase 1.5.5)
+    "get_dir_size", "remove_empty_dirs",
+    "convert_bbox_xywh_to_yolo", "normalize_points",
+    "compute_hash", "ensure_srgb", "is_black_image",
+    "get_gaussian_probs", "clean_slug", "map_category", "download_image",
+    # Registry (Phase 1.3 / 1.5.5)
+    "initialize_registry", "ensure_registry_schema",
+    # Ground truth (Phase 1.5.5)
+    "GroundTruthCaches",
+    # Converters (Phase 1.4)
+    "detect_annotations", "parse_coco", "parse_parquet", "parse_xml",
+    "parse_yolo", "parse_matlab", "parse_safetensors",
+    # Audit (Phase 2)
+    "VisionAuditor", "ExactHasher", "PerceptualHasher", "RejectLog",
+    # Core API (defined below)
+    "ShardWriter", "detect_task", "get_labeler",
+    "init_worker", "batch_worker",
+    "process_image", "process_diffusion", "process_parquet_shard",
+]
+
+
+# ─── Config ─────────────────────────────────────────────────────────────────
 CONFIG_PATH = Path("./config.json")
-DEFAULT_CONFIG = {
+
+DEFAULT_CONFIG: dict[str, Any] = {
     "train_split": 0.8,
     "num_workers": max(1, multiprocessing.cpu_count() - 2),
     "diffusion_size": 1024,
     "black_threshold": 0.1,
     "nima_threshold": 4.0,
     "enable_dedup": False,
+    "enable_perceptual_dedup": False,   # Phase 2
+    "audit_debug_rejects": False,       # Phase 2
     "strict_ground_truth": False,
 }
-CONFIG = {**DEFAULT_CONFIG, **json.load(open(CONFIG_PATH))} if CONFIG_PATH.exists() else DEFAULT_CONFIG
 
-# 2026 Phase 1.1: Route all YAML access through pydantic schema validation.
-from config_schema import load_unified_data, UnifiedData
+if CONFIG_PATH.exists():
+    with open(CONFIG_PATH, "r", encoding="utf-8") as _f:
+        CONFIG: dict[str, Any] = {**DEFAULT_CONFIG, **json.load(_f)}
+else:
+    CONFIG = dict(DEFAULT_CONFIG)
+
+
+# ─── YAML schema validation (Phase 1.1) ─────────────────────────────────────
+from config_schema import UnifiedData, load_unified_data
 
 try:
     _UNIFIED: UnifiedData = load_unified_data(Path("./unified_data.yaml"))
-    YAML_DATA = _UNIFIED.to_legacy_dict()
+    YAML_DATA: dict[str, Any] = _UNIFIED.to_legacy_dict()
 except FileNotFoundError as e:
     print(f"[FATAL] {e}")
     sys.exit(3)
 except Exception as e:
-    print(f"[FATAL] unified_data.yaml failed schema validation:")
+    print("[FATAL] unified_data.yaml failed schema validation:")
     print(f"  {type(e).__name__}: {e}")
     print("[REMEDY] Run `python config_schema.py` to see detailed field diagnostics.")
     sys.exit(2)
 
-META = YAML_DATA.get("_registry_metadata", {})
-VERSION = META.get("version", "4.2.0")
+META: dict[str, Any] = YAML_DATA.get("_registry_metadata", {})
+VERSION: str = META.get("version", "4.2.0")
 
 
-# ---------------- CLI ARGS ----------------
-# 2026 Phase 1.5: Parser definition moved to cli_args.py (SSOT). Both this
-# module and manifold_compile.py build the same parser; argparse does not
-# consume sys.argv, so both `parse_args()` calls succeed against the same
-# argument vector.
+# ─── CLI args (Phase 1.5: SSOT in cli_args.py) ──────────────────────────────
 from cli_args import build_parser
 
 parser = build_parser()
@@ -112,43 +134,115 @@ args = parser.parse_args()
 INPUT_ROOT = Path("./raw-sets")
 OUT_PARENT = Path(META.get("output_folder_name", "../LemGendaryDatasets"))
 CATEGORY_MAP_PATH = Path("./category_map.json")
-CATEGORY_MAP = json.load(open(CATEGORY_MAP_PATH)) if CATEGORY_MAP_PATH.exists() else {}
-DATASETS_META = YAML_DATA.get("datasets", {})
+
+if CATEGORY_MAP_PATH.exists():
+    with open(CATEGORY_MAP_PATH, "r", encoding="utf-8") as _f:
+        CATEGORY_MAP: dict[str, int] = json.load(_f)
+else:
+    CATEGORY_MAP = {}
+
+DATASETS_META: dict[str, Any] = YAML_DATA.get("datasets", {})
 
 if args.workers:
     CONFIG["num_workers"] = args.workers
 
 
-# ---------------- GLOBALS ----------------
+# ─── Package re-exports (Phase 1.4 / 1.5.5 / 2.0) ──────────────────────────
+# Every symbol below is declared in __all__ above, so linters correctly
+# recognise these as re-exports rather than unused imports.
+from converters import (
+    detect_annotations,
+    parse_coco,
+    parse_matlab,
+    parse_parquet,
+    parse_safetensors,
+    parse_xml,
+    parse_yolo,
+)
+from utils.fs import get_dir_size, remove_empty_dirs
+from utils.geometry import convert_bbox_xywh_to_yolo, normalize_points
+from utils.hashing import compute_hash
+from utils.image import ensure_srgb, is_black_image
+from utils.math import get_gaussian_probs
+from utils.naming import clean_slug, map_category
+from utils.net import download_image
+from registry import ensure_registry_schema, initialize_registry
+from audit.ground_truth import GroundTruthCaches
+from audit.vision_audit import VisionAuditor
+from audit.dedup import ExactHasher, PerceptualHasher
+from audit.reject_log import RejectLog
+from runtime.environment import get_device_info
+
+
+# ─── Globals ────────────────────────────────────────────────────────────────
 SENTRY = None
 LABELER = None
 CAPTIONER = None
 CLIP_MANIFOLD = None
 
-# 2026 Phase 1.5.5: Ground-truth caches consolidated into a single dataclass.
-# Workers populate this in init_worker(); consumers read from _GT_CACHE.{ava,aadb,tid}.
+# 2026 Phase 1.5.5: ground-truth caches consolidated into one dataclass.
 _GT_CACHE = GroundTruthCaches()
+
+# 2026 Phase 2: audit primitives instantiated once per worker in init_worker.
+AUDITOR: VisionAuditor | None = None
+EXACT_HASHER: ExactHasher | None = None
+PERCEPTUAL_HASHER: PerceptualHasher | None = None
 
 
 class _Annotation(TypedDict):
-    """Typed shape of every record appended to `annotations` in `process_image`.
+    """Shape of every record appended to `annotations` in `process_image`.
 
-    `data` is widened to ``list[Any]`` because three source families produce
-    numeric lists of different underlying types:
-      * COCO / YOLO       -> list[float]
-      * Parquet / MATLAB  -> list[Any]
-      * NPZ               -> list[Any]
+    `data` is widened to ``list[Any]`` because three source families emit
+    numeric lists of different underlying element types:
+
+        COCO / YOLO       -> list[float]
+        Parquet / MATLAB  -> list[Any]
+        NPZ               -> list[Any]
     """
+
     type: str        # 'bbox' | 'segmentation' | 'pose'
     cls: int
     data: list[Any]
 
 
-def detect_task(model_dir_name):
-    """Route a model key to its task class. Compiler-specific routing logic."""
+# ─── ShardWriter (WebDataset TAR sharding) ─────────────────────────────────
+class ShardWriter:
+    """Industrial TAR sharding via WebDataset.
+
+    Consumed by the diffusion pipeline in manifold_compile.py. Instantiate
+    with the target directory; each call to `write()` appends one sample.
+    """
+
+    def __init__(
+        self,
+        output_dir: str | Path,
+        prefix: str = "data",
+        max_size: float = 1e9,
+    ) -> None:
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.sink: Any = wds.ShardWriter(
+            str(self.output_dir / f"{prefix}-%05d.tar"),
+            maxsize=int(max_size),
+        )
+
+    def write(self, name: str, img_bytes: bytes, caption: str) -> None:
+        self.sink.write({
+            "__key__": name,
+            "jpg": img_bytes,
+            "txt": caption,
+        })
+
+    def close(self) -> None:
+        self.sink.close()
+
+
+# ─── Task routing ───────────────────────────────────────────────────────────
+def detect_task(model_dir_name: str | None) -> str:
+    """Route a model key to its task class."""
     if not model_dir_name:
         return "quality"
-    name = str(model_dir_name).lower()
+    name = model_dir_name.lower()
 
     if DATASETS_META:
         for ds_key, ds_cfg in DATASETS_META.items():
@@ -176,23 +270,25 @@ def detect_task(model_dir_name):
     return "detection"
 
 
-DPED_CACHE = set()
-PHYSICAL_INDEX = set()
+DPED_CACHE: set[str] = set()
+PHYSICAL_INDEX: set[str] = set()
 
 
-def init_worker(config, dped_cache=None, physical_index=None):
-    """Per-process worker bootstrap. Loads models, GT caches, and device config."""
+# ─── Worker bootstrap ───────────────────────────────────────────────────────
+def init_worker(
+    config: dict[str, Any],
+    dped_cache: set[str] | None = None,
+    physical_index: set[str] | None = None,
+) -> None:
+    """Per-process worker bootstrap. Loads models, GT caches, device config."""
     global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX, _GT_CACHE
+    global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER
+
     if dped_cache:
         DPED_CACHE = dped_cache
     if physical_index:
         PHYSICAL_INDEX = physical_index
 
-    # 2026 Modular Alignment: Local imports from encapsulated modules.
-    # The `models/` package ships with py.typed-style imports resolvable
-    # from the project root; no suppression should be required. If Pyrefly
-    # still reports an error here, the fix is to add or repair
-    # ``models/__init__.py`` — not to re-add a # type: ignore.
     from models.quality_scorer import QualitySentry
     from models.detection import AutoLabeler
     from models.diffusion import CaptionSentry
@@ -203,8 +299,7 @@ def init_worker(config, dped_cache=None, physical_index=None):
         import signal
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    import torch
-    from PIL import ImageFile
+    # PIL flag re-applied inside spawned workers (they re-import the module).
     setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 
     # Prevent thread thrashing on CPU in ProcessPool mode.
@@ -214,7 +309,7 @@ def init_worker(config, dped_cache=None, physical_index=None):
         except Exception:
             pass
 
-    # Device selection: CPU on Windows or when no CUDA, else distribute across GPUs.
+    # Device selection: CPU on Windows or when no CUDA; else distribute across GPUs.
     if os.name == "nt" or not torch.cuda.is_available():
         device = "cpu"
     else:
@@ -224,10 +319,19 @@ def init_worker(config, dped_cache=None, physical_index=None):
         else:
             device = "cuda:0"
 
-    # 1. Quality Vetting (NIMA)
+    # Phase 2 audit primitives (one instance per worker).
+    AUDITOR = VisionAuditor(CONFIG)
+    EXACT_HASHER = ExactHasher(no_hash=args.no_hash)
+    PERCEPTUAL_HASHER = PerceptualHasher(no_hash=args.no_hash)
+
+    # NIMA quality vetting.
     mission = detect_task(args.model)
     if mission in ["quality", "classification", "diffusion"] and not args.no_vetting:
-        model_type = "aesthetic" if mission == "diffusion" or (args.model and "aesthetic" in args.model) else "technical"
+        model_type = (
+            "aesthetic"
+            if mission == "diffusion" or (args.model and "aesthetic" in args.model)
+            else "technical"
+        )
         base_dir = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(base_dir, "models", f"nima_{model_type}_best.pth")
         if os.path.exists(model_path):
@@ -236,18 +340,18 @@ def init_worker(config, dped_cache=None, physical_index=None):
             except Exception:
                 pass
 
-    # 2. Ground truth caches (AVA / AADB / TID via registry loaders)
+    # Ground truth caches.
     if mission in ["quality", "classification", "diffusion", "restoration"]:
         _GT_CACHE.load(INPUT_ROOT, args.model or "")
 
-    # 3. Diffusion captioning
+    # Diffusion captioning.
     if mission == "diffusion":
         try:
             CAPTIONER = CaptionSentry(device=device)
         except Exception:
             pass
 
-    # 4. Style manifold (CLIP)
+    # Style manifold (CLIP) — loaded on CPU to conserve VRAM.
     if "clip" in str(config):
         try:
             CLIP_MANIFOLD = CLIPManifold(device="cpu")
@@ -255,7 +359,8 @@ def init_worker(config, dped_cache=None, physical_index=None):
             pass
 
 
-def get_labeler(task, device="cuda"):
+def get_labeler(task: str, device: str = "cuda"):
+    """Singleton labeler per task type (detection / segmentation / face)."""
     from models.detection import AutoLabeler
     global LABELER
     if LABELER is None:
@@ -269,14 +374,13 @@ def get_labeler(task, device="cuda"):
     return LABELER[task]
 
 
-# ---------------- BATCH WORKER ----------------
-def process_parquet_shard(pq_path, prefix, c_slug, start_idx, task, fmt, split_fallback,
-                          output_root_str, skip_lbl, train_prob, existing_names,
-                          existing_on_disk, keep_prob, num_rows):
-    """Process an entire Parquet shard as one worker task (avoids per-row IPC)."""
-    import pandas as pd
-    import random
-    from pathlib import Path
+# ─── Batch worker ───────────────────────────────────────────────────────────
+def process_parquet_shard(
+    pq_path, prefix, c_slug, start_idx, task, fmt, split_fallback,
+    output_root_str, skip_lbl, train_prob, existing_names,
+    existing_on_disk, keep_prob, num_rows,
+):
+    """Process an entire Parquet shard as one worker task (amortizes IPC)."""
     try:
         df = pd.read_parquet(pq_path)
     except Exception as e:
@@ -291,15 +395,28 @@ def process_parquet_shard(pq_path, prefix, c_slug, start_idx, task, fmt, split_f
         name = f"{prefix}_{c_slug}_{current_idx:09d}"
 
         if keep_prob < 1.0 and random.random() > keep_prob:
-            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "dropped", "nima_score": 1.0, "size": 0})
+            results.append({
+                "name": name, "source": c_slug, "task": task,
+                "split": "skipped", "hash": "dropped",
+                "nima_score": 1.0, "size": 0,
+            })
             continue
+
         if name in existing_names or name.lower() in existing_on_disk:
-            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "skipped", "nima_score": 1.0, "size": 0})
+            results.append({
+                "name": name, "source": c_slug, "task": task,
+                "split": "skipped", "hash": "skipped",
+                "nima_score": 1.0, "size": 0,
+            })
             continue
 
         img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
         if img_bytes is None:
-            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "skipped", "nima_score": 1.0, "size": 0})
+            results.append({
+                "name": name, "source": c_slug, "task": task,
+                "split": "skipped", "hash": "skipped",
+                "nima_score": 1.0, "size": 0,
+            })
             continue
 
         split = "train" if random.random() < train_prob else "val"
@@ -308,22 +425,29 @@ def process_parquet_shard(pq_path, prefix, c_slug, start_idx, task, fmt, split_f
         if task == "diffusion":
             res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split, output_root_str)
         else:
-            res = process_image(img_bytes, prefix, c_slug, current_idx, task, fmt, row_dict, split, output_root_str, skip_lbl)
+            res = process_image(
+                img_bytes, prefix, c_slug, current_idx, task, fmt,
+                row_dict, split, output_root_str, skip_lbl,
+            )
 
         if res:
             results.append(res)
         else:
-            results.append({"name": name, "source": c_slug, "task": task, "split": "skipped", "hash": "failed", "nima_score": 1.0, "size": 0})
+            results.append({
+                "name": name, "source": c_slug, "task": task,
+                "split": "skipped", "hash": "failed",
+                "nima_score": 1.0, "size": 0,
+            })
 
     return results
 
 
-def batch_worker(tasks):
+def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
     """Execute a list of (func, *args) in one worker call to amortize IPC."""
-    results = []
-    for i, (task_func, *args) in enumerate(tasks):
+    results: list[Any] = []
+    for task_func, *task_args in tasks:
         try:
-            res = task_func(*args)
+            res = task_func(*task_args)
             if task_func.__name__ == "process_parquet_shard":
                 results.extend(res)
             else:
@@ -333,38 +457,39 @@ def batch_worker(tasks):
     return results
 
 
-# ---------------- PROCESSORS ----------------
-def _is_image_valid_for_dataset(img, w, hgt, task, slug):
-    if img and task == "quality" and "laion" not in slug and "ava" not in slug:
-        if is_black_image(img, CONFIG["black_threshold"]):
-            return False
-    if task in ["diffusion"]:
-        min_dim = 512
-    elif task in ["quality", "classification", "restoration", "super-resolution"]:
-        min_dim = 128 if "artifact" in slug.lower() else 224
-    else:
-        min_dim = 128
-    return w >= min_dim and hgt >= min_dim
+# ─── Audit gate shims (Phase 2) ─────────────────────────────────────────────
+# The pre-Phase-2 inline implementations lived here. They now delegate to the
+# VisionAuditor instance constructed in init_worker. Names preserved for
+# backward-compat callers.
+def _is_image_valid_for_dataset(img, w, hgt, task, slug) -> bool:
+    if AUDITOR is None:
+        return True
+    return AUDITOR.audit_image(img, task, slug).valid
 
 
-def _passes_nima_filter(task, slug, is_authenticity, nima_score, nima_probs, current_threshold, idx):
-    if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
-        if CONFIG.get("strict_ground_truth", True) and task == "quality" and "laion" not in slug:
-            return False
-    if task in ["quality", "diffusion"] and nima_score < current_threshold and not is_authenticity:
-        if idx < 5:
-            print(f"DEBUG: {slug} skipped because nima {nima_score} < {current_threshold}")
-        return False
-    return True
+def _passes_nima_filter(
+    task, slug, is_authenticity, nima_score, nima_probs,
+    current_threshold, idx,
+) -> bool:
+    if AUDITOR is None:
+        return True
+    return AUDITOR.passes_nima(
+        task, slug, is_authenticity, nima_score,
+        nima_probs, current_threshold, idx,
+    )
 
 
-def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
-                  output_root_str, skip_labeling=False):
+# ─── Per-sample processors ──────────────────────────────────────────────────
+def process_image(
+    img_input, prefix, slug, idx, task, fmt, ann_data, split,
+    output_root_str, skip_labeling=False,
+):
     """Worker function for parallel processing.
 
-    img_input can be a Path or raw bytes (for Parquet-embedded datasets).
+    img_input is a Path for on-disk sources, or raw bytes / dict for
+    Parquet-embedded sources.
     """
-    img_path = "Unknown"
+    img_path: Any = "Unknown"
     nima_score = 1.0
     nima_probs = [0.0] * 10
     nima_probs[0] = 1.0
@@ -374,7 +499,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
     img_data = b""
 
     try:
-        # ── Input normalization ─────────────────────────────────────────
+        # ── Input normalization ─────────────────────────────────────────────
         if isinstance(img_input, (bytes, dict)):
             if isinstance(img_input, dict) and "bytes" in img_input:
                 img_data = img_input["bytes"]
@@ -407,16 +532,19 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
         tgt_dir = "masks" if task == "segmentation" else "targets"
         out_tgt_path = Path(output_root_str) / tgt_dir / split / f"{name}{ext}"
 
-        # ── High-speed skip via worker-global physical index ────────────
+        # ── High-speed skip via physical index ──────────────────────────────
         if PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX:
-            return {"name": name, "source": slug, "task": task, "split": split, "hash": "skipped", "nima_score": nima_score, "size": 0}
+            return {
+                "name": name, "source": slug, "task": task, "split": split,
+                "hash": "skipped", "nima_score": nima_score, "size": 0,
+            }
 
-        # ── Restoration target resolution ──────────────────────────────
+        # ── Restoration target resolution ───────────────────────────────────
         target_img = None
         target_img_path = None
 
         if task in ["restoration", "super-resolution", "parameter_prediction", "segmentation"]:
-            # Strategy 1: Parquet/Virtual target detection
+            # Strategy 1: Parquet / virtual target.
             if ann_data:
                 row_dict = None
                 if isinstance(ann_data, dict):
@@ -426,7 +554,8 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                     if not df_sub.empty:
                         row_dict = df_sub.iloc[0].to_dict()
                 if row_dict:
-                    for k in ["target", "sharp", "ground_truth", "gt", "clean", "original", "mask", "masks"]:
+                    for k in ["target", "sharp", "ground_truth", "gt", "clean",
+                              "original", "mask", "masks"]:
                         val = row_dict.get(k)
                         if isinstance(val, bytes):
                             target_img = Image.open(io.BytesIO(val))
@@ -437,18 +566,24 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                                 target_img_path = str(p)
                             break
 
-            # Strategy 2: Generic neighbor resolve (GoPro, RealBlur, HiDeBlur, SFHQ)
+            # Strategy 2: Sibling / ancestral folder resolver.
             if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
-                blur_keys = ["blur", "blurry", "input", "lowres", "lr", "rain", "hazy", "noisy", "degraded", "distorted", "low", "images"]
-                sharp_keys = ["sharp", "gt", "ground_truth", "groundtruth", "clean", "clear", "original", "hr", "highres", "target", "norain", "high", "targets", "mask", "masks", "segmentation", "segmentations"]
+                blur_keys = ["blur", "blurry", "input", "lowres", "lr", "rain",
+                             "hazy", "noisy", "degraded", "distorted", "low", "images"]
+                sharp_keys = ["sharp", "gt", "ground_truth", "groundtruth", "clean",
+                              "clear", "original", "hr", "highres", "target", "norain",
+                              "high", "targets", "mask", "masks", "segmentation",
+                              "segmentations"]
                 p_str = str(img_path).replace("\\", "/")
                 parent = img_path.parent
 
-                # 2a: Sibling folder
+                # 2a: Sibling folder.
                 if any(k in parent.name.lower() for k in blur_keys):
                     try:
                         for sibling in parent.parent.iterdir():
-                            if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
+                            if sibling.is_dir() and any(
+                                k in sibling.name.lower() for k in sharp_keys
+                            ):
                                 potential = sibling / img_path.name
                                 if potential.exists():
                                     target_img_path = str(potential)
@@ -465,16 +600,19 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                                             break
                                 if target_img_path:
                                     break
-                    except Exception:
+                    except OSError:
                         pass
 
-                # 2b: Ancestral sibling
+                # 2b: Ancestral sibling.
                 if not target_img_path:
                     for ancestor in [parent, parent.parent]:
-                        if any(k in ancestor.name.lower() for k in ["train", "test", "val", "images"]):
+                        if any(k in ancestor.name.lower()
+                               for k in ["train", "test", "val", "images"]):
                             try:
                                 for sibling in ancestor.parent.iterdir():
-                                    if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
+                                    if sibling.is_dir() and any(
+                                        k in sibling.name.lower() for k in sharp_keys
+                                    ):
                                         potential = sibling / img_path.name
                                         if potential.exists():
                                             target_img_path = str(potential)
@@ -485,15 +623,15 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                                             if potential_rel.exists():
                                                 target_img_path = str(potential_rel)
                                                 break
-                                        except Exception:
+                                        except ValueError:
                                             pass
-                            except Exception:
+                            except OSError:
                                 pass
                             if target_img_path:
                                 break
 
-                # 2c: Same-folder resolution
-                if not target_img_path and not isinstance(img_input, (bytes, dict)):
+                # 2c: Same-folder.
+                if not target_img_path:
                     for b_k in blur_keys:
                         if img_path.name.lower().startswith(b_k):
                             for s_k in sharp_keys:
@@ -507,7 +645,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                             if target_img_path:
                                 break
 
-            # Strategy 3: Legacy DPED fallback
+            # Strategy 3: Legacy DPED fallback.
             if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
                 for device_name in ["iphone", "sony", "blackberry"]:
                     needle = f"/{device_name}/"
@@ -519,8 +657,11 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                             target_img_path = tgt_p_str
                         break
 
-        # ── Deferred image loading (only if stats needed) ──────────────
-        needs_stats = (task in ["quality", "diffusion"] and not args.no_vetting) or (not skip_labeling)
+        # ── Deferred image loading ──────────────────────────────────────────
+        needs_stats = (
+            (task in ["quality", "diffusion"] and not args.no_vetting)
+            or (not skip_labeling)
+        )
         if needs_stats:
             if not isinstance(img_input, (bytes, dict)):
                 if img_path.suffix.lower() == ".npy":
@@ -536,15 +677,16 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                 img = Image.open(io.BytesIO(img_data))
             img = ensure_srgb(img)
             w, hgt = img.size
-            if not _is_image_valid_for_dataset(img, w, hgt, task, slug):
-                return None
+            if AUDITOR is not None:
+                audit = AUDITOR.audit_image(img, task, slug)
+                if not audit.valid:
+                    return None
 
-        # ── NIMA quality gate: GT-first, AI fallback ───────────────────
+        # ── NIMA quality gate: GT-first, AI fallback ────────────────────────
         nima_score = 1.0
         nima_probs = [0.0] * 10
         nima_probs[0] = 1.0
 
-        # 1. AVA professional labels (10-bin)
         if "ava" in slug and _GT_CACHE.ava:
             try:
                 img_id = int(img_path.stem)
@@ -552,20 +694,18 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                     votes = _GT_CACHE.ava[img_id]
                     nima_probs = [votes[f"vote_{i}"] for i in range(1, 11)]
                     nima_score = sum(p * (i + 1) for i, p in enumerate(nima_probs))
-            except Exception:
+            except (ValueError, KeyError):
                 pass
 
-        # 2. AADB human ratings (scalar 0-1)
         elif "aadb" in slug and _GT_CACHE.aadb:
             try:
                 raw_score = _GT_CACHE.aadb.get(img_path.name)
                 if raw_score is not None:
                     nima_score = (raw_score * 9.0) + 1.0
                     nima_probs = get_gaussian_probs(nima_score)
-            except Exception:
+            except (TypeError, ValueError):
                 pass
 
-        # 3. LAION aesthetic scores (scalar 1-10)
         elif "laion" in slug:
             try:
                 if isinstance(ann_data, dict):
@@ -573,56 +713,70 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                     nima_score = float(val) if val is not None else 6.5
                     nima_probs = get_gaussian_probs(nima_score)
                 elif fmt == "parquet" and ann_data:
-                    df_subset, mapping = ann_data
+                    df_subset, mapping = cast("tuple[Any, dict[str, Any]]", ann_data)
                     col = mapping.get("aesthetic_score", "aesthetic_score")
                     if col in df_subset.columns:
                         nima_score = float(df_subset[col].iloc[0])
                         nima_probs = get_gaussian_probs(nima_score)
-            except Exception:
+            except (TypeError, ValueError, KeyError):
                 pass
 
-        # 4. Universal technical scores (scalar 1-10)
         elif _GT_CACHE.tid and img_path.name.lower() in _GT_CACHE.tid:
             try:
                 raw_score = _GT_CACHE.tid.get(img_path.name.lower())
                 if raw_score is not None:
                     nima_score = raw_score
                     nima_probs = get_gaussian_probs(nima_score)
-            except Exception:
+            except (TypeError, ValueError):
                 pass
 
-        # 4.5. Authenticity override (AI vs Human)
+        # Authenticity override (AI vs Human).
         is_authenticity = "authentic" in prefix.lower()
         if is_authenticity:
             parent_name = img_path.parent.name.lower()
             file_name = img_path.name.lower()
-            if parent_name in ["sut-project", "ai-generated-images-vs-real-images", "real vs fake faces", "raw-sets"]:
+            if parent_name in ["sut-project", "ai-generated-images-vs-real-images",
+                               "real vs fake faces", "raw-sets"]:
                 parent_name = ""
             path_str = f"{parent_name}/{file_name}".lower()
-            if any(k in path_str for k in ["sut-project", "midjourney", "diffusion", "ai", "fake", "gan", "generated"]):
+            if any(k in path_str for k in ["sut-project", "midjourney", "diffusion",
+                                           "ai", "fake", "gan", "generated"]):
                 nima_probs = [0.0] * 10
                 nima_probs[0] = 1.0
                 nima_score = 1.0
-            elif any(k in path_str for k in ["ffhq", "div2k", "celebahq", "human", "real", "afhq", "nature"]):
+            elif any(k in path_str for k in ["ffhq", "div2k", "celebahq", "human",
+                                             "real", "afhq", "nature"]):
                 nima_probs = [0.0] * 10
                 nima_probs[9] = 1.0
                 nima_score = 10.0
 
-        # 5. AI vetting fallback
+        # AI vetting fallback.
         if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
             if SENTRY:
                 nima_score, nima_probs = SENTRY.score(img, return_probs=True)
 
         current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
-        if not _passes_nima_filter(task, slug, is_authenticity, nima_score, nima_probs, current_threshold, idx):
+        if not _passes_nima_filter(
+            task, slug, is_authenticity, nima_score,
+            nima_probs, current_threshold, idx,
+        ):
             return None
 
-        # ── Hash + output writes ───────────────────────────────────────
+        # ── Hash + output writes ────────────────────────────────────────────
         hash_target = img_data if isinstance(img_input, (bytes, dict)) else img_path
-        h = compute_hash(hash_target, no_hash=args.no_hash) if CONFIG["enable_dedup"] else None
+        h = EXACT_HASHER.hash(hash_target) if (CONFIG["enable_dedup"] and EXACT_HASHER) else None
+
+        ph: str | None = None
+        if CONFIG.get("enable_perceptual_dedup") and PERCEPTUAL_HASHER and img is not None:
+            p_hashes = PERCEPTUAL_HASHER.hash(img)
+            if p_hashes is not None:
+                ph = f"{p_hashes[0]}:{p_hashes[1]}"
 
         is_already_on_disk = PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX
-        is_clean_only = ("parsenet" in slug.lower() or "codeformer" in slug.lower()) and task == "restoration"
+        is_clean_only = (
+            ("parsenet" in slug.lower() or "codeformer" in slug.lower())
+            and task == "restoration"
+        )
         if is_clean_only and not target_img_path and isinstance(img_input, (str, Path)):
             target_img_path = str(img_path)
 
@@ -649,7 +803,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                 except (OSError, AttributeError):
                     try:
                         shutil.copy(target_img_path, out_tgt_path)
-                    except Exception:
+                    except OSError:
                         pass
             elif target_img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
@@ -661,15 +815,17 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                             f.write(img_data)
                     elif img:
                         save_fmt = "PNG" if ext == ".png" else "JPEG"
-                        img.save(out_tgt_path, save_fmt, quality=95 if save_fmt == "JPEG" else None)
+                        img.save(out_tgt_path, save_fmt,
+                                 quality=95 if save_fmt == "JPEG" else None)
                 else:
                     try:
                         os.link(str(out_img_path), str(out_tgt_path))
                     except (OSError, AttributeError):
                         try:
                             shutil.copy2(out_img_path, out_tgt_path)
-                        except Exception:
+                        except OSError:
                             pass
+
         elif task == "parameter_prediction":
             if target_img_path:
                 try:
@@ -677,7 +833,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                 except (OSError, AttributeError):
                     try:
                         shutil.copy(target_img_path, out_tgt_path)
-                    except Exception:
+                    except OSError:
                         pass
             elif target_img:
                 save_fmt = "PNG" if ext == ".png" else "JPEG"
@@ -688,10 +844,10 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                 except (OSError, AttributeError):
                     try:
                         shutil.copy2(str(out_img_path), str(out_tgt_path))
-                    except Exception:
+                    except OSError:
                         pass
 
-        # ── Annotation dispatch ────────────────────────────────────────
+        # ── Annotation dispatch ─────────────────────────────────────────────
         annotations: list[_Annotation] = []
 
         if fmt == "coco" and ann_data is not None:
@@ -701,7 +857,11 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                     kpts = normalize_points(a["keypoints"], w, hgt, stride=3)
                     annotations.append({"type": "pose", "cls": cls, "data": a["bbox"] + kpts})
                 elif "segmentation" in a and a["segmentation"]:
-                    poly_raw = a["segmentation"][0] if isinstance(a["segmentation"], list) and len(a["segmentation"]) > 0 else []
+                    poly_raw = (
+                        a["segmentation"][0]
+                        if isinstance(a["segmentation"], list) and len(a["segmentation"]) > 0
+                        else []
+                    )
                     if poly_raw:
                         poly = normalize_points(poly_raw, w, hgt, stride=2)
                         annotations.append({"type": "segmentation", "cls": cls, "data": poly})
@@ -709,7 +869,7 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                     annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
 
         elif fmt == "parquet" and ann_data and not isinstance(ann_data, dict):
-            df_subset, mapping = ann_data
+            df_subset, mapping = cast("tuple[Any, dict[str, Any]]", ann_data)
             for _, row in df_subset.iterrows():
                 cls = map_category(row[mapping.get("class", "class")], prefix, CATEGORY_MAP)
                 if mapping.get("segmentation") in row and row[mapping.get("segmentation")]:
@@ -719,8 +879,12 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                     kpts = normalize_points(row[mapping.get("keypoints")], w, hgt, stride=3)
                     annotations.append({"type": "pose", "cls": cls, "data": [0, 0, 0, 0] + kpts})
                 else:
-                    bbox = [row[mapping.get("xmin", "xmin")], row[mapping.get("ymin", "ymin")],
-                            row[mapping.get("width", "width")], row[mapping.get("height", "height")]]
+                    bbox = [
+                        row[mapping.get("xmin", "xmin")],
+                        row[mapping.get("ymin", "ymin")],
+                        row[mapping.get("width", "width")],
+                        row[mapping.get("height", "height")],
+                    ]
                     annotations.append({"type": "bbox", "cls": cls, "data": bbox})
 
         elif fmt == "matlab" and ann_data:
@@ -728,99 +892,111 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                 try:
                     cls = map_category(entry["class"], prefix, CATEGORY_MAP)
                     annotations.append({"type": "bbox", "cls": cls, "data": entry["bbox"]})
-                except Exception:
+                except (KeyError, TypeError):
                     pass
 
         elif fmt == "xml" and ann_data:
-            # Contract: when fmt == "xml", manifold_compile.py passes a Path
-            # or str to the annotations directory. Narrow explicitly rather
-            # than suppressing — the runtime check matches the caller contract.
-            if not isinstance(ann_data, (str, Path)):
-                return None
-            xml_anns = parse_xml(ann_data)
-
-        elif fmt == "yolo" and ann_data:
-            if not isinstance(ann_data, (str, Path)):
-                return None
-            yolo_anns = parse_yolo(ann_data, w, hgt)
-            for a in yolo_anns:
-                if task == "pose":
-                    cls = map_category("0", prefix, CATEGORY_MAP)
-                else:
+            if isinstance(ann_data, (str, Path)):
+                xml_anns = parse_xml(ann_data)
+                for a in xml_anns:
                     cls = map_category(a["class"], prefix, CATEGORY_MAP)
-                a_bbox = cast(list[Any], a["bbox"])
-                if "keypoints" in a and a["keypoints"]:
-                    a_kpts = cast(list[Any], a["keypoints"])
-                    annotations.append({"type": "pose", "cls": cls, "data": a_bbox + a_kpts})
-                else:
+                    a_bbox = cast("list[Any]", a["bbox"])
                     annotations.append({"type": "bbox", "cls": cls, "data": a_bbox})
 
-        elif fmt == "npz" and ann_data:
-            if not isinstance(ann_data, (str, Path)):
-                return None
-            try:
-                data = np.load(str(ann_data))
-                if "landmarks" in data.files:
-                    landmarks = data["landmarks"]
-                    if landmarks.shape == (110, 2):
-                        pts = landmarks[:68]
-                        x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
-                        y_min, y_max = pts[:, 1].min(), pts[:, 1].max()
-                        pad_w = (x_max - x_min) * 0.05
-                        pad_h = (y_max - y_min) * 0.05
-                        x_min = max(0, x_min - pad_w)
-                        y_min = max(0, y_min - pad_h)
-                        x_max = min(w, x_max + pad_w)
-                        y_max = min(hgt, y_max + pad_h)
-                        bbox_w = x_max - x_min
-                        bbox_h = y_max - y_min
-                        l_eye = landmarks[36:42].mean(axis=0)
-                        r_eye = landmarks[42:48].mean(axis=0)
-                        nose = landmarks[30]
-                        l_mouth = landmarks[48]
-                        r_mouth = landmarks[54]
-                        kpts = [
-                            l_eye[0], l_eye[1], r_eye[0], r_eye[1], nose[0], nose[1],
-                            l_mouth[0], l_mouth[1], r_mouth[0], r_mouth[1],
-                        ]
+        elif fmt == "yolo" and ann_data:
+            if isinstance(ann_data, (str, Path)):
+                yolo_anns = parse_yolo(ann_data, w, hgt)
+                for a in yolo_anns:
+                    if task == "pose":
                         cls = map_category("0", prefix, CATEGORY_MAP)
-                        annotations.append({"type": "pose", "cls": cls, "data": [x_min, y_min, bbox_w, bbox_h] + kpts})
-            except Exception as e:
-                print(f"Error parsing NPZ {ann_data}: {e}")
+                    else:
+                        cls = map_category(a["class"], prefix, CATEGORY_MAP)
+                    a_bbox = cast("list[Any]", a["bbox"])
+                    if "keypoints" in a and a["keypoints"]:
+                        a_kpts = cast("list[Any]", a["keypoints"])
+                        annotations.append({"type": "pose", "cls": cls, "data": a_bbox + a_kpts})
+                    else:
+                        annotations.append({"type": "bbox", "cls": cls, "data": a_bbox})
+
+        elif fmt == "npz" and ann_data:
+            if isinstance(ann_data, (str, Path)):
+                try:
+                    data = np.load(str(ann_data))
+                    if "landmarks" in data.files:
+                        landmarks = data["landmarks"]
+                        if landmarks.shape == (110, 2):
+                            pts = landmarks[:68]
+                            x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
+                            y_min, y_max = pts[:, 1].min(), pts[:, 1].max()
+                            pad_w = (x_max - x_min) * 0.05
+                            pad_h = (y_max - y_min) * 0.05
+                            x_min = max(0, x_min - pad_w)
+                            y_min = max(0, y_min - pad_h)
+                            x_max = min(w, x_max + pad_w)
+                            y_max = min(hgt, y_max + pad_h)
+                            bbox_w = x_max - x_min
+                            bbox_h = y_max - y_min
+
+                            l_eye = landmarks[36:42].mean(axis=0)
+                            r_eye = landmarks[42:48].mean(axis=0)
+                            nose = landmarks[30]
+                            l_mouth = landmarks[48]
+                            r_mouth = landmarks[54]
+
+                            kpts = [
+                                l_eye[0], l_eye[1], r_eye[0], r_eye[1],
+                                nose[0], nose[1], l_mouth[0], l_mouth[1],
+                                r_mouth[0], r_mouth[1],
+                            ]
+                            cls = map_category("0", prefix, CATEGORY_MAP)
+                            annotations.append({
+                                "type": "pose", "cls": cls,
+                                "data": [x_min, y_min, bbox_w, bbox_h] + kpts,
+                            })
+                except (OSError, KeyError, ValueError) as e:
+                    print(f"Error parsing NPZ {ann_data}: {e}")
 
         elif fmt == "safetensors" and isinstance(ann_data, dict):
-            metadata = ann_data
-            tags = []
-            if "ss_tag_frequency" in metadata:
+            tags: list[str] = []
+            if "ss_tag_frequency" in ann_data:
                 try:
-                    freqs = json.loads(str(metadata["ss_tag_frequency"]))
+                    freqs = json.loads(str(ann_data["ss_tag_frequency"]))
                     for bucket in freqs.values():
                         tags.extend(bucket.keys())
-                except Exception:
+                except (json.JSONDecodeError, AttributeError):
                     pass
-            if not tags and "ss_datasets" in metadata:
+            if not tags and "ss_datasets" in ann_data:
                 try:
-                    ds_info = json.loads(str(metadata["ss_datasets"]))
+                    ds_info = json.loads(str(ann_data["ss_datasets"]))
                     for ds in ds_info:
                         if "tag_frequency" in ds:
                             tags.extend(ds["tag_frequency"].keys())
-                except Exception:
+                except (json.JSONDecodeError, AttributeError):
                     pass
             if tags:
                 unique_tags = list(set(tags))[:20]
                 for tag in unique_tags:
                     cls = map_category(tag, prefix, CATEGORY_MAP)
-                    annotations.append({"type": "bbox", "cls": cls, "data": [0.0, 0.0, 1.0, 1.0]})
+                    annotations.append({
+                        "type": "bbox", "cls": cls,
+                        "data": [0.0, 0.0, 1.0, 1.0],
+                    })
 
+        # ── Auto-labeling fallback ──────────────────────────────────────────
         is_autolabeled = False
-        if not annotations and task not in ["quality", "classification"] and not args.no_labeling and not skip_labeling:
+        if (
+            not annotations
+            and task not in ["quality", "classification"]
+            and not args.no_labeling
+            and not skip_labeling
+        ):
             device = "cuda" if torch.cuda.is_available() else "cpu"
             labeler = get_labeler(task, device)
-            annotations = cast(list[_Annotation], labeler.predict(img))
+            annotations = cast("list[_Annotation]", labeler.predict(img))
             if annotations:
                 is_autolabeled = True
 
-        # ── Write label file ───────────────────────────────────────────
+        # ── Write label file ────────────────────────────────────────────────
         label_file_path = Path(output_root_str) / "labels" / split / f"{name}.txt"
         has_annotations = len(annotations) > 0 or task in ["quality", "classification"]
 
@@ -829,25 +1005,27 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                 if task == "quality":
                     f.write(" ".join(f"{p:.6f}" for p in nima_probs) + "\n")
                 elif task == "classification":
-                    class_label = 1
+                    class_label: Any = 1
                     if isinstance(ann_data, dict) and "label" in ann_data:
                         class_label = ann_data["label"]
-                    elif isinstance(ann_data, tuple) and len(ann_data) == 2 and isinstance(ann_data[1], dict):
-                        df_subset, mapping = ann_data
+                    elif (
+                        isinstance(ann_data, tuple)
+                        and len(ann_data) == 2
+                        and isinstance(ann_data[1], dict)
+                    ):
+                        df_subset, mapping = cast("tuple[Any, dict[str, Any]]", ann_data)
                         lbl_col = mapping.get("label", "label")
                         if lbl_col in df_subset.columns:
                             class_label = df_subset.iloc[0][lbl_col]
                     else:
                         p_lower = str(img_path).lower()
-                        if any(k in p_lower for k in ["fake", "ai", "synthetic", "nsfw", "porn", "explicit"]):
+                        if any(k in p_lower for k in ["fake", "ai", "synthetic",
+                                                      "nsfw", "porn", "explicit"]):
                             class_label = 0
+
                     if isinstance(class_label, float):
-                        try:
-                            import pandas as pd
-                            if not pd.isna(class_label):
-                                class_label = int(class_label)
-                        except Exception:
-                            pass
+                        if not pd.isna(class_label):
+                            class_label = int(class_label)
                     f.write(str(class_label) + "\n")
                 elif annotations:
                     for ann in annotations:
@@ -860,21 +1038,27 @@ def process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
                             f.write(f"{cls} {' '.join(map(str, data))}\n")
                         elif ann["type"] == "pose":
                             yolo_box = convert_bbox_xywh_to_yolo(data[:4], w, hgt)
-                            f.write(f"{cls} {' '.join(map(str, yolo_box))} {' '.join(map(str, data[4:]))}\n")
+                            f.write(
+                                f"{cls} {' '.join(map(str, yolo_box))} "
+                                f"{' '.join(map(str, data[4:]))}\n"
+                            )
 
+        # ── Result ──────────────────────────────────────────────────────────
         size_bytes = 0
         try:
             if out_img_path.exists():
                 size_bytes += out_img_path.stat().st_size
-        except Exception:
+        except OSError:
             pass
 
         return {
             "name": name, "source": slug, "task": task, "split": split,
-            "hash": h, "nima_score": round(nima_score, 3), "is_autolabeled": is_autolabeled,
+            "hash": h, "perceptual_hash": ph,
+            "nima_score": round(nima_score, 3), "is_autolabeled": is_autolabeled,
             "has_segmentation": any(a["type"] == "segmentation" for a in annotations),
             "has_pose": any(a["type"] == "pose" for a in annotations),
-            "label_path": str(label_file_path.resolve()), "path": str(out_img_path.resolve()),
+            "label_path": str(label_file_path.resolve()),
+            "path": str(out_img_path.resolve()),
             "size": size_bytes,
             "clip_latent": None,
         }
@@ -888,10 +1072,11 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
     """Text-image processor for Diffusion manifolds."""
     try:
         if isinstance(img_path, (bytes, dict)):
-            raw = img_path["bytes"] if isinstance(img_path, dict) and "bytes" in img_path else img_path
-            # Pyrefly: narrow `raw` to bytes. Replaces the weaker `is None`
-            # check — a dict-typed value could theoretically be non-None but
-            # not bytes, and BytesIO would then raise at runtime.
+            raw = (
+                img_path["bytes"]
+                if isinstance(img_path, dict) and "bytes" in img_path
+                else img_path
+            )
             if not isinstance(raw, bytes):
                 return None
             img_data = raw
@@ -909,15 +1094,12 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         if is_black_image(img, CONFIG["black_threshold"]):
             return None
 
-        nima_score = 10.0
+        nima_score: Any = 10.0
         if SENTRY:
             nima_score = SENTRY.score(img)
             if nima_score < CONFIG["nima_threshold"]:
                 return None
 
-        # Pyrefly: CONFIG is a dict[str, Any] and .get() returns Any. PIL's
-        # resize() requires an int or an int-pair; wrap in int() for a clean
-        # narrowing and a runtime guard against a malformed config value.
         size = int(CONFIG.get("diffusion_size", 512))
         img = img.resize((size, size), Image.Resampling.LANCZOS)
 
@@ -937,9 +1119,17 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         clip_latent = None
         if CLIP_MANIFOLD:
             style_tag = CLIP_MANIFOLD.tag_style(img)
-            clip_latent = CLIP_MANIFOLD.extract_features(img).cpu().numpy().flatten().tolist()
+            clip_latent = (
+                CLIP_MANIFOLD.extract_features(img).cpu().numpy().flatten().tolist()
+            )
 
-        h = compute_hash(img, no_hash=args.no_hash) if CONFIG["enable_dedup"] else None
+        h = EXACT_HASHER.hash(img) if (CONFIG["enable_dedup"] and EXACT_HASHER) else None
+        ph: str | None = None
+        if CONFIG.get("enable_perceptual_dedup") and PERCEPTUAL_HASHER:
+            p_hashes = PERCEPTUAL_HASHER.hash(img)
+            if p_hashes is not None:
+                ph = f"{p_hashes[0]}:{p_hashes[1]}"
+
         name = f"{prefix}_{idx:09d}"
 
         buffer = io.BytesIO()
@@ -948,12 +1138,19 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
         latent_blob = None
         if clip_latent:
-            latent_blob = sqlite3.Binary(np.array(clip_latent).astype(np.float32).tobytes())
+            latent_blob = sqlite3.Binary(
+                np.array(clip_latent).astype(np.float32).tobytes()
+            )
 
-        nima_val = float(nima_score[0]) if isinstance(nima_score, (tuple, list)) else float(nima_score)
+        nima_val = (
+            float(nima_score[0])
+            if isinstance(nima_score, (tuple, list))
+            else float(nima_score)
+        )
         return {
             "name": name, "source": slug, "task": "diffusion", "split": split,
-            "hash": h, "nima_score": round(nima_val, 3),
+            "hash": h, "perceptual_hash": ph,
+            "nima_score": round(nima_val, 3),
             "caption": caption, "style_tag": style_tag, "clip_latent": latent_blob,
             "img_bytes": img_bytes, "size": len(img_bytes),
         }
@@ -963,4 +1160,5 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         return None
 
 
-# ---------------- ORCHESTRATOR ----------------
+# ─── ORCHESTRATOR ───────────────────────────────────────────────────────────
+# The orchestration body lives in manifold_compile.py.

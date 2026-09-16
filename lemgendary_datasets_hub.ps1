@@ -187,6 +187,59 @@ function Initialize-Environment {
 # Run Initialization before anything else
 Initialize-Environment
 
+# 2026 Phase 1.7: Load runtime env contract from Environment Manager SSOT.
+# Env vars are set in the parent PowerShell session so that every child
+# subprocess spawned by this script inherits them via normal process
+# inheritance (this covers `& $Vpy manifold_compile.py ...`). Start-Job
+# runspaces do not inherit process env, but fetcher jobs do not require
+# any of these vars — only the compiler path does, and that path uses a
+# direct subprocess.
+function Import-RuntimeEnv {
+    param(
+        [string]$VpyPath,
+        [string]$YamlPath
+    )
+    if (-not (Test-Path $YamlPath)) {
+        Write-Host "[WARN] runtime_env.yaml not found at $YamlPath; using defaults" -ForegroundColor Yellow
+        return
+    }
+
+    $Loader = @"
+import os, sys, yaml, json
+from pathlib import Path
+p = Path(r'$YamlPath')
+try:
+    data = yaml.safe_load(p.read_text(encoding='utf-8')) or {}
+except Exception as e:
+    print(json.dumps({})); sys.exit(0)
+out = {}
+windows_only = {'FOR_DISABLE_CONSOLE_CTRL_HANDLER', 'FOR_IGNORE_EXCEPTIONS'}
+for name, spec in (data.get('variables') or {}).items():
+    if not isinstance(spec, dict) or 'value' not in spec:
+        continue
+    if name in windows_only and os.name != 'nt':
+        continue
+    out[name] = str(spec['value'])
+print(json.dumps(out))
+"@
+
+    $Json = & $VpyPath -c $Loader 2>$null
+    if (-not $Json) { return }
+
+    try {
+        $Parsed = $Json | ConvertFrom-Json
+        foreach ($Prop in $Parsed.PSObject.Properties) {
+            [Environment]::SetEnvironmentVariable($Prop.Name, $Prop.Value, 'Process')
+        }
+        Write-Host ("[OK] Runtime env loaded ({0} vars)" -f $Parsed.PSObject.Properties.Count) -ForegroundColor DarkGray
+    } catch {
+        Write-Host "[WARN] Failed to apply runtime env: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
+$RuntimeEnvYaml = Join-Path (Split-Path $PSScriptRoot -Parent) 'lemgendary-env-manager\requirements\runtime_env.yaml'
+Import-RuntimeEnv -VpyPath $Vpy -YamlPath $RuntimeEnvYaml
+
 function Get-RegData {
     if (!(test-path $Reg)) { Write-Host '  [ERROR] unified_data.yaml missing!' -Fore Red; return $null }
     $RegFixed = $Reg.Replace('\', '/')
