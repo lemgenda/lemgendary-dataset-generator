@@ -12,10 +12,11 @@ if (-not (Test-Path $Vpy)) {
 }
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
 $Raw = Join-Path $PSScriptRoot 'raw-sets'
-$hfManagerPath = Join-Path $PSScriptRoot 'hf_manager.py'
-$ghManagerPath = Join-Path $PSScriptRoot 'gh_manager.py'
-$kagManagerPath = Join-Path $PSScriptRoot 'kaggle_manager.py'
-$gdManagerPath = Join-Path $PSScriptRoot 'gd_manager.py'
+# 2026 Phase 1.2: managers relocated to sources/ package.
+$hfManagerPath = Join-Path $PSScriptRoot 'sources\hf.py'
+$ghManagerPath = Join-Path $PSScriptRoot 'sources\gh.py'
+$kagManagerPath = Join-Path $PSScriptRoot 'sources\kaggle.py'
+$gdManagerPath = Join-Path $PSScriptRoot 'sources\gd.py'
 
 $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
 if (Test-Path $TokenPath) {
