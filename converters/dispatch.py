@@ -1,9 +1,9 @@
 """
 Annotation format detection.
 
-Copied verbatim from compiler_core.py in Phase 1.4. Preserves the exact
-probe order and heuristics of the original `_detect_in_subdir` and
-`detect_annotations` functions — byte-parity is mandatory.
+Extracted from compiler_core.py in Phase 1.4. Preserves the exact probe
+order and heuristics of the original `_detect_in_subdir` and
+`detect_annotations` functions.
 """
 
 from __future__ import annotations

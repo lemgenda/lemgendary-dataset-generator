@@ -1,0 +1,137 @@
+=== 1. # type: ignore sweep ===
+compiler_core.py:26  # setattr() to bypass the stub without a # type: ignore.
+compiler_core.py:84  from config_schema import load_unified_data, UnifiedData  # type: ignore
+compiler_core.py:107  from cli_args import build_parser  # type: ignore
+compiler_core.py:195  # ``models/__init__.py`` — not to re-add a # type: ignore.
+compiler_core.py:208  ImageFile.LOAD_TRUNCATED_IMAGES = True  # type: ignore
+doc_generator.py:26  TASK_META = _meta_data.get("task_metadata", {})  # type: ignore
+doc_generator.py:27  MODELS_META = _meta_data.get("models_metadata", {})  # type: ignore
+doc_generator.py:665  for m_key, m_info in MODELS_META.items():  # type: ignore
+doc_generator.py:669  for m_key, m_info in MODELS_META.items():  # type: ignore
+doc_generator.py:877  for m_key, m_info in MODELS_META.items():  # type: ignore
+doc_generator.py:881  for m_key, m_info in MODELS_META.items():  # type: ignore
+gd_manager.py:33  res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)  # type: ignore
+gd_manager.py:46  res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)  # type: ignore
+manifold_compile.py:92  from cli_args import build_parser  # type: ignore
+modernize_manifold.py:248  from doc_generator import generate_dataset_docs  # type: ignore
+mt5_pipeline.py:74  import MetaTrader5 as mt5_mod  # type: ignore
+mt5_pipeline.py:195  import MetaTrader5 as mt5  # type: ignore
+regenerate_manifolds_md.py:84  import pyarrow.parquet as pq  # type: ignore
+diffusion.py:13  self.model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(self.device)  # type: ignore
+diffusion.py:19  inputs = self.processor(img_pil, return_tensors="pt").to(self.device)  # type: ignore
+encoder.py:13  self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)  # type: ignore
+encoder.py:22  inputs = self.processor(images=img_pil, return_tensors="pt").to(self.device)  # type: ignore
+encoder.py:25  return image_features / image_features.norm(p=2, dim=-1, keepdim=True)  # type: ignore
+encoder.py:30  inputs = self.processor(  # type: ignore
+encoder.py:31  text=self.styles, images=img_pil, return_tensors="pt", padding=True  # type: ignore
+quality_scorer.py:5  from models.nima import NIMA_Model  # type: ignore
+quality_scorer.py:8  from .nima import NIMA_Model  # type: ignore
+quality_scorer.py:10  from nima import NIMA_Model  # type: ignore
+environment.py:16  `# type: ignore` comments. Dynamic stdio method resolution uses
+environment.py:39  # getattr()/callable() avoids the need for # type: ignore[attr-defined].
+gd.py:38  res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)  # type: ignore
+gd.py:51  res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)  # type: ignore
+mt5_verify_samples.py:1  import MetaTrader5 as mt5  # type: ignore
+mt5_verify_samples.py:17  1: mt5.TIMEFRAME_M1,  # type: ignore
+mt5_verify_samples.py:18  5: mt5.TIMEFRAME_M5,  # type: ignore
+mt5_verify_samples.py:19  15: mt5.TIMEFRAME_M15,  # type: ignore
+mt5_verify_samples.py:20  60: mt5.TIMEFRAME_H1,  # type: ignore
+mt5_verify_samples.py:21  240: mt5.TIMEFRAME_H4,  # type: ignore
+mt5_verify_samples.py:22  1440: mt5.TIMEFRAME_D1,  # type: ignore
+mt5_verify_samples.py:37  if not mt5.initialize():  # type: ignore
+mt5_verify_samples.py:38  print(f"ERROR: MT5 initialization failed. Error code: {mt5.last_error()}")  # type: ignore
+mt5_verify_samples.py:41  account_info = mt5.account_info()  # type: ignore
+mt5_verify_samples.py:51  all_symbols = mt5.symbols_get()  # type: ignore
+mt5_verify_samples.py:87  info = mt5.symbol_info(symbol_name)  # type: ignore
+mt5_verify_samples.py:88  if info is not None and info.visible:  # type: ignore
+mt5_verify_samples.py:91  if mt5.symbol_select(symbol_name, True):  # type: ignore
+mt5_verify_samples.py:123  rates = mt5.copy_rates_range(active_symbol, tf_native, target_start, target_end)  # type: ignore
+mt5_verify_samples.py:137  fallback_rates = mt5.copy_rates_from_pos(active_symbol, tf_native, 0, 1)  # type: ignore
+mt5_verify_samples.py:146  mt5.shutdown()  # type: ignore
+
+=== 2. bare except: pass / continue ===
+
+=== 3. broad 'except Exception' (not necessarily bad, but a candidate list) ===
+archive_manager.py:29  except Exception as e:
+archive_manager.py:125  except Exception as e:
+archive_manager.py:275  except Exception as e:
+common_sync.py:433  except Exception as e:
+common_sync.py:448  except Exception as meta_ex:
+common_sync.py:577  except Exception as ex:
+common_sync.py:582  except Exception as cli_ex:
+compiler_core.py:92  except Exception as e:
+compiler_core.py:282  except Exception as e:
+compiler_core.py:783  except Exception as e:
+compiler_core.py:877  except Exception as e:
+compiler_core.py:955  except Exception as e:
+config_schema.py:243  except Exception as e:
+convert_forex_manifold.py:227  except Exception as e:
+convert_forex_manifold.py:253  except Exception as e:
+doc_generator.py:278  except Exception as e:
+doc_generator.py:1050  except Exception as e:
+gd_manager.py:37  except Exception as e:
+gd_manager.py:50  except Exception as e2:
+hf_manager.py:121  except Exception as e:
+hf_manager.py:135  except Exception as ex:
+hf_manager.py:139  except Exception as e:
+manifold_compile.py:240  except Exception as e:
+manifold_compile.py:265  except Exception as e:
+manifold_compile.py:288  except Exception as e:
+manifold_compile.py:439  except Exception as e:
+manifold_compile.py:477  except Exception as e:
+manifold_compile.py:514  except Exception as e:
+manifold_compile.py:560  except Exception as e:
+manifold_compile.py:771  except Exception as e: print(f"[ERROR] Worker Error: {e}")
+manifold_compile.py:878  except Exception as e:
+modernize_manifold.py:256  except Exception as e:
+modernize_manifold.py:295  except Exception as e:
+mt5_pipeline.py:92  except Exception as e:
+mt5_pipeline.py:119  except Exception as e:
+mt5_pipeline.py:284  except Exception as e:
+notebook_generator.py:53  "    except Exception as _k_err:\n",
+notebook_generator.py:124  "except Exception as e:\n",
+notebook_generator.py:217  "        except Exception as e:\n",
+notebook_generator.py:228  "                except Exception as e:\n",
+notebook_generator.py:696  "    except Exception as _k_err:\n",
+notebook_generator.py:764  "except Exception as e:\n",
+notebook_generator.py:957  "        except Exception as e:\n",
+notebook_generator.py:976  "            except Exception as e:\n",
+notebook_generator.py:1249  "        except Exception as e:\n",
+ground_truth.py:34  except Exception as e:
+gd.py:42  except Exception as e:
+gd.py:55  except Exception as e2:
+hf.py:126  except Exception as e:
+hf.py:140  except Exception as ex:
+hf.py:144  except Exception as e:
+
+=== 4. 'try:' count per file (context for the exception audit) ===
+                                                   6
+                                                   4
+                                                   18
+                                                   32
+                                                   1
+                                                   5
+                                                   9
+                                                   1
+                                                   4
+                                                   3
+                                                   1
+                                                   17
+                                                   13
+                                                   9
+                                                   10
+                                                   1
+                                                   5
+                                                   2
+                                                   1
+                                                   1
+                                                   1
+                                                   1
+                                                   2
+                                                   2
+                                                   1
+                                                   4
+                                                   3
+                                                   1
+                                                   3
+                                                   1

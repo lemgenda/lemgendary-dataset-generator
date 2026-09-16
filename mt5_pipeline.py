@@ -71,7 +71,7 @@ CHUNK_SIZE = 20000
 
 def _mt5_call(method_name: str, *args: Any, **kwargs: Any) -> Any:
     try:
-        import MetaTrader5 as mt5_mod  # type: ignore
+        import MetaTrader5 as mt5_mod  # type: ignore[import-untyped]  # MT5 ships no PEP 561 stubs
     except ImportError as exc:
         raise RuntimeError(
             "[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5"
@@ -192,7 +192,7 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
     if tf_attr is None:
         raise ValueError(f"Unsupported timeframe: {timeframe_min}min")
     try:
-        import MetaTrader5 as mt5  # type: ignore
+        import MetaTrader5 as mt5
         tf = getattr(mt5, tf_attr)
     except ImportError as exc:
         raise RuntimeError("MetaTrader5 package not installed. Run: pip install MetaTrader5") from exc

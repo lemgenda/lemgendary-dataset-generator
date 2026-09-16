@@ -7,6 +7,7 @@ import shutil
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any, cast
 
 from datetime import datetime
 import hashlib
@@ -48,6 +49,17 @@ from compiler_core import (
 from doc_generator import generate_dataset_docs
 
 
+# 2026: Task tuples passed to batch_worker. Each item is
+#     (callable, *heterogeneous_args)
+# Annotated as tuple[Any, ...] so downstream consumers accept the mix.
+TaskItem = tuple[Any, ...]
+
+# 2026: Type aliases for the three parser return shapes, used at cast sites.
+CocoAnnData = tuple[dict[int, dict[str, Any]], dict[int, list[dict[str, Any]]]]
+ParquetAnnData = tuple[Path, dict[str, Any], list[str]]
+MatlabAnnData = tuple[dict[str, Any], str]
+
+
 def _fast_scan(path, valid_exts):
     for entry in os.scandir(path):
         if entry.is_dir():
@@ -57,17 +69,29 @@ def _fast_scan(path, valid_exts):
             if ext in valid_exts:
                 yield entry.path
 
+
+def _require_ann_path(ann_path: Path | None) -> Path:
+    """Narrow ann_path to non-None.
+
+    detect_annotations()'s contract is that a non-None format is always
+    paired with a non-None path. This helper converts that invariant into
+    a runtime check at the type-checker boundary, so parse_* callers can
+    accept a plain Path without any suppression.
+    """
+    if ann_path is None:
+        raise RuntimeError(
+            "Annotation format was detected but no path was returned. "
+            "This indicates a bug in converters.detect_annotations()."
+        )
+    return ann_path
+
 # ─── ARGUMENT PARSER ─────────────────────────────────────────────────────────
-parser = argparse.ArgumentParser(description='LemGendary Datasets Compiler')
-parser.add_argument('--model', help='Model to compile (e.g., nima_aesthetic)')
-parser.add_argument('--max_gb', type=float, help='Max size in GB for the manifold')
-parser.add_argument('--suffix', help='Suffix to append to the manifold name')
-parser.add_argument('--workers', type=int, help='Number of worker threads')
-parser.add_argument('--cleanup', action='store_true', help='Cleanup temporary files and exit')
-parser.add_argument('--no_vetting', action='store_true', help='Skip quality vetting (NIMA)')
-parser.add_argument('--no_labeling', action='store_true', help='Skip auto-labeling (detection)')
-parser.add_argument('--no_hash', action='store_true', help='Skip duplicate detection via hash')
-parser.add_argument('--finalize', action='store_true', help='Finalize without processing (use existing registry)')
+# 2026 Phase 1.5: Parser is the SSOT from cli_args.py. This module previously
+# declared its own parser that had to stay manually in sync with
+# compiler_core.py's. Both now share `build_parser()`.
+from cli_args import build_parser
+
+parser = build_parser()
 args = parser.parse_args()
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -94,10 +118,10 @@ def process_dataset():
     shared_root = INPUT_ROOT
     # Pre-load models globally once to prevent multiprocess race conditions on HF cache
     print("[PRE-FLIGHT] Analyzing task requirements...")
-    from models.quality_scorer import QualitySentry # type: ignore
-    from models.diffusion import CaptionSentry # type: ignore
-    from models.encoder import CLIPManifold # type: ignore
-    from models.detection import AutoLabeler # type: ignore
+    from models.quality_scorer import QualitySentry
+    from models.diffusion import CaptionSentry
+    from models.encoder import CLIPManifold
+    from models.detection import AutoLabeler
 
     # Analyze if any target models need AI augmentation
     needs_captioning = False
@@ -107,7 +131,7 @@ def process_dataset():
         if args.model and model_key != args.model: continue
         task = detect_task(model_key)
         if task == "diffusion": needs_captioning = True
-        if task == "diffusion" or model_key == "nima_aesthetic": needs_styling = True # Styling optional for aesthetic
+        if task == "diffusion" or model_key == "nima_aesthetic": needs_styling = True
 
     if needs_captioning and not args.no_vetting:
         print("[PRE-FLIGHT] Caching CaptionSentry (BLIP)...")
@@ -117,9 +141,6 @@ def process_dataset():
     if torch.cuda.is_available(): torch.cuda.empty_cache()
 
     if needs_styling and not args.no_vetting:
-        # User requested clean dataset suite; we'll disable CLIP unless strictly needed
-        # For NimaAesthetic, we'll only load if not in a "Pure Sharding" mindset.
-        # Given user feedback, we default to skipping unless it's a diffusion manifold.
         if needs_captioning:
             print("[PRE-FLIGHT] Caching CLIPManifold...")
             _ = CLIPManifold(device="cpu")
@@ -127,10 +148,8 @@ def process_dataset():
     print("[PRE-FLIGHT] Pre-flight analysis complete.")
 
     # 2026 Resilience: Adaptive worker scaling (v5.1)
-    # Priority: 1. CLI Args (--workers) | 2. config.json | 3. Auto-detected (CPU-2)
     final_workers = args.workers if args.workers else CONFIG.get("num_workers", 4)
 
-    # Only apply safety cap if the user didn't explicitly request a worker count
     if not args.workers and final_workers > 8:
         print(f"[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
         final_workers = 8
@@ -139,7 +158,7 @@ def process_dataset():
     dped_canon_paths = set()
     for model_key, model_config in DATASETS_META.items():
         if args.model and model_key != args.model: continue
-        for ref_entry in model_config.get("refs", []):
+        for ref_entry in cast("list[dict[str, Any]]", model_config.get("refs", [])):
             if "dped" in ref_entry["ref"].lower():
                 slug = ref_entry["ref"].split("/")[-1].lower()
                 canon_roots = [
@@ -151,21 +170,17 @@ def process_dataset():
                         print(f"[DPED] Caching ground truth manifold for {slug} ({cr.parent.name})...")
                         for r, _, f_list in os.walk(cr):
                             for f in f_list:
-                                # 2026: Normalize to lowercase for case-insensitive resolution
                                 dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
 
     max_workers = int(max(1, final_workers))
     print(f"[PRE-FLIGHT] Python: {sys.executable}")
     print(f"[PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
 
-    # 2026 Resilience: Mechanical Drive / Seek-Contention Detection
     if max_workers > 4 and args.no_vetting and args.no_labeling:
         print("[I/O-GEAR] WARNING: High worker count detected for I/O-bound task.")
         print("   -> On mechanical HDDs, this will cause SEVERE thrashing (seeking contention).")
         print("   -> If performance is < 10it/s, restart with --workers 2 or 4.")
 
-    # 2026 Optimization: Switch to ThreadPoolExecutor if no AI models are active (SOTA v6.2)
-    # This bypasses the massive pickling overhead of sending 1.4M cache items through Windows IPC pipes.
     ExecutorClass = ThreadPoolExecutor
 
     for model_key, model_config in DATASETS_META.items():
@@ -190,54 +205,47 @@ def process_dataset():
 
         print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
-        # ─── FOREX MANIFOLD (Refactored for 16-Symbol Temporal Chunks) ───────────
+        # ─── FOREX MANIFOLD ────────────────────────────────────────────────────
         if model_config.get("dataset_type") == "forex" or model_config.get("acquisition_mode") == "mt5_terminal":
             print(f"\n[FOREX MANIFOLD] Compiling Foundation Matrix: {output_root.name}...")
             output_root.mkdir(parents=True, exist_ok=True)
 
-            # Purge accidental directory generation boilerplate
             for empty_dir in [output_root / "images", output_root / "labels", output_root / "masks", output_root / "targets"]:
                 if empty_dir.exists():
                     shutil.rmtree(empty_dir)
 
-            # Extract unified parameters out of config blocks
             pairs_list = model_config.get('pairs', [])
             tfs_list = model_config.get('timeframe_rungs', [1, 5, 15, 60, 240, 1440])
             start_date_str = model_config.get('start_date', '2019-01-01')
             lookback_bars = model_config.get('lookback_bars', 168)
 
-            # Use the full name (with prefix and suffix) as the dataset folder name
             full_name = prefix_str + pascal_name + suffix_str
 
             print(f" -> Engaging MT5 Auto-Acquisition Bridge for {len(pairs_list)} symbols across {len(tfs_list)} timeframes...")
             try:
                 from mt5_pipeline import run_download_pipeline
 
-                # Wrap definition block – use full_name so it writes into the correct folder
                 dataset_defs = [{
-                    "name": full_name,   # <-- FIX: use full_name here
+                    "name": full_name,
                     "pairs": pairs_list,
                     "timeframes": tfs_list,
                     "start_date": start_date_str
                 }]
 
-                # Write directly to the parent of the manifold folder
                 run_download_pipeline(
                     dataset_defs=dataset_defs,
-                    out_dir=str(output_root.parent),  # OUT_PARENT
+                    out_dir=str(output_root.parent),
                     login=None, password=None, server=None
                 )
             except Exception as e:
                 print(f" -> [CRITICAL FAILURE] Temporal compilation dropped: {e}")
                 raise e
 
-            # Create notebook files for Kaggle execution steps
             from notebook_generator import generate_training_notebook, generate_colab_training_notebook
             target_model = "forex_predictor" if model_key == "forex_universe" else model_key
             generate_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_training.ipynb"))
             generate_colab_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
 
-            # Create deployment manifests
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
             yaml_info = {
                 'name': pascal_name,
@@ -264,13 +272,11 @@ def process_dataset():
         index = []
         seen_hashes = set()
 
-        # 2026 Resilience: Move registry out of the manifold to avoid polluting the dataset
-        registry_dir = Path(__file__).parent / ".cache"
-        registry_dir.mkdir(parents=True, exist_ok=True)
-        db_path = registry_dir / f"registry_{pascal_name}.db"
-        conn = initialize_registry(db_path)
+        # 2026 Phase 1.3: Registry lives inside the manifold folder.
+        db_path = output_root / "manifold_registry.db"
+        legacy_path = Path(__file__).parent / ".cache" / f"registry_{pascal_name}.db"
+        conn = initialize_registry(db_path, migrate_from=legacy_path)
 
-        # RESUMPTION LOGIC: Load existing entries from SQLite to bypass already processed samples
         existing_names = set()
         if db_path.exists():
             print(f"[RESUMPTION] Scanning {pascal_name} registry for existing entries...")
@@ -288,7 +294,6 @@ def process_dataset():
         if img_dir.exists():
             print(f"[RESUMPTION] Surgical scan of {pascal_name} manifold for physical consistency...")
             count = 0
-            # Use a buffer for faster set building
             _buf = []
             for split in ["train", "val"]:
                 split_path = img_dir / split
@@ -309,12 +314,10 @@ def process_dataset():
             existing_on_disk.update(_buf)
             _buf = None
 
-            # 2026 Warp-Speed: Inject physical index into worker globals
             global PHYSICAL_INDEX
             PHYSICAL_INDEX = existing_on_disk
             print(f"[OK] Physical discovery complete: {len(existing_on_disk)} samples verified on disk.")
 
-        # Start the matrix executor with the physical index correctly anchored
         if args.no_vetting and args.no_labeling:
             init_worker(CONFIG, dped_canon_paths, existing_on_disk)
             executor_ctx = ExecutorClass(max_workers=max_workers)
@@ -323,14 +326,13 @@ def process_dataset():
 
         executor = executor_ctx
 
-        # 2026 Orphan Rescue: Adopt orphans into registry if they exist on disk but are missing from DB
+        # 2026 Orphan Rescue
         lower_registry = {n.lower() for n in existing_names}
         orphans = [k for k in existing_on_disk if k not in lower_registry]
-        lower_registry = None # Free memory
+        lower_registry = None
 
         if orphans:
             print(f"[REPAIR] Found {len(orphans)} orphans on disk. Commencing batch adoption...")
-            # Batch adoption to prevent memory spikes
             CHUNK_SIZE = 100000
             total_adopted = 0
             for i in range(0, len(orphans), CHUNK_SIZE):
@@ -353,28 +355,24 @@ def process_dataset():
                 print(f"   -> Adopted {total_adopted // 1000}k / {len(orphans) // 1000}k orphans...", flush=True)
 
             print(f"[OK] [REPAIR] {total_adopted} orphans successfully merged into registry.")
-            # Refresh existing_names (we only add the names, not the whole tuples to save memory)
             existing_names.update(orphans)
-            orphans = None # Free memory
+            orphans = None
 
-        sfw_tasks = []
-        nsfw_tasks = []
+        sfw_tasks: list[TaskItem] = []
+        nsfw_tasks: list[TaskItem] = []
 
-        for ref_entry in model_config.get("refs", []):
+        for ref_entry in cast("list[dict[str, Any]]", model_config.get("refs", [])):
             ref = ref_entry["ref"]
             tag = ref_entry.get("tag", "sfw")
-            # Resolve Slug: Handle hf://, gh://, and kaggle:// prefixes
             task_tag = None
             m_name = ""
             if ref.startswith("manifold://"):
                 m_name = ref.replace("manifold://", "")
 
-                # MultiTask manifolds don't have the global suffix
                 current_suffix = "" if m_name.endswith("MultiTask") else suffix_str
                 m_path = OUT_PARENT / f"{prefix_str}{m_name}{current_suffix}"
 
                 if m_path.exists():
-                    # 2026 Resilience: Dynamically attach to targets/ or masks/ if images/ is missing
                     dataset = m_path / "images"
                     if not dataset.exists(): dataset = m_path / "targets"
                     if not dataset.exists(): dataset = m_path / "masks"
@@ -408,22 +406,19 @@ def process_dataset():
                 else:
                     dataset = shared_root / slug
 
-            # Resolve/clean c_slug in the outer loop
             if task_tag:
                 c_slug = f"{task_tag}_compiled_{m_name}"
             else:
                 c_slug = clean_slug(slug)
             if not dataset.is_dir():
-                # Check for lowercase version
                 dataset = shared_root / slug.lower()
                 if not dataset.is_dir():
-                    # Last resort: Try to find a folder that contains the slug in its name
                     try:
                         matches = [d for d in shared_root.iterdir() if d.is_dir() and slug.lower() in d.name.lower()]
                         if matches:
                             dataset = matches[0]
                             print(f"[DISCOVERY] Mapping {ref} -> {dataset.name}")
-                    except:
+                    except Exception:
                         pass
 
             if not dataset.is_dir():
@@ -431,12 +426,11 @@ def process_dataset():
                 continue
 
             fmt, ann_path = detect_annotations(dataset)
-            ann_data = None
+            ann_data: Any = None
             ann_data_list = []
             if fmt == "coco":
-                ann_data = parse_coco(ann_path)
+                ann_data = parse_coco(_require_ann_path(ann_path))
             elif fmt == "parquet":
-                # 2026 Resilience: Handle multiple shards
                 ann_paths = list(dataset.rglob("*.parquet"))
                 ann_data_list = []
                 for ap in ann_paths:
@@ -446,24 +440,21 @@ def process_dataset():
                         print(f"[WARNING] Failed to parse {ap}: {e}")
                 ann_data = ann_data_list[0] if ann_data_list else None
             elif fmt == "matlab":
-                ann_data = parse_matlab(ann_path)
+                ann_data = parse_matlab(_require_ann_path(ann_path))
             elif fmt in ["xml", "yolo"]:
-                ann_data = ann_path
+                ann_data = _require_ann_path(ann_path)
 
             valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp", ".npy"}
             images = list(_fast_scan(str(dataset), valid_exts))
 
-            # VIRTUAL DATASET SUPPORT: If no loose images, check if Parquet has embedded images
             is_virtual = False
             if not images and fmt == "parquet" and ann_data_list:
-                # Check ALL shards for "image" or "pixel_values" column, not just the first one
                 for pq_path, _, cols in ann_data_list:
                     if "image" in cols or "pixel_values" in cols:
                         is_virtual = True
                         print(f"[VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
                         break
 
-            # LAZY DATASET SUPPORT: If no images and no embedded bytes, check for URLs
             is_lazy = False
             if not images and not is_virtual and fmt == "parquet" and ann_data_list:
                 for pq_path, _, cols in ann_data_list:
@@ -476,7 +467,6 @@ def process_dataset():
                 dl_dir = dataset / "downloads"
                 dl_dir.mkdir(exist_ok=True)
 
-                # Collect all missing URLs
                 to_download = []
                 for pq_path, mapping, cols in ann_data_list:
                     url_col = mapping.get("url", "url")
@@ -490,7 +480,7 @@ def process_dataset():
                         for row in df.itertuples():
                             url = getattr(row, url_col)
                             key = str(getattr(row, key_col, hashlib.md5(url.encode()).hexdigest()))
-                            ext = ".jpg" # Default to JPG for lazy manifolds
+                            ext = ".jpg"
                             dest = dl_dir / f"{key}{ext}"
                             if not dest.exists():
                                 to_download.append((url, str(dest)))
@@ -503,32 +493,33 @@ def process_dataset():
                             for _ in tqdm(as_completed(dl_tasks), total=len(dl_tasks), desc="   -> Downloading", leave=False):
                                 pass
 
-                # Now scan the downloads directory for the standard physical loop
                 images = list(_fast_scan(str(dl_dir), valid_exts))
 
             # PRE-COMPUTE ANNOTATION LOOKUPS TO AVOID O(N^2) BOTTLENECKS
-            coco_file_to_id = {}
-            parquet_map = {}
-            matlab_map = {}
+            # Explicit types here are essential: without them, the dicts infer
+            # as dict[str, Unknown] and downstream .get() lookups lose their
+            # key/value types, causing false positives on every consumer.
+            coco_file_to_id: dict[str, int] = {}
+            parquet_map: dict[str, Any] = {}
+            matlab_map: dict[str, list[dict[str, Any]]] = {}
 
             if fmt == "coco" and ann_data:
-                images_meta, anns_meta = ann_data  # type: ignore
+                images_meta, anns_meta = cast(CocoAnnData, ann_data)
                 for k, v in images_meta.items():
                     coco_file_to_id[v["file_name"]] = k
             elif fmt == "parquet" and ann_data and not is_virtual:
-                pq_path, mapping, cols = ann_data  # type: ignore
+                pq_path, mapping, cols = cast(ParquetAnnData, ann_data)
                 try:
                     df = pd.read_parquet(str(pq_path))
                 except Exception as e:
                     print(f"[WARNING] Skipping corrupted parquet {pq_path}: {e}")
                     df = pd.DataFrame()
                 file_col = mapping.get("file_name", "file_name")
-                # Only group if the column is hashable (e.g. filename strings)
                 if file_col in df.columns and len(df) > 0 and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str)):
                     for fname, group in df.groupby(file_col):
                         parquet_map[fname] = group
             elif fmt == "matlab" and ann_data:
-                data, key = ann_data  # type: ignore
+                data, key = cast(MatlabAnnData, ann_data)
                 if key in data:
                     for entry in data[key]:
                         try:
@@ -546,7 +537,6 @@ def process_dataset():
                     sample_count = sum(pd.read_parquet(d[0], columns=[]).shape[0] for d in ann_data_list)
                 except Exception:
                     sample_count = 0
-            # print(f"[QUEUE] {prefix} ({task}) | {slug} | {sample_count} samples scheduled.")
 
             model_val_split = model_config.get("val_split", None)
             if model_val_split is not None:
@@ -557,9 +547,7 @@ def process_dataset():
                 train_prob = CONFIG["train_split"]
 
             if is_virtual:
-                # Case A: Queue tasks directly from all Parquet shards
                 global_idx = 0
-                # c_slug already defined and formatted above
                 skip_lbl = not model_config.get("labeling", True)
 
                 for pq_path, mapping, cols in ann_data_list:
@@ -575,8 +563,7 @@ def process_dataset():
 
                     if num_rows == 0: continue
 
-                    # We pass num_rows explicitly so we can use it for balancing and tqdm later
-                    task_item = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, None, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
+                    task_item: TaskItem = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, None, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
 
                     if tag == "nsfw": nsfw_tasks.append(task_item)
                     else: sfw_tasks.append(task_item)
@@ -584,8 +571,6 @@ def process_dataset():
                     global_idx += num_rows
 
             else:
-                # Case B: Standard Physical File Loop
-                # c_slug already defined and formatted above
                 skip_lbl = not model_config.get("labeling", True)
 
                 val_real_count = 0
@@ -594,29 +579,23 @@ def process_dataset():
                 for i, img_path_str in enumerate(images):
                     name = f"{prefix}_{c_slug}_{i:09d}"
 
-                    # 2026 Resilience: Pre-emptive Disk Skip (SOTA v6.0)
                     if name in existing_names or name.lower() in existing_on_disk:
                         continue
 
                     img_path = Path(img_path_str)
 
-                    # 2026 Integrity Guard: Eliminate cross-contamination in specialized restoration manifolds
                     if task == "restoration":
                         p_low = img_path_str.lower()
                         m_low = model_key.lower()
-                        # Strict Deraining Exclusion
                         if "deraining" not in m_low and "multitask" not in m_low:
                             if any(k in p_low for k in ["rain", "droplet"]): continue
-                        # Strict Denoising Purity
                         if "denoising" in m_low:
                             if any(k in p_low for k in ["blur", "haze", "lowlight", "exposure"]): continue
-                        # Strict Deblurring Purity
                         if "debluring" in m_low:
                             if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]): continue
 
                     split = "train" if random.random() < train_prob else "val"
 
-                    # 2026 CodeFormer Exact Split Injection
                     if model_key == "codeformer" and "realvsfakefaces" in prefix.lower():
                         if "real" in img_path.parent.name.lower():
                             if val_real_count < 1000:
@@ -631,14 +610,14 @@ def process_dataset():
                             else:
                                 split = "train"
 
-                    specific_ann_data = None
+                    specific_ann_data: Any = None
                     if fmt == "coco" and ann_data:
-                        images_meta, anns_meta = ann_data  # type: ignore
+                        images_meta, anns_meta = cast(CocoAnnData, ann_data)
                         img_id = coco_file_to_id.get(img_path.name)
                         if img_id is not None:
                             specific_ann_data = anns_meta.get(img_id, [])
                     elif fmt == "parquet" and ann_data:
-                        pq_path, mapping, cols = ann_data  # type: ignore
+                        pq_path, mapping, cols = cast(ParquetAnnData, ann_data)
                         df_subset = parquet_map.get(img_path.name)
                         if df_subset is not None and not df_subset.empty:
                             specific_ann_data = (df_subset, mapping)
@@ -647,16 +626,15 @@ def process_dataset():
                     elif fmt == "safetensors" and ann_data:
                         specific_ann_data = ann_data
                     elif fmt in ["xml", "yolo", "npz"] and ann_data and ann_path:
-                        # ann_data is the Path to the annotations/labels directory
                         ext = ".xml" if fmt == "xml" else (".txt" if fmt == "yolo" else ".npz")
                         ann_file = ann_path / f"{img_path.stem}{ext}"
                         if ann_file.exists():
                             specific_ann_data = str(ann_file)
 
                     if task == "diffusion":
-                        task_item = (process_diffusion, img_path, prefix, c_slug, i, split, output_root_str)
+                        task_item: TaskItem = (process_diffusion, img_path, prefix, c_slug, i, split, output_root_str)
                     else:
-                        task_item = (process_image, img_path, prefix, c_slug, i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
+                        task_item: TaskItem = (process_image, img_path, prefix, c_slug, i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
 
                     if tag == "nsfw": nsfw_tasks.append(task_item)
                     else: sfw_tasks.append(task_item)
@@ -666,8 +644,18 @@ def process_dataset():
         # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
         target_nsfw_ratio = float(model_config.get("nsfw_ratio", 0))
 
-        def get_count(task_list):
-            return sum(args[14] if args[0].__name__ == "process_parquet_shard" else 1 for args in task_list)
+        def _count_one(t: TaskItem) -> int:
+            """Return the expected sample count for one task item.
+
+            Parquet shard tasks carry their row count at index 14; every other
+            task produces exactly one output.
+            """
+            if t[0].__name__ == "process_parquet_shard":
+                return int(t[14])
+            return 1
+
+        def get_count(task_list: list[TaskItem]) -> int:
+            return sum(_count_one(t) for t in task_list)
 
         sfw_count = get_count(sfw_tasks)
         nsfw_count = get_count(nsfw_tasks)
@@ -678,11 +666,9 @@ def process_dataset():
                 print(f"[BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
                 nsfw_keep_prob = max_nsfw / nsfw_count
 
-                # Apply drop directly
-                new_nsfw_tasks = []
+                new_nsfw_tasks: list[TaskItem] = []
                 for item in nsfw_tasks:
                     if item[0].__name__ == "process_parquet_shard":
-                        # Update keep_prob (index 13) and expected num_rows (index 14)
                         new_item = list(item)
                         new_item[13] = nsfw_keep_prob
                         new_item[14] = int(item[14] * nsfw_keep_prob)
@@ -692,9 +678,7 @@ def process_dataset():
                             new_nsfw_tasks.append(item)
                 nsfw_tasks = new_nsfw_tasks
 
-        all_tasks = sfw_tasks + nsfw_tasks
-        # 2026 Optimization: Disable global shuffle to maintain disk locality (High-Speed HDD support)
-        # random.shuffle(all_tasks)
+        all_tasks: list[TaskItem] = sfw_tasks + nsfw_tasks
 
         if not all_tasks:
             print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
@@ -704,7 +688,6 @@ def process_dataset():
 
         compiled_bytes = 0
         processed_count = len(existing_names)
-        # CPU Resilience: Auto-bypass if CUDA is missing and dataset is massive
         if not torch.cuda.is_available() and len(all_tasks) > 50000:
             if not args.no_labeling or not args.no_vetting:
                 print(f"[CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling High-Speed Mode.", flush=True)
@@ -715,12 +698,11 @@ def process_dataset():
         desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
 
         if not args.finalize:
-            # 2026 Optimization: Batching to reduce IPC overhead
             BATCH_SIZE = 100 if args.no_vetting else 50
             task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
 
             pbar = None
-            total_items_to_process = sum(args[14] if args[0].__name__ == "process_parquet_shard" else 1 for args in all_tasks)
+            total_items_to_process = sum(_count_one(t) for t in all_tasks)
             with tqdm(total=total_items_to_process + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
                 # --- 2026 Resilience: SAFE-START WARMUP (SOTA v6.3) ---
                 warmup_limit = min(500, len(all_tasks))
@@ -809,7 +791,7 @@ def process_dataset():
         if compiled_gb < min_gb:
             print(f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold constraint ({min_gb:.2f}GB).")
 
-        # STEP 2: Style Clustering (v5.0 Global Manifold)
+        # STEP 2: Style Clustering
         print(f"[STYLING] Commencing Style Clustering on all extracted latents...")
         cursor = conn.execute("SELECT id, clip_latent FROM registry WHERE clip_latent IS NOT NULL")
         ids, latents = [], []
@@ -830,7 +812,7 @@ def process_dataset():
         else:
             print(f"[STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
 
-        # PASS 2: Balanced Interleaving & Sharding per Dataset (as requested)
+        # PASS 2: Balanced Interleaving & Sharding per Dataset
         print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
 
         shard_dir = None
@@ -849,7 +831,7 @@ def process_dataset():
             if has_diffusion and shard_dir is not None:
                 shard_name = f"{prefix_str}{source}{suffix_str}.tar"
                 print(f"[SHARD] Writing {shard_name}...")
-                sink = wds.TarWriter(str(shard_dir / shard_name))  # type: ignore
+                sink = wds.TarWriter(str(shard_dir / shard_name))
             else:
                 sink = None
 

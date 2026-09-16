@@ -245,7 +245,7 @@ def _regen_docs(item: dict) -> bool:
     """Regenerate dataset_info.yaml, README.md, category.txt, classes.txt."""
     try:
         sys.path.insert(0, str(ROOT))
-        from doc_generator import generate_dataset_docs  # type: ignore
+        from doc_generator import generate_dataset_docs
         generate_dataset_docs(
             item["target_path"],
             final_index=None,

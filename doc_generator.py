@@ -11,20 +11,22 @@ import numpy as np
 import re
 
 # ─── Load metadata ──────────────────────────────────────────────────────
+from typing import Any
+
 MODELS_META_FILE = Path(__file__).parent / "models_metadata.yaml"
-_meta_data = {}
+_meta_data: dict[str, Any] = {}
 if MODELS_META_FILE.exists():
     with open(MODELS_META_FILE, "r", encoding="utf-8") as f:
         _meta_data = yaml.safe_load(f) or {}
 
 UNIFIED_DATA_FILE = Path(__file__).parent / "unified_data.yaml"
-UNIFIED_DATA = {}
+UNIFIED_DATA: dict[str, Any] = {}
 if UNIFIED_DATA_FILE.exists():
     with open(UNIFIED_DATA_FILE, "r", encoding="utf-8") as f:
         UNIFIED_DATA = yaml.safe_load(f) or {}
 
-TASK_META = _meta_data.get("task_metadata", {})  # type: ignore
-MODELS_META = _meta_data.get("models_metadata", {})  # type: ignore
+TASK_META: dict[str, Any] = _meta_data.get("task_metadata", {})
+MODELS_META: dict[str, Any] = _meta_data.get("models_metadata", {})
 
 MANIFOLD_TASK_MAP = {
     # ── Modern (2026 suffix-free) — added Phase 0 ──────────────────────────
@@ -662,11 +664,11 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
 
         # Models
         applicable_models = []
-        for m_key, m_info in MODELS_META.items():  # type: ignore
+        for m_key, m_info in MODELS_META.items():
             if isinstance(m_info, dict) and manifold_name in m_info.get("datasets", []):
                 applicable_models.append(m_info)
         if not applicable_models:
-            for m_key, m_info in MODELS_META.items():  # type: ignore
+            for m_key, m_info in MODELS_META.items():
                 if isinstance(m_info, dict) and m_key.lower() in manifold_name.lower().replace("lemgendized", "").replace("large", ""):
                     applicable_models.append(m_info)
 
@@ -874,11 +876,11 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
 
         # Models
         applicable_models = []
-        for m_key, m_info in MODELS_META.items():  # type: ignore
+        for m_key, m_info in MODELS_META.items():
             if isinstance(m_info, dict) and manifold_name in m_info.get("datasets", []):
                 applicable_models.append(m_info)
         if not applicable_models:
-            for m_key, m_info in MODELS_META.items():  # type: ignore
+            for m_key, m_info in MODELS_META.items():
                 if isinstance(m_info, dict) and m_key.lower() in manifold_name.lower().replace("lemgendized", "").replace("large", ""):
                     applicable_models.append(m_info)
 

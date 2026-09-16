@@ -81,7 +81,7 @@ def _count_from_disk(manifold_path: Path) -> int:
     if pq_files:
         total = 0
         try:
-            import pyarrow.parquet as pq  # type: ignore
+            import pyarrow.parquet as pq
             for pqf in pq_files:
                 try:
                     meta = pq.read_metadata(str(pqf))

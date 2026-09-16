@@ -31,11 +31,11 @@ def main():
         parent_dir = os.path.dirname(args.output_dir)
         slug = os.path.basename(args.output_dir)
         zip_path = os.path.join(parent_dir, f"{slug}.zip")
-        
+
         try:
             print(f"Attempting to download {args.repo_id} as a file archive to {zip_path}...")
             # fuzzy=True helps if the URL is provided instead of an ID
-            res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)  # type: ignore
+            res = gdown.download(id=args.repo_id, output=zip_path, quiet=False)
             if res is None:
                 raise RuntimeError("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
@@ -48,7 +48,7 @@ def main():
                     pass
 
             try:
-                res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)  # type: ignore
+                res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)
                 if res is None:
                     raise RuntimeError("Failed to download as a folder.") from e
                 print("STATUS:COMPLETED")

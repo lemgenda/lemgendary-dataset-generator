@@ -275,7 +275,7 @@ function Get-RefStatus {
         if (Get-ChildItem -Path $foundFold -Recurse -Force -Filter "*incomplete*" -ErrorAction SilentlyContinue | Select-Object -First 1) {
             $fCount = 0
         }
-        # Secondary HuggingFace check removed: hf_manager.py writes directly to local_dir without snapshots
+        # Secondary HuggingFace check removed: sources/hf.py writes directly to local_dir without snapshots
         # Check for metadata if it's a structural repo (HF/GH)
         if ($fCount -eq 0 -and (Test-Path (Join-Path $foundFold ".git"))) { $fCount = 1 }
     }
