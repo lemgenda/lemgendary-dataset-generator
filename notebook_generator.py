@@ -14,7 +14,6 @@ def build_training_notebook_content(model_key, config=None):
     pascal_model_name = model_key.replace("_", " ").title().replace(" ", "")
     kebab_model_name = model_key.replace("_", "-")
 
-    # Derive the actual Kaggle dataset slug
     dataset_slug = f"lemgendary-{kebab_model_name}"
     if config:
         k_urls = config.get("kaggle_dataset_urls", {})
@@ -132,7 +131,6 @@ def build_training_notebook_content(model_key, config=None):
         "suite_path = '/kaggle/working/lemgendary-training-suite'\n",
         "pat = os.environ.get('SUITE_PAT', os.environ.get('GITHUB_PAT', ''))\n",
         "if pat:\n",
-        "    # Use x-access-token for more reliable auth with fine-grained tokens\n",
         "    auth_url = repo_url.replace('https://', f'https://x-access-token:{pat}@')\n",
         "    print(f'[AUTH] Using {\"SUITE_PAT\" if os.environ.get(\"SUITE_PAT\") else \"GITHUB_PAT\"} for cloning...')\n",
         "else:\n",
@@ -168,11 +166,9 @@ def build_training_notebook_content(model_key, config=None):
         "    subprocess.run(['git', 'pull'], cwd=env_mgr_path, env=env, capture_output=True)\n"
     ]
 
-    # 2026 v2.0: Kaggle symlink_source NEVER downloads a dataset.
-    # Attached datasets are mounted at /kaggle/input/<slug>/. If nothing
-    # matches, a clear error instructs the user to attach via the sidebar.
+    # 2026 v3.0: Kaggle symlink_source — recursive scanner + alias generation.
     symlink_source = [
-        "import os\n",
+        "import os, re\n",
         f"model_key = '{model_key}'\n",
         "target_dir = '/kaggle/working/LemGendaryDatasets'\n",
         "os.makedirs(target_dir, exist_ok=True)\n",
@@ -253,41 +249,70 @@ def build_training_notebook_content(model_key, config=None):
         "            except Exception:\n",
         "                pass\n",
         "        print(f'[OK] [FOREX] Assembly complete: {len(forex_years_found)} annual manifolds operational for Walk-Forward Curriculum.')\n",
+        "        found.append(forex_composite_dir)\n",
         "\n",
-        "# 2. Attached-manifold scanner — enumerates /kaggle/input/<slug>/ and\n",
-        "#    /kaggle/input/<slug>/<Manifold>/ without ever triggering a download.\n",
-        "def _scan_kaggle_inputs(root='/kaggle/input'):\n",
+        "# 2. Universal deep scanner — handles legacy AND modern Kaggle layouts\n",
+        "def _scan_kaggle_inputs(root='/kaggle/input', max_depth=6):\n",
         "    if not os.path.isdir(root):\n",
         "        return []\n",
         "    results = []\n",
-        "    for slug in os.listdir(root):\n",
-        "        slug_path = os.path.join(root, slug)\n",
-        "        if not os.path.isdir(slug_path):\n",
-        "            continue\n",
-        "        candidates = []\n",
+        "    seen = set()\n",
+        "    _MANIFOLD_SUBDIRS = {'images', 'targets', 'masks', 'forex', 'train', 'val', 'test', 'splits'}\n",
+        "    _MANIFOLD_META = {'dataset_info.yaml', 'category.txt', 'classes.txt', 'README.md'}\n",
+        "    def _looks_like_manifold(p):\n",
+        "        if not os.path.isdir(p):\n",
+        "            return False\n",
         "        try:\n",
-        "            for inner in os.listdir(slug_path):\n",
-        "                inner_path = os.path.join(slug_path, inner)\n",
-        "                if os.path.isdir(inner_path):\n",
-        "                    candidates.append(inner_path)\n",
+        "            names = os.listdir(p)\n",
         "        except OSError:\n",
-        "            pass\n",
-        "        candidates.append(slug_path)\n",
-        "        for cand in candidates:\n",
-        "            try:\n",
-        "                valid = (\n",
-        "                    os.path.isdir(os.path.join(cand, 'images'))\n",
-        "                    or os.path.isdir(os.path.join(cand, 'targets'))\n",
-        "                    or os.path.isdir(os.path.join(cand, 'masks'))\n",
-        "                    or os.path.isdir(os.path.join(cand, 'forex'))\n",
-        "                    or any(f.endswith('.parquet') for f in os.listdir(cand))\n",
-        "                )\n",
-        "            except OSError:\n",
-        "                continue\n",
-        "            if valid:\n",
-        "                results.append(cand)\n",
+        "            return False\n",
+        "        if any(f.endswith('.parquet') for f in names):\n",
+        "            return True\n",
+        "        if any(f in names for f in _MANIFOLD_META):\n",
+        "            return True\n",
+        "        for n in names:\n",
+        "            full = os.path.join(p, n)\n",
+        "            if os.path.isdir(full) and n.lower() in _MANIFOLD_SUBDIRS:\n",
+        "                return True\n",
+        "        return False\n",
+        "    def _walk(start, depth=0):\n",
+        "        if depth > max_depth or not os.path.isdir(start):\n",
+        "            return\n",
+        "        if _looks_like_manifold(start):\n",
+        "            real = os.path.realpath(start)\n",
+        "            if real not in seen:\n",
+        "                seen.add(real)\n",
+        "                results.append(start)\n",
+        "            return\n",
+        "        try:\n",
+        "            children = os.listdir(start)\n",
+        "        except OSError:\n",
+        "            return\n",
+        "        for child in children:\n",
+        "            _walk(os.path.join(start, child), depth + 1)\n",
+        "    for top in os.listdir(root):\n",
+        "        top_path = os.path.join(root, top)\n",
+        "        if not os.path.isdir(top_path):\n",
+        "            continue\n",
+        "        if top == 'datasets':\n",
+        "            try: owners = os.listdir(top_path)\n",
+        "            except OSError: continue\n",
+        "            for owner in owners:\n",
+        "                owner_path = os.path.join(top_path, owner)\n",
+        "                if not os.path.isdir(owner_path): continue\n",
+        "                try: slugs = os.listdir(owner_path)\n",
+        "                except OSError: continue\n",
+        "                for slug in slugs:\n",
+        "                    slug_path = os.path.join(owner_path, slug)\n",
+        "                    if os.path.isdir(slug_path):\n",
+        "                        _walk(slug_path, depth=0)\n",
+        "        elif top == 'models':\n",
+        "            continue\n",
+        "        else:\n",
+        "            _walk(top_path, depth=0)\n",
         "    return results\n",
         "\n",
+        "# 3. Link every discovered manifold with rich aliases.\n",
         "if os.path.exists('/kaggle/input'):\n",
         "    attached = _scan_kaggle_inputs()\n",
         "    if attached:\n",
@@ -296,25 +321,33 @@ def build_training_notebook_content(model_key, config=None):
         "            print(f'   -> {cand}')\n",
         "        for cand in attached:\n",
         "            bname = os.path.basename(cand)\n",
-        "            for alias in {bname, bname.lower()}:\n",
+        "            aliases = {bname, bname.lower()}\n",
+        "            stripped = re.sub(r'^LemGendized', '', bname, flags=re.IGNORECASE)\n",
+        "            if stripped != bname:\n",
+        "                aliases.add(stripped)\n",
+        "                aliases.add(stripped.lower())\n",
+        "                for suf in ('Large', 'Medium', 'Small'):\n",
+        "                    if stripped.endswith(suf):\n",
+        "                        stem = stripped[:-len(suf)]\n",
+        "                        aliases.add(stem)\n",
+        "                        aliases.add(stem.lower())\n",
+        "            for alias in aliases:\n",
+        "                if not alias: continue\n",
         "                link_name = os.path.join(target_dir, alias)\n",
-        "                if not os.path.exists(link_name):\n",
-        "                    try:\n",
-        "                        os.symlink(cand, link_name)\n",
-        "                        print(f'   -> [OK] [LINKED] {alias} -> {cand}')\n",
-        "                        found.append(cand)\n",
-        "                    except OSError as e:\n",
-        "                        print(f'   -> [WARN] Symlink failed for {alias}: {e}')\n",
+        "                if os.path.exists(link_name): continue\n",
+        "                try:\n",
+        "                    os.symlink(cand, link_name)\n",
+        "                    print(f'   -> [OK] [LINKED] {alias} -> {cand}')\n",
+        "                except OSError as e:\n",
+        "                    print(f'   -> [WARN] Symlink failed for {alias}: {e}')\n",
+        "            found.append(cand)\n",
         "\n",
-        "# 3. Hard error if no attached manifold matches the expected keys.\n",
-        "#    The Kaggle variant NEVER downloads — this is the terminal branch.\n",
+        "# 4. Hard abort ONLY if nothing discoverable.\n",
         "if not found:\n",
-        "    expected = [k for k in keys if 'forex' not in k.lower()][:3]\n",
         "    raise RuntimeError(\n",
-        "        f'[ABORT] No attached dataset found in /kaggle/input for {model_key}. '\n",
-        "        f'Expected one of: {expected}. '\n",
+        "        f'[ABORT] Nothing attached in /kaggle/input for {model_key}. '\n",
         "        f'Attach the dataset via the Kaggle sidebar (Add Input -> Your Datasets) '\n",
-        "        f'and re-run from the top. The Kaggle notebook never downloads datasets.'\n",
+        "        f'and re-run from the top.'\n",
         "    )\n",
         "\n",
         "print(f'[OK] [DATA] {len(found)} manifold symlink(s) ready in {target_dir}.')\n"
@@ -324,7 +357,6 @@ def build_training_notebook_content(model_key, config=None):
         "import os, sys, subprocess, platform, shutil\n",
         "print('[ENV] Probing hardware accelerator...')\n",
         "\n",
-        "# Full hardware detection: CUDA > ROCm > DirectML > CPU\n",
         "torch_index = 'https://download.pytorch.org/whl/cpu'\n",
         "accel_type = 'cpu'\n",
         "if shutil.which('nvidia-smi'):\n",
@@ -358,7 +390,6 @@ def build_training_notebook_content(model_key, config=None):
         "print(f'[ENV] Accelerator: {accel_type}')\n",
         "print(f'[ENV] PyTorch index: {torch_index}')\n",
         "\n",
-        "# Prefer centralized manifest from env-manager; fall back to cloned suite\n",
         "req_candidates = [\n",
         "    '/kaggle/working/lemgendary-env-manager/requirements/requirements-training.txt',\n",
         "    '/kaggle/working/lemgendary-env-manager/requirements/lemgendary-training-suite.requirements.txt',\n",
@@ -414,7 +445,6 @@ def build_training_notebook_content(model_key, config=None):
         "os.chdir(active_suite_dir)\n",
         "print(f'[OK] [SUITE] Active working directory set to: {os.getcwd()}')\n",
         "\n",
-        "# [JANITOR] Clean up any pre-existing zombie training processes to free the GPU\n",
         "try:\n",
         "    current_pid = os.getpid()\n",
         "    ps_out = subprocess.check_output(['ps', '-ef'], text=True)\n",
@@ -469,7 +499,6 @@ def build_training_notebook_content(model_key, config=None):
         "found_ckpts = []\n",
         "if os.path.exists('/kaggle/input'):\n",
         "    try:\n",
-        "        # Fast BFS Directory Search up to depth 7 to locate checkpoint folders\n",
         "        queue = ['/kaggle/input']\n",
         "        depths = {'/kaggle/input': 0}\n",
         "        while queue:\n",
@@ -480,13 +509,11 @@ def build_training_notebook_content(model_key, config=None):
         "                path = os.path.join(curr, item)\n",
         "                if os.path.isdir(path):\n",
         "                    item_lower = item.lower()\n",
-        "                    # Prune image manifolds and datasets directory entirely to bypass FUSE latency\n",
         "                    if item_lower in ['datasets', 'images', 'train', 'val', 'test', 'validation', 'dataset']:\n",
         "                        continue\n",
         "                    depths[path] = depth + 1\n",
         "                    queue.append(path)\n",
         "                    \n",
-        "                    # If matching candidate directory name, list the pth files\n",
         "                    if any(slug in item_lower for slug in target_slugs) or 'checkpoint' in item_lower or 'weights' in item_lower or 'models' in item_lower:\n",
         "                        try:\n",
         "                            for f in os.listdir(path):\n",
@@ -514,7 +541,6 @@ def build_training_notebook_content(model_key, config=None):
         "    \n",
         "    metrics_found = False\n",
         "    for src in found_ckpts:\n",
-        "        # Look for metrics.csv in parent or grandparent of the checkpoint\n",
         "        for d in [os.path.dirname(os.path.dirname(src)), os.path.dirname(src)]:\n",
         "            m_path = os.path.join(d, 'metrics.csv')\n",
         "            if os.path.exists(m_path):\n",
@@ -535,89 +561,22 @@ def build_training_notebook_content(model_key, config=None):
         "nbformat_minor": 4,
         "nbformat": 4,
         "cells": [
-            {
-                "cell_type": "markdown",
-                "source": [
-                    f"# LemGendary Master Execution: {pascal_model_name} (v16.2.9 Nuclear-Hardened)\n",
-                    "This unified notebook handles environment synchronization and automated cloud training.\n"
-                ],
-                "metadata": {}
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 1. Hardware Sentinel\n", "Ensure the manifold has the required hardware acceleration.\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": hardware_sentinel_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 2. Cloud Auth & Secrets\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": secrets_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 3. Environment Synchronization\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": clone_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "code",
-                "source": install_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 4. SOTA Hub Synchronization (Pull)\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": hub_prep_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 5. Multi-Path Data Resolution\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": symlink_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 6. Checkpoint & Metric Recovery\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": checkpoint_recovery_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 7. Nuclear Training Matrix\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": training_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            }
+            {"cell_type": "markdown", "source": [f"# LemGendary Master Execution: {pascal_model_name} (v16.2.9 Nuclear-Hardened)\n", "This unified notebook handles environment synchronization and automated cloud training.\n"], "metadata": {}},
+            {"cell_type": "markdown", "source": ["## 1. Hardware Sentinel\n", "Ensure the manifold has the required hardware acceleration.\n"], "metadata": {}},
+            {"cell_type": "code", "source": hardware_sentinel_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 2. Cloud Auth & Secrets\n"], "metadata": {}},
+            {"cell_type": "code", "source": secrets_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 3. Environment Synchronization\n"], "metadata": {}},
+            {"cell_type": "code", "source": clone_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "code", "source": install_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 4. SOTA Hub Synchronization (Pull)\n"], "metadata": {}},
+            {"cell_type": "code", "source": hub_prep_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 5. Multi-Path Data Resolution\n"], "metadata": {}},
+            {"cell_type": "code", "source": symlink_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 6. Checkpoint & Metric Recovery\n"], "metadata": {}},
+            {"cell_type": "code", "source": checkpoint_recovery_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 7. Nuclear Training Matrix\n"], "metadata": {}},
+            {"cell_type": "code", "source": training_source, "metadata": {}, "outputs": [], "execution_count": None}
         ]
     }
     return notebook_content
@@ -634,7 +593,7 @@ def generate_training_notebook(target_name, resolved_model, output_path, config=
     os.makedirs(export_dir, exist_ok=True)
 
     json_str = json.dumps(notebook_content, indent=4)
-    json.loads(json_str)  # Validation
+    json.loads(json_str)
 
     with open(output_path, "w", encoding='utf-8') as f:
         f.write(json_str)
@@ -644,12 +603,10 @@ def generate_training_notebook(target_name, resolved_model, output_path, config=
 def build_colab_training_notebook_content(model_key, config=None):
     """
     Builds the exact v16.2.9 Nuclear-Hardened Colab-Edition Training Notebook JSON content.
-    Identical across lemgendary-training-suite and lemgendary-datasets.
     """
     pascal_model_name = model_key.replace("_", " ").title().replace(" ", "")
     kebab_model_name = model_key.replace("_", "-")
 
-    # Derive the actual Kaggle dataset slug
     dataset_slug = f"lemgendary-{kebab_model_name}"
     if config:
         k_urls = config.get("kaggle_dataset_urls", {})
@@ -715,14 +672,12 @@ def build_colab_training_notebook_content(model_key, config=None):
     if not clean_kaggle_repo:
         clean_kaggle_repo = f"lemtreursi/{primary_manifold.lower()}"
 
-    # 2026 v2.0: Global config flag to prevent ANY network download on Colab.
     no_download = bool(config.get("notebook_no_download", False)) if config else False
 
     hardware_sentinel_source = [
         "import os, sys, subprocess, warnings\n",
         "warnings.filterwarnings('ignore')\n",
         "warnings.simplefilter('ignore')\n",
-        "# Prevent PyTorch virtual memory fragmentation\n",
         "os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'\n",
         "print('[OK] [SENTINEL] Auditing Hardware Manifold...')\n",
         "print('[OK] [RECOMMENDED ACCELERATOR] Google Colab: T4 GPU (or A100/L4 with Pro)')\n",
@@ -816,7 +771,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "suite_path = '/content/lemgendary-training-suite'\n",
         "pat = os.environ.get('SUITE_PAT', os.environ.get('GITHUB_PAT', ''))\n",
         "if pat:\n",
-        "    # Use x-access-token for more reliable auth with fine-grained tokens\n",
         "    auth_url = repo_url.replace('https://', f'https://x-access-token:{pat}@')\n",
         "    print(f'[AUTH] Using {\"SUITE_PAT\" if os.environ.get(\"SUITE_PAT\") else \"GITHUB_PAT\"} for cloning...')\n",
         "else:\n",
@@ -842,7 +796,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "    subprocess.run(['git', 'fetch', 'origin'], cwd=suite_path, env=env)\n",
         "    subprocess.run(['git', 'reset', '--hard', 'origin/main'], cwd=suite_path, env=env)\n",
         "\n",
-        "# Clone LemGendary Environment Manager for centralized manifests\n",
         "env_mgr_url = 'https://github.com/lemgenda/lemgendary-env-manager.git'\n",
         "env_mgr_path = '/content/lemgendary-env-manager'\n",
         "env_mgr_auth = env_mgr_url.replace('https://', f'https://x-access-token:{pat}@') if pat else env_mgr_url\n",
@@ -860,12 +813,9 @@ def build_colab_training_notebook_content(model_key, config=None):
         "print('[OK] Google Drive mounted successfully. Datasets will be streamed directly from Drive.')\n"
     ]
 
-    # 2026 v2.0: Prefer /kaggle/input (when running in a Kaggle session) and
-    # /content/drive over any network download. The network download branch is
-    # only reached if BOTH local sources are empty AND notebook_no_download
-    # is False.
+    # 2026 v3.0: Colab symlink_source — recursive scanner + Drive fallback.
     symlink_source = [
-        "import os, subprocess, shutil, sys\n",
+        "import os, subprocess, shutil, sys, re\n",
         f"model_key = '{model_key}'\n",
         f"kaggle_repo = '{clean_kaggle_repo}'\n",
         f"primary_manifold = '{primary_manifold}'\n",
@@ -876,53 +826,88 @@ def build_colab_training_notebook_content(model_key, config=None):
         "print(f'[DATA] Resolving dataset manifold for {model_key}...')\n",
         "print(f'[DATA] Target manifold: {primary_manifold} | Kaggle source: {kaggle_repo}')\n",
         "\n",
-        "# ── 2026 v2.0: Priority scan — /kaggle/input BEFORE any download ──\n",
-        "# When a Colab notebook is run inside a Kaggle session, attached\n",
-        "# datasets are mounted at /kaggle/input/<slug>/. Scanning first\n",
-        "# prevents a fully redundant network download of multi-GB data.\n",
-        "def _scan_kaggle_inputs(root='/kaggle/input'):\n",
+        "def _scan_kaggle_inputs(root='/kaggle/input', max_depth=6):\n",
         "    if not os.path.isdir(root):\n",
-        "        return {}\n",
-        "    found_map = {}\n",
-        "    for slug in os.listdir(root):\n",
-        "        slug_path = os.path.join(root, slug)\n",
-        "        if not os.path.isdir(slug_path):\n",
-        "            continue\n",
-        "        candidates = []\n",
+        "        return []\n",
+        "    results = []\n",
+        "    seen = set()\n",
+        "    _MANIFOLD_SUBDIRS = {'images', 'targets', 'masks', 'forex', 'train', 'val', 'test', 'splits'}\n",
+        "    _MANIFOLD_META = {'dataset_info.yaml', 'category.txt', 'classes.txt', 'README.md'}\n",
+        "    def _looks_like_manifold(p):\n",
+        "        if not os.path.isdir(p):\n",
+        "            return False\n",
         "        try:\n",
-        "            for inner in os.listdir(slug_path):\n",
-        "                inner_path = os.path.join(slug_path, inner)\n",
-        "                if os.path.isdir(inner_path):\n",
-        "                    candidates.append(inner_path)\n",
+        "            names = os.listdir(p)\n",
         "        except OSError:\n",
-        "            pass\n",
-        "        candidates.append(slug_path)\n",
-        "        for cand in candidates:\n",
-        "            try:\n",
-        "                valid = (\n",
-        "                    os.path.isdir(os.path.join(cand, 'images'))\n",
-        "                    or os.path.isdir(os.path.join(cand, 'targets'))\n",
-        "                    or os.path.isdir(os.path.join(cand, 'masks'))\n",
-        "                    or os.path.isdir(os.path.join(cand, 'forex'))\n",
-        "                    or any(f.endswith('.parquet') for f in os.listdir(cand))\n",
-        "                )\n",
-        "            except OSError:\n",
-        "                continue\n",
-        "            if valid:\n",
-        "                bname = os.path.basename(cand)\n",
-        "                found_map.setdefault(bname, cand)\n",
-        "                found_map.setdefault(bname.lower(), cand)\n",
-        "    return found_map\n",
+        "            return False\n",
+        "        if any(f.endswith('.parquet') for f in names):\n",
+        "            return True\n",
+        "        if any(f in names for f in _MANIFOLD_META):\n",
+        "            return True\n",
+        "        for n in names:\n",
+        "            full = os.path.join(p, n)\n",
+        "            if os.path.isdir(full) and n.lower() in _MANIFOLD_SUBDIRS:\n",
+        "                return True\n",
+        "        return False\n",
+        "    def _walk(start, depth=0):\n",
+        "        if depth > max_depth or not os.path.isdir(start):\n",
+        "            return\n",
+        "        if _looks_like_manifold(start):\n",
+        "            real = os.path.realpath(start)\n",
+        "            if real not in seen:\n",
+        "                seen.add(real)\n",
+        "                results.append(start)\n",
+        "            return\n",
+        "        try:\n",
+        "            children = os.listdir(start)\n",
+        "        except OSError:\n",
+        "            return\n",
+        "        for child in children:\n",
+        "            _walk(os.path.join(start, child), depth + 1)\n",
+        "    for top in os.listdir(root):\n",
+        "        top_path = os.path.join(root, top)\n",
+        "        if not os.path.isdir(top_path):\n",
+        "            continue\n",
+        "        if top == 'datasets':\n",
+        "            try: owners = os.listdir(top_path)\n",
+        "            except OSError: continue\n",
+        "            for owner in owners:\n",
+        "                owner_path = os.path.join(top_path, owner)\n",
+        "                if not os.path.isdir(owner_path): continue\n",
+        "                try: slugs = os.listdir(owner_path)\n",
+        "                except OSError: continue\n",
+        "                for slug in slugs:\n",
+        "                    slug_path = os.path.join(owner_path, slug)\n",
+        "                    if os.path.isdir(slug_path):\n",
+        "                        _walk(slug_path, depth=0)\n",
+        "        elif top == 'models':\n",
+        "            continue\n",
+        "        else:\n",
+        "            _walk(top_path, depth=0)\n",
+        "    return results\n",
         "\n",
         "_kaggle_inputs = _scan_kaggle_inputs()\n",
         "if _kaggle_inputs:\n",
-        "    print(f'[PRE-FLIGHT] Discovered {len(_kaggle_inputs) // 2} attached manifold(s) in /kaggle/input.')\n",
-        "    for alias, src in _kaggle_inputs.items():\n",
-        "        dst = os.path.join(target_dir, alias)\n",
-        "        if not os.path.exists(dst):\n",
+        "    print(f'[PRE-FLIGHT] Discovered {len(_kaggle_inputs)} attached manifold(s) in /kaggle/input.')\n",
+        "    for cand in _kaggle_inputs:\n",
+        "        bname = os.path.basename(cand)\n",
+        "        aliases = {bname, bname.lower()}\n",
+        "        stripped = re.sub(r'^LemGendized', '', bname, flags=re.IGNORECASE)\n",
+        "        if stripped != bname:\n",
+        "            aliases.add(stripped)\n",
+        "            aliases.add(stripped.lower())\n",
+        "            for suf in ('Large', 'Medium', 'Small'):\n",
+        "                if stripped.endswith(suf):\n",
+        "                    stem = stripped[:-len(suf)]\n",
+        "                    aliases.add(stem)\n",
+        "                    aliases.add(stem.lower())\n",
+        "        for alias in aliases:\n",
+        "            if not alias: continue\n",
+        "            dst = os.path.join(target_dir, alias)\n",
+        "            if os.path.exists(dst): continue\n",
         "            try:\n",
-        "                os.symlink(src, dst)\n",
-        "                print(f'   -> [OK] [PRE-FLIGHT] {alias} -> {src}')\n",
+        "                os.symlink(cand, dst)\n",
+        "                print(f'   -> [OK] [PRE-FLIGHT] {alias} -> {cand}')\n",
         "            except OSError as e:\n",
         "                print(f'   -> [WARN] Symlink skipped for {alias}: {e}')\n",
         "\n",
@@ -940,7 +925,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "    download_ok = False\n",
         "    _no_download = " + ("True" if no_download else "False") + "\n",
         "\n",
-        "    # Priority 1: Google Drive (Colab-local, zero network cost)\n",
         "    if os.path.exists('/content/drive/MyDrive'):\n",
         "        print('[FALLBACK] Checking Google Drive for manifold...')\n",
         "        drive_cands = [\n",
@@ -958,7 +942,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "                except Exception:\n",
         "                    pass\n",
         "\n",
-        "    # Priority 2: Network download — ONLY if explicitly permitted\n",
         "    if not download_ok and kaggle_repo and not _no_download:\n",
         "        try:\n",
         "            print(f'[KAGGLE CLI] Downloading {kaggle_repo} into {dest_path}...')\n",
@@ -1031,7 +1014,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "import os, sys, subprocess, platform, shutil\n",
         "print('[ENV] Probing hardware accelerator...')\n",
         "\n",
-        "# Full hardware detection: CUDA > ROCm > DirectML > CPU\n",
         "torch_index = 'https://download.pytorch.org/whl/cpu'\n",
         "accel_type = 'cpu'\n",
         "if shutil.which('nvidia-smi'):\n",
@@ -1061,7 +1043,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "print(f'[ENV] Accelerator: {accel_type}')\n",
         "print(f'[ENV] PyTorch index: {torch_index}')\n",
         "\n",
-        "# Prefer centralized manifest from env-manager; fall back to cloned suite\n",
         "req_candidates = [\n",
         "    '/content/lemgendary-env-manager/requirements/requirements-training.txt',\n",
         "    '/content/lemgendary-env-manager/requirements/lemgendary-training-suite.requirements.txt',\n",
@@ -1117,7 +1098,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "os.chdir(active_suite_dir)\n",
         "print(f'[OK] [SUITE] Active working directory set to: {os.getcwd()}')\n",
         "\n",
-        "# [JANITOR] Clean up any pre-existing zombie training processes to free the GPU\n",
         "try:\n",
         "    current_pid = os.getpid()\n",
         "    ps_out = subprocess.check_output(['ps', '-ef'], text=True)\n",
@@ -1172,7 +1152,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "found_ckpts = []\n",
         "if os.path.exists('/content/drive/MyDrive'):\n",
         "    try:\n",
-        "        # Fast BFS Directory Search up to depth 7 to locate checkpoint folders\n",
         "        queue = ['/content/drive/MyDrive']\n",
         "        depths = {'/content/drive/MyDrive': 0}\n",
         "        while queue:\n",
@@ -1183,13 +1162,11 @@ def build_colab_training_notebook_content(model_key, config=None):
         "                path = os.path.join(curr, item)\n",
         "                if os.path.isdir(path):\n",
         "                    item_lower = item.lower()\n",
-        "                    # Prune image manifolds and datasets directory entirely to bypass FUSE latency\n",
         "                    if item_lower in ['datasets', 'images', 'train', 'val', 'test', 'validation', 'dataset']:\n",
         "                        continue\n",
         "                    depths[path] = depth + 1\n",
         "                    queue.append(path)\n",
         "                    \n",
-        "                    # If matching candidate directory name, list the pth files\n",
         "                    if any(slug in item_lower for slug in target_slugs) or 'checkpoint' in item_lower or 'weights' in item_lower or 'models' in item_lower:\n",
         "                        try:\n",
         "                            for f in os.listdir(path):\n",
@@ -1202,7 +1179,7 @@ def build_colab_training_notebook_content(model_key, config=None):
         "\n",
         "found_ckpts = sorted(list(set(found_ckpts)))\n",
         "if found_ckpts:\n",
-        "    print(f'   -> [FOUND] {len(found_ckpts)} binaries in Kaggle Manifold.')\n",
+        "    print(f'   -> [FOUND] {len(found_ckpts)} binaries in Google Drive.')\n",
         "    for src in found_ckpts:\n",
         "        fname = os.path.basename(src)\n",
         "        target_f = fname\n",
@@ -1217,7 +1194,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "    \n",
         "    metrics_found = False\n",
         "    for src in found_ckpts:\n",
-        "        # Look for metrics.csv in parent or grandparent of the checkpoint\n",
         "        for d in [os.path.dirname(os.path.dirname(src)), os.path.dirname(src)]:\n",
         "            m_path = os.path.join(d, 'metrics.csv')\n",
         "            if os.path.exists(m_path):\n",
@@ -1227,7 +1203,7 @@ def build_colab_training_notebook_content(model_key, config=None):
         "                    metrics_found = True; break\n",
         "                except: pass\n",
         "        if metrics_found: break\n",
-        "else: print('   -> [SKIP] No existing checkpoints found in Kaggle Inputs manifold.')\n"
+        "else: print('   -> [SKIP] No existing checkpoints found in Google Drive manifold.')\n"
     ]
 
     continuous_sync_source = [
@@ -1237,8 +1213,6 @@ def build_colab_training_notebook_content(model_key, config=None):
         "model_hub_dir = os.path.join(hub_root, model_key)\n",
         "ckpt_hub_dir = os.path.join(model_hub_dir, 'checkpoints')\n",
         "\n",
-        "# 2026 v1.1: The previous cell may have been skipped or failed before\n",
-        "# populating `found_ckpts`. Guard with a NameError-safe lookup.\n",
         "try:\n",
         "    _found = found_ckpts\n",
         "except NameError:\n",
@@ -1263,12 +1237,10 @@ def build_colab_training_notebook_content(model_key, config=None):
         "                src = os.path.join(ckpt_hub_dir, f)\n",
         "                if os.path.isfile(src):\n",
         "                    dst = os.path.join(drive_target_dir, f)\n",
-        "                    # Copy if newer or doesn't exist\n",
         "                    if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):\n",
         "                        tmp_dst = dst + '.tmp'\n",
         "                        shutil.copy2(src, tmp_dst)\n",
         "                        os.rename(tmp_dst, dst)\n",
-        "            # Sync metrics.csv\n",
         "            m_src = os.path.join(model_hub_dir, 'metrics.csv')\n",
         "            if os.path.exists(m_src):\n",
         "                m_dst = os.path.join(os.path.dirname(drive_target_dir), 'metrics.csv')\n",
@@ -1276,7 +1248,7 @@ def build_colab_training_notebook_content(model_key, config=None):
         "                    shutil.copy2(m_src, m_dst)\n",
         "        except Exception as e:\n",
         "            pass\n",
-        "        time.sleep(30) # Sync every 30 seconds\n",
+        "        time.sleep(30)\n",
         "\n",
         "if drive_target_dir:\n",
         "    t = threading.Thread(target=drive_sync_worker, daemon=True)\n",
@@ -1293,109 +1265,26 @@ def build_colab_training_notebook_content(model_key, config=None):
         "nbformat_minor": 4,
         "nbformat": 4,
         "cells": [
-            {
-                "cell_type": "markdown",
-                "source": [
-                    f"# LemGendary Master Execution: {pascal_model_name} (v16.2.9 Nuclear-Hardened Colab-Edition)\n",
-                    "This unified notebook handles environment synchronization and automated cloud training.\n"
-                ],
-                "metadata": {}
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 1. Hardware Sentinel\n", "Ensure the manifold has the required hardware acceleration.\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": hardware_sentinel_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 2. Cloud Auth & Secrets\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": secrets_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 3. Environment Synchronization\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": clone_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "code",
-                "source": install_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 4. SOTA Hub Synchronization (Pull)\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": hub_prep_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 4.5 Google Drive Mount\n", "Mount Google Drive FUSE for streaming datasets directly.\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": fuse_mount_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 5. Kaggle Dataset Acquisition & Manifold Resolution\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": symlink_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 6. Checkpoint & Metric Recovery\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": checkpoint_recovery_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 7. Continuous Drive Synchronization\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": continuous_sync_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            },
-            {
-                "cell_type": "markdown",
-                "source": ["## 8. Nuclear Training Matrix\n"],
-                "metadata": {}
-            },
-            {
-                "cell_type": "code",
-                "source": training_source,
-                "metadata": {}, "outputs": [], "execution_count": None
-            }
+            {"cell_type": "markdown", "source": [f"# LemGendary Master Execution: {pascal_model_name} (v16.2.9 Nuclear-Hardened Colab-Edition)\n", "This unified notebook handles environment synchronization and automated cloud training.\n"], "metadata": {}},
+            {"cell_type": "markdown", "source": ["## 1. Hardware Sentinel\n", "Ensure the manifold has the required hardware acceleration.\n"], "metadata": {}},
+            {"cell_type": "code", "source": hardware_sentinel_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 2. Cloud Auth & Secrets\n"], "metadata": {}},
+            {"cell_type": "code", "source": secrets_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 3. Environment Synchronization\n"], "metadata": {}},
+            {"cell_type": "code", "source": clone_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "code", "source": install_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 4. SOTA Hub Synchronization (Pull)\n"], "metadata": {}},
+            {"cell_type": "code", "source": hub_prep_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 4.5 Google Drive Mount\n", "Mount Google Drive FUSE for streaming datasets directly.\n"], "metadata": {}},
+            {"cell_type": "code", "source": fuse_mount_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 5. Kaggle Dataset Acquisition & Manifold Resolution\n"], "metadata": {}},
+            {"cell_type": "code", "source": symlink_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 6. Checkpoint & Metric Recovery\n"], "metadata": {}},
+            {"cell_type": "code", "source": checkpoint_recovery_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 7. Continuous Drive Synchronization\n"], "metadata": {}},
+            {"cell_type": "code", "source": continuous_sync_source, "metadata": {}, "outputs": [], "execution_count": None},
+            {"cell_type": "markdown", "source": ["## 8. Nuclear Training Matrix\n"], "metadata": {}},
+            {"cell_type": "code", "source": training_source, "metadata": {}, "outputs": [], "execution_count": None}
         ]
     }
     return notebook_content
@@ -1432,7 +1321,6 @@ if __name__ == "__main__":
 
     datasets = registry.get("datasets", {})
 
-    # Map dataset keys to corresponding models
     DATASET_TO_MODELS = {
         "nima_aesthetic": ["nima_aesthetic_mobile", "nima_aesthetic_efficientnet", "nima_aesthetic_pro"],
         "classification_master_manifold": ["universal_nsfw_classification"],
@@ -1458,7 +1346,6 @@ if __name__ == "__main__":
 
             for m_key in models:
 
-                # 2. Export to LemGendaryDatasets
                 d_manifold_dir = os.path.join(dataset_root, folder_name)
                 os.makedirs(d_manifold_dir, exist_ok=True)
                 d_output = os.path.join(d_manifold_dir, f"{m_key}_training.ipynb")
