@@ -640,7 +640,7 @@ function Start-Acquisition {
 while ($true) {
     # 2026: Resilient Header - Safer than Clear-Host in background/remote shells
     if ($Host.Name -eq 'ConsoleHost') { Clear-Host } else { Write-Host "`n`n`n" }
-    Write-Host '--- LEMGENDARY DATASETS HUB v5.2 ---' -ForegroundColor Yellow
+    Write-Host '--- LEMGENDARY DATASETS HUB v5.3 ---' -ForegroundColor Yellow
 
     # 2026 Resilience: Use cached CUDA status to prevent 5-second menu delays
     if ($null -eq $global:CudaReady) {
@@ -658,6 +658,7 @@ while ($true) {
     Write-Host '1. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
     Write-Host '2. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
     Write-Host '3. [SYNC]    Kaggle Manifolds Sync (Push / Get)' -ForegroundColor Gray
+    Write-Host '4. [MODERNIZE] Convert Large sets to modern format' -ForegroundColor Gray
     Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
     $I = Read-Host 'Selection'
     if ($I -eq '1') {
@@ -942,6 +943,18 @@ while ($true) {
                 Write-Host "Invalid selection. Please choose 1, 2, or B." -ForegroundColor Red
                 Start-Sleep -Seconds 1
             }
+        }
+    }
+    elseif ($I -eq '4') {
+        Write-Host "`n[MODERNIZE] Launching suffix-removal tool..." -ForegroundColor Cyan
+        $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
+        if (Test-Path $ModernizeScript) {
+            & $Vpy $ModernizeScript
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[MODERNIZE] Exited with code $LASTEXITCODE" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "[ERROR] modernize_manifold.py not found at $ModernizeScript" -ForegroundColor Red
         }
     }
     elseif ($I -match '^q') { break }

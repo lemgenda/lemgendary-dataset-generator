@@ -27,6 +27,28 @@ TASK_META = _meta_data.get("task_metadata", {})  # type: ignore
 MODELS_META = _meta_data.get("models_metadata", {})  # type: ignore
 
 MANIFOLD_TASK_MAP = {
+    # ── Modern (2026 suffix-free) — added Phase 0 ──────────────────────────
+    "LemGendizedForexUniverse": "forex",
+    "LemGendizedClassificationMasterManifold": "classification",
+    "LemGendizedNimaAesthetic": "quality",
+    "LemGendizedNimaTechnical": "quality",
+    "LemGendizedNimaAuthenticity": "authenticity",
+    "LemGendizedUpnV2": "parameter_prediction",
+    "LemGendizedFilmRestorer": "restoration",
+    "LemGendizedCodeFormer": "restoration",
+    "LemGendizedParseNet": "segmentation",
+    "LemGendizedRetinaFaceMobileNet": "detection",
+    "LemGendizedFfaNetIndoor": "restoration",
+    "LemGendizedFfaNetOutdoor": "restoration",
+    "LemGendizedMirNetLowLight": "restoration",
+    "LemGendizedMirNetExposure": "restoration",
+    "LemGendizedMprNetDeraining": "restoration",
+    "LemGendizedNafNetDebluring": "restoration",
+    "LemGendizedNafNetDenoising": "restoration",
+    "LemGendizedUltraZoom": "super-resolution",
+    "LemGendizedYoloV8n": "detection",
+    "LemGendizedProfessionalMultitaskRestoration": "restoration",
+    # ── Legacy (with 'Large' suffix) — kept for backward compatibility ─────
     "LemGendizedForexUniverseLarge": "forex",
     "LemGendizedClassificationMasterManifoldLarge": "classification",
     "LemGendizedNimaAestheticLarge": "quality",
@@ -474,18 +496,70 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
                 train_c = per_src - val_c
                 sources[fmt] = {"train": train_c, "val": val_c, "total": per_src}
 
-    # 3. dataset_info.yaml
+    # 3. dataset_info.yaml — task-aware, preserves existing task-specific fields
+    # (Phase 0 Fix C: forex metadata must survive doc regeneration)
     src_keys = list(sources.keys()) if sources else [f"{pascal_name}-source"]
-    yaml_content = f"""count: {total_samples if isinstance(total_samples, int) else 0}
-task: {task_key}
-original_sources:
-{chr(10).join(f"- {s}" for s in src_keys)}
-path: {str(output_root.resolve())}
-source: {pascal_name}-manifold
-last_processed: '{datetime.now().isoformat()}'
-"""
+    relative_path = str(Path('..') / 'LemGendaryDatasets' / output_root.name)
+
+    info_fields: dict = {
+        "count": total_samples if isinstance(total_samples, int) else 0,
+        "task": task_key,
+        "original_sources": src_keys,
+        "path": relative_path,
+        "source": f"{pascal_name}-manifold",
+        "last_processed": datetime.now().isoformat(),
+    }
+
+    if task_key == "forex":
+        # Preserve all task-specific forex fields from existing_info or overrides
+        forex_scan_local = existing_info.get("forex_scan", {})
+        if not isinstance(forex_scan_local, dict):
+            forex_scan_local = {}
+
+        pairs = (
+            existing_info.get("pairs")
+            or (overrides.get("pairs") if overrides else None)
+            or forex_scan_local.get("pairs", [])
+        )
+        tfs = (
+            existing_info.get("timeframe_rungs")
+            or (overrides.get("timeframe_rungs") if overrides else None)
+            or forex_scan_local.get("timeframes", [])
+        )
+        start_date = (
+            existing_info.get("start_date")
+            or (overrides.get("start_date") if overrides else None)
+            or "2019-01-01"
+        )
+        lookback_bars = (
+            existing_info.get("lookback_bars")
+            or (overrides.get("lookback_bars") if overrides else None)
+            or 168
+        )
+        category = (
+            existing_info.get("category")
+            or (overrides.get("category") if overrides else None)
+            or "Forex & Financial Time-Series"
+        )
+
+        info_fields["name"] = pascal_name
+        info_fields["dataset_type"] = "forex"
+        info_fields["category"] = category
+        info_fields["pairs"] = [str(p) for p in pairs] if pairs else []
+        info_fields["timeframe_rungs"] = [int(tf) for tf in tfs] if tfs else []
+        info_fields["start_date"] = str(start_date)
+        info_fields["lookback_bars"] = int(lookback_bars)
+        info_fields["format"] = "parquet"
+        info_fields["compression"] = "zstd"
+
     with open(yaml_path, "w", encoding="utf-8") as f:
-        f.write(yaml_content)
+        yaml.safe_dump(
+            info_fields,
+            f,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
 
     # 4. category.txt
     cat_str = "General Dataset"
@@ -738,9 +812,9 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
                 total_train_all += tr
             if isinstance(vl, int):
                 total_val_all += vl
-            tr_str = f"{tr:,}" if isinstance(tr, int) else str(tr)
-            vl_str = f"{vl:,}" if isinstance(vl, int) else str(vl)
-            tot_str = f"{tot:,}" if isinstance(tot, int) else str(tot)
+            tr_str = f"{tr:,}" if isinstance(tr, int) else tr
+            vl_str = f"{vl:,}" if isinstance(vl, int) else vl
+            tot_str = f"{tot:,}" if isinstance(tot, int) else tot
             table_rows.append(f"| **{src}** | {tr_str} | {vl_str} | {tot_str} samples |")
 
         table_text = "\n".join(table_rows)
@@ -949,7 +1023,7 @@ def regenerate_all_docs(datasets_dir=None):
     datasets_dir = Path(datasets_dir)
 
     print(f"Scanning manifolds in {datasets_dir}...")
-    
+
     # Discover all target manifolds from unified_data.yaml
     prefix = UNIFIED_DATA.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
     suffix = UNIFIED_DATA.get("_registry_metadata", {}).get("name_suffix", "Large")
@@ -957,7 +1031,7 @@ def regenerate_all_docs(datasets_dir=None):
     for d_key, d_info in UNIFIED_DATA.get("datasets", {}).items():
         t_name = d_info.get("name", d_key)
         target_names.add(f"{prefix}{t_name}{suffix}")
-    
+
     # Also include any existing folders in LemGendaryDatasets
     if datasets_dir.exists():
         for p in datasets_dir.iterdir():

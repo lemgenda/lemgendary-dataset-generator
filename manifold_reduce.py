@@ -15,6 +15,31 @@ from compiler_core import (
 from doc_generator import generate_dataset_docs
 
 
+# ─── Phase 0: Data-presence helper ──────────────────────────────────────────
+def _has_manifold_data(path: Path) -> bool:
+    """Return True if the manifold has actual data (works for both legacy
+    `*Large` names and modern suffix-free names)."""
+    # Forex: any *.parquet directly in the folder
+    try:
+        if any(path.glob("*.parquet")):
+            return True
+    except OSError:
+        pass
+
+    # Image / target / mask manifolds: at least one file in a split folder
+    for split in ("train", "val", "test"):
+        for sub in ("images", "targets", "masks"):
+            d = path / sub / split
+            if not d.exists():
+                continue
+            try:
+                if any(f.is_file() for f in d.iterdir()):
+                    return True
+            except OSError:
+                pass
+    return False
+
+
 def _prompt_multiselect(label, options, default_all=True):
     """
     Present a numbered list of options and return the user-selected subset.
@@ -88,22 +113,25 @@ def _prompt_reduction_params():
 
 def reduce_dataset():
     print("\n[SCANNING] Locating existing manifolds in LemGendaryDatasets...")
+    # ─── Phase 0: eligibility filter relaxed to support both legacy and modern names ───
     manifolds = [
         d for d in sorted(OUT_PARENT.iterdir())
         if d.is_dir()
         and d.name.startswith("LemGendized")
-        and d.name.endswith("Large")
-        and any(c.is_dir() for c in d.iterdir())
+        and _has_manifold_data(d)
     ]
     if not manifolds:
-        print("[ERROR] No valid Large datasets found to reduce.")
+        print("[ERROR] No valid manifolds found to reduce.")
         return
 
     for i, m in enumerate(manifolds):
-        base_name = m.name[:-5]  # Strip 'Large'
-        kaggle_ready_path = m.parent / f"{base_name}KaggleReady"
-        if kaggle_ready_path.exists():
-            print(f"\033[92m{i + 1}. {m.name} (KaggleReady exists)\033[0m")
+        # Status display: mark if a KaggleReady / Reduced sibling already exists
+        has_reduced = any(
+            (m.parent / f"{m.name.rsplit('Large', 1)[0]}{s}").exists()
+            for s in ("KaggleReady", "Reduced")
+        )
+        if has_reduced:
+            print(f"\033[92m{i + 1}. {m.name} (reduced variant exists)\033[0m")
         else:
             print(f"\033[93m{i + 1}. {m.name}\033[0m")
 
@@ -115,7 +143,8 @@ def reduce_dataset():
         source_root = manifolds[idx]
 
         old_suffix = str(CONFIG.get("name_suffix", "Large"))
-        if source_root.name.endswith(old_suffix):
+        # ─── Phase 0: guard against empty suffix (post-modernization state) ───
+        if old_suffix and source_root.name.endswith(old_suffix):
             base_name = source_root.name[:-len(old_suffix)]
         else:
             base_name = source_root.name
