@@ -6,6 +6,7 @@ and resilient transfer utilities shared across dataset managers.
 """
 
 import json
+import logging
 import os
 import shutil
 import sys
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import TypedDict
 import kagglehub
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", message=".*outdated.*")
 
@@ -99,14 +102,14 @@ def setup_kaggle_auth(default_user="lemtreursi"):
     try:
         import kagglehub.clients
         kagglehub.clients.already_printed_version_warning = True
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Kagglehub warning flag suppression skipped: %s", exc)
 
     try:
         from kaggle.api.kaggle_api_extended import KaggleApi
         KaggleApi.already_printed_version_warning = True
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("KaggleApi warning flag suppression skipped: %s", exc)
 
 
 def robust_staging_cleanup(staging_dir: Path, target_zip: Path | None = None, max_retries: int = 5) -> bool:
@@ -176,8 +179,8 @@ def cleanup_temp_archives(manifold_name=None, base_dir=None, force=False):
                 shutil.rmtree(p, ignore_errors=True)
                 cleaned_count += 1
                 cleaned_bytes += sz
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed removing staging directory %s: %s", p, exc)
 
         if "Temp" in str(d):
             zip_pattern = f"{manifold_name}.zip" if manifold_name else "*.zip"
@@ -189,8 +192,8 @@ def cleanup_temp_archives(manifold_name=None, base_dir=None, force=False):
                     zf.unlink(missing_ok=True)
                     cleaned_count += 1
                     cleaned_bytes += sz
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed unlinking temp zip %s: %s", zf, exc)
 
     return cleaned_count, cleaned_bytes
 
@@ -243,8 +246,8 @@ def get_dataset_status(repo_id: str) -> str | None:
         api = KaggleApi()
         api.authenticate()
         return api.dataset_status(clean_handle)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Kaggle API dataset_status failed: %s", exc)
 
     try:
         import subprocess
@@ -264,8 +267,8 @@ def get_dataset_status(repo_id: str) -> str | None:
             return "error"
         if res.returncode == 0 and out:
             return out.split()[-1]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Kaggle CLI status check failed: %s", exc)
 
     return None
 
@@ -339,8 +342,8 @@ def track_kaggle_dataset_status(
                         cur_files = len(summary_files)
                         if cur_files > 0:
                             file_pct = min(99.0, (cur_files / expected_files) * 100.0)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed querying Kaggle dataset files summary: %s", exc)
 
             if file_pct is not None and file_pct > last_pct:
                 delta = file_pct - last_pct
@@ -381,8 +384,8 @@ def _verify_or_create_staging_zip(
             print("[SYNC] Existing archive is outdated or invalid. Re-creating...")
             try:
                 target_zip.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"[WARN] Failed unlinking outdated archive {target_zip}: {exc}")
 
     if not can_reuse:
         print(f"[SYNC] Archiving manifold '{src_path.name}' ({file_count} files)...")
@@ -410,8 +413,8 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
                 mt = (Path(root) / f).stat().st_mtime
                 if mt > newest_src_mtime:
                     newest_src_mtime = mt
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed checking mtime for %s: %s", f, exc)
 
     manifold_name = src_path.name
     root_datasets_dir = src_path.parent
@@ -635,8 +638,8 @@ def perform_dataset_download(
             print(f"[WARN] Existing archive {cand.name} is incomplete or corrupted. Re-downloading...")
             try:
                 cand.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"[WARN] Failed unlinking corrupt archive {cand}: {exc}")
 
     archive_to_extract = existing_archive or _fetch_remote_archive(
         clean_repo_id,

@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, cast
 
 # ─── Shared state ───────────────────────────────────────────────────────────
 @dataclass
@@ -63,7 +63,7 @@ def _load_ava(c: GroundTruthCaches, root: Path) -> None:
     import pandas as pd
     df = pd.read_csv(path)
     vote_cols = [f"vote_{i}" for i in range(1, 11)]
-    c.ava = df.set_index("image_num")[vote_cols].to_dict("index")
+    c.ava = cast(dict, cast(Any, df.set_index("image_num")[vote_cols]).to_dict("index"))
     print(f"[GT] {len(c.ava)} AVA Aesthetic ratings cached.")
 
 
@@ -87,7 +87,7 @@ def _load_koniq(c: GroundTruthCaches, root: Path) -> None:
     import pandas as pd
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
-        val = float(row["MOS"]) / 10.0
+        val = float(cast(Any, row["MOS"])) / 10.0
         c.tid[str(row["image_name"]).lower()] = max(1.0, min(10.0, val))
     print(f"[GT] KonIQ-10k ratings cached.")
 
@@ -101,7 +101,7 @@ def _load_spaq(c: GroundTruthCaches, root: Path) -> None:
     import pandas as pd
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
-        c.tid[str(row["Image name"]).lower()] = 1.0 + float(row["MOS"]) * 0.09
+        c.tid[str(row["Image name"]).lower()] = 1.0 + float(cast(Any, row["MOS"])) * 0.09
     print(f"[GT] SPAQ ratings cached.")
 
 
@@ -126,7 +126,7 @@ def _load_live(c: GroundTruthCaches, root: Path) -> None:
     import pandas as pd
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
-        orig = min(100.0, float(row["dmos"]))
+        orig = min(100.0, float(cast(Any, row["dmos"])))
         c.tid[str(row["image_name"]).lower()] = 1.0 + (1.0 - orig / 100.0) * 9.0
     print(f"[GT] LIVE IQA ratings cached.")
 
@@ -139,7 +139,7 @@ def _load_csiq(c: GroundTruthCaches, root: Path) -> None:
     import pandas as pd
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
-        c.tid[str(row["image_name"]).lower()] = 1.0 + (1.0 - float(row["dmos"])) * 9.0
+        c.tid[str(row["image_name"]).lower()] = 1.0 + (1.0 - float(cast(Any, row["dmos"]))) * 9.0
     print(f"[GT] CSIQ ratings cached.")
 
 
@@ -159,6 +159,6 @@ def _load_tad66k(c: GroundTruthCaches, root: Path) -> None:
             df = pd.read_csv(os.path.join(dirpath, f))
             for _, row in df.iterrows():
                 if "image" in row and "score" in row:
-                    c.tid[str(row["image"]).lower()] = max(1.0, min(10.0, float(row["score"])))
+                    c.tid[str(row["image"]).lower()] = max(1.0, min(10.0, float(cast(Any, row["score"]))))
                     count += 1
     print(f"[GT] {count} TAD66K ratings cached.")

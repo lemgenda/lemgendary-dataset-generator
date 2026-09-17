@@ -44,8 +44,8 @@ def main():
             if os.path.exists(zip_path):
                 try:
                     os.remove(zip_path)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    print(f"[DEBUG] Could not remove partial zip file {zip_path}: {exc}")
 
             try:
                 res = gdown.download_folder(id=args.repo_id, output=args.output_dir, quiet=False)

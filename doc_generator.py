@@ -315,8 +315,8 @@ def scan_forex_manifold(root_path):
                     try:
                         arr = np.load(npy_file, mmap_mode='r')
                         total_samples += arr.shape[0]
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        print(f"[DEBUG] Could not load npy file {npy_file}: {exc}")
 
                 if total_samples > 0:
                     entry = {
@@ -372,8 +372,8 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
                 cached_t = existing_info.get("task", existing_info.get("dataset_type"))
                 if cached_t and cached_t != "quality":
                     task = cached_t
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[DEBUG] Could not read dataset_info.yaml at {yaml_path}: {exc}")
 
     if overrides and overrides.get('dataset_type'):
         task = overrides.get('dataset_type')
@@ -484,8 +484,8 @@ def generate_dataset_docs(output_root, final_index=None, pascal_name=None, overr
                 split = item.get("split", "unknown")
                 if split in ["train", "val"]:
                     sources[src][split] += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[DEBUG] Error tallying index sources: {exc}")
     elif existing_info and "count" in existing_info:
         total_samples = existing_info.get("count", 0)
         orig_sources = existing_info.get("original_sources", [])

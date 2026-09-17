@@ -14,6 +14,7 @@ import hashlib
 import random
 from sklearn.cluster import MiniBatchKMeans
 import webdataset as wds
+from webdataset.writer import TarWriter as WdsTarWriter
 import numpy as np
 import pandas as pd
 import requests
@@ -33,8 +34,6 @@ from compiler_core import (
     detect_annotations,
     detect_task,
     download_image,
-    generate_colab_training_notebook,
-    generate_training_notebook,
     get_device_info,
     init_worker,
     initialize_registry,
@@ -172,7 +171,7 @@ def process_dataset():
                             for f in f_list:
                                 dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
 
-    max_workers = int(max(1, final_workers))
+    max_workers = max(1, final_workers)
     print(f"[PRE-FLIGHT] Python: {sys.executable}")
     print(f"[PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
 
@@ -310,7 +309,8 @@ def process_dataset():
                                     print(f"   -> Indexed {count // 1000}k samples...", flush=True)
                                     existing_on_disk.update(_buf)
                                     _buf = []
-                except OSError: pass
+                except OSError as exc:
+                    print(f"[WARNING] Directory indexing interrupted: {exc}")
             existing_on_disk.update(_buf)
             _buf = None
 
@@ -418,8 +418,8 @@ def process_dataset():
                         if matches:
                             dataset = matches[0]
                             print(f"[DISCOVERY] Mapping {ref} -> {dataset.name}")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        print(f"[DEBUG] Discovery scan for {slug} in {shared_root} failed: {exc}")
 
             if not dataset.is_dir():
                 print(f"[SKIP] Source {ref} not found in {shared_root}")
@@ -517,7 +517,7 @@ def process_dataset():
                 file_col = mapping.get("file_name", "file_name")
                 if file_col in df.columns and len(df) > 0 and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str)):
                     for fname, group in df.groupby(file_col):
-                        parquet_map[fname] = group
+                        parquet_map[str(fname)] = group
             elif fmt == "matlab" and ann_data:
                 data, key = cast(MatlabAnnData, ann_data)
                 if key in data:
@@ -527,8 +527,8 @@ def process_dataset():
                             if fname:
                                 if fname not in matlab_map: matlab_map[fname] = []
                                 matlab_map[fname].append(entry)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            print(f"[DEBUG] Skipping unparseable matlab entry: {exc}")
 
             if not is_virtual:
                 sample_count = len(images)
@@ -805,9 +805,9 @@ def process_dataset():
             X = np.stack(latents)
             n_clusters = int(CONFIG.get("n_style_clusters", 16))
             kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(X)
-            labels = kmeans.labels_
-            for i, cid in tqdm(zip(ids, labels), total=len(ids), desc="[STYLING] Updating Clusters"):
-                conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (int(cid), i))
+            labels_list = [int(x) for x in kmeans.labels_]
+            for i, cid in tqdm(zip(ids, labels_list), total=len(ids), desc="[STYLING] Updating Clusters"):
+                conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (cid, i))
             conn.commit()
         else:
             print(f"[STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
@@ -831,7 +831,7 @@ def process_dataset():
             if has_diffusion and shard_dir is not None:
                 shard_name = f"{prefix_str}{source}{suffix_str}.tar"
                 print(f"[SHARD] Writing {shard_name}...")
-                sink = wds.TarWriter(str(shard_dir / shard_name))
+                sink = WdsTarWriter(str(shard_dir / shard_name))
             else:
                 sink = None
 

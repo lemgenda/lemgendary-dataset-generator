@@ -1,3 +1,4 @@
+from typing import Any, cast
 import torch
 from ultralytics import YOLO
 
@@ -28,7 +29,8 @@ class AutoLabeler:
         if self.mode == "face_landmarks":
             return self._predict_face_landmarks(img_pil)
             
-        results = self.model.predict(img_pil, device=self.device, verbose=False)
+        raw_results = self.model.predict(img_pil, device=self.device, verbose=False)
+        results: list[Any] = cast(list[Any], raw_results)
         annotations = []
         
         for r in results:
@@ -79,15 +81,8 @@ class AutoLabeler:
                                                 num_faces=1)
             self.face_detector = vision.FaceLandmarker.create_from_options(options)
             
-        # Convert PIL to mp.Image
-        import cv2
-        img_np = np.array(img_pil)
-        if img_pil.mode == 'RGB':
-            # mediapipe expects RGB, np.array from RGB PIL is RGB
-            pass
-        elif img_pil.mode == 'RGBA':
-            img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)  # pylint: disable=no-member
-            
+        # Convert PIL to mp.Image (ensure 3-channel RGB)
+        img_np = np.array(img_pil.convert("RGB"))
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
         detection_result = self.face_detector.detect(mp_image)
         

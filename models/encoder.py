@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import torch
 from PIL import Image
@@ -12,16 +12,17 @@ from transformers import CLIPModel, CLIPProcessor
 class CLIPManifold:
     """Zero-shot style tagging and latent extraction via CLIP.
 
-    The processor is typed as ``Any`` because transformers 5.17's stub for
-    ``ProcessorMixin.__call__`` does not declare ``return_tensors`` or
-    ``padding`` even though runtime accepts both.
+    The processor and model are typed as ``Any`` because transformers 5.17's
+    stubs for CLIPModel / ProcessorMixin do not declare full runtime signatures
+    without per-call suppressions.
     """
 
     def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu") -> None:
         self.device = device
         self.model_id = "openai/clip-vit-base-patch32"
         self.processor: Any = CLIPProcessor.from_pretrained(self.model_id)
-        self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)
+        clip_cls: Any = CLIPModel
+        self.model: Any = clip_cls.from_pretrained(self.model_id).to(self.device)
         self.model.eval()
 
         # Standard Style Manifold for Zero-Shot Tagging
@@ -34,7 +35,8 @@ class CLIPManifold:
     def extract_features(self, img_pil: Image.Image) -> torch.Tensor:
         """Extract latent vector for style clustering."""
         inputs = self.processor(images=img_pil, return_tensors="pt").to(self.device)
-        image_features = self.model.get_image_features(**inputs)
+        raw_features = self.model.get_image_features(**inputs)
+        image_features: torch.Tensor = cast(torch.Tensor, raw_features)
         # Normalize for cosine similarity / clustering stability
         return image_features / image_features.norm(p=2, dim=-1, keepdim=True)
 

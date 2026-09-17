@@ -1,10 +1,13 @@
-import sys
 import json
+import logging
 import random
-import yaml
 import shutil
+import sys
+import yaml
 from pathlib import Path
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 from compiler_core import (
     CONFIG,
@@ -23,8 +26,8 @@ def _has_manifold_data(path: Path) -> bool:
     try:
         if any(path.glob("*.parquet")):
             return True
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Error globbing parquet files in %s: %s", path, exc)
 
     # Image / target / mask manifolds: at least one file in a split folder
     for split in ("train", "val", "test"):
@@ -35,8 +38,8 @@ def _has_manifold_data(path: Path) -> bool:
             try:
                 if any(f.is_file() for f in d.iterdir()):
                     return True
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Error reading directory %s: %s", d, exc)
     return False
 
 

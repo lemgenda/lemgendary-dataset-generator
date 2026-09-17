@@ -26,10 +26,13 @@ Safety:
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import yaml
 
@@ -51,7 +54,8 @@ def _out_parent() -> Path:
             "output_folder_name", "../LemGendaryDatasets"
         )
         return (ROOT / folder).resolve()
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed reading registry for output_folder_name, using fallback: %s", exc)
         return (ROOT.parent / "LemGendaryDatasets").resolve()
 
 
@@ -62,8 +66,8 @@ def _has_manifold_data(path: Path) -> bool:
     try:
         if any(path.glob("*.parquet")):
             return True
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Error checking parquet files in %s: %s", path, exc)
 
     # Image / target / mask manifolds: check top-of-split for at least one file
     for split in ("train", "val", "test"):
@@ -74,8 +78,8 @@ def _has_manifold_data(path: Path) -> bool:
             try:
                 if any(f.is_file() for f in d.iterdir()):
                     return True
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Error checking directory %s: %s", d, exc)
     return False
 
 

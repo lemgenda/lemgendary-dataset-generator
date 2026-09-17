@@ -22,9 +22,12 @@ effect beyond the first invocation.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _BOOTSTRAPPED = False
 
@@ -195,6 +198,6 @@ def get_device_info() -> str:
         import torch
         if torch.cuda.is_available():
             return f"CUDA ({torch.cuda.get_device_name(0)})"
-    except ImportError:
-        pass
+    except (ImportError, Exception) as exc:
+        logger.debug("PyTorch device detection unavailable: %s", exc)
     return "CPU (No CUDA detected)"

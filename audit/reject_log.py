@@ -14,9 +14,12 @@ Phase 2 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class RejectLog:
@@ -65,8 +68,8 @@ class RejectLog:
         if conn is not None:
             try:
                 conn.close()
-            except sqlite3.Error:
-                pass
+            except sqlite3.Error as exc:
+                logger.debug("Error closing thread-local SQLite connection: %s", exc)
             self._local.conn = None
 
     # ── Internal ────────────────────────────────────────────────────────────

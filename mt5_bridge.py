@@ -17,9 +17,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import importlib
+
 try:
-    import MetaTrader5 as _mt5_module  # type: ignore[import-untyped]  # MT5 ships no PEP 561 stubs
-    _mt5: Any = _mt5_module
+    _mt5: Any = importlib.import_module("MetaTrader5")
 except ImportError:
     _mt5 = None  # sentinel when MT5 is not installed on this host
 

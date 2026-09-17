@@ -888,8 +888,8 @@ def generate_inference_notebook(model_key, export_dir, unified_models_registry=N
                         with open(ds_output_path, "w", encoding='utf-8') as f:
                             f.write(json_str)
                         print(f"[OK] Synchronized Dataset Manifold Notebook: {ds_output_path}")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        print(f"[WARNING] Failed to write manifold notebook {ds_output_path}: {exc}")
 
         workspace_root = os.path.abspath(os.path.join(base_dir, ".."))
         kaggle_dir = os.path.join(workspace_root, "kaggle_training")
@@ -899,8 +899,11 @@ def generate_inference_notebook(model_key, export_dir, unified_models_registry=N
             with open(k_out, "w", encoding='utf-8') as f:
                 f.write(json_str)
             print(f"[OK] Synchronized Kaggle Training Notebook: {k_out}")
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[WARNING] Failed to write Kaggle notebook {k_out}: {exc}")
+
+
+generate_training_notebook = generate_inference_notebook
 
 
 def generate_usage_notebook(model_key, export_dir, unified_models_registry=None, config=None):
@@ -1954,8 +1957,8 @@ def generate_colab_inference_notebook(model_key, export_dir, unified_models_regi
                         with open(ds_output_path, "w", encoding='utf-8') as f:
                             f.write(json_str)
                         print(f"[OK] Synchronized Dataset Manifold Notebook: {ds_output_path}")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        print(f"[WARNING] Failed to write manifold notebook {ds_output_path}: {exc}")
 
         workspace_root = os.path.abspath(os.path.join(base_dir, ".."))
         colab_dir = os.path.join(workspace_root, "colab_training")
@@ -1965,8 +1968,11 @@ def generate_colab_inference_notebook(model_key, export_dir, unified_models_regi
             with open(c_out, "w", encoding='utf-8') as f:
                 f.write(json_str)
             print(f"[OK] Synchronized Colab Training Notebook: {c_out}")
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[WARNING] Failed to write Colab notebook {c_out}: {exc}")
+
+
+generate_colab_training_notebook = generate_colab_inference_notebook
 
 
 def generate_colab_usage_notebook(model_key, export_dir, unified_models_registry=None, config=None):

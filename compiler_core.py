@@ -17,12 +17,30 @@ PYTORCH_CUDA_ALLOC_CONF) must be set before `import torch`, because torch
 reads them at module-import time. bootstrap_runtime() therefore runs between
 the stdlib imports and the heavy imports. The resulting E402 warnings are
 declared once in pyproject.toml — never inline.
+
+CLI contract
+------------
+This module DOES NOT parse sys.argv on import. The entry point must call::
+
+    import compiler_core as cc
+    args = cc.configure()       # parses sys.argv (or a list), applies overrides
+
+before invoking any worker function. Spawned worker processes on Windows
+re-import this module with a different argv; the parent MUST forward the
+Namespace through the initializer::
+
+    Pool(..., initializer=cc.init_worker,
+         initargs=(cc.CONFIG, dped, phys, cc.get_args()))
 """
 
 # ─── Standard library (safe to import anywhere) ─────────────────────────────
+import argparse
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ─── Runtime bootstrap (MUST run before torch is imported) ─────────────────
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +74,8 @@ __all__ = [
     "CONFIG", "DEFAULT_CONFIG", "META", "VERSION", "YAML_DATA",
     "INPUT_ROOT", "OUT_PARENT", "CATEGORY_MAP", "DATASETS_META",
     "CATEGORY_MAP_PATH", "CONFIG_PATH",
+    # CLI configuration (Phase 1.5 — replaces module-level `args` / `parser`)
+    "configure", "get_args", "set_args",
     # Runtime (Phase 1.7)
     "bootstrap_runtime", "get_device_info",
     # Utils (Phase 1.5.5)
@@ -80,6 +100,8 @@ __all__ = [
     "Sample", "Writer", "make_writer", "parse_also_format",
     # Generators (Phase 5)
     "GenerationResult", "LabelGenerator", "PromptGenerator", "MaskGenerator",
+    # Degradation Engine (Phase 6)
+    "DegradationProfile", "CompositeProfile", "DynamicDegrader", "composite", "parse_profile",
     # Core API (defined below)
     "detect_task", "get_labeler",
     "init_worker", "batch_worker",
@@ -135,12 +157,95 @@ META: dict[str, Any] = YAML_DATA.get("_registry_metadata", {})
 VERSION: str = META.get("version", "4.2.0")
 
 
-# ─── CLI args (Phase 1.5: SSOT in cli_args.py) ──────────────────────────────
-from cli_args import build_parser
+# ─── CLI configuration (Phase 1.5: SSOT in cli_args.py) ─────────────────────
+# NOTE: Nothing here runs at import time. The entry point must call
+# configure() explicitly before any worker function is invoked.
+_args: argparse.Namespace | None = None
 
-parser = build_parser()
-args = parser.parse_args()
 
+def configure(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments and apply CONFIG overrides.
+
+    Must be called once from the process entry point (typically
+    manifold_compile.py) BEFORE any worker function or `get_args()` use.
+
+    Calling this more than once is safe but overwrites the previous
+    Namespace and re-applies CLI overrides to CONFIG (idempotent for the
+    same argv).
+    """
+    global _args
+    from cli_args import build_parser  # deferred: was module-level before
+    _args = build_parser().parse_args(argv)
+    _apply_cli_overrides(_args)
+    return _args
+
+
+def set_args(ns: argparse.Namespace) -> None:
+    """Inject a pre-parsed Namespace.
+
+    Used by spawned worker processes (Windows spawn) where sys.argv in the
+    child is not the parent's argv. The parent should pass
+    `get_args()` as the 4th element of `initargs` to the Pool.
+    """
+    global _args
+    _args = ns
+
+
+def get_args() -> argparse.Namespace:
+    """Return the active Namespace, raising if the module isn't configured."""
+    if _args is None:
+        raise RuntimeError(
+            "compiler_core has not been configured. Call "
+            "compiler_core.configure() from your entry point before using "
+            "worker functions, or pass args=... to init_worker() in spawned "
+            "worker processes."
+        )
+    return _args
+
+
+def _apply_cli_overrides(ns: argparse.Namespace) -> None:
+    """Apply CLI flags to CONFIG.
+
+    Extracted verbatim from the previously module-level block; only the
+    trigger point moved.
+    """
+    if getattr(ns, "workers", None):
+        CONFIG["num_workers"] = ns.workers
+
+    # Phase 3: CLI overrides for transcode policy.
+    if getattr(ns, "image_format", None):
+        CONFIG["image_format"] = ns.image_format
+    if getattr(ns, "image_quality", None) is not None:
+        CONFIG["image_quality"] = ns.image_quality
+    if getattr(ns, "target_quality", None) is not None:
+        CONFIG["target_quality"] = ns.target_quality
+    if getattr(ns, "mask_format", None):
+        CONFIG["mask_format"] = ns.mask_format
+
+    # Phase 5: CLI overrides for generation strategies.
+    if getattr(ns, "label_strategy", None):
+        CONFIG["label_strategy"] = ns.label_strategy
+    if getattr(ns, "prompt_strategy", None):
+        CONFIG["prompt_strategy"] = ns.prompt_strategy
+    if getattr(ns, "mask_strategy", None):
+        CONFIG["mask_strategy"] = ns.mask_strategy
+
+
+# Backwards-compat trap: give a clear migration message instead of a cryptic
+# AttributeError when old call sites still touch `compiler_core.args`.
+def __getattr__(name: str) -> Any:
+    if name in ("args", "parser"):
+        raise AttributeError(
+            f"compiler_core.{name} no longer exists. Call "
+            f"compiler_core.configure() in your entry point and use "
+            f"compiler_core.get_args() (or pass args= to init_worker() in "
+            f"spawned workers)."
+        )
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# Static paths. None of these depend on CLI args — they were already
+# constants before the refactor.
 INPUT_ROOT = Path("./raw-sets")
 OUT_PARENT = Path(META.get("output_folder_name", "../LemGendaryDatasets"))
 CATEGORY_MAP_PATH = Path("./category_map.json")
@@ -152,27 +257,6 @@ else:
     CATEGORY_MAP = {}
 
 DATASETS_META: dict[str, Any] = YAML_DATA.get("datasets", {})
-
-if args.workers:
-    CONFIG["num_workers"] = args.workers
-
-# Phase 3: CLI overrides for transcode policy.
-if getattr(args, "image_format", None):
-    CONFIG["image_format"] = args.image_format
-if getattr(args, "image_quality", None) is not None:
-    CONFIG["image_quality"] = args.image_quality
-if getattr(args, "target_quality", None) is not None:
-    CONFIG["target_quality"] = args.target_quality
-if getattr(args, "mask_format", None):
-    CONFIG["mask_format"] = args.mask_format
-
-# Phase 5: CLI overrides for generation strategies.
-if getattr(args, "label_strategy", None):
-    CONFIG["label_strategy"] = args.label_strategy
-if getattr(args, "prompt_strategy", None):
-    CONFIG["prompt_strategy"] = args.prompt_strategy
-if getattr(args, "mask_strategy", None):
-    CONFIG["mask_strategy"] = args.mask_strategy
 
 
 # ─── Package re-exports ────────────────────────────────────────────────────
@@ -197,14 +281,21 @@ from audit.ground_truth import GroundTruthCaches
 from audit.vision_audit import VisionAuditor
 from audit.dedup import ExactHasher, PerceptualHasher
 from audit.reject_log import RejectLog
+from formats.base import Sample, Writer, make_writer, parse_also_format
 from formats.transcode import ImageTranscoder, KeepFormatError
 from formats.webdataset import ShardWriter, WebDatasetWriter
 from formats.mds import MDSWriter
 from formats.litdata import LitDataWriter
 from formats.parquet import ParquetWriter
 from formats.directory import DirectorySampleSource, DirectoryWriter
-from formats.base import Sample, Writer, make_writer, parse_also_format
 from generators import GenerationResult, LabelGenerator, MaskGenerator, PromptGenerator
+from degrade import (
+    CompositeProfile,
+    DegradationProfile,
+    DynamicDegrader,
+    composite,
+    parse_profile,
+)
 from runtime.environment import get_device_info
 
 
@@ -292,8 +383,19 @@ def init_worker(
     config: dict[str, Any],
     dped_cache: set[str] | None = None,
     physical_index: set[str] | None = None,
+    args: argparse.Namespace | None = None,
 ) -> None:
-    """Per-process worker bootstrap. Loads models, GT caches, device config."""
+    """Per-process worker bootstrap. Loads models, GT caches, device config.
+
+    On Windows spawn the child re-imports this module with a different
+    sys.argv; the parent MUST pass `get_args()` as the 4th element of
+    `initargs`. If `args` is None, the parent's module state is used — this
+    only works in the parent process itself, not in spawned children.
+    """
+    if args is not None:
+        set_args(args)
+    a = get_args()
+
     global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX, _GT_CACHE
     global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER, TRANSCODER
     global LABEL_GEN, MASK_GEN
@@ -318,8 +420,8 @@ def init_worker(
     if os.name != "nt" or multiprocessing.current_process().name != "MainProcess":
         try:
             torch.set_num_threads(1)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed setting torch num threads: %s", exc)
 
     # Device selection.
     if os.name == "nt" or not torch.cuda.is_available():
@@ -333,8 +435,8 @@ def init_worker(
 
     # Phase 2 audit primitives.
     AUDITOR = VisionAuditor(CONFIG)
-    EXACT_HASHER = ExactHasher(no_hash=args.no_hash)
-    PERCEPTUAL_HASHER = PerceptualHasher(no_hash=args.no_hash)
+    EXACT_HASHER = ExactHasher(no_hash=a.no_hash)
+    PERCEPTUAL_HASHER = PerceptualHasher(no_hash=a.no_hash)
 
     # Phase 3 transcoder.
     policy = ImageFormatPolicy(
@@ -345,7 +447,7 @@ def init_worker(
     )
     TRANSCODER = ImageTranscoder(policy)
 
-    mission = detect_task(args.model)
+    mission = detect_task(a.model)
 
     # Phase 5: resolve strategies.
     _label_strategy = CONFIG.get("label_strategy") or _infer_label_strategy(mission)
@@ -359,10 +461,10 @@ def init_worker(
             _gen_labeler = None
 
     # NIMA quality vetting.
-    if mission in ["quality", "classification", "diffusion"] and not args.no_vetting:
+    if mission in ["quality", "classification", "diffusion"] and not a.no_vetting:
         model_type = (
             "aesthetic"
-            if mission == "diffusion" or (args.model and "aesthetic" in args.model)
+            if mission == "diffusion" or (a.model and "aesthetic" in a.model)
             else "technical"
         )
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -370,26 +472,26 @@ def init_worker(
         if os.path.exists(model_path):
             try:
                 SENTRY = QualitySentry(model_path, model_name=model_type, device=device)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Worker failed loading QualitySentry (%s): %s", model_path, exc)
 
     # Ground truth caches.
     if mission in ["quality", "classification", "diffusion", "restoration"]:
-        _GT_CACHE.load(INPUT_ROOT, args.model or "")
+        _GT_CACHE.load(INPUT_ROOT, a.model or "")
 
     # Diffusion captioning.
     if mission == "diffusion":
         try:
             CAPTIONER = CaptionSentry(device=device)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Worker failed loading CaptionSentry: %s", exc)
 
     # Style manifold (CLIP) — loaded on CPU to conserve VRAM.
     if "clip" in str(config):
         try:
             CLIP_MANIFOLD = CLIPManifold(device="cpu")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Worker failed loading CLIPManifold: %s", exc)
 
     # Phase 5 generators (constructed after all model wrappers are loaded).
     if _label_strategy:
@@ -546,8 +648,8 @@ def _write_image_phase3(
             with open(final_path, "wb") as f:
                 f.write(encoded)
             return final_path
-        except KeepFormatError:
-            pass
+        except KeepFormatError as kfe:
+            logger.debug("Retaining format for %s per policy: %s", source_path.name, kfe)
         except Exception as e:
             print(f"[WARN] Transcode failed for {source_path.name}: {e}; using copy fallback.")
 
@@ -563,12 +665,12 @@ def _write_image_phase3(
     try:
         os.link(str(source_path), str(out_path))
         return out_path
-    except (OSError, AttributeError):
-        pass
+    except (OSError, AttributeError) as exc:
+        logger.debug("Hardlink creation skipped on %s, falling back to copy: %s", out_path.name, exc)
     try:
         shutil.copy2(str(source_path), str(out_path))
-    except (shutil.SameFileError, OSError):
-        pass
+    except (shutil.SameFileError, OSError) as exc:
+        logger.debug("Copy fallback error for %s: %s", out_path.name, exc)
     return out_path
 
 
@@ -578,6 +680,8 @@ def process_image(
     output_root_str, skip_labeling=False,
 ):
     """Worker function for parallel processing."""
+    a = get_args()  # was: module-global `args`
+
     img_path: Any = "Unknown"
     nima_score = 1.0
     nima_probs = [0.0] * 10
@@ -681,8 +785,8 @@ def process_image(
                                             break
                                 if target_img_path:
                                     break
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        logger.debug("Target sibling search OSError on %s: %s", parent, exc)
 
                 if not target_img_path:
                     for ancestor in [parent, parent.parent]:
@@ -700,10 +804,10 @@ def process_image(
                                             if potential_rel.exists():
                                                 target_img_path = str(potential_rel)
                                                 break
-                                        except ValueError:
-                                            pass
-                            except OSError:
-                                pass
+                                        except ValueError as exc:
+                                            logger.debug("Relative path computation failed: %s", exc)
+                            except OSError as exc:
+                                logger.debug("Ancestor sibling search OSError on %s: %s", ancestor, exc)
                             if target_img_path:
                                 break
 
@@ -734,7 +838,7 @@ def process_image(
 
         # ── Deferred image loading ──────────────────────────────────────────
         needs_stats = (
-            (task in ["quality", "diffusion"] and not args.no_vetting)
+            (task in ["quality", "diffusion"] and not a.no_vetting)
             or (not skip_labeling)
         )
         if needs_stats:
@@ -769,8 +873,8 @@ def process_image(
                     votes = _GT_CACHE.ava[img_id]
                     nima_probs = [votes[f"vote_{i}"] for i in range(1, 11)]
                     nima_score = sum(p * (i + 1) for i, p in enumerate(nima_probs))
-            except (ValueError, KeyError):
-                pass
+            except (ValueError, KeyError) as exc:
+                logger.debug("AVA score extraction fallback for %s: %s", img_path.name, exc)
 
         elif "aadb" in slug and _GT_CACHE.aadb:
             try:
@@ -778,8 +882,8 @@ def process_image(
                 if raw_score is not None:
                     nima_score = (raw_score * 9.0) + 1.0
                     nima_probs = get_gaussian_probs(nima_score)
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as exc:
+                logger.debug("AADB score extraction fallback for %s: %s", img_path.name, exc)
 
         elif "laion" in slug:
             try:
@@ -793,8 +897,8 @@ def process_image(
                     if col in df_subset.columns:
                         nima_score = float(df_subset[col].iloc[0])
                         nima_probs = get_gaussian_probs(nima_score)
-            except (TypeError, ValueError, KeyError):
-                pass
+            except (TypeError, ValueError, KeyError) as exc:
+                logger.debug("LAION score extraction fallback for %s: %s", img_path.name, exc)
 
         elif _GT_CACHE.tid and img_path.name.lower() in _GT_CACHE.tid:
             try:
@@ -802,8 +906,8 @@ def process_image(
                 if raw_score is not None:
                     nima_score = raw_score
                     nima_probs = get_gaussian_probs(nima_score)
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as exc:
+                logger.debug("TID score extraction fallback for %s: %s", img_path.name, exc)
 
         is_authenticity = "authentic" in prefix.lower()
         if is_authenticity:
@@ -899,8 +1003,8 @@ def process_image(
                     except (OSError, AttributeError):
                         try:
                             shutil.copy2(out_img_path, out_tgt_path)
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            logger.debug("Target copy fallback error for %s: %s", out_tgt_path.name, exc)
 
         elif task == "parameter_prediction":
             if target_img_path:
@@ -925,27 +1029,27 @@ def process_image(
                 except (OSError, AttributeError):
                     try:
                         shutil.copy2(str(out_img_path), str(out_tgt_path))
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        logger.debug("Param prediction copy fallback error for %s: %s", out_tgt_path.name, exc)
 
         # ── Annotation dispatch ─────────────────────────────────────────────
         annotations: list[_Annotation] = []
 
         if fmt == "coco" and ann_data is not None:
-            for a in ann_data:
-                cls = map_category(str(a["category_id"]), prefix, CATEGORY_MAP)
-                if "keypoints" in a and a["keypoints"]:
-                    kpts = normalize_points(a["keypoints"], w, hgt, stride=3)
-                    annotations.append({"type": "pose", "cls": cls, "data": a["bbox"] + kpts})
-                elif "segmentation" in a and a["segmentation"]:
-                    poly_raw = (a["segmentation"][0]
-                                if isinstance(a["segmentation"], list) and len(a["segmentation"]) > 0
+            for a_ in ann_data:
+                cls = map_category(str(a_["category_id"]), prefix, CATEGORY_MAP)
+                if "keypoints" in a_ and a_["keypoints"]:
+                    kpts = normalize_points(a_["keypoints"], w, hgt, stride=3)
+                    annotations.append({"type": "pose", "cls": cls, "data": a_["bbox"] + kpts})
+                elif "segmentation" in a_ and a_["segmentation"]:
+                    poly_raw = (a_["segmentation"][0]
+                                if isinstance(a_["segmentation"], list) and len(a_["segmentation"]) > 0
                                 else [])
                     if poly_raw:
                         poly = normalize_points(poly_raw, w, hgt, stride=2)
                         annotations.append({"type": "segmentation", "cls": cls, "data": poly})
                 else:
-                    annotations.append({"type": "bbox", "cls": cls, "data": a["bbox"]})
+                    annotations.append({"type": "bbox", "cls": cls, "data": a_["bbox"]})
 
         elif fmt == "parquet" and ann_data and not isinstance(ann_data, dict):
             df_subset, mapping = cast("tuple[Any, dict[str, Any]]", ann_data)
@@ -971,28 +1075,28 @@ def process_image(
                 try:
                     cls = map_category(entry["class"], prefix, CATEGORY_MAP)
                     annotations.append({"type": "bbox", "cls": cls, "data": entry["bbox"]})
-                except (KeyError, TypeError):
-                    pass
+                except (KeyError, TypeError) as exc:
+                    logger.debug("Matlab annotation parsing error for entry: %s", exc)
 
         elif fmt == "xml" and ann_data:
             if isinstance(ann_data, (str, Path)):
                 xml_anns = parse_xml(ann_data)
-                for a in xml_anns:
-                    cls = map_category(a["class"], prefix, CATEGORY_MAP)
-                    a_bbox = cast("list[Any]", a["bbox"])
+                for a_ in xml_anns:
+                    cls = map_category(a_["class"], prefix, CATEGORY_MAP)
+                    a_bbox = cast("list[Any]", a_["bbox"])
                     annotations.append({"type": "bbox", "cls": cls, "data": a_bbox})
 
         elif fmt == "yolo" and ann_data:
             if isinstance(ann_data, (str, Path)):
                 yolo_anns = parse_yolo(ann_data, w, hgt)
-                for a in yolo_anns:
+                for a_ in yolo_anns:
                     if task == "pose":
                         cls = map_category("0", prefix, CATEGORY_MAP)
                     else:
-                        cls = map_category(a["class"], prefix, CATEGORY_MAP)
-                    a_bbox = cast("list[Any]", a["bbox"])
-                    if "keypoints" in a and a["keypoints"]:
-                        a_kpts = cast("list[Any]", a["keypoints"])
+                        cls = map_category(a_["class"], prefix, CATEGORY_MAP)
+                    a_bbox = cast("list[Any]", a_["bbox"])
+                    if "keypoints" in a_ and a_["keypoints"]:
+                        a_kpts = cast("list[Any]", a_["keypoints"])
                         annotations.append({"type": "pose", "cls": cls, "data": a_bbox + a_kpts})
                     else:
                         annotations.append({"type": "bbox", "cls": cls, "data": a_bbox})
@@ -1042,16 +1146,16 @@ def process_image(
                     freqs = json.loads(str(ann_data["ss_tag_frequency"]))
                     for bucket in freqs.values():
                         tags.extend(bucket.keys())
-                except (json.JSONDecodeError, AttributeError):
-                    pass
+                except (json.JSONDecodeError, AttributeError) as exc:
+                    logger.debug("Failed parsing ss_tag_frequency: %s", exc)
             if not tags and "ss_datasets" in ann_data:
                 try:
                     ds_info = json.loads(str(ann_data["ss_datasets"]))
                     for ds in ds_info:
                         if "tag_frequency" in ds:
                             tags.extend(ds["tag_frequency"].keys())
-                except (json.JSONDecodeError, AttributeError):
-                    pass
+                except (json.JSONDecodeError, AttributeError) as exc:
+                    logger.debug("Failed parsing ss_datasets: %s", exc)
             if tags:
                 unique_tags = list(set(tags))[:20]
                 for tag in unique_tags:
@@ -1062,12 +1166,10 @@ def process_image(
                     })
 
         # ── Auto-labeling fallback (Phase 5 dispatch) ───────────────────────
-        # `img is not None` is required for Pyrefly to narrow the union
-        # before both the LabelGenerator call and the get_labeler fallback.
         is_autolabeled = False
         if (not annotations
                 and task not in ["quality", "classification"]
-                and not args.no_labeling
+                and not a.no_labeling
                 and not skip_labeling
                 and img is not None):
             if LABEL_GEN is not None:
@@ -1131,15 +1233,15 @@ def process_image(
         try:
             if out_img_path.exists():
                 size_bytes += out_img_path.stat().st_size
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Failed reading file size for %s: %s", out_img_path, exc)
 
         return {
             "name": name, "source": slug, "task": task, "split": split,
             "hash": h, "perceptual_hash": ph,
             "nima_score": round(nima_score, 3), "is_autolabeled": is_autolabeled,
-            "has_segmentation": any(a["type"] == "segmentation" for a in annotations),
-            "has_pose": any(a["type"] == "pose" for a in annotations),
+            "has_segmentation": any(a_["type"] == "segmentation" for a_ in annotations),
+            "has_pose": any(a_["type"] == "pose" for a_ in annotations),
             "label_path": str(label_file_path.resolve()),
             "path": str(out_img_path.resolve()),
             "size": size_bytes,

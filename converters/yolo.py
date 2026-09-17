@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def parse_yolo(
@@ -36,8 +39,7 @@ def parse_yolo(
                     if len(parts) > 5:
                         item["keypoints"] = list(map(float, parts[5:]))
                     annotations.append(item)
-    except OSError:
-        # Missing / unreadable label file → return empty list. The caller
-        # treats an empty result the same as "no labels available".
-        pass
+    except OSError as exc:
+        # Missing / unreadable label file → log diagnostic and return empty list.
+        logger.debug("Label file unreadable or absent at %s: %s", txt_path, exc)
     return annotations

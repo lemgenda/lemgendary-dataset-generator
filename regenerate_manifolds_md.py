@@ -17,10 +17,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import yaml
 
@@ -58,8 +61,8 @@ def _count_from_registry(manifold_path: Path) -> int | None:
             n = cur.fetchone()[0]
             conn.close()
             return int(n)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not read count from registry %s: %s", db, exc)
     # Legacy location
     legacy = ROOT / ".cache" / f"registry_{manifold_path.name}.db"
     if legacy.exists():
@@ -69,8 +72,8 @@ def _count_from_registry(manifold_path: Path) -> int | None:
             n = cur.fetchone()[0]
             conn.close()
             return int(n)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not read count from legacy registry %s: %s", legacy, exc)
     return None
 
 
@@ -86,10 +89,10 @@ def _count_from_disk(manifold_path: Path) -> int:
                 try:
                     meta = pq.read_metadata(str(pqf))
                     total += meta.num_rows
-                except Exception:
-                    pass
-        except ImportError:
-            pass
+                except Exception as exc:
+                    logger.debug("Could not read parquet metadata for %s: %s", pqf, exc)
+        except ImportError as exc:
+            logger.debug("pyarrow unavailable for counting parquet rows: %s", exc)
         if total:
             return total
 
@@ -100,8 +103,8 @@ def _count_from_disk(manifold_path: Path) -> int:
         if d.exists():
             try:
                 total += sum(1 for f in d.iterdir() if f.is_file())
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed scanning split directory %s: %s", d, exc)
     return total
 
 

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def get_dir_size(path) -> float:
@@ -16,8 +19,8 @@ def get_dir_size(path) -> float:
                     total += entry.stat().st_size
                 elif entry.is_dir():
                     total += _get_bytes(entry.path)
-        except (PermissionError, OSError):
-            pass
+        except (PermissionError, OSError) as exc:
+            logger.debug("Failed scanning directory %s: %s", p, exc)
         return total
     return _get_bytes(path) / (1024 ** 3)
 
@@ -31,11 +34,11 @@ def remove_empty_dirs(path) -> None:
             if p.exists() and p.is_dir():
                 try:
                     p.rmdir()
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("Non-empty directory or permission error pruning %s: %s", p, exc)
         p = path / sub
         if p.exists() and p.is_dir():
             try:
                 p.rmdir()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Non-empty directory or permission error pruning %s: %s", p, exc)

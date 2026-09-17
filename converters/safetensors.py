@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from safetensors import safe_open
+
+logger = logging.getLogger(__name__)
 
 
 def parse_safetensors(st_path: str | Path) -> dict[str, Any]:
@@ -21,7 +24,7 @@ def parse_safetensors(st_path: str | Path) -> dict[str, Any]:
             meta = f.metadata()
             if meta is not None:
                 metadata = dict(meta)
-    except (OSError, RuntimeError):
-        # Corrupt or non-safetensors file → no metadata, treat as absent.
-        pass
+    except (OSError, RuntimeError) as exc:
+        # Corrupt or non-safetensors file → log diagnostic and treat metadata as absent.
+        logger.debug("Failed reading safetensors metadata from %s: %s", st_path, exc)
     return metadata

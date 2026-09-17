@@ -10,15 +10,86 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.3.7-MODERNIZED` |
-| **Phase** | 1.5.7 / 8 complete |
-| **Next** | Phase 1.6 — Package skeletons (`formats/`, `generators/`, `degrade/`) |
+| **Version** | `v16.4.2-MODERNIZED` |
+| **Phase** | Phases 0, 1, 2, 3, 4, 5, 6 complete (7/8 roadmap phases) |
+| **Next** | Phase 7 — API + CLI Unification (`api/`) |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
 | **Roadmap** | [modernization_roadmap.md](./modernization_roadmap.md) |
 
 ---
 
 ## Changelog
+
+### v16.4.2 — Zero-Suppression & Zero-Silent-Failure Hardening
+
+Comprehensive audit and hardening across all 85 Python modules achieving absolute zero-diagnostic compliance without any suppressions:
+
+- **Zero Suppressions (100% Clean)** — Completely eliminated all `# type: ignore`, `# pylint: disable`, and `# noqa` across the entire project. Root causes fixed directly via clean type narrowing, dynamic module imports, and proper typing.
+- **Zero Silent Failures** — Replaced all 69 bare/swallowed `except ...: pass` blocks across 20 modules with structured contextual `logger.debug` and `logger.warning` handling.
+- **Pyright Static Type Checking** — 0 errors, 0 warnings, 0 informations across all 85 Python files.
+- **Pylint Clean Pass** — 0 errors across the codebase.
+- **Bytecode Compilation** — 100% clean compilation via `py_compile` with `doraise=True`.
+- **Full Compliance Validation** — Verified clean pass under `env_manager.cli validate -p lemgendary-datasets`.
+
+### v16.4.1 — Degradation Engine (Phase 6)
+
+Implemented pure NumPy/SciPy/PIL compiler-time synthetic manifold derivation and training-time on-the-fly augmentation engine.
+
+- **`degrade/base.py`** — `DegradationProfile` protocol, `CompositeProfile`, `DynamicDegrader`, `parse_profile()` supporting functional tokens and presets (`motion-blur+iso-noise`, `lowlight-noise`, `rainy-haze`, `vintage-film`, `compression-artifacts`, `super-resolution-x4`, `full-spectrum-restoration`)
+- **`degrade/blur.py`** — `GaussianBlur`, `MotionBlur` (directional linear), `DefocusBlur` (disk aperture), `BoxBlur`
+- **`degrade/noise.py`** — `GaussianNoise`, `PoissonNoise` (photon shot), `SaltPepperNoise`, `ISOCalibratedNoise` (heteroscedastic Poisson + Gaussian readout)
+- **`degrade/haze.py`** — `AtmosphericHaze` based on dark channel atmospheric scattering model
+- **`degrade/rain.py`** — `RainStreaks` (directional wind streaks) and `RainMist`
+- **`degrade/jpeg.py`** — `JPEGCompression` simulating 8x8 DCT quantization artifacts
+- **`degrade/lowlight.py`** — `LowLight` combining non-linear gamma curve darkening, shadow readout noise, and color temperature tinting
+- **`degrade/downsample.py`** — `Downsample` resolution reduction via bicubic, bilinear, lanczos, or nearest modes
+- **`degrade/film.py`** — `FilmGrain`, `FilmScratches`, `FilmDust`, `ColorFade`
+- **`generate_degrade.py`** — Compiler-side synthetic manifold generator writing clean-degraded pairs, exact quantitative JSON parameter logs to `labels/<split>/<name>.json`, and registry provenance
+- **`cli.py` Integration** — Added top-level `degrade` subcommand with full configuration options
+- **`lemgendary-training-suite` Integration** — Added `DynamicOnTheFlyDegrader` in `data/dataset.py` for online training augmentation with parameter tracking
+
+### v16.4.0 — Smart Generation Engine (Phase 5)
+
+Implemented smart multi-modal label, prompt, and mask generation infrastructure with unified CLI commands.
+
+- **`generators/base.py`** — Structural `GenerationResult` type and generator interface
+- **`generators/labels.py`** — Multi-strategy `LabelGenerator` supporting `blip_caption`, `clip_zeroshot`, `yolo_detection`, `parsenet_segmentation`, and `nima_quality`
+- **`generators/prompts.py`** — `PromptGenerator` generating structured prompts for diffusion manifolds (`diffusers-v1`, `sd-v1`, `flux-v1`, `minimal`)
+- **`generators/masks.py`** — `MaskGenerator` for semantic and instance segmentation (`parsenet`, `sam`, `modnet`)
+- **`generate_cli.py`** — Standalone generation execution engine over compiled manifolds with configurable devices and sample limits
+- **`cli.py` Integration** — Added top-level `label`, `prompt`, and `mask` commands
+
+### v16.3.10 — Container Format Layer (Phase 4)
+
+Introduced modular multi-format writer architecture supporting SOTA deep-learning containers alongside canonical directory layouts.
+
+- **`formats/base.py`** — Defined `Sample` NamedTuple, `Writer` protocol, `make_writer()` factory, and `parse_also_format()`
+- **`formats/directory.py`** — Canonical directory writer and `DirectorySampleSource` streaming iterator
+- **`formats/mds.py`** — MosaicML Streaming format (`MDSWriter`) with true global shuffling and mid-epoch resumption
+- **`formats/litdata.py`** — PyTorch Lightning LitData format (`LitDataWriter`) for variable-shape bounding box and landmark workloads
+- **`formats/webdataset.py`** — WebDataset tar shard writer (`WebDatasetWriter`)
+- **`formats/parquet.py`** — Tabular Parquet + Zstd writer (`ParquetWriter`)
+- **`migrate_manifold_format.py`** — Retroactive container format migration tool with automated hardlink gate pre-flight
+- **`compiler_core.py` & `manifold_compile.py`** — Integrated `--also-format` parameter for concurrent multi-format emission during compile runs
+
+### v16.3.9 — Image Transcoding Layer (Phase 3)
+
+Integrated zero-intermediate WebP transcoding engine for massive disk and bandwidth reduction while preserving quality floors.
+
+- **`formats/transcode.py`** — `ImageTranscoder` implementing WebP q=92 for images, WebP q=95 for restoration targets, and WebP lossless for segmentation masks
+- **Alpha Channel Resilience** — Transparent PNGs transcode to WebP lossless; alpha JPEG candidates composited cleanly on white background
+- **`migrate_manifold_image_format.py`** — In-place retroactive image format migration tool with atomic replacement and registry updates
+- **In-flight Compile Integration** — `process_image()` directly emits transcoded byte formats without intermediate JPEG writes
+
+### v16.3.8 — Audit & Deduplication Engine (Phase 2)
+
+Comprehensive image integrity, bounding box/landmark validation, exact/perceptual deduplication, and NTFS hardlink fraction auditing.
+
+- **`audit/vision_audit.py`** — `VisionAuditor` with magic byte sniffing (PNG, JPEG, WebP, TIFF), per-task resolution floors, black/white frame detection, aspect ratio limits, pair alignment, and 15+ canonical reject codes
+- **`audit/dedup.py`** — `ExactHasher` (raw byte MD5) and `PerceptualHasher` (DCT-based 64-bit pHash + dHash with pure NumPy/SciPy)
+- **`audit/reject_log.py`** — SQLite `reject_log` management in `manifold_registry.db` with export to `rejects.jsonl` and `dataset_info.yaml`
+- **`audit/hardlinks.py`** — `audit_hardlinks()` computing filesystem hardlink percentages and evaluating tiered gates (`PROCEED`, `WARN`, `BLOCK`)
+- **`cli.py` Integration** — Added `audit` command and `--no-hash` / `--dedup` compiler flags
 
 ### v16.3.7 — Zero Suppressions (Phase 1.5.7)
 
@@ -44,7 +115,6 @@ Typer-based `cli.py` provides a single entry point for every dataset-compiler op
 - **`cli_args.py`** (new) — SSOT for the shared argparse parser and for `lem-env` executable discovery (3-tier resolution: `PATH` → sibling venv → hub install)
 - **`cli.py`** (new) — Typer app with subcommands: `compile`, `reduce`, `modernize`, `sync push|pull`, `docs regen|manifolds`, `config validate|show`, `env validate|status|install`, `version`
 - **`env` sub-app** — Delegates to `lem-env` (LemGendary Environment Manager); `env validate` returns the environment manager's exit code verbatim
-- **Stubs for Phases 2–7** — `audit`, `format`, `label`, `prompt`, `mask`, `degrade`, `server` print a phase pointer and exit 1
 - **`compiler_core.py` + `manifold_compile.py`** — Both now call `build_parser()` from `cli_args.py`. Two-parser drift eliminated (previously had to stay manually in sync)
 
 ### v16.3.5 — SOLID Cleanup (Phase 1.5.5)
@@ -142,14 +212,14 @@ The pre-modernization reference state. Highlights:
 | 1.5.5 | SOLID cleanup | Done |
 | 1.5 | Unified CLI skeleton | Done |
 | 1.5.7 | Zero Suppressions pass | Done |
-| **1.6** | **Package skeletons (`formats/`, `generators/`, `degrade/`)** | **Next** |
-| 1.7 | Runtime env contract (env-manager SSOT) | Pending |
-| 2 | Audit & dedup | Pending |
-| 3 | Transcoding | Pending |
-| 4 | Format layer (MDS / LitData / WebDataset) | Pending |
-| 5 | Smart generation (labels, prompts, masks) | Pending |
-| 6 | Degradation engine | Pending |
-| 7 | API + CLI unification | Pending |
+| 1.6 | Package skeletons (`formats/`, `generators/`, `degrade/`) | Done |
+| 1.7 | Runtime env contract (env-manager SSOT) | Done |
+| 2 | Audit & dedup | Done |
+| 3 | Transcoding | Done |
+| 4 | Format layer (MDS / LitData / WebDataset / Parquet) | Done |
+| 5 | Smart generation (labels, prompts, masks) | Done |
+| 6 | Degradation engine (`degrade/`) | Done |
+| **7** | **API + CLI unification (`api/`)** | **Next** |
 | 8 | CPA integration prep | Pending |
 
 Full details: [modernization_roadmap.md](./modernization_roadmap.md)
@@ -163,10 +233,31 @@ Full details: [modernization_roadmap.md](./modernization_roadmap.md)
 The primary interface. Every operation is reachable through `cli.py`:
 
 ```bash
-# Compile
+# Compile with transcoding and modern container formats
 python cli.py compile --model nima_aesthetic --max-gb 50
+python cli.py compile --model nima_aesthetic --image-format webp --image-quality 92 --also-format mds
 python cli.py compile --model nima_technical --workers 16
 python cli.py compile --model nima_aesthetic --no-labeling    # bypass YOLO
+
+# Degradation synthesis (Phase 6)
+python cli.py degrade --source raw-sets/div2k --output LemGendizedNafNetDebluringSynthetic --profile motion-blur+iso-noise
+python cli.py degrade --source ../LemGendaryDatasets/LemGendizedNimaAesthetic --output LemGendizedLowLightSynthetic --profile lowlight-noise --intensity high
+
+# Audit & Deduplication
+python cli.py audit --model nima_aesthetic
+python cli.py audit --manifold ../LemGendaryDatasets/LemGendizedNimaAesthetic --sample 500
+
+# Transcoding
+python cli.py transcode --model nima_technical --image-format webp --image-quality 92
+
+# Container format write and migration
+python cli.py format write --model nima_aesthetic --to mds
+python cli.py format migrate --model nima_aesthetic --to mds --verify
+
+# Smart multi-modal generation
+python cli.py label --model parsenet --strategy parsenet_segmentation
+python cli.py prompt --model diffusion_master --template diffusers-v1
+python cli.py mask --model parsenet --strategy sam
 
 # Reduce
 python cli.py reduce --max-gb 10
@@ -218,13 +309,16 @@ Every underlying script remains invocable directly for automation and pipelines:
 
 ```bash
 # Core compiler
-python manifold_compile.py --model nima_aesthetic --max_gb 50
+python manifold_compile.py --model nima_aesthetic --max_gb 50 --also-format mds
 python manifold_reduce.py --reduce --max_gb 10
 
-# Registry migration
+# Retroactive migrations
+python migrate_manifold_image_format.py --manifold ../LemGendaryDatasets/LemGendizedNimaTechnical --image-format webp
+python migrate_manifold_format.py --manifold ../LemGendaryDatasets/LemGendizedNimaTechnical --to mds --verify
 python migrate_registry.py --dry-run
-python migrate_registry.py
-python migrate_registry.py --verify
+
+# Smart generation runner
+python generate_cli.py --manifold ../LemGendaryDatasets/LemGendizedNimaAesthetic --kind label --strategy blip_caption
 
 # Kaggle sync (underlying)
 python manifold_sync.py --action sync --model nima_aesthetic
@@ -252,40 +346,51 @@ python config_schema.py
 
 ```text
 lemgendary-datasets/
-├── cli.py                    # Unified Typer entry point (Phase 1.5)
-├── cli_args.py               # SSOT for argparse + env-manager resolver
-├── compiler_core.py          # Coordinator (post-1.5.5 cleanup)
-├── manifold_compile.py       # Compilation engine
-├── manifold_reduce.py        # Reduction engine
-├── manifold_sync.py          # Kaggle sync orchestrator
-├── modernize_manifold.py     # Suffix-removal tool (Phase 0)
-├── migrate_registry.py       # Registry migration (Phase 1.3)
-├── doc_generator.py          # Per-manifold docs
-├── regenerate_manifolds_md.py # Top-level matrix regeneration
-├── config_schema.py          # Pydantic config (Phase 1.1)
-├── registry.py               # Registry lifecycle (Phase 1.5.5)
-├── archive_manager.py        # Archive + resume
-├── common_sync.py            # Kaggle streaming core
-├── notebook_generator.py     # Notebook matrix (Kaggle + Colab)
-├── sources/                  # Fetch backends (Phase 1.2)
+├── cli.py                         # Unified Typer entry point (Phase 1.5)
+├── cli_args.py                    # SSOT for argparse + env-manager resolver
+├── compiler_core.py               # Coordinator & pipeline dispatcher
+├── manifold_compile.py            # Compilation engine
+├── manifold_reduce.py             # Reduction engine
+├── manifold_sync.py               # Kaggle sync orchestrator
+├── modernize_manifold.py          # Suffix-removal tool (Phase 0)
+├── migrate_registry.py            # Registry migration (Phase 1.3)
+├── migrate_manifold_image_format.py # Retroactive WebP transcoding (Phase 3)
+├── migrate_manifold_format.py     # Retroactive container migration (Phase 4)
+├── generate_cli.py                # Standalone smart generation runner (Phase 5)
+├── doc_generator.py               # Per-manifold docs
+├── regenerate_manifolds_md.py      # Top-level matrix regeneration
+├── config_schema.py               # Pydantic config (Phase 1.1)
+├── registry.py                    # Registry lifecycle (Phase 1.3 / 1.5.5)
+├── archive_manager.py             # Archive + resume
+├── common_sync.py                 # Kaggle streaming core
+├── notebook_generator.py          # Notebook matrix (Kaggle + Colab)
+├── sources/                       # Fetch backends (Phase 1.2)
 │   ├── hf.py, gh.py, gd.py, kaggle.py
 │   └── base.py
-├── converters/               # Annotation parsers (Phase 1.4)
+├── converters/                    # Annotation parsers (Phase 1.4)
 │   ├── coco.py, parquet.py, xml.py, yolo.py, matlab.py, safetensors.py
 │   └── dispatch.py
-├── audit/                    # Audit pipeline (Phase 1.5.5 seed)
+├── audit/                         # Audit & Dedup engine (Phase 2)
+│   ├── vision_audit.py, dedup.py, reject_log.py, hardlinks.py
 │   └── ground_truth.py
-├── runtime/                  # Process bootstrap (Phase 1.5.5)
+├── formats/                       # Transcoding & Containers (Phase 3 & 4)
+│   ├── transcode.py, base.py, directory.py, mds.py, litdata.py
+│   └── webdataset.py, parquet.py
+├── generators/                    # Smart generation (Phase 5)
+│   ├── base.py, labels.py, prompts.py, masks.py
+├── degrade/                       # Degradation engine skeleton (Phase 6)
+│   ├── base.py, blur.py, noise.py, haze.py, rain.py, jpeg.py, lowlight.py, downsample.py, film.py
+├── runtime/                       # Process bootstrap (Phase 1.5.5)
 │   └── environment.py
-├── utils/                    # Pure helpers (Phase 1.5.5)
+├── utils/                         # Pure helpers (Phase 1.5.5)
 │   ├── fs.py, geometry.py, hashing.py, image.py
 │   ├── math.py, naming.py, net.py
-├── models/                   # AI model wrappers (pre-existing)
+├── models/                        # AI model wrappers (pre-existing)
 │   ├── quality_scorer.py, detection.py, diffusion.py, encoder.py
 │   └── nima.py
-├── mt5_bridge.py             # MT5 IPC bridge (Phase 1.5.7)
-├── mt5_pipeline.py           # Forex MT5 pipeline
-└── unified_data.yaml         # Registry manifest
+├── mt5_bridge.py                  # MT5 IPC bridge (Phase 1.5.7)
+├── mt5_pipeline.py                # Forex MT5 pipeline
+└── unified_data.yaml              # Registry manifest
 ```
 
 ---

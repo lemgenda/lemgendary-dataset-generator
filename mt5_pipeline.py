@@ -14,6 +14,7 @@ LemGendary MT5 Data Pipeline v5.4 (Final – NAS100 renamed, Disk‑Error Resili
 import os
 import sys
 import json
+import importlib
 import argparse
 import numpy as np
 import pandas as pd
@@ -71,7 +72,7 @@ CHUNK_SIZE = 20000
 
 def _mt5_call(method_name: str, *args: Any, **kwargs: Any) -> Any:
     try:
-        import MetaTrader5 as mt5_mod  # type: ignore[import-untyped]  # MT5 ships no PEP 561 stubs
+        mt5_mod = importlib.import_module("MetaTrader5")
     except ImportError as exc:
         raise RuntimeError(
             "[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5"
@@ -95,8 +96,8 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
     if login is None and "MT5_LOGIN" in os.environ:
         try:
             login = int(os.environ["MT5_LOGIN"])
-        except ValueError:
-            pass
+        except ValueError as err:
+            print(f" [MT5] Warning: Invalid MT5_LOGIN integer format: {err}")
     if password is None:
         password = os.environ.get("MT5_PASSWORD")
     if server is None:
@@ -132,8 +133,8 @@ def disconnect_mt5():
     try:
         _mt5_call("shutdown")
         print(" [MT5] Disconnected.")
-    except Exception:
-        pass
+    except Exception as err:
+        print(f" [MT5] Warning during shutdown: {err}")
 
 
 # ─── Symbol Resolution (dynamic, caches results) ────────────────────────

@@ -10,6 +10,7 @@ and safe year-by-year disk reclamation.
 import argparse
 import gc
 import json
+import logging
 import os
 import shutil
 import sys
@@ -32,8 +33,8 @@ def get_dir_size_gb(dir_path: Path) -> float:
             p = os.path.join(root, f)
             try:
                 total += os.path.getsize(p)
-            except OSError:
-                pass
+            except OSError as err:
+                logging.debug("Could not read file size for %s: %s", p, err)
     return total / (1024 ** 3)
 
 
@@ -218,8 +219,8 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
                         if hasattr(arr_obj, "_mmap") and arr_obj._mmap is not None:
                             try:
                                 arr_obj._mmap.close()
-                            except Exception:
-                                pass
+                            except Exception as err:
+                                logging.debug("Failed closing mmap on array object: %s", err)
                     del X, yd, ym, ts
                     gc.collect()
 

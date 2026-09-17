@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import webdataset as wds
+from webdataset.writer import ShardWriter as WdsShardWriter
 
 from .base import Sample
 
@@ -33,7 +34,7 @@ class WebDatasetWriter:
         self._out_dir = Path(output_root) / "shards"
         self._out_dir.mkdir(parents=True, exist_ok=True)
         max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
-        self._sink = wds.ShardWriter(
+        self._sink = WdsShardWriter(
             str(self._out_dir / "shard-%05d.tar"),
             maxsize=max_size,
         )
@@ -74,7 +75,7 @@ class ShardWriter:
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.sink: Any = wds.ShardWriter(
+        self.sink: Any = WdsShardWriter(
             str(self.output_dir / f"{prefix}-%05d.tar"),
             maxsize=int(max_size),
         )

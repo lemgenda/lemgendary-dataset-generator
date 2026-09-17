@@ -57,8 +57,8 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
                     if slug.lower() in ref.lower():
                         manifold_name = f"{prefix}{entry.get('name', '')}{suffix}"
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[DEBUG] Kaggle manifold name lookup fallback: {exc}")
         target_dir = root_datasets_dir / manifold_name
     return target_dir, root_datasets_dir, manifold_name, slug
 

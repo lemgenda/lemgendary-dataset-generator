@@ -173,6 +173,7 @@ def modernize(
     raise typer.Exit(code=_run(cmd))
 
 
+
 # ─── env sub-app ────────────────────────────────────────────────────────────
 @env_app.command("validate")
 def env_validate() -> None:
@@ -479,11 +480,39 @@ def mask(
     raise typer.Exit(code=_run(cmd))
 
 
-# ─── Stubs for future phases ────────────────────────────────────────────────
+# ─── degradation engine (Phase 6) ───────────────────────────────────────────
 @app.command()
-def degrade() -> None:
-    """Compiler-time degradation synthesis (blur, noise, haze, film)."""
-    _stub(6, "Degradation engine.")
+def degrade(
+    source: str = typer.Option(..., "--source", "-s", help="Source clean dataset directory or manifold name"),
+    output: str = typer.Option(..., "--output", "-o", help="Target synthetic manifold name"),
+    profile: str = typer.Option("motion-blur+iso-noise", "--profile", "-p",
+                                help="Degradation profile expression or preset alias"),
+    intensity: str = typer.Option("medium", "--intensity", help="low | medium | high"),
+    pairs: int | None = typer.Option(None, "--pairs", help="Max sample pairs to synthesize"),
+    val_split: float = typer.Option(0.12, "--val-split", help="Validation split ratio"),
+    seed: int = typer.Option(42, "--seed", help="Deterministic RNG seed"),
+    image_format: str = typer.Option("webp", "--image-format", help="webp | jpeg | png"),
+    workers: int | None = typer.Option(None, "--workers", "-w", help="Worker thread count"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without writing"),
+) -> None:
+    """Compiler-time degradation synthesis (blur, noise, haze, rain, jpeg, film)."""
+    cmd = [
+        venv_python(), "generate_degrade.py",
+        "--source", source,
+        "--output", output,
+        "--profile", profile,
+        "--intensity", intensity,
+        "--val-split", str(val_split),
+        "--seed", str(seed),
+        "--image-format", image_format,
+    ]
+    if pairs is not None:
+        cmd += ["--pairs", str(pairs)]
+    if workers is not None:
+        cmd += ["--workers", str(workers)]
+    if dry_run:
+        cmd += ["--dry-run"]
+    raise typer.Exit(code=_run(cmd))
 
 
 @app.command()

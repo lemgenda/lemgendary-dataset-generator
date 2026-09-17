@@ -16,11 +16,14 @@ Phase 4 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Iterator
 
 from .base import Sample
+
+logger = logging.getLogger(__name__)
 
 
 _VALID_SPLITS = ("train", "val", "test")
@@ -92,8 +95,8 @@ class DirectorySampleSource:
                             continue
                     stem = name[:dot]
                     out[stem] = Path(entry.path)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Directory index scan error at %s: %s", d, exc)
         return out
 
     def __iter__(self) -> Iterator[Sample]:
@@ -130,24 +133,24 @@ class DirectorySampleSource:
         if target_path is not None and target_path.exists():
             try:
                 target_bytes = target_path.read_bytes()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed reading target bytes for %s: %s", target_path, exc)
 
         mask_path = self._mask_index.get(split, {}).get(name)
         mask_bytes = None
         if mask_path is not None and mask_path.exists():
             try:
                 mask_bytes = mask_path.read_bytes()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed reading mask bytes for %s: %s", mask_path, exc)
 
         label_path = self._label_index.get(split, {}).get(name)
         label_text = None
         if label_path is not None and label_path.exists():
             try:
                 label_text = label_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                pass
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.debug("Failed reading label text for %s: %s", label_path, exc)
 
         metadata = {
             k: v for k, v in entry.items()

@@ -127,8 +127,8 @@ def create_archive(source_dir, output_path, archive_format="zip", root_dir=None,
         if output_path.exists():
             try:
                 os.remove(output_path)
-            except OSError:
-                pass
+            except OSError as err:
+                print(f"[WARNING] Could not remove partial archive {output_path}: {err}")
         return False
 
 def smart_extract(archive_path, dest_dir, delete_after=True):

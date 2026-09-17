@@ -17,12 +17,15 @@ Phase 4 of the 2026 modernization roadmap.
 from __future__ import annotations
 
 import importlib
+import logging
 import pickle
 import tempfile
 from pathlib import Path
 from typing import Any, Iterator
 
 from .base import Sample
+
+logger = logging.getLogger(__name__)
 
 
 # Samples per intermediate shard file. Larger = fewer temp files, more RAM.
@@ -98,12 +101,12 @@ class LitDataWriter:
             for p in self._tmp_dir.glob("shard_*.pkl"):
                 try:
                     p.unlink()
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("Failed unlinking temp shard %s: %s", p, exc)
             try:
                 self._tmp_dir.rmdir()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed removing temp directory %s: %s", self._tmp_dir, exc)
 
         self._buffer = []
         self._tmp_dir = None
