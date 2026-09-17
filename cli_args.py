@@ -104,7 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
                         choices=["parsenet", "sam", "modnet"],
                         help="Mask generation strategy (default: parsenet for segmentation)")
 
+    # ── Compiler Preset Profiles (Phase 8) ─────────────────────────────────
+    parser.add_argument("--preset", dest="preset", type=str, default=None,
+                        help="Compiler preset profile name from presets.yaml (e.g. quality-vision, restoration-hardlinked)")
+
     return parser
+
+
 
 
 # ─── lem-env discovery ──────────────────────────────────────────────────────

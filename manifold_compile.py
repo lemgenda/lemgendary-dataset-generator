@@ -92,6 +92,28 @@ from cli_args import build_parser
 
 parser = build_parser()
 args = parser.parse_args()
+
+if args.preset:
+    import presets
+    try:
+        preset_cfg = presets.get_preset(args.preset)
+        if args.image_format is None:
+            args.image_format = preset_cfg.image_format
+        if args.image_quality is None:
+            args.image_quality = preset_cfg.image_quality
+        if args.target_quality is None and preset_cfg.target_quality is not None:
+            args.target_quality = preset_cfg.target_quality
+        if args.mask_format is None and preset_cfg.mask_format is not None:
+            args.mask_format = preset_cfg.mask_format
+        if not preset_cfg.vetting_enabled and not args.no_vetting:
+            args.no_vetting = True
+        if not preset_cfg.labeling_enabled and not args.no_labeling:
+            args.no_labeling = True
+        if preset_cfg.containers and args.also_format is None:
+            args.also_format = ",".join(preset_cfg.containers)
+    except KeyError as exc:
+        print(f"[ERROR] Invalid preset: {exc}")
+        sys.exit(1)
 # ────────────────────────────────────────────────────────────────────────────
 
 def process_dataset():

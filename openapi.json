@@ -1,0 +1,2168 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LemGendary Dataset Compiler API",
+    "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
+    "version": "16.5.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check Health",
+        "description": "Basic health and liveness endpoint.",
+        "operationId": "check_health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health/full": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check Health Full",
+        "description": "Detailed health probe including hardware sensors and resource utilization.",
+        "operationId": "check_health_full_api_health_full_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FullHealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gui/state": {
+      "get": {
+        "tags": [
+          "Desktop GUI"
+        ],
+        "summary": "Get Gui State",
+        "description": "Aggregated sidecar status snapshot for LemGendary AI Studio Desktop GUI hydration.",
+        "operationId": "get_gui_state_api_gui_state_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuiStateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gui/datasets/with-stats": {
+      "get": {
+        "tags": [
+          "Desktop GUI"
+        ],
+        "summary": "Get Datasets With Stats",
+        "description": "Enriched dataset catalog with detailed format breakdown, storage metrics, and hardlinks.",
+        "operationId": "get_datasets_with_stats_api_gui_datasets_with_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetStatsListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gui/jobs/active": {
+      "get": {
+        "tags": [
+          "Desktop GUI"
+        ],
+        "summary": "Get Active Jobs Telemetry",
+        "description": "Detailed live execution telemetry for running compiler background jobs.",
+        "operationId": "get_active_jobs_telemetry_api_gui_jobs_active_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveJobsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gui/presets": {
+      "get": {
+        "tags": [
+          "Desktop GUI"
+        ],
+        "summary": "List Compiler Presets",
+        "description": "Retrieve all available compiler presets with parameters for GUI configuration.",
+        "operationId": "list_compiler_presets_api_gui_presets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gui/quick-compile": {
+      "post": {
+        "tags": [
+          "Desktop GUI"
+        ],
+        "summary": "Quick Compile",
+        "description": "Rapid dispatch for compilation jobs using a predefined compiler preset profile.",
+        "operationId": "quick_compile_api_gui_quick_compile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuickCompileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/datasets": {
+      "get": {
+        "tags": [
+          "Datasets"
+        ],
+        "summary": "List Datasets",
+        "description": "List compiled dataset manifolds found in output storage root.",
+        "operationId": "list_datasets_api_datasets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/{name}": {
+      "get": {
+        "tags": [
+          "Datasets"
+        ],
+        "summary": "Get Dataset Details",
+        "description": "Retrieve full metadata package for a specific compiled manifold.",
+        "operationId": "get_dataset_details_api_datasets__name__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Dataset Details Api Datasets  Name  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sources": {
+      "get": {
+        "tags": [
+          "Sources"
+        ],
+        "summary": "List Sources",
+        "description": "List local raw datasets and configured upstream references.",
+        "operationId": "list_sources_api_sources_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Sources Api Sources Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gates/hardlinks": {
+      "get": {
+        "tags": [
+          "Gates"
+        ],
+        "summary": "Evaluate Hardlinks Gate",
+        "description": "Audit the hardlink fraction of a manifold and return the container write verdict.",
+        "operationId": "evaluate_hardlinks_gate_api_gates_hardlinks_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Manifold directory path to audit",
+              "title": "Path"
+            },
+            "description": "Manifold directory path to audit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Hardlinks Gate Api Gates Hardlinks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "Configuration"
+        ],
+        "summary": "Get Config",
+        "description": "Retrieve the parsed contents of unified_data.yaml.",
+        "operationId": "get_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Config Api Config Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/config/validate": {
+      "post": {
+        "tags": [
+          "Configuration"
+        ],
+        "summary": "Validate Config",
+        "description": "Validate unified_data.yaml against Pydantic config schema.",
+        "operationId": "validate_config_api_config_validate_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Validate Config Api Config Validate Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "List Jobs",
+        "description": "List historical and active jobs with pagination.",
+        "operationId": "list_jobs_api_jobs_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "job_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Get Job",
+        "description": "Retrieve detailed state of a single job.",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/logs": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Get Job Logs",
+        "description": "Retrieve raw text logs for a specific job.",
+        "operationId": "get_job_logs_api_jobs__job_id__logs_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tail"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Job Logs Api Jobs  Job Id  Logs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/compile": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Submit Compile Job",
+        "description": "Submit a manifold compile job.",
+        "operationId": "submit_compile_job_api_jobs_compile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompileJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/jobs/degrade": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Submit Degrade Job",
+        "description": "Submit a synthetic degradation manifold derivation job.",
+        "operationId": "submit_degrade_job_api_jobs_degrade_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DegradeJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/jobs/generic": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Submit Generic Job",
+        "description": "Submit a generic job command.",
+        "operationId": "submit_generic_job_api_jobs_generic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Cancel Job",
+        "description": "Terminate an active job.",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Cancel Job Api Jobs  Job Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/status": {
+      "get": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Get Kaggle Status",
+        "description": "Inspect Kaggle authentication and local credential files.",
+        "operationId": "get_kaggle_status_api_kaggle_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Kaggle Status Api Kaggle Status Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/kaggle/sync": {
+      "post": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Trigger Kaggle Sync",
+        "description": "Queue a Kaggle dataset synchronization task.",
+        "operationId": "trigger_kaggle_sync_api_kaggle_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KaggleSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/env/status": {
+      "get": {
+        "tags": [
+          "Environment Manager"
+        ],
+        "summary": "Get Env Status",
+        "description": "Delegate ecosystem health audit to lem-env audit --fast.",
+        "operationId": "get_env_status_api_env_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvPassthroughResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/env/validate": {
+      "get": {
+        "tags": [
+          "Environment Manager"
+        ],
+        "summary": "Validate Codebase",
+        "description": "Delegate full code validation to lem-env validate --project lemgendary-datasets.",
+        "operationId": "validate_codebase_api_env_validate_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvPassthroughResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Environment Manager"
+        ],
+        "summary": "Validate Codebase",
+        "description": "Delegate full code validation to lem-env validate --project lemgendary-datasets.",
+        "operationId": "validate_codebase_api_env_validate_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvPassthroughResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActiveJobTelemetry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "job_type": {
+            "type": "string",
+            "title": "Job Type"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "progress_percent": {
+            "type": "number",
+            "title": "Progress Percent",
+            "default": 0.0
+          },
+          "current_sample": {
+            "type": "integer",
+            "title": "Current Sample",
+            "default": 0
+          },
+          "total_samples": {
+            "type": "integer",
+            "title": "Total Samples",
+            "default": 0
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "title": "Elapsed Seconds",
+            "default": 0.0
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "fps": {
+            "type": "number",
+            "title": "Fps",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "job_type",
+          "state",
+          "created_at"
+        ],
+        "title": "ActiveJobTelemetry"
+      },
+      "ActiveJobsResponse": {
+        "properties": {
+          "active_jobs": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveJobTelemetry"
+            },
+            "type": "array",
+            "title": "Active Jobs"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "active_jobs",
+          "count"
+        ],
+        "title": "ActiveJobsResponse"
+      },
+      "CompileJobRequest": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Dataset/model key in unified_data.yaml"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset",
+            "description": "Compiler preset profile name from presets.yaml"
+          },
+          "max_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Gb",
+            "description": "Max size override in gigabytes"
+          },
+          "suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix",
+            "description": "Manifold name suffix override"
+          },
+          "workers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workers",
+            "description": "Parallel worker process count"
+          },
+          "no_vetting": {
+            "type": "boolean",
+            "title": "No Vetting",
+            "description": "Bypass NIMA aesthetic vetting gate",
+            "default": false
+          },
+          "no_labeling": {
+            "type": "boolean",
+            "title": "No Labeling",
+            "description": "Bypass YOLO auto-labeling",
+            "default": false
+          },
+          "no_hash": {
+            "type": "boolean",
+            "title": "No Hash",
+            "description": "Bypass deduplication hash",
+            "default": false
+          },
+          "image_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Format",
+            "description": "Target image format (webp, jpeg, png, keep)",
+            "default": "webp"
+          },
+          "image_quality": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Quality",
+            "description": "Target image quality (1-100)",
+            "default": 92
+          },
+          "target_quality": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Quality",
+            "description": "Target quality for restoration ground truth",
+            "default": 95
+          },
+          "mask_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Format",
+            "description": "Target mask format",
+            "default": "webp-lossless"
+          },
+          "also_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Also Format",
+            "description": "Comma-separated container formats (mds, litdata, wds, parquet)"
+          },
+          "force_duplicate": {
+            "type": "boolean",
+            "title": "Force Duplicate",
+            "description": "Bypass hardlink gate and duplicate bytes",
+            "default": false
+          },
+          "accept_space_loss": {
+            "type": "boolean",
+            "title": "Accept Space Loss",
+            "description": "Accept storage growth for container writes",
+            "default": false
+          },
+          "label_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Strategy",
+            "description": "Auto-labeling strategy"
+          },
+          "prompt_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Strategy",
+            "description": "Diffusion prompt template"
+          },
+          "mask_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Strategy",
+            "description": "Segmentation mask strategy"
+          }
+        },
+        "type": "object",
+        "title": "CompileJobRequest"
+      },
+      "CompilerPresetModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "image_format": {
+            "type": "string",
+            "title": "Image Format"
+          },
+          "image_quality": {
+            "type": "integer",
+            "title": "Image Quality"
+          },
+          "target_quality": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Quality"
+          },
+          "mask_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Format"
+          },
+          "min_resolution": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Resolution"
+          },
+          "resampling": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resampling"
+          },
+          "vetting_enabled": {
+            "type": "boolean",
+            "title": "Vetting Enabled",
+            "default": false
+          },
+          "labeling_enabled": {
+            "type": "boolean",
+            "title": "Labeling Enabled",
+            "default": false
+          },
+          "hardlink_gate": {
+            "type": "boolean",
+            "title": "Hardlink Gate",
+            "default": true
+          },
+          "containers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Containers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "description",
+          "image_format",
+          "image_quality"
+        ],
+        "title": "CompilerPresetModel"
+      },
+      "DatasetDetailStats": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "sample_count": {
+            "type": "integer",
+            "title": "Sample Count"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "size_gb": {
+            "type": "number",
+            "title": "Size Gb"
+          },
+          "formats": {
+            "$ref": "#/components/schemas/DatasetFormatStats"
+          },
+          "has_hardlinks": {
+            "type": "boolean",
+            "title": "Has Hardlinks"
+          },
+          "hardlink_ratio": {
+            "type": "number",
+            "title": "Hardlink Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "task",
+          "sample_count",
+          "size_bytes",
+          "size_gb",
+          "formats",
+          "has_hardlinks",
+          "hardlink_ratio"
+        ],
+        "title": "DatasetDetailStats"
+      },
+      "DatasetFormatStats": {
+        "properties": {
+          "webp": {
+            "type": "integer",
+            "title": "Webp",
+            "default": 0
+          },
+          "jpg": {
+            "type": "integer",
+            "title": "Jpg",
+            "default": 0
+          },
+          "png": {
+            "type": "integer",
+            "title": "Png",
+            "default": 0
+          },
+          "parquet": {
+            "type": "integer",
+            "title": "Parquet",
+            "default": 0
+          },
+          "other": {
+            "type": "integer",
+            "title": "Other",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "DatasetFormatStats"
+      },
+      "DatasetInfoResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "sample_count": {
+            "type": "integer",
+            "title": "Sample Count"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Formats"
+          },
+          "has_hardlinks": {
+            "type": "boolean",
+            "title": "Has Hardlinks"
+          },
+          "hardlink_ratio": {
+            "type": "number",
+            "title": "Hardlink Ratio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "task",
+          "sample_count",
+          "size_bytes",
+          "formats",
+          "has_hardlinks",
+          "hardlink_ratio"
+        ],
+        "title": "DatasetInfoResponse"
+      },
+      "DatasetListResponse": {
+        "properties": {
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetInfoResponse"
+            },
+            "type": "array",
+            "title": "Datasets"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "datasets",
+          "total"
+        ],
+        "title": "DatasetListResponse"
+      },
+      "DatasetStatsListResponse": {
+        "properties": {
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetDetailStats"
+            },
+            "type": "array",
+            "title": "Datasets"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "total_size_bytes": {
+            "type": "integer",
+            "title": "Total Size Bytes"
+          },
+          "total_size_gb": {
+            "type": "number",
+            "title": "Total Size Gb"
+          }
+        },
+        "type": "object",
+        "required": [
+          "datasets",
+          "total",
+          "total_size_bytes",
+          "total_size_gb"
+        ],
+        "title": "DatasetStatsListResponse"
+      },
+      "DegradeJobRequest": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Source clean dataset path or registered manifold name"
+          },
+          "output": {
+            "type": "string",
+            "title": "Output",
+            "description": "Destination synthetic manifold folder name"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile",
+            "description": "Degradation profile expression or preset alias",
+            "default": "motion-blur+iso-noise"
+          },
+          "intensity": {
+            "type": "string",
+            "title": "Intensity",
+            "description": "Intensity preset (low, medium, high)",
+            "default": "medium"
+          },
+          "pairs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pairs",
+            "description": "Maximum sample pairs to synthesize"
+          },
+          "val_split": {
+            "type": "number",
+            "title": "Val Split",
+            "description": "Validation split ratio",
+            "default": 0.12
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "description": "Deterministic seed",
+            "default": 42
+          },
+          "image_format": {
+            "type": "string",
+            "title": "Image Format",
+            "description": "Format for degraded images (webp, jpeg, png)",
+            "default": "webp"
+          },
+          "workers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workers",
+            "description": "Worker thread count"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "description": "Simulate without writing files",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "output"
+        ],
+        "title": "DegradeJobRequest"
+      },
+      "EnvPassthroughResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "returncode": {
+            "type": "integer",
+            "title": "Returncode"
+          },
+          "output": {
+            "type": "string",
+            "title": "Output"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "returncode",
+          "output"
+        ],
+        "title": "EnvPassthroughResponse"
+      },
+      "FullHealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "uptime_seconds": {
+            "type": "number",
+            "title": "Uptime Seconds"
+          },
+          "active_jobs": {
+            "type": "integer",
+            "title": "Active Jobs"
+          },
+          "hardware": {
+            "$ref": "#/components/schemas/HardwareInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "uptime_seconds",
+          "active_jobs",
+          "hardware"
+        ],
+        "title": "FullHealthResponse"
+      },
+      "GenericJobRequest": {
+        "properties": {
+          "job_type": {
+            "$ref": "#/components/schemas/JobType",
+            "description": "Type of job to execute",
+            "default": "custom"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Command",
+            "description": "Command and argument list"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters",
+            "description": "Metadata dictionary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "title": "GenericJobRequest"
+      },
+      "GuiStateResponse": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "default": "LemGendary Dataset Compiler API"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "uptime_seconds": {
+            "type": "number",
+            "title": "Uptime Seconds"
+          },
+          "active_jobs_count": {
+            "type": "integer",
+            "title": "Active Jobs Count"
+          },
+          "total_datasets_count": {
+            "type": "integer",
+            "title": "Total Datasets Count"
+          },
+          "total_storage_bytes": {
+            "type": "integer",
+            "title": "Total Storage Bytes"
+          },
+          "total_storage_gb": {
+            "type": "number",
+            "title": "Total Storage Gb"
+          },
+          "hardware": {
+            "$ref": "#/components/schemas/HardwareInfo"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Presets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "uptime_seconds",
+          "active_jobs_count",
+          "total_datasets_count",
+          "total_storage_bytes",
+          "total_storage_gb",
+          "hardware",
+          "presets"
+        ],
+        "title": "GuiStateResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HardwareInfo": {
+        "properties": {
+          "cpu_count": {
+            "type": "integer",
+            "title": "Cpu Count"
+          },
+          "ram_total_gb": {
+            "type": "number",
+            "title": "Ram Total Gb"
+          },
+          "ram_available_gb": {
+            "type": "number",
+            "title": "Ram Available Gb"
+          },
+          "cuda_available": {
+            "type": "boolean",
+            "title": "Cuda Available"
+          },
+          "device_name": {
+            "type": "string",
+            "title": "Device Name"
+          },
+          "active_workers": {
+            "type": "integer",
+            "title": "Active Workers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cpu_count",
+          "ram_total_gb",
+          "ram_available_gb",
+          "cuda_available",
+          "device_name",
+          "active_workers"
+        ],
+        "title": "HardwareInfo"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "default": "LemGendary Dataset Compiler API"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "uptime_seconds": {
+            "type": "number",
+            "title": "Uptime Seconds"
+          },
+          "active_jobs": {
+            "type": "integer",
+            "title": "Active Jobs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "uptime_seconds",
+          "active_jobs"
+        ],
+        "title": "HealthResponse"
+      },
+      "JobListResponse": {
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobResponse"
+            },
+            "type": "array",
+            "title": "Jobs"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobs",
+          "total"
+        ],
+        "title": "JobListResponse"
+      },
+      "JobResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique job identifier (UUID)"
+          },
+          "job_type": {
+            "$ref": "#/components/schemas/JobType",
+            "description": "Job category"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState",
+            "description": "Current job lifecycle state"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 creation timestamp"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "ISO 8601 execution start timestamp"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "ISO 8601 completion timestamp"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code",
+            "description": "Process exit code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error details if failed"
+          },
+          "log_file": {
+            "type": "string",
+            "title": "Log File",
+            "description": "Relative or absolute path to execution log file"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters",
+            "description": "Job configuration parameters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "job_type",
+          "state",
+          "created_at",
+          "log_file"
+        ],
+        "title": "JobResponse"
+      },
+      "JobState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "interrupted",
+          "cancelled"
+        ],
+        "title": "JobState"
+      },
+      "JobType": {
+        "type": "string",
+        "enum": [
+          "compile",
+          "degrade",
+          "reduce",
+          "modernize",
+          "label",
+          "prompt",
+          "mask",
+          "audit",
+          "sync",
+          "custom"
+        ],
+        "title": "JobType"
+      },
+      "KaggleSyncRequest": {
+        "properties": {
+          "manifold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifold",
+            "description": "Specific manifold ID or folder name"
+          },
+          "push": {
+            "type": "boolean",
+            "title": "Push",
+            "description": "Push local manifold to Kaggle",
+            "default": false
+          },
+          "pull": {
+            "type": "boolean",
+            "title": "Pull",
+            "description": "Pull remote dataset from Kaggle",
+            "default": false
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Force overwrite",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "KaggleSyncRequest"
+      },
+      "PresetListResponse": {
+        "properties": {
+          "presets": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CompilerPresetModel"
+            },
+            "type": "object",
+            "title": "Presets"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "presets",
+          "total"
+        ],
+        "title": "PresetListResponse"
+      },
+      "QuickCompileRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Dataset or model key in unified_data.yaml"
+          },
+          "preset": {
+            "type": "string",
+            "title": "Preset",
+            "description": "Preset name from presets.yaml",
+            "default": "quality-vision"
+          },
+          "max_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Gb",
+            "description": "Max size override in gigabytes"
+          },
+          "workers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workers",
+            "description": "Parallel worker process count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "QuickCompileRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

@@ -31,6 +31,7 @@ class JobType(str, Enum):
 
 class CompileJobRequest(BaseModel):
     model: Optional[str] = Field(None, description="Dataset/model key in unified_data.yaml")
+    preset: Optional[str] = Field(None, description="Compiler preset profile name from presets.yaml")
     max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
     suffix: Optional[str] = Field(None, description="Manifold name suffix override")
     workers: Optional[int] = Field(None, description="Parallel worker process count")
@@ -47,6 +48,7 @@ class CompileJobRequest(BaseModel):
     label_strategy: Optional[str] = Field(None, description="Auto-labeling strategy")
     prompt_strategy: Optional[str] = Field(None, description="Diffusion prompt template")
     mask_strategy: Optional[str] = Field(None, description="Segmentation mask strategy")
+
 
 
 class DegradeJobRequest(BaseModel):
@@ -132,3 +134,90 @@ class EnvPassthroughResponse(BaseModel):
     status: str
     returncode: int
     output: str
+
+
+class DatasetFormatStats(BaseModel):
+    webp: int = 0
+    jpg: int = 0
+    png: int = 0
+    parquet: int = 0
+    other: int = 0
+
+
+class DatasetDetailStats(BaseModel):
+    name: str
+    path: str
+    task: str
+    sample_count: int
+    size_bytes: int
+    size_gb: float
+    formats: DatasetFormatStats
+    has_hardlinks: bool
+    hardlink_ratio: float
+
+
+class DatasetStatsListResponse(BaseModel):
+    datasets: List[DatasetDetailStats]
+    total: int
+    total_size_bytes: int
+    total_size_gb: float
+
+
+class ActiveJobTelemetry(BaseModel):
+    id: str
+    job_type: str
+    state: str
+    created_at: str
+    started_at: Optional[str] = None
+    progress_percent: float = 0.0
+    current_sample: int = 0
+    total_samples: int = 0
+    elapsed_seconds: float = 0.0
+    eta_seconds: Optional[float] = None
+    fps: float = 0.0
+
+
+class ActiveJobsResponse(BaseModel):
+    active_jobs: List[ActiveJobTelemetry]
+    count: int
+
+
+class CompilerPresetModel(BaseModel):
+    name: str
+    title: str
+    description: str
+    image_format: str
+    image_quality: int
+    target_quality: Optional[int] = None
+    mask_format: Optional[str] = None
+    min_resolution: Optional[int] = None
+    resampling: Optional[str] = None
+    vetting_enabled: bool = False
+    labeling_enabled: bool = False
+    hardlink_gate: bool = True
+    containers: List[str] = Field(default_factory=list)
+
+
+class PresetListResponse(BaseModel):
+    presets: Dict[str, CompilerPresetModel]
+    total: int
+
+
+class QuickCompileRequest(BaseModel):
+    model: str = Field(..., description="Dataset or model key in unified_data.yaml")
+    preset: str = Field("quality-vision", description="Preset name from presets.yaml")
+    max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
+    workers: Optional[int] = Field(None, description="Parallel worker process count")
+
+
+class GuiStateResponse(BaseModel):
+    service: str = "LemGendary Dataset Compiler API"
+    version: str
+    uptime_seconds: float
+    active_jobs_count: int
+    total_datasets_count: int
+    total_storage_bytes: int
+    total_storage_gb: float
+    hardware: HardwareInfo
+    presets: List[str]
+

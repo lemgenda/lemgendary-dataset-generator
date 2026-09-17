@@ -10,15 +10,25 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.5.0-MODERNIZED` |
-| **Phase** | Phases 0, 1, 2, 3, 4, 5, 6, 7 complete (8/8 roadmap phases) |
-| **Next** | Phase 8 — CPA Integration Prep |
+| **Version** | `v16.6.0-MODERNIZED` |
+| **Phase** | Phases 0, 1, 2, 3, 4, 5, 6, 7, 8 complete (9/9 roadmap phases) |
+| **Next** | Production Modernization Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
 | **Roadmap** | [modernization_roadmap.md](./modernization_roadmap.md) |
 
 ---
 
 ## Changelog
+
+### v16.6.0 — CPA Integration Prep (Phase 8)
+
+Prepared the dataset compiler sidecar service and CLI for seamless consumption by the LemGendary AI Studio Desktop GUI (`lemgendary-ai-studio-gui`) and Cross-Project Automations (CPA):
+
+- **Canonical Compiler Presets (`presets.yaml`, `presets.py`)** — Defined standard compilation profiles (`quality-vision`, `restoration-hardlinked`, `detection-variable`, `cloud-archival`) encapsulating format, quality floors, vetting gates, auto-labeling, and container targets.
+- **Desktop GUI Aggregation Endpoints (`api/routes/gui.py`)** — Added `/api/gui/state` (consolidated state snapshot), `/api/gui/datasets/with-stats` (deep format breakdown, file counts, storage footprints, and hardlink metrics), `/api/gui/jobs/active` (live job telemetry), `/api/gui/presets` (parameter schemas), and `/api/gui/quick-compile` (fast job dispatch).
+- **Contract Freezing (`openapi.json`)** — Exported frozen OpenAPI 3.1 schema specification for zero-drift TypeScript client generation in desktop GUI applications.
+- **CLI Enhancements (`cli.py`, `cli_args.py`, `manifold_compile.py`)** — Added `--preset` flag to `lemgendary compile` and introduced `lemgendary presets list` command rendering formatted parameter matrices.
+- **Environment Manager Compatibility** — Audited and aligned ecosystem integration with `lemgendary-env-manager` (port 8000), verified 100% compliance under zero-emoji, zero-suppression, and zero-silent-failure rules.
 
 ### v16.5.0 — API + CLI Unification (Phase 7)
 
@@ -231,8 +241,8 @@ The pre-modernization reference state. Highlights:
 | 4 | Format layer (MDS / LitData / WebDataset / Parquet) | Done |
 | 5 | Smart generation (labels, prompts, masks) | Done |
 | 6 | Degradation engine (`degrade/`) | Done |
-| **7** | **API + CLI unification (`api/`)** | **Next** |
-| 8 | CPA integration prep | Pending |
+| 7 | API + CLI unification (`api/`) | Done |
+| 8 | CPA integration prep (`presets/`, `api/routes/gui.py`) | Done |
 
 Full details: [modernization_roadmap.md](./modernization_roadmap.md)
 
@@ -245,6 +255,11 @@ Full details: [modernization_roadmap.md](./modernization_roadmap.md)
 The primary interface. Every operation is reachable through `cli.py`:
 
 ```bash
+# Compiler Presets (Phase 8)
+python cli.py presets list
+python cli.py compile --model nima_aesthetic --preset quality-vision
+python cli.py compile --model nafnet_deblurring --preset restoration-hardlinked
+
 # Compile with transcoding and modern container formats
 python cli.py compile --model nima_aesthetic --max-gb 50
 python cli.py compile --model nima_aesthetic --image-format webp --image-quality 92 --also-format mds
@@ -313,6 +328,12 @@ The Dataset Compiler Suite exposes a high-throughput REST and WebSocket service 
 - **Interactive Documentation**: Swagger UI at `http://127.0.0.1:8100/docs` and OpenAPI JSON at `http://127.0.0.1:8100/openapi.json`.
 - **Token Security**: Protected endpoints require `X-API-Key` or `Authorization: Bearer <token>`, with automatic local key generation and persistence in `.lgd_server/token`.
 - **Persistent Job Engine**: Backed by SQLite in `.lgd_server/jobs.db` with thread pool execution, restart recovery marking orphaned tasks `interrupted`, and disk buffering in `.lgd_server/logs/<job_id>.log`.
+- **Desktop GUI Endpoints (`/api/gui`)**: Fast, aggregated endpoints designed for hydration in `lemgendary-ai-studio-gui`:
+  - `GET /api/gui/state`: Consolidated compiler status, uptime, storage capacity, and hardware profile.
+  - `GET /api/gui/datasets/with-stats`: Deep manifold inventory with per-format file distribution (WebP, JPEG, PNG, Parquet), exact byte sizes, and hardlink deduplication ratios.
+  - `GET /api/gui/jobs/active`: Detailed execution telemetry (progress percentage, elapsed time, samples processed).
+  - `GET /api/gui/presets`: Canonical parameter definitions for compiler preset profiles.
+  - `POST /api/gui/quick-compile`: Fast job submission using preset templates.
 - **WebSocket Streaming**: Live logs stream to subscribers via `ws://127.0.0.1:8100/api/ws/jobs/{id}/logs`.
 - **Transparent Hybrid Routing**: `lemgendary compile` and `lemgendary degrade` automatically detect an active server, post tasks via HTTP, and stream logs live to Rich Console, falling back to in-process execution when the server is offline or when `--no-server` is specified.
 

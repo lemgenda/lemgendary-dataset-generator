@@ -20,6 +20,7 @@ from api.routes.config import router as config_router
 from api.routes.datasets import router as datasets_router
 from api.routes.env import router as env_router
 from api.routes.gates import router as gates_router
+from api.routes.gui import router as gui_router
 from api.routes.health import router as health_router
 from api.routes.jobs import router as jobs_router, ws_router as jobs_ws_router
 from api.routes.kaggle import router as kaggle_router
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
 
     # Public diagnostic and inspection routers
     app_instance.include_router(health_router, prefix="/api")
+    app_instance.include_router(gui_router, prefix="/api")
     app_instance.include_router(datasets_router, prefix="/api")
     app_instance.include_router(sources_router, prefix="/api")
     app_instance.include_router(gates_router, prefix="/api")
@@ -104,7 +106,8 @@ def create_app() -> FastAPI:
                 await websocket.receive_text()
         except WebSocketDisconnect:
             await manager.disconnect_global(websocket)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Global websocket client error: %s", exc)
             await manager.disconnect_global(websocket)
 
     return app_instance

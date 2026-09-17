@@ -51,6 +51,7 @@ sync_app = typer.Typer(help="Kaggle dataset sync (push / pull).")
 docs_app = typer.Typer(help="Documentation regeneration.")
 config_app = typer.Typer(help="Configuration inspection and validation.")
 format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
+presets_app = typer.Typer(help="Inspect and manage canonical compiler preset profiles.")
 
 
 def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
@@ -150,6 +151,7 @@ def version() -> None:
 @app.command()
 def compile(
     model: str | None = typer.Option(None, "--model", "-m", help="Model key to compile"),
+    preset: str | None = typer.Option(None, "--preset", "-p", help="Compiler preset profile name (from presets.yaml)"),
     max_gb: float | None = typer.Option(None, "--max-gb", help="Override max_size_gb"),
     suffix: str | None = typer.Option(None, "--suffix", help="Manifold name suffix override"),
     workers: int | None = typer.Option(None, "--workers", help="Parallel worker count"),
@@ -176,6 +178,7 @@ def compile(
         token = get_or_create_token()
         payload = {
             "model": model,
+            "preset": preset,
             "max_gb": max_gb,
             "suffix": suffix,
             "workers": workers,
@@ -211,6 +214,7 @@ def compile(
 
     cmd = [venv_python(), "manifold_compile.py"]
     if model: cmd += ["--model", model]
+    if preset: cmd += ["--preset", preset]
     if max_gb is not None: cmd += ["--max_gb", str(max_gb)]
     if suffix: cmd += ["--suffix", suffix]
     if workers is not None: cmd += ["--workers", str(workers)]
@@ -467,6 +471,36 @@ def format_migrate(
 
 
 app.add_typer(format_app, name="format")
+
+
+# ─── presets (Phase 8) ───────────────────────────────────────────────────────
+@presets_app.command("list")
+def presets_list() -> None:
+    """List available compiler presets with format and gate details."""
+    import presets
+    all_p = presets.list_presets()
+    table = Table(title="LemGendary Compiler Presets")
+    table.add_column("Preset", style="cyan", no_wrap=True)
+    table.add_column("Format", style="green")
+    table.add_column("Quality", style="magenta")
+    table.add_column("Vetting", style="yellow")
+    table.add_column("Labeling", style="blue")
+    table.add_column("Description", style="dim")
+
+    for name, p in sorted(all_p.items()):
+        table.add_row(
+            name,
+            p.image_format,
+            f"{p.image_quality}%",
+            "Enabled" if p.vetting_enabled else "Bypassed",
+            "Enabled" if p.labeling_enabled else "Disabled",
+            p.description,
+        )
+    console.print(table)
+
+
+app.add_typer(presets_app, name="presets")
+
 
 
 # ─── audit (Phase 2) ────────────────────────────────────────────────────────

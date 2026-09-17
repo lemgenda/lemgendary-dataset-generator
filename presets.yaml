@@ -1,0 +1,67 @@
+---
+# LemGendary Dataset Compiler Presets
+# Canonical preset profiles for CLI, API, and Desktop GUI consumption.
+
+version: "1.0"
+
+presets:
+  quality-vision:
+    name: "quality-vision"
+    title: "Quality Vision (Generative / SOTA Baseline)"
+    description: "Enforces Lanczos downsampling, minimum 512px resolution floor, NIMA aesthetic score gate >= 5.0, and WebP 95% quality encoding."
+    image_format: "webp"
+    image_quality: 95
+    target_quality: 98
+    mask_format: "webp-lossless"
+    min_resolution: 512
+    resampling: "lanczos"
+    vetting_enabled: true
+    labeling_enabled: false
+    hardlink_gate: true
+    containers: []
+
+  restoration-hardlinked:
+    name: "restoration-hardlinked"
+    title: "Restoration Hardlinked Pairs (SR / Deblur / Denoise)"
+    description: "Lossless/near-lossless ground-truth paired restoration with zero-byte NTFS hardlinking to targets, bypasses destructive resizing and aesthetic vetting."
+    image_format: "webp"
+    image_quality: 100
+    target_quality: 100
+    mask_format: "webp-lossless"
+    min_resolution: 224
+    resampling: "lanczos"
+    vetting_enabled: false
+    labeling_enabled: false
+    hardlink_gate: true
+    containers: []
+
+  detection-variable:
+    name: "detection-variable"
+    title: "Detection & Object Recognition (YOLO / Vision)"
+    description: "Multi-resolution letterboxing at 640px standard with YOLO auto-labeling enabled and WebP 90% quality compression."
+    image_format: "webp"
+    image_quality: 90
+    target_quality: 90
+    mask_format: "webp-lossless"
+    min_resolution: 320
+    resampling: "bilinear"
+    vetting_enabled: false
+    labeling_enabled: true
+    hardlink_gate: true
+    containers: []
+
+  cloud-archival:
+    name: "cloud-archival"
+    title: "Cloud Archival & Remote Distribution"
+    description: "Maximum compression WebP 85% encoding with Parquet binary export, metadata stripping, and SHA256 manifest verification."
+    image_format: "webp"
+    image_quality: 85
+    target_quality: 90
+    mask_format: "webp-lossless"
+    min_resolution: 256
+    resampling: "lanczos"
+    vetting_enabled: false
+    labeling_enabled: false
+    hardlink_gate: true
+    containers:
+      - "parquet"
