@@ -16,15 +16,24 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
+import time
 from pathlib import Path
 
+import requests
 import typer
+from websockets.sync.client import connect
 import yaml
 from rich.console import Console
 from rich.table import Table
 
+from api.auth import get_or_create_token
 from cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
+
+DEFAULT_SERVER_HOST = "127.0.0.1"
+DEFAULT_SERVER_PORT = 8100
 
 
 app = typer.Typer(
@@ -36,11 +45,50 @@ app = typer.Typer(
 console = Console()
 
 # Sub-apps
+server_app = typer.Typer(help="Control the local FastAPI + WebSocket API sidecar server.")
 env_app = typer.Typer(help="Delegate code/infra operations to lem-env (Environment Manager).")
 sync_app = typer.Typer(help="Kaggle dataset sync (push / pull).")
 docs_app = typer.Typer(help="Documentation regeneration.")
 config_app = typer.Typer(help="Configuration inspection and validation.")
 format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
+
+
+def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
+    """Check if the local FastAPI server is healthy and responding."""
+    try:
+        resp = requests.get(f"http://{host}:{port}/api/health", timeout=0.8)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _stream_job_logs(job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> int:
+    """Connect to WebSocket log feed and stream lines to console until completion."""
+    ws_url = f"ws://{host}:{port}/api/ws/jobs/{job_id}/logs"
+    try:
+        with connect(ws_url) as ws:
+            for message in ws:
+                data = json.loads(message)
+                chunk = data.get("chunk", "")
+                console.print(chunk, end="")
+                if "[PROCESS_TERMINATED]" in chunk:
+                    break
+    except Exception as exc:
+        console.print(f"[dim]WebSocket streaming closed: {exc}[/dim]")
+
+    try:
+        token = get_or_create_token()
+        headers = {"X-API-Key": token}
+        resp = requests.get(f"http://{host}:{port}/api/jobs/{job_id}", headers=headers, timeout=5)
+        if resp.status_code == 200:
+            job_info = resp.json()
+            exit_code = job_info.get("exit_code")
+            if exit_code is not None:
+                return int(exit_code)
+            return 0 if job_info.get("state") == "completed" else 1
+    except Exception as exc:
+        console.print(f"[dim]Failed fetching final job status: {exc}[/dim]")
+    return 0
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -121,8 +169,46 @@ def compile(
     label_strategy: str | None = typer.Option(None, "--label-strategy"),
     prompt_strategy: str | None = typer.Option(None, "--prompt-strategy"),
     mask_strategy: str | None = typer.Option(None, "--mask-strategy"),
+    no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
 ) -> None:
-    """Compile a manifold from raw sources (delegates to manifold_compile.py)."""
+    """Compile a manifold from raw sources (delegates to manifold_compile.py or API)."""
+    if not no_server and _is_server_available():
+        token = get_or_create_token()
+        payload = {
+            "model": model,
+            "max_gb": max_gb,
+            "suffix": suffix,
+            "workers": workers,
+            "no_vetting": no_vetting,
+            "no_labeling": no_labeling,
+            "no_hash": no_hash,
+            "image_format": image_format or "webp",
+            "image_quality": image_quality or 92,
+            "target_quality": target_quality or 95,
+            "mask_format": mask_format or "webp-lossless",
+            "also_format": also_format,
+            "force_duplicate": force_duplicate,
+            "accept_space_loss": accept_space_loss,
+            "label_strategy": label_strategy,
+            "prompt_strategy": prompt_strategy,
+            "mask_strategy": mask_strategy,
+        }
+        try:
+            resp = requests.post(
+                f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/compile",
+                json=payload,
+                headers={"X-API-Key": token},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                job_id = resp.json()["id"]
+                console.print(f"[bold green]Routed through LemGendary Dataset Compiler API[/bold green] [dim](job_id: {job_id})[/dim]")
+                exit_code = _stream_job_logs(job_id)
+                raise typer.Exit(code=exit_code)
+            console.print(f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]")
+        except requests.RequestException as e:
+            console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
+
     cmd = [venv_python(), "manifold_compile.py"]
     if model: cmd += ["--model", model]
     if max_gb is not None: cmd += ["--max_gb", str(max_gb)]
@@ -494,8 +580,39 @@ def degrade(
     image_format: str = typer.Option("webp", "--image-format", help="webp | jpeg | png"),
     workers: int | None = typer.Option(None, "--workers", "-w", help="Worker thread count"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without writing"),
+    no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
 ) -> None:
     """Compiler-time degradation synthesis (blur, noise, haze, rain, jpeg, film)."""
+    if not no_server and _is_server_available():
+        token = get_or_create_token()
+        payload = {
+            "source": source,
+            "output": output,
+            "profile": profile,
+            "intensity": intensity,
+            "pairs": pairs,
+            "val_split": val_split,
+            "seed": seed,
+            "image_format": image_format,
+            "workers": workers,
+            "dry_run": dry_run,
+        }
+        try:
+            resp = requests.post(
+                f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/degrade",
+                json=payload,
+                headers={"X-API-Key": token},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                job_id = resp.json()["id"]
+                console.print(f"[bold green]Routed through LemGendary Dataset Compiler API[/bold green] [dim](job_id: {job_id})[/dim]")
+                exit_code = _stream_job_logs(job_id)
+                raise typer.Exit(code=exit_code)
+            console.print(f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]")
+        except requests.RequestException as e:
+            console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
+
     cmd = [
         venv_python(), "generate_degrade.py",
         "--source", source,
@@ -515,10 +632,111 @@ def degrade(
     raise typer.Exit(code=_run(cmd))
 
 
-@app.command()
-def server() -> None:
-    """Start the local HTTP + WebSocket API server."""
-    _stub(7, "FastAPI server + CLI unification.")
+# ─── server sub-app (Phase 7) ───────────────────────────────────────────────
+@server_app.command("start")
+def server_start(
+    host: str = typer.Option(DEFAULT_SERVER_HOST, "--host", "-h", help="Bind host address"),
+    port: int = typer.Option(DEFAULT_SERVER_PORT, "--port", "-p", help="Bind port number"),
+    background: bool = typer.Option(False, "--background", "-d", help="Run server in background daemon process"),
+    reload: bool = typer.Option(False, "--reload", help="Enable automatic code reloading"),
+) -> None:
+    """Start the local HTTP and WebSocket API sidecar server."""
+    if _is_server_available(host, port):
+        console.print(f"[yellow]Server is already running at http://{host}:{port}[/yellow]")
+        return
+
+    if background:
+        cmd = [venv_python(), "-m", "api.server"]
+        console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
+        flags = 0
+        if sys.platform == "win32":
+            flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+        proc = subprocess.Popen(
+            cmd,
+            creationflags=flags,
+            close_fds=True,
+        )
+        time.sleep(1.5)
+        if _is_server_available(host, port):
+            console.print(f"[bold green]Started LemGendary Dataset Compiler API server in background[/bold green] [dim](http://{host}:{port}, PID: {proc.pid})[/dim]")
+            console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
+        else:
+            console.print(f"[yellow]Server process launched (PID {proc.pid}), still initializing at http://{host}:{port}...[/yellow]")
+    else:
+        console.print(f"[bold green]Starting LemGendary Dataset Compiler API server on http://{host}:{port}...[/bold green]")
+        console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
+        from api.server import run_server
+        run_server(host=host, port=port, reload=reload)
+
+
+@server_app.command("stop")
+def server_stop() -> None:
+    """Stop the running background API server."""
+    pid_file = Path(".lgd_server/server.pid")
+    stopped = False
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text(encoding="utf-8").strip())
+            import psutil
+            if psutil.pid_exists(pid):
+                proc = psutil.Process(pid)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except psutil.TimeoutExpired:
+                    proc.kill()
+                stopped = True
+                console.print(f"[bold green]Terminated server process (PID {pid}).[/bold green]")
+            pid_file.unlink()
+        except Exception as exc:
+            console.print(f"[yellow]Warning while stopping server process: {exc}[/yellow]")
+
+    if not stopped and _is_server_available():
+        console.print("[yellow]Server is running under an unmanaged PID. Please terminate via Task Manager.[/yellow]")
+    elif stopped:
+        console.print("[bold green]LemGendary Dataset Compiler API server stopped.[/bold green]")
+    else:
+        console.print("[yellow]No active server detected.[/yellow]")
+
+
+@server_app.command("status")
+def server_status(
+    host: str = typer.Option(DEFAULT_SERVER_HOST, "--host", "-h"),
+    port: int = typer.Option(DEFAULT_SERVER_PORT, "--port", "-p"),
+) -> None:
+    """Check the health, uptime, and hardware sensors of the API server."""
+    if not _is_server_available(host, port):
+        console.print(f"[yellow]LemGendary Dataset Compiler API server is not running on http://{host}:{port}[/yellow]")
+        return
+
+    try:
+        resp = requests.get(f"http://{host}:{port}/api/health/full", timeout=3)
+        if resp.status_code == 200:
+            data = resp.json()
+            table = Table(title="LemGendary Dataset Compiler API — Status")
+            table.add_column("Property", style="bold cyan")
+            table.add_column("Value", style="green")
+
+            table.add_row("Status", data.get("status", "ok"))
+            table.add_row("Version", data.get("version", "unknown"))
+            table.add_row("Uptime", f"{data.get('uptime_seconds', 0):.1f} s")
+            table.add_row("Active Jobs", str(data.get("active_jobs", 0)))
+
+            hw = data.get("hardware", {})
+            table.add_row("CPU Cores", str(hw.get("cpu_count", "unknown")))
+            table.add_row("RAM (Total / Avail)", f"{hw.get('ram_total_gb', 0)} GB / {hw.get('ram_available_gb', 0)} GB")
+            table.add_row("CUDA Acceleration", "Available" if hw.get("cuda_available") else "Disabled (CPU)")
+            table.add_row("Primary Device", str(hw.get("device_name", "CPU")))
+            table.add_row("Swagger Documentation", f"http://{host}:{port}/docs")
+
+            console.print(table)
+        else:
+            console.print(f"[red]Health endpoint returned status {resp.status_code}[/red]")
+    except Exception as exc:
+        console.print(f"[red]Error probing server: {exc}[/red]")
+
+
+app.add_typer(server_app, name="server")
 
 
 # ─── Entry point ────────────────────────────────────────────────────────────

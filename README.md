@@ -10,15 +10,27 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.4.2-MODERNIZED` |
-| **Phase** | Phases 0, 1, 2, 3, 4, 5, 6 complete (7/8 roadmap phases) |
-| **Next** | Phase 7 — API + CLI Unification (`api/`) |
+| **Version** | `v16.5.0-MODERNIZED` |
+| **Phase** | Phases 0, 1, 2, 3, 4, 5, 6, 7 complete (8/8 roadmap phases) |
+| **Next** | Phase 8 — CPA Integration Prep |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
 | **Roadmap** | [modernization_roadmap.md](./modernization_roadmap.md) |
 
 ---
 
 ## Changelog
+
+### v16.5.0 — API + CLI Unification (Phase 7)
+
+Introduced high-performance REST and WebSocket sidecar service (`api/`) and unified hybrid CLI routing:
+
+- **`api/server.py`** — FastAPI application running on `127.0.0.1:8100` with CORS middleware, lifespan event queue draining, PID tracking in `.lgd_server/server.pid`, and interactive OpenAPI docs at `/docs`.
+- **`api/jobs.py`** — SQLite persistent job tracking in `.lgd_server/jobs.db`, background subprocess execution, restart recovery marking orphaned jobs `interrupted`, and disk buffering in `.lgd_server/logs/<job_id>.log`.
+- **`api/auth.py`** — Token-based security requiring `X-API-Key` or `Authorization: Bearer <token>` for modifying operations, with persistent local master key in `.lgd_server/token`.
+- **`api/events.py`** — `ConnectionManager` handling WebSocket broadcast channels and job-specific log streaming.
+- **`api/routes/`** — Modular endpoints for `/api/health` (liveness and hardware sensors), `/api/config` (inspect/validate `unified_data.yaml`), `/api/jobs` (list, submit compile/degrade, cancel, WS log stream), `/api/datasets` (manifold inspection), `/api/sources` (raw sets), `/api/kaggle` (sync triggers), `/api/gates` (NTFS hardlinks), and `/api/env` (delegating to `lem-env`).
+- **Hybrid CLI Dispatch** — `lemgendary compile` and `lemgendary degrade` automatically detect an active server at `127.0.0.1:8100`, submit jobs via HTTP POST, and render live WebSocket logs to Rich Console in real time, falling back to direct in-process execution when the server is stopped or when `--no-server` is passed.
+- **Server CLI Commands** — Added `lemgendary server start` (supporting `--background`), `lemgendary server stop`, and `lemgendary server status` reporting health and hardware telemetry.
 
 ### v16.4.2 — Zero-Suppression & Zero-Silent-Failure Hardening
 
@@ -280,6 +292,11 @@ python cli.py docs manifolds --check
 python cli.py config validate
 python cli.py config show
 
+# Sidecar API Server (Phase 7)
+python cli.py server start --background    # Launch daemon on 127.0.0.1:8100
+python cli.py server status                # Probe health, uptime, and hardware sensors
+python cli.py server stop                  # Gracefully terminate daemon
+
 # Environment Manager passthrough
 python cli.py env validate                 # -> lem-env validate --project lemgendary-datasets
 python cli.py env status                   # -> lem-env audit --fast
@@ -288,6 +305,16 @@ python cli.py env install                  # -> lem-env install --project lemgen
 # Version
 python cli.py version
 ```
+
+### API Service & Sidecar Integration
+
+The Dataset Compiler Suite exposes a high-throughput REST and WebSocket service on `127.0.0.1:8100` (`api/`), mirroring the conventions of the LemGendary Environment Manager for LemGendary AI Studio GUI sidecar operation:
+
+- **Interactive Documentation**: Swagger UI at `http://127.0.0.1:8100/docs` and OpenAPI JSON at `http://127.0.0.1:8100/openapi.json`.
+- **Token Security**: Protected endpoints require `X-API-Key` or `Authorization: Bearer <token>`, with automatic local key generation and persistence in `.lgd_server/token`.
+- **Persistent Job Engine**: Backed by SQLite in `.lgd_server/jobs.db` with thread pool execution, restart recovery marking orphaned tasks `interrupted`, and disk buffering in `.lgd_server/logs/<job_id>.log`.
+- **WebSocket Streaming**: Live logs stream to subscribers via `ws://127.0.0.1:8100/api/ws/jobs/{id}/logs`.
+- **Transparent Hybrid Routing**: `lemgendary compile` and `lemgendary degrade` automatically detect an active server, post tasks via HTTP, and stream logs live to Rich Console, falling back to in-process execution when the server is offline or when `--no-server` is specified.
 
 ### Interactive Hub
 
@@ -364,6 +391,9 @@ lemgendary-datasets/
 ├── archive_manager.py             # Archive + resume
 ├── common_sync.py                 # Kaggle streaming core
 ├── notebook_generator.py          # Notebook matrix (Kaggle + Colab)
+├── api/                           # REST & WebSocket API sidecar server (Phase 7)
+│   ├── server.py, jobs.py, auth.py, events.py, models.py
+│   └── routes/ (health, config, jobs, datasets, sources, kaggle, gates, env)
 ├── sources/                       # Fetch backends (Phase 1.2)
 │   ├── hf.py, gh.py, gd.py, kaggle.py
 │   └── base.py
