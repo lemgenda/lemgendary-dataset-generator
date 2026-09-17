@@ -11,15 +11,12 @@ import os
 import shutil
 import sys
 import time
-import warnings
 from pathlib import Path
 from typing import TypedDict
 import kagglehub
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
-
-warnings.filterwarnings("ignore", message=".*outdated.*")
 
 CHUNK_SIZE = 1024 * 1024  # 1MB chunks
 

@@ -10,15 +10,25 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.6.0-MODERNIZED` |
-| **Phase** | Phases 0, 1, 2, 3, 4, 5, 6, 7, 8 complete (9/9 roadmap phases) |
-| **Next** | Production Modernization Complete — Ecosystem Ready |
+| **Version** | `v16.7.0-SOLID` |
+| **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + S.O.L.I.D. Hardening) |
+| **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
 | **Roadmap** | [modernization_roadmap.md](./modernization_roadmap.md) |
 
 ---
 
 ## Changelog
+
+### v16.7.0 — S.O.L.I.D. Services Layer & Forex Encapsulation
+
+Elevated dataset compiler architecture to strict S.O.L.I.D. principles, Single Responsibility (SRP), and Single Source of Truth (SSOT):
+
+- **In-Process Services Layer (`services/`)** — Decomposed monolithic compiler workflows into dedicated single-responsibility services (`CompilerService`, `DegradeService`, `AuditService`, `DocService`, `GenerationService`, `MigrationService`, `SyncService`). Eliminated internal subprocess execution shims in `cli.py` in favor of direct in-process typed service invocations.
+- **Audit Command Unification** — Implemented `AuditService.audit_manifold()` resolving the missing `audit_cli.py` reference and unifying image inspection, perceptual/exact deduplication, and NTFS hardlink fraction audits.
+- **Top-Level Side-Effect Removal** — Encapsulated argument parsing in `manifold_compile.py` inside callable `parse_compile_args()` and `process_dataset(parsed_args)`, making compiler modules safe to import without side-effects.
+- **Forex & MetaTrader5 Encapsulation (`forex/`)** — Encapsulated specialized financial time-series pipelines into a clean `forex/` subpackage (`forex.schema`, `forex.converter`, `forex.injector`, `forex.bridge`, `forex.pipeline`) with root backwards-compatibility shims. Added `lemgendary forex convert` and `lemgendary forex embed` CLI commands.
+- **Zero-Suppression Policy Enforcement** — Purged remaining programmatic `warnings.filterwarnings` suppressions from `common_sync.py` and `sources/kaggle.py`, achieving 100% compliance with zero suppressions across all 116 files.
 
 ### v16.6.0 — CPA Integration Prep (Phase 8)
 

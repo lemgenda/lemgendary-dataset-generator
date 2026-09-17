@@ -1,5 +1,5 @@
 """
-LemGendary Dataset Compiler — Unified CLI.
+LemGendary Dataset Compiler - Unified CLI.
 
 Phase 1.5 of the 2026 modernization roadmap, extended through Phase 5.
 
@@ -31,6 +31,15 @@ from rich.table import Table
 
 from api.auth import get_or_create_token
 from cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
+from services import (
+    AuditService,
+    CompilerService,
+    DegradeService,
+    DocService,
+    GenerationService,
+    MigrationService,
+    SyncService,
+)
 
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 8100
@@ -38,7 +47,7 @@ DEFAULT_SERVER_PORT = 8100
 
 app = typer.Typer(
     name="lemgendary",
-    help="LemGendary Dataset Compiler Suite — unified CLI.",
+    help="LemGendary Dataset Compiler Suite - unified CLI.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -52,6 +61,7 @@ docs_app = typer.Typer(help="Documentation regeneration.")
 config_app = typer.Typer(help="Configuration inspection and validation.")
 format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
 presets_app = typer.Typer(help="Inspect and manage canonical compiler preset profiles.")
+forex_app = typer.Typer(help="Forex universe and Parquet conversion operations.")
 
 
 def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
@@ -212,26 +222,27 @@ def compile(
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
 
-    cmd = [venv_python(), "manifold_compile.py"]
-    if model: cmd += ["--model", model]
-    if preset: cmd += ["--preset", preset]
-    if max_gb is not None: cmd += ["--max_gb", str(max_gb)]
-    if suffix: cmd += ["--suffix", suffix]
-    if workers is not None: cmd += ["--workers", str(workers)]
-    if no_vetting: cmd += ["--no-vetting"]
-    if no_labeling: cmd += ["--no-labeling"]
-    if no_hash: cmd += ["--no-hash"]
-    if image_format: cmd += ["--image-format", image_format]
-    if image_quality is not None: cmd += ["--image-quality", str(image_quality)]
-    if target_quality is not None: cmd += ["--target-quality", str(target_quality)]
-    if mask_format: cmd += ["--mask-format", mask_format]
-    if also_format: cmd += ["--also-format", also_format]
-    if force_duplicate: cmd += ["--force-duplicate"]
-    if accept_space_loss: cmd += ["--accept-space-loss"]
-    if label_strategy: cmd += ["--label-strategy", label_strategy]
-    if prompt_strategy: cmd += ["--prompt-strategy", prompt_strategy]
-    if mask_strategy: cmd += ["--mask-strategy", mask_strategy]
-    raise typer.Exit(code=_run(cmd))
+    code = CompilerService.run_compile(
+        model=model,
+        preset=preset,
+        max_gb=max_gb,
+        suffix=suffix,
+        workers=workers,
+        no_vetting=no_vetting,
+        no_labeling=no_labeling,
+        no_hash=no_hash,
+        image_format=image_format,
+        image_quality=image_quality,
+        target_quality=target_quality,
+        mask_format=mask_format,
+        also_format=also_format,
+        force_duplicate=force_duplicate,
+        accept_space_loss=accept_space_loss,
+        label_strategy=label_strategy,
+        prompt_strategy=prompt_strategy,
+        mask_strategy=mask_strategy,
+    )
+    raise typer.Exit(code=code)
 
 
 @app.command()
@@ -254,13 +265,14 @@ def modernize(
     skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Rename locally, no re-upload"),
 ) -> None:
     """Retire the legacy `Large` suffix (delegates to modernize_manifold.py)."""
-    cmd = [venv_python(), "modernize_manifold.py"]
-    if all_: cmd += ["--all"]
-    if yes: cmd += ["--yes"]
-    if dry_run: cmd += ["--dry-run"]
-    if datasets: cmd += ["--datasets", datasets]
-    if skip_kaggle: cmd += ["--skip-kaggle"]
-    raise typer.Exit(code=_run(cmd))
+    code = MigrationService.modernize_manifolds(
+        all_=all_,
+        yes=yes,
+        dry_run=dry_run,
+        datasets=datasets,
+        skip_kaggle=skip_kaggle,
+    )
+    raise typer.Exit(code=code)
 
 
 
@@ -314,10 +326,8 @@ def sync_push(
     no_wait: bool = typer.Option(False, "--no-wait", help="Skip server-side extraction monitoring"),
 ) -> None:
     """Push a compiled manifold to Kaggle."""
-    cmd = [venv_python(), "manifold_sync.py", "--action", "sync", "--model", model]
-    if url: cmd += ["--url", url]
-    if no_wait: cmd += ["--no-wait"]
-    raise typer.Exit(code=_run(cmd))
+    code = SyncService.push(model=model, url=url, no_wait=no_wait)
+    raise typer.Exit(code=code)
 
 
 @sync_app.command("pull")
@@ -325,9 +335,8 @@ def sync_pull(
     url: str = typer.Option(..., "--url", help="Kaggle dataset slug (user/name)"),
 ) -> None:
     """Pull a compiled manifold from Kaggle."""
-    raise typer.Exit(code=_run([
-        venv_python(), "manifold_sync.py", "--action", "get", "--url", url,
-    ]))
+    code = SyncService.pull(url=url)
+    raise typer.Exit(code=code)
 
 
 app.add_typer(sync_app, name="sync")
@@ -337,7 +346,8 @@ app.add_typer(sync_app, name="sync")
 @docs_app.command("regen")
 def docs_regen() -> None:
     """Regenerate per-manifold README / dataset_info / category / classes."""
-    raise typer.Exit(code=_run([venv_python(), "doc_generator.py", "--all"]))
+    code = DocService.regenerate_all_docs()
+    raise typer.Exit(code=code)
 
 
 @docs_app.command("manifolds")
@@ -345,9 +355,8 @@ def docs_manifolds(
     check: bool = typer.Option(False, "--check", help="Dry-run: print summary only"),
 ) -> None:
     """Rebuild the top-level manifolds.md from live registry DBs."""
-    cmd = [venv_python(), "regenerate_manifolds_md.py"]
-    if check: cmd += ["--check"]
-    raise typer.Exit(code=_run(cmd))
+    code = DocService.rebuild_manifolds_md(check_only=check)
+    raise typer.Exit(code=code)
 
 
 app.add_typer(docs_app, name="docs")
@@ -401,17 +410,15 @@ def transcode(
     target = _resolve_target(model, manifold)
     if target is None:
         raise typer.Exit(code=1)
-    cmd = [
-        venv_python(), "migrate_manifold_image_format.py",
-        "--manifold", str(target),
-        "--image-format", image_format,
-        "--image-quality", str(image_quality),
-        "--target-quality", str(target_quality),
-        "--mask-format", mask_format,
-    ]
-    if dry_run:
-        cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = MigrationService.transcode_images(
+        manifold_path=target,
+        image_format=image_format,
+        image_quality=image_quality,
+        target_quality=target_quality,
+        mask_format=mask_format,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 # ─── format sub-app (Phase 4) ───────────────────────────────────────────────
@@ -430,15 +437,14 @@ def format_write(
     target = _resolve_target(model, manifold)
     if target is None:
         raise typer.Exit(code=1)
-    cmd = [
-        venv_python(), "migrate_manifold_format.py",
-        "--manifold", str(target),
-        "--to", to,
-    ]
-    if force_duplicate: cmd += ["--force-duplicate"]
-    if accept_space_loss: cmd += ["--accept-space-loss"]
-    if dry_run: cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = MigrationService.migrate_containers(
+        manifold_path=target,
+        to_formats=to,
+        force_duplicate=force_duplicate,
+        accept_space_loss=accept_space_loss,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 @format_app.command("migrate")
@@ -457,17 +463,16 @@ def format_migrate(
     target = _resolve_target(model, manifold)
     if target is None:
         raise typer.Exit(code=1)
-    cmd = [
-        venv_python(), "migrate_manifold_format.py",
-        "--manifold", str(target),
-        "--to", to,
-    ]
-    if force_duplicate: cmd += ["--force-duplicate"]
-    if accept_space_loss: cmd += ["--accept-space-loss"]
-    if purge_source: cmd += ["--purge-source"]
-    if verify: cmd += ["--verify"]
-    if dry_run: cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = MigrationService.migrate_containers(
+        manifold_path=target,
+        to_formats=to,
+        force_duplicate=force_duplicate,
+        accept_space_loss=accept_space_loss,
+        purge_source=purge_source,
+        verify=verify,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 app.add_typer(format_app, name="format")
@@ -512,12 +517,15 @@ def audit(
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> None:
     """Full image audit pass (resolution, black-frame, dedup, hardlinks)."""
-    cmd = [venv_python(), "audit_cli.py"]
-    if model: cmd += ["--model", model]
-    if manifold: cmd += ["--manifold", manifold]
-    if sample is not None: cmd += ["--sample", str(sample)]
-    if as_json: cmd += ["--json"]
-    raise typer.Exit(code=_run(cmd))
+    target = _resolve_target(model, manifold)
+    if target is None:
+        raise typer.Exit(code=1)
+    code = AuditService.audit_manifold(
+        manifold_path=target,
+        sample=sample,
+        as_json=as_json,
+    )
+    raise typer.Exit(code=code)
 
 
 # ─── smart generation (Phase 5) ─────────────────────────────────────────────
@@ -536,16 +544,15 @@ def label(
     target = _resolve_target(model, manifold)
     if target is None:
         raise typer.Exit(code=1)
-    cmd = [
-        venv_python(), "generate_cli.py",
-        "--manifold", str(target),
-        "--kind", "label",
-        "--strategy", strategy,
-        "--device", device,
-    ]
-    if sample is not None: cmd += ["--sample", str(sample)]
-    if dry_run: cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = GenerationService.generate(
+        manifold=target,
+        kind="label",
+        strategy=strategy,
+        device=device,
+        sample=sample,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 @app.command()
@@ -562,16 +569,16 @@ def prompt(
     target = _resolve_target(model, manifold)
     if target is None:
         raise typer.Exit(code=1)
-    cmd = [
-        venv_python(), "generate_cli.py",
-        "--manifold", str(target),
-        "--kind", "prompt",
-        "--template", template,
-        "--device", device,
-    ]
-    if sample is not None: cmd += ["--sample", str(sample)]
-    if dry_run: cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = GenerationService.generate(
+        manifold=target,
+        kind="prompt",
+        strategy=template,
+        template=template,
+        device=device,
+        sample=sample,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 @app.command()
@@ -588,16 +595,15 @@ def mask(
     target = _resolve_target(model, manifold)
     if target is None:
         raise typer.Exit(code=1)
-    cmd = [
-        venv_python(), "generate_cli.py",
-        "--manifold", str(target),
-        "--kind", "mask",
-        "--strategy", strategy,
-        "--device", device,
-    ]
-    if sample is not None: cmd += ["--sample", str(sample)]
-    if dry_run: cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = GenerationService.generate(
+        manifold=target,
+        kind="mask",
+        strategy=strategy,
+        device=device,
+        sample=sample,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 # ─── degradation engine (Phase 6) ───────────────────────────────────────────
@@ -647,23 +653,19 @@ def degrade(
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
 
-    cmd = [
-        venv_python(), "generate_degrade.py",
-        "--source", source,
-        "--output", output,
-        "--profile", profile,
-        "--intensity", intensity,
-        "--val-split", str(val_split),
-        "--seed", str(seed),
-        "--image-format", image_format,
-    ]
-    if pairs is not None:
-        cmd += ["--pairs", str(pairs)]
-    if workers is not None:
-        cmd += ["--workers", str(workers)]
-    if dry_run:
-        cmd += ["--dry-run"]
-    raise typer.Exit(code=_run(cmd))
+    code = DegradeService.run_degrade(
+        source=source,
+        output=output,
+        profile=profile,
+        intensity=intensity,
+        pairs=pairs,
+        val_split=val_split,
+        seed=seed,
+        image_format=image_format,
+        workers=workers,
+        dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
 
 
 # ─── server sub-app (Phase 7) ───────────────────────────────────────────────
@@ -747,7 +749,7 @@ def server_status(
         resp = requests.get(f"http://{host}:{port}/api/health/full", timeout=3)
         if resp.status_code == 200:
             data = resp.json()
-            table = Table(title="LemGendary Dataset Compiler API — Status")
+            table = Table(title="LemGendary Dataset Compiler API - Status")
             table.add_column("Property", style="bold cyan")
             table.add_column("Value", style="green")
 
@@ -771,6 +773,43 @@ def server_status(
 
 
 app.add_typer(server_app, name="server")
+
+
+# ─── forex sub-app ──────────────────────────────────────────────────────────
+@forex_app.command("convert")
+def forex_convert(
+    year: int | None = typer.Option(None, "--year", "-y", help="Specific year to convert (2019..2026)"),
+    all_: bool = typer.Option(False, "--all", help="Convert all years 2019..2026 sequentially"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Simulate conversion without writing"),
+    skip_cleanup: bool = typer.Option(False, "--skip-cleanup", help="Keep source .npy directories after conversion"),
+) -> None:
+    """Convert raw .npy Forex manifolds into unified Apache Parquet files."""
+    from forex.converter import convert_year
+    base_manifold = Path(r"c:\Development\python\model-training\LemGendaryDatasets\LemGendizedForexUniverseLarge").resolve()
+    if not base_manifold.exists():
+        console.print(f"[red]Base manifold directory does not exist: {base_manifold}[/red]")
+        raise typer.Exit(code=1)
+
+    years = [year] if year else (list(range(2019, 2027)) if all_ else [])
+    if not years:
+        console.print("[yellow]Specify --year <YYYY> or --all[/yellow]")
+        raise typer.Exit(code=0)
+
+    for yr in years:
+        ok = convert_year(base_manifold, yr, dry_run=dry_run, skip_cleanup=skip_cleanup)
+        if not ok:
+            raise typer.Exit(code=1)
+    raise typer.Exit(code=0)
+
+
+@forex_app.command("embed")
+def forex_embed() -> None:
+    """Embed column descriptions and schema metadata into Forex Parquet files."""
+    from forex.injector import main as run_embed
+    run_embed()
+
+
+app.add_typer(forex_app, name="forex")
 
 
 # ─── Entry point ────────────────────────────────────────────────────────────

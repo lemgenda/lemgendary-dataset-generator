@@ -90,33 +90,44 @@ def _require_ann_path(ann_path: Path | None) -> Path:
 # compiler_core.py's. Both now share `build_parser()`.
 from cli_args import build_parser
 
-parser = build_parser()
-args = parser.parse_args()
+def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
+    """Parse compile CLI arguments cleanly without top-level module side-effects."""
+    parser = build_parser()
+    parsed = parser.parse_args(cmd_args)
 
-if args.preset:
-    import presets
-    try:
-        preset_cfg = presets.get_preset(args.preset)
-        if args.image_format is None:
-            args.image_format = preset_cfg.image_format
-        if args.image_quality is None:
-            args.image_quality = preset_cfg.image_quality
-        if args.target_quality is None and preset_cfg.target_quality is not None:
-            args.target_quality = preset_cfg.target_quality
-        if args.mask_format is None and preset_cfg.mask_format is not None:
-            args.mask_format = preset_cfg.mask_format
-        if not preset_cfg.vetting_enabled and not args.no_vetting:
-            args.no_vetting = True
-        if not preset_cfg.labeling_enabled and not args.no_labeling:
-            args.no_labeling = True
-        if preset_cfg.containers and args.also_format is None:
-            args.also_format = ",".join(preset_cfg.containers)
-    except KeyError as exc:
-        print(f"[ERROR] Invalid preset: {exc}")
-        sys.exit(1)
+    if parsed.preset:
+        import presets
+        try:
+            preset_cfg = presets.get_preset(parsed.preset)
+            if parsed.image_format is None:
+                parsed.image_format = preset_cfg.image_format
+            if parsed.image_quality is None:
+                parsed.image_quality = preset_cfg.image_quality
+            if parsed.target_quality is None and preset_cfg.target_quality is not None:
+                parsed.target_quality = preset_cfg.target_quality
+            if parsed.mask_format is None and preset_cfg.mask_format is not None:
+                parsed.mask_format = preset_cfg.mask_format
+            if not preset_cfg.vetting_enabled and not parsed.no_vetting:
+                parsed.no_vetting = True
+            if not preset_cfg.labeling_enabled and not parsed.no_labeling:
+                parsed.no_labeling = True
+            if preset_cfg.containers and parsed.also_format is None:
+                parsed.also_format = ",".join(preset_cfg.containers)
+        except KeyError as exc:
+            print(f"[ERROR] Invalid preset: {exc}")
+            sys.exit(1)
+    return parsed
+
+args: argparse.Namespace | None = None
 # ────────────────────────────────────────────────────────────────────────────
 
-def process_dataset():
+def process_dataset(parsed_args: argparse.Namespace | None = None):
+    global args
+    if parsed_args is not None:
+        args = parsed_args
+    elif args is None:
+        args = parse_compile_args()
+
     # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
     if os.name == 'nt':
         import signal

@@ -12,10 +12,8 @@ Unified interface for uploading, downloading, extracting, and monitoring Kaggle 
 import argparse
 import logging
 import sys
-import warnings
 from pathlib import Path
 
-warnings.filterwarnings("ignore", message=".*outdated.*")
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 from common_sync import (
