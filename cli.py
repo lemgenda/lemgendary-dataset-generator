@@ -1,14 +1,11 @@
 """
 LemGendary Dataset Compiler — Unified CLI.
 
-Phase 1.5 of the 2026 modernization roadmap.
+Phase 1.5 of the 2026 modernization roadmap, extended through Phase 5.
 
 Thin Typer shell over the existing entry points. Every command either
 delegates to a current script (`manifold_compile.py`, `modernize_manifold.py`,
 etc.) or points the user at the phase that will implement it.
-
-Nothing here changes runtime behavior — this is a structural layer so
-Phases 2-7 can add commands one at a time.
 
 Usage:
     python cli.py --help
@@ -23,6 +20,7 @@ import subprocess
 from pathlib import Path
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -42,6 +40,7 @@ env_app = typer.Typer(help="Delegate code/infra operations to lem-env (Environme
 sync_app = typer.Typer(help="Kaggle dataset sync (push / pull).")
 docs_app = typer.Typer(help="Documentation regeneration.")
 config_app = typer.Typer(help="Configuration inspection and validation.")
+format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -63,6 +62,35 @@ def _stub(phase: int, description: str) -> None:
     raise typer.Exit(code=1)
 
 
+def _resolve_manifold_path(model: str) -> Path | None:
+    """Resolve a registry key to its manifold folder on disk."""
+    p = Path("./unified_data.yaml")
+    if not p.exists():
+        return None
+    with open(p, "r", encoding="utf-8") as f:
+        reg = yaml.safe_load(f) or {}
+    meta = reg.get("_registry_metadata", {})
+    entry = reg.get("datasets", {}).get(model)
+    if entry is None:
+        return None
+    name = entry.get("name", model)
+    prefix = meta.get("name_prefix", "LemGendized")
+    suffix = meta.get("name_suffix", "")
+    out = Path(meta.get("output_folder_name", "../LemGendaryDatasets"))
+    return out / f"{prefix}{name}{suffix}"
+
+
+def _resolve_target(model: str | None, manifold: str | None) -> Path | None:
+    """Resolve --model or --manifold into an existing manifold path."""
+    if manifold:
+        p = Path(manifold)
+        return p if p.exists() else None
+    if model:
+        return _resolve_manifold_path(model)
+    console.print("[red]Provide --model or --manifold[/red]")
+    return None
+
+
 # ─── Top-level commands ─────────────────────────────────────────────────────
 @app.command()
 def version() -> None:
@@ -80,23 +108,39 @@ def compile(
     no_vetting: bool = typer.Option(False, "--no-vetting", help="Disable NIMA quality gate"),
     no_labeling: bool = typer.Option(False, "--no-labeling", help="Disable YOLO auto-labeling"),
     no_hash: bool = typer.Option(False, "--no-hash", help="Disable deduplication hash"),
+    image_format: str | None = typer.Option(None, "--image-format",
+                                            help="webp | jpeg | png | keep"),
+    image_quality: int | None = typer.Option(None, "--image-quality"),
+    target_quality: int | None = typer.Option(None, "--target-quality"),
+    mask_format: str | None = typer.Option(None, "--mask-format",
+                                           help="webp-lossless | png"),
+    also_format: str | None = typer.Option(None, "--also-format",
+                                           help="Comma-separated container formats (mds,litdata,...)"),
+    force_duplicate: bool = typer.Option(False, "--force-duplicate"),
+    accept_space_loss: bool = typer.Option(False, "--accept-space-loss"),
+    label_strategy: str | None = typer.Option(None, "--label-strategy"),
+    prompt_strategy: str | None = typer.Option(None, "--prompt-strategy"),
+    mask_strategy: str | None = typer.Option(None, "--mask-strategy"),
 ) -> None:
     """Compile a manifold from raw sources (delegates to manifold_compile.py)."""
     cmd = [venv_python(), "manifold_compile.py"]
-    if model:
-        cmd += ["--model", model]
-    if max_gb is not None:
-        cmd += ["--max_gb", str(max_gb)]
-    if suffix:
-        cmd += ["--suffix", suffix]
-    if workers is not None:
-        cmd += ["--workers", str(workers)]
-    if no_vetting:
-        cmd += ["--no-vetting"]
-    if no_labeling:
-        cmd += ["--no-labeling"]
-    if no_hash:
-        cmd += ["--no-hash"]
+    if model: cmd += ["--model", model]
+    if max_gb is not None: cmd += ["--max_gb", str(max_gb)]
+    if suffix: cmd += ["--suffix", suffix]
+    if workers is not None: cmd += ["--workers", str(workers)]
+    if no_vetting: cmd += ["--no-vetting"]
+    if no_labeling: cmd += ["--no-labeling"]
+    if no_hash: cmd += ["--no-hash"]
+    if image_format: cmd += ["--image-format", image_format]
+    if image_quality is not None: cmd += ["--image-quality", str(image_quality)]
+    if target_quality is not None: cmd += ["--target-quality", str(target_quality)]
+    if mask_format: cmd += ["--mask-format", mask_format]
+    if also_format: cmd += ["--also-format", also_format]
+    if force_duplicate: cmd += ["--force-duplicate"]
+    if accept_space_loss: cmd += ["--accept-space-loss"]
+    if label_strategy: cmd += ["--label-strategy", label_strategy]
+    if prompt_strategy: cmd += ["--prompt-strategy", prompt_strategy]
+    if mask_strategy: cmd += ["--mask-strategy", mask_strategy]
     raise typer.Exit(code=_run(cmd))
 
 
@@ -121,20 +165,15 @@ def modernize(
 ) -> None:
     """Retire the legacy `Large` suffix (delegates to modernize_manifold.py)."""
     cmd = [venv_python(), "modernize_manifold.py"]
-    if all_:
-        cmd += ["--all"]
-    if yes:
-        cmd += ["--yes"]
-    if dry_run:
-        cmd += ["--dry-run"]
-    if datasets:
-        cmd += ["--datasets", datasets]
-    if skip_kaggle:
-        cmd += ["--skip-kaggle"]
+    if all_: cmd += ["--all"]
+    if yes: cmd += ["--yes"]
+    if dry_run: cmd += ["--dry-run"]
+    if datasets: cmd += ["--datasets", datasets]
+    if skip_kaggle: cmd += ["--skip-kaggle"]
     raise typer.Exit(code=_run(cmd))
 
 
-# ─── env sub-app (SSOT for env-manager delegation) ──────────────────────────
+# ─── env sub-app ────────────────────────────────────────────────────────────
 @env_app.command("validate")
 def env_validate() -> None:
     """Delegate code validation to lem-env (py_compile, lint, YAML, JSON, WCAG)."""
@@ -185,10 +224,8 @@ def sync_push(
 ) -> None:
     """Push a compiled manifold to Kaggle."""
     cmd = [venv_python(), "manifold_sync.py", "--action", "sync", "--model", model]
-    if url:
-        cmd += ["--url", url]
-    if no_wait:
-        cmd += ["--no-wait"]
+    if url: cmd += ["--url", url]
+    if no_wait: cmd += ["--no-wait"]
     raise typer.Exit(code=_run(cmd))
 
 
@@ -218,8 +255,7 @@ def docs_manifolds(
 ) -> None:
     """Rebuild the top-level manifolds.md from live registry DBs."""
     cmd = [venv_python(), "regenerate_manifolds_md.py"]
-    if check:
-        cmd += ["--check"]
+    if check: cmd += ["--check"]
     raise typer.Exit(code=_run(cmd))
 
 
@@ -236,8 +272,6 @@ def config_validate() -> None:
 @config_app.command("show")
 def config_show() -> None:
     """Print a summary of the current registry configuration."""
-    import yaml
-    from pathlib import Path
     p = Path("./unified_data.yaml")
     if not p.exists():
         console.print("[red]unified_data.yaml not found[/red]")
@@ -261,26 +295,7 @@ def config_show() -> None:
 app.add_typer(config_app, name="config")
 
 
-# ─── Transcode (Phase 3) ────────────────────────────────────────────────────
-def _resolve_manifold_path(model: str) -> Path | None:
-    """Resolve a registry key to its manifold folder on disk."""
-    import yaml as _yaml
-    p = Path("./unified_data.yaml")
-    if not p.exists():
-        return None
-    with open(p, "r", encoding="utf-8") as f:
-        reg = _yaml.safe_load(f) or {}
-    meta = reg.get("_registry_metadata", {})
-    entry = reg.get("datasets", {}).get(model)
-    if entry is None:
-        return None
-    name = entry.get("name", model)
-    prefix = meta.get("name_prefix", "LemGendized")
-    suffix = meta.get("name_suffix", "")
-    out = Path(meta.get("output_folder_name", "../LemGendaryDatasets"))
-    return out / f"{prefix}{name}{suffix}"
-
-
+# ─── transcode (Phase 3) ────────────────────────────────────────────────────
 @app.command()
 def transcode(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
@@ -292,17 +307,9 @@ def transcode(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
 ) -> None:
     """Retroactively transcode an existing manifold's images, in place."""
-    if manifold:
-        target = Path(manifold)
-    elif model:
-        target = _resolve_manifold_path(model)
-    else:
-        console.print("[red]Provide --model or --manifold[/red]")
+    target = _resolve_target(model, manifold)
+    if target is None:
         raise typer.Exit(code=1)
-    if target is None or not target.exists():
-        console.print(f"[red]Manifold not found: {target}[/red]")
-        raise typer.Exit(code=1)
-
     cmd = [
         venv_python(), "migrate_manifold_image_format.py",
         "--manifold", str(target),
@@ -316,16 +323,7 @@ def transcode(
     raise typer.Exit(code=_run(cmd))
 
 
-# ─── Stubs for future phases ────────────────────────────────────────────────
-@app.command()
-def audit() -> None:
-    """Full image audit pass (resolution, black-frame, dedup, hardlinks)."""
-    _stub(2, "Image / annotation audit and dedup pipeline.")
-
-
-format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
-
-
+# ─── format sub-app (Phase 4) ───────────────────────────────────────────────
 @format_app.command("write")
 def format_write(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
@@ -338,28 +336,17 @@ def format_write(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Write additional container formats for an existing manifold."""
-    if manifold:
-        target = Path(manifold)
-    elif model:
-        target = _resolve_manifold_path(model)
-    else:
-        console.print("[red]Provide --model or --manifold[/red]")
+    target = _resolve_target(model, manifold)
+    if target is None:
         raise typer.Exit(code=1)
-    if target is None or not target.exists():
-        console.print(f"[red]Manifold not found: {target}[/red]")
-        raise typer.Exit(code=1)
-
     cmd = [
         venv_python(), "migrate_manifold_format.py",
         "--manifold", str(target),
         "--to", to,
     ]
-    if force_duplicate:
-        cmd += ["--force-duplicate"]
-    if accept_space_loss:
-        cmd += ["--accept-space-loss"]
-    if dry_run:
-        cmd += ["--dry-run"]
+    if force_duplicate: cmd += ["--force-duplicate"]
+    if accept_space_loss: cmd += ["--accept-space-loss"]
+    if dry_run: cmd += ["--dry-run"]
     raise typer.Exit(code=_run(cmd))
 
 
@@ -376,56 +363,123 @@ def format_migrate(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Retroactively write container formats for an existing manifold."""
-    if manifold:
-        target = Path(manifold)
-    elif model:
-        target = _resolve_manifold_path(model)
-    else:
-        console.print("[red]Provide --model or --manifold[/red]")
+    target = _resolve_target(model, manifold)
+    if target is None:
         raise typer.Exit(code=1)
-    if target is None or not target.exists():
-        console.print(f"[red]Manifold not found: {target}[/red]")
-        raise typer.Exit(code=1)
-
     cmd = [
         venv_python(), "migrate_manifold_format.py",
         "--manifold", str(target),
         "--to", to,
     ]
-    if force_duplicate:
-        cmd += ["--force-duplicate"]
-    if accept_space_loss:
-        cmd += ["--accept-space-loss"]
-    if purge_source:
-        cmd += ["--purge-source"]
-    if verify:
-        cmd += ["--verify"]
-    if dry_run:
-        cmd += ["--dry-run"]
+    if force_duplicate: cmd += ["--force-duplicate"]
+    if accept_space_loss: cmd += ["--accept-space-loss"]
+    if purge_source: cmd += ["--purge-source"]
+    if verify: cmd += ["--verify"]
+    if dry_run: cmd += ["--dry-run"]
     raise typer.Exit(code=_run(cmd))
 
 
 app.add_typer(format_app, name="format")
 
 
+# ─── audit (Phase 2) ────────────────────────────────────────────────────────
 @app.command()
-def label() -> None:
-    """Smart label generation (BLIP / YOLO / CLIP)."""
-    _stub(5, "Label generation strategies.")
+def audit(
+    model: str | None = typer.Option(None, "--model", "-m", help="Registry key to audit"),
+    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    sample: int | None = typer.Option(None, "--sample", help="Cap image scan for a quick preview"),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """Full image audit pass (resolution, black-frame, dedup, hardlinks)."""
+    cmd = [venv_python(), "audit_cli.py"]
+    if model: cmd += ["--model", model]
+    if manifold: cmd += ["--manifold", manifold]
+    if sample is not None: cmd += ["--sample", str(sample)]
+    if as_json: cmd += ["--json"]
+    raise typer.Exit(code=_run(cmd))
+
+
+# ─── smart generation (Phase 5) ─────────────────────────────────────────────
+@app.command()
+def label(
+    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
+    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    strategy: str = typer.Option("blip_caption", "--strategy",
+                                 help="blip_caption | clip_zeroshot | yolo_detection | "
+                                      "parsenet_segmentation | nima_quality"),
+    device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
+    sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Generate labels for an existing manifold."""
+    target = _resolve_target(model, manifold)
+    if target is None:
+        raise typer.Exit(code=1)
+    cmd = [
+        venv_python(), "generate_cli.py",
+        "--manifold", str(target),
+        "--kind", "label",
+        "--strategy", strategy,
+        "--device", device,
+    ]
+    if sample is not None: cmd += ["--sample", str(sample)]
+    if dry_run: cmd += ["--dry-run"]
+    raise typer.Exit(code=_run(cmd))
 
 
 @app.command()
-def prompt() -> None:
-    """Smart prompt generation for diffusion manifolds."""
-    _stub(5, "Prompt generation strategies.")
+def prompt(
+    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
+    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    template: str = typer.Option("diffusers-v1", "--template",
+                                 help="diffusers-v1 | sd-v1 | flux-v1 | minimal"),
+    device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
+    sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Generate structured prompts for diffusion manifolds."""
+    target = _resolve_target(model, manifold)
+    if target is None:
+        raise typer.Exit(code=1)
+    cmd = [
+        venv_python(), "generate_cli.py",
+        "--manifold", str(target),
+        "--kind", "prompt",
+        "--template", template,
+        "--device", device,
+    ]
+    if sample is not None: cmd += ["--sample", str(sample)]
+    if dry_run: cmd += ["--dry-run"]
+    raise typer.Exit(code=_run(cmd))
 
 
 @app.command()
-def mask() -> None:
-    """Smart mask generation (SAM / ParseNet)."""
-    _stub(5, "Mask generation strategies.")
+def mask(
+    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
+    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    strategy: str = typer.Option("parsenet", "--strategy",
+                                 help="parsenet | sam | modnet"),
+    device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
+    sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Generate masks for a segmentation manifold."""
+    target = _resolve_target(model, manifold)
+    if target is None:
+        raise typer.Exit(code=1)
+    cmd = [
+        venv_python(), "generate_cli.py",
+        "--manifold", str(target),
+        "--kind", "mask",
+        "--strategy", strategy,
+        "--device", device,
+    ]
+    if sample is not None: cmd += ["--sample", str(sample)]
+    if dry_run: cmd += ["--dry-run"]
+    raise typer.Exit(code=_run(cmd))
 
 
+# ─── Stubs for future phases ────────────────────────────────────────────────
 @app.command()
 def degrade() -> None:
     """Compiler-time degradation synthesis (blur, noise, haze, film)."""

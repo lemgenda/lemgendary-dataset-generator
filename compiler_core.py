@@ -6,9 +6,9 @@ Owns the compile-time pipeline:
   - parallel batch dispatch (batch_worker / process_parquet_shard)
   - per-sample processing (process_image / process_diffusion)
 
-Re-exports the utility, audit, registry, converter, and transcode symbols
-extracted in Phases 1.4, 1.5.5, 2.0, and 3.0 so existing call sites in
-manifold_compile.py keep working unchanged.
+Re-exports the utility, audit, registry, converter, transcode, format, and
+generator symbols extracted in Phases 1.4 through 5.0 so existing call sites
+in manifold_compile.py keep working unchanged.
 
 Import-order contract
 ---------------------
@@ -25,7 +25,6 @@ import sys
 from pathlib import Path
 
 # ─── Runtime bootstrap (MUST run before torch is imported) ─────────────────
-# Extend sys.path so sibling packages resolve regardless of cwd.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from runtime.environment import bootstrap_runtime
@@ -47,10 +46,6 @@ import torch
 import webdataset as wds
 from PIL import Image, ImageFile
 
-# PIL safety flags. LOAD_TRUNCATED_IMAGES is declared as Literal[False] in
-# Pillow's type stub because PIL expects its default to remain untouched.
-# setattr assigns it without a static-type conflict while preserving the
-# runtime behavior that truncated images should load instead of raising.
 setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 Image.MAX_IMAGE_PIXELS = None
 
@@ -79,8 +74,14 @@ __all__ = [
     "VisionAuditor", "ExactHasher", "PerceptualHasher", "RejectLog",
     # Transcode (Phase 3)
     "ImageTranscoder", "KeepFormatError", "ImageFormatPolicy",
+    # Formats (Phase 4)
+    "ShardWriter", "WebDatasetWriter", "MDSWriter", "LitDataWriter",
+    "ParquetWriter", "DirectoryWriter", "DirectorySampleSource",
+    "Sample", "Writer", "make_writer", "parse_also_format",
+    # Generators (Phase 5)
+    "GenerationResult", "LabelGenerator", "PromptGenerator", "MaskGenerator",
     # Core API (defined below)
-    "ShardWriter", "detect_task", "get_labeler",
+    "detect_task", "get_labeler",
     "init_worker", "batch_worker",
     "process_image", "process_diffusion", "process_parquet_shard",
 ]
@@ -103,6 +104,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "image_quality": 92,                # Phase 3
     "target_quality": 95,               # Phase 3
     "mask_format": "webp-lossless",     # Phase 3
+    "label_strategy": None,             # Phase 5 — None => infer from task
+    "prompt_strategy": None,            # Phase 5
+    "mask_strategy": None,              # Phase 5 — None => infer from task
 }
 
 if CONFIG_PATH.exists():
@@ -162,10 +166,16 @@ if getattr(args, "target_quality", None) is not None:
 if getattr(args, "mask_format", None):
     CONFIG["mask_format"] = args.mask_format
 
+# Phase 5: CLI overrides for generation strategies.
+if getattr(args, "label_strategy", None):
+    CONFIG["label_strategy"] = args.label_strategy
+if getattr(args, "prompt_strategy", None):
+    CONFIG["prompt_strategy"] = args.prompt_strategy
+if getattr(args, "mask_strategy", None):
+    CONFIG["mask_strategy"] = args.mask_strategy
 
-# ─── Package re-exports (Phase 1.4 / 1.5.5 / 2.0 / 3.0) ────────────────────
-# Every symbol below is declared in __all__ above, so linters correctly
-# recognise these as re-exports rather than unused imports.
+
+# ─── Package re-exports ────────────────────────────────────────────────────
 from converters import (
     detect_annotations,
     parse_coco,
@@ -188,6 +198,13 @@ from audit.vision_audit import VisionAuditor
 from audit.dedup import ExactHasher, PerceptualHasher
 from audit.reject_log import RejectLog
 from formats.transcode import ImageTranscoder, KeepFormatError
+from formats.webdataset import ShardWriter, WebDatasetWriter
+from formats.mds import MDSWriter
+from formats.litdata import LitDataWriter
+from formats.parquet import ParquetWriter
+from formats.directory import DirectorySampleSource, DirectoryWriter
+from formats.base import Sample, Writer, make_writer, parse_also_format
+from generators import GenerationResult, LabelGenerator, MaskGenerator, PromptGenerator
 from runtime.environment import get_device_info
 
 
@@ -197,64 +214,25 @@ LABELER = None
 CAPTIONER = None
 CLIP_MANIFOLD = None
 
-# 2026 Phase 1.5.5: ground-truth caches consolidated into one dataclass.
 _GT_CACHE = GroundTruthCaches()
 
-# 2026 Phase 2: audit primitives instantiated once per worker in init_worker.
 AUDITOR: VisionAuditor | None = None
 EXACT_HASHER: ExactHasher | None = None
 PERCEPTUAL_HASHER: PerceptualHasher | None = None
 
-# 2026 Phase 3: transcoder instantiated once per worker in init_worker.
 TRANSCODER: ImageTranscoder | None = None
+
+# Phase 5: generators instantiated once per worker in init_worker.
+LABEL_GEN: LabelGenerator | None = None
+PROMPT_GEN: PromptGenerator | None = None
+MASK_GEN: MaskGenerator | None = None
 
 
 class _Annotation(TypedDict):
-    """Shape of every record appended to `annotations` in `process_image`.
-
-    `data` is widened to ``list[Any]`` because three source families emit
-    numeric lists of different underlying element types:
-
-        COCO / YOLO       -> list[float]
-        Parquet / MATLAB  -> list[Any]
-        NPZ               -> list[Any]
-    """
-
+    """Shape of every record appended to `annotations` in `process_image`."""
     type: str        # 'bbox' | 'segmentation' | 'pose'
     cls: int
     data: list[Any]
-
-
-# ─── ShardWriter (WebDataset TAR sharding) ─────────────────────────────────
-class ShardWriter:
-    """Industrial TAR sharding via WebDataset.
-
-    Consumed by the diffusion pipeline in manifold_compile.py. Instantiate
-    with the target directory; each call to `write()` appends one sample.
-    """
-
-    def __init__(
-        self,
-        output_dir: str | Path,
-        prefix: str = "data",
-        max_size: float = 1e9,
-    ) -> None:
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.sink: Any = wds.ShardWriter(
-            str(self.output_dir / f"{prefix}-%05d.tar"),
-            maxsize=int(max_size),
-        )
-
-    def write(self, name: str, img_bytes: bytes, caption: str) -> None:
-        self.sink.write({
-            "__key__": name,
-            "jpg": img_bytes,
-            "txt": caption,
-        })
-
-    def close(self) -> None:
-        self.sink.close()
 
 
 # ─── Task routing ───────────────────────────────────────────────────────────
@@ -294,6 +272,21 @@ DPED_CACHE: set[str] = set()
 PHYSICAL_INDEX: set[str] = set()
 
 
+def _infer_label_strategy(task: str) -> str | None:
+    """Map a task to its default label-generation strategy."""
+    return {
+        "diffusion": "blip_caption",
+        "classification": "clip_zeroshot",
+        "detection": "yolo_detection",
+        "segmentation": "parsenet_segmentation",
+    }.get(task)
+
+
+def _infer_mask_strategy(task: str) -> str | None:
+    """Map a task to its default mask-generation strategy."""
+    return "parsenet" if task == "segmentation" else None
+
+
 # ─── Worker bootstrap ───────────────────────────────────────────────────────
 def init_worker(
     config: dict[str, Any],
@@ -303,6 +296,7 @@ def init_worker(
     """Per-process worker bootstrap. Loads models, GT caches, device config."""
     global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX, _GT_CACHE
     global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER, TRANSCODER
+    global LABEL_GEN, MASK_GEN
 
     if dped_cache:
         DPED_CACHE = dped_cache
@@ -319,17 +313,15 @@ def init_worker(
         import signal
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    # PIL flag re-applied inside spawned workers (they re-import the module).
     setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 
-    # Prevent thread thrashing on CPU in ProcessPool mode.
     if os.name != "nt" or multiprocessing.current_process().name != "MainProcess":
         try:
             torch.set_num_threads(1)
         except Exception:
             pass
 
-    # Device selection: CPU on Windows or when no CUDA; else distribute across GPUs.
+    # Device selection.
     if os.name == "nt" or not torch.cuda.is_available():
         device = "cpu"
     else:
@@ -339,12 +331,12 @@ def init_worker(
         else:
             device = "cuda:0"
 
-    # Phase 2 audit primitives (one instance per worker).
+    # Phase 2 audit primitives.
     AUDITOR = VisionAuditor(CONFIG)
     EXACT_HASHER = ExactHasher(no_hash=args.no_hash)
     PERCEPTUAL_HASHER = PerceptualHasher(no_hash=args.no_hash)
 
-    # Phase 3 transcoder (one instance per worker).
+    # Phase 3 transcoder.
     policy = ImageFormatPolicy(
         format=CONFIG.get("image_format", "webp"),
         quality=int(CONFIG.get("image_quality", 92)),
@@ -353,8 +345,20 @@ def init_worker(
     )
     TRANSCODER = ImageTranscoder(policy)
 
-    # NIMA quality vetting.
     mission = detect_task(args.model)
+
+    # Phase 5: resolve strategies.
+    _label_strategy = CONFIG.get("label_strategy") or _infer_label_strategy(mission)
+    _mask_strategy = CONFIG.get("mask_strategy") or _infer_mask_strategy(mission)
+    _gen_labeler = None
+    if _label_strategy in ("yolo_detection", "parsenet_segmentation"):
+        seg_mode = _label_strategy == "parsenet_segmentation"
+        try:
+            _gen_labeler = get_labeler("segmentation" if seg_mode else mission, device)
+        except Exception:
+            _gen_labeler = None
+
+    # NIMA quality vetting.
     if mission in ["quality", "classification", "diffusion"] and not args.no_vetting:
         model_type = (
             "aesthetic"
@@ -387,6 +391,27 @@ def init_worker(
         except Exception:
             pass
 
+    # Phase 5 generators (constructed after all model wrappers are loaded).
+    if _label_strategy:
+        try:
+            LABEL_GEN = LabelGenerator(
+                _label_strategy,
+                captioner=CAPTIONER,
+                clip=CLIP_MANIFOLD,
+                labeler=_gen_labeler,
+                sentry=SENTRY,
+            )
+        except Exception as e:
+            print(f"[WARN] LabelGenerator init failed: {e}")
+            LABEL_GEN = None
+
+    if _mask_strategy:
+        try:
+            MASK_GEN = MaskGenerator(_mask_strategy, labeler=_gen_labeler)
+        except Exception as e:
+            print(f"[WARN] MaskGenerator init failed: {e}")
+            MASK_GEN = None
+
 
 def get_labeler(task: str, device: str = "cuda"):
     """Singleton labeler per task type (detection / segmentation / face)."""
@@ -409,7 +434,7 @@ def process_parquet_shard(
     output_root_str, skip_lbl, train_prob, existing_names,
     existing_on_disk, keep_prob, num_rows,
 ):
-    """Process an entire Parquet shard as one worker task (amortizes IPC)."""
+    """Process an entire Parquet shard as one worker task."""
     try:
         df = pd.read_parquet(pq_path)
     except Exception as e:
@@ -424,28 +449,22 @@ def process_parquet_shard(
         name = f"{prefix}_{c_slug}_{current_idx:09d}"
 
         if keep_prob < 1.0 and random.random() > keep_prob:
-            results.append({
-                "name": name, "source": c_slug, "task": task,
-                "split": "skipped", "hash": "dropped",
-                "nima_score": 1.0, "size": 0,
-            })
+            results.append({"name": name, "source": c_slug, "task": task,
+                            "split": "skipped", "hash": "dropped",
+                            "nima_score": 1.0, "size": 0})
             continue
 
         if name in existing_names or name.lower() in existing_on_disk:
-            results.append({
-                "name": name, "source": c_slug, "task": task,
-                "split": "skipped", "hash": "skipped",
-                "nima_score": 1.0, "size": 0,
-            })
+            results.append({"name": name, "source": c_slug, "task": task,
+                            "split": "skipped", "hash": "skipped",
+                            "nima_score": 1.0, "size": 0})
             continue
 
         img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
         if img_bytes is None:
-            results.append({
-                "name": name, "source": c_slug, "task": task,
-                "split": "skipped", "hash": "skipped",
-                "nima_score": 1.0, "size": 0,
-            })
+            results.append({"name": name, "source": c_slug, "task": task,
+                            "split": "skipped", "hash": "skipped",
+                            "nima_score": 1.0, "size": 0})
             continue
 
         split = "train" if random.random() < train_prob else "val"
@@ -454,20 +473,15 @@ def process_parquet_shard(
         if task == "diffusion":
             res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split, output_root_str)
         else:
-            res = process_image(
-                img_bytes, prefix, c_slug, current_idx, task, fmt,
-                row_dict, split, output_root_str, skip_lbl,
-            )
+            res = process_image(img_bytes, prefix, c_slug, current_idx, task, fmt,
+                                row_dict, split, output_root_str, skip_lbl)
 
         if res:
             results.append(res)
         else:
-            results.append({
-                "name": name, "source": c_slug, "task": task,
-                "split": "skipped", "hash": "failed",
-                "nima_score": 1.0, "size": 0,
-            })
-
+            results.append({"name": name, "source": c_slug, "task": task,
+                            "split": "skipped", "hash": "failed",
+                            "nima_score": 1.0, "size": 0})
     return results
 
 
@@ -487,9 +501,6 @@ def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
 
 
 # ─── Audit gate shims (Phase 2) ─────────────────────────────────────────────
-# The pre-Phase-2 inline implementations lived here. They now delegate to the
-# VisionAuditor instance constructed in init_worker. Names preserved for
-# backward-compat callers.
 def _is_image_valid_for_dataset(img, w, hgt, task, slug) -> bool:
     if AUDITOR is None:
         return True
@@ -517,16 +528,7 @@ def _write_image_phase3(
     out_path: Path,
     kind: Literal["image", "target", "mask"],
 ) -> Path:
-    """Write a single image to disk, honoring the Phase 3 transcode policy.
-
-    Returns the actual output path. When transcoding is enabled, the
-    extension may change (e.g. `.jpg` becomes `.webp`). When transcoding
-    is disabled, preserves the pre-Phase-3 hardlink-first behavior with
-    copy / PIL-save fallbacks.
-
-    Never raises — any transcode failure silently falls back to the
-    copy path so a single corrupt source cannot abort a full compile.
-    """
+    """Write a single image to disk, honoring the Phase 3 transcode policy."""
     if TRANSCODER is not None and TRANSCODER.enabled:
         try:
             img = loaded_img
@@ -549,7 +551,6 @@ def _write_image_phase3(
         except Exception as e:
             print(f"[WARN] Transcode failed for {source_path.name}: {e}; using copy fallback.")
 
-    # Pre-Phase-3 behavior.
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if loaded_img is not None:
         save_fmt = "PNG" if out_path.suffix == ".png" else "JPEG"
@@ -576,11 +577,7 @@ def process_image(
     img_input, prefix, slug, idx, task, fmt, ann_data, split,
     output_root_str, skip_labeling=False,
 ):
-    """Worker function for parallel processing.
-
-    img_input is a Path for on-disk sources, or raw bytes / dict for
-    Parquet-embedded sources.
-    """
+    """Worker function for parallel processing."""
     img_path: Any = "Unknown"
     nima_score = 1.0
     nima_probs = [0.0] * 10
@@ -624,19 +621,15 @@ def process_image(
         tgt_dir = "masks" if task == "segmentation" else "targets"
         out_tgt_path = Path(output_root_str) / tgt_dir / split / f"{name}{ext}"
 
-        # ── High-speed skip via physical index ──────────────────────────────
         if PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX:
-            return {
-                "name": name, "source": slug, "task": task, "split": split,
-                "hash": "skipped", "nima_score": nima_score, "size": 0,
-            }
+            return {"name": name, "source": slug, "task": task, "split": split,
+                    "hash": "skipped", "nima_score": nima_score, "size": 0}
 
         # ── Restoration target resolution ───────────────────────────────────
         target_img = None
         target_img_path = None
 
         if task in ["restoration", "super-resolution", "parameter_prediction", "segmentation"]:
-            # Strategy 1: Parquet / virtual target.
             if ann_data:
                 row_dict = None
                 if isinstance(ann_data, dict):
@@ -658,7 +651,6 @@ def process_image(
                                 target_img_path = str(p)
                             break
 
-            # Strategy 2: Sibling / ancestral folder resolver.
             if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
                 blur_keys = ["blur", "blurry", "input", "lowres", "lr", "rain",
                              "hazy", "noisy", "degraded", "distorted", "low", "images"]
@@ -669,13 +661,10 @@ def process_image(
                 p_str = str(img_path).replace("\\", "/")
                 parent = img_path.parent
 
-                # 2a: Sibling folder.
                 if any(k in parent.name.lower() for k in blur_keys):
                     try:
                         for sibling in parent.parent.iterdir():
-                            if sibling.is_dir() and any(
-                                k in sibling.name.lower() for k in sharp_keys
-                            ):
+                            if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
                                 potential = sibling / img_path.name
                                 if potential.exists():
                                     target_img_path = str(potential)
@@ -695,16 +684,12 @@ def process_image(
                     except OSError:
                         pass
 
-                # 2b: Ancestral sibling.
                 if not target_img_path:
                     for ancestor in [parent, parent.parent]:
-                        if any(k in ancestor.name.lower()
-                               for k in ["train", "test", "val", "images"]):
+                        if any(k in ancestor.name.lower() for k in ["train", "test", "val", "images"]):
                             try:
                                 for sibling in ancestor.parent.iterdir():
-                                    if sibling.is_dir() and any(
-                                        k in sibling.name.lower() for k in sharp_keys
-                                    ):
+                                    if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
                                         potential = sibling / img_path.name
                                         if potential.exists():
                                             target_img_path = str(potential)
@@ -722,7 +707,6 @@ def process_image(
                             if target_img_path:
                                 break
 
-                # 2c: Same-folder.
                 if not target_img_path:
                     for b_k in blur_keys:
                         if img_path.name.lower().startswith(b_k):
@@ -737,7 +721,6 @@ def process_image(
                             if target_img_path:
                                 break
 
-            # Strategy 3: Legacy DPED fallback.
             if not target_img and not target_img_path and not isinstance(img_input, (bytes, dict)):
                 for device_name in ["iphone", "sony", "blackberry"]:
                     needle = f"/{device_name}/"
@@ -774,7 +757,7 @@ def process_image(
                 if not audit.valid:
                     return None
 
-        # ── NIMA quality gate: GT-first, AI fallback ────────────────────────
+        # ── NIMA quality gate ───────────────────────────────────────────────
         nima_score = 1.0
         nima_probs = [0.0] * 10
         nima_probs[0] = 1.0
@@ -822,7 +805,6 @@ def process_image(
             except (TypeError, ValueError):
                 pass
 
-        # Authenticity override (AI vs Human).
         is_authenticity = "authentic" in prefix.lower()
         if is_authenticity:
             parent_name = img_path.parent.name.lower()
@@ -842,16 +824,13 @@ def process_image(
                 nima_probs[9] = 1.0
                 nima_score = 10.0
 
-        # AI vetting fallback.
         if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
             if SENTRY:
                 nima_score, nima_probs = SENTRY.score(img, return_probs=True)
 
         current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
-        if not _passes_nima_filter(
-            task, slug, is_authenticity, nima_score,
-            nima_probs, current_threshold, idx,
-        ):
+        if not _passes_nima_filter(task, slug, is_authenticity, nima_score,
+                                   nima_probs, current_threshold, idx):
             return None
 
         # ── Hash + output writes ────────────────────────────────────────────
@@ -865,10 +844,7 @@ def process_image(
                 ph = f"{p_hashes[0]}:{p_hashes[1]}"
 
         is_already_on_disk = PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX
-        is_clean_only = (
-            ("parsenet" in slug.lower() or "codeformer" in slug.lower())
-            and task == "restoration"
-        )
+        is_clean_only = ("parsenet" in slug.lower() or "codeformer" in slug.lower()) and task == "restoration"
         if is_clean_only and not target_img_path and isinstance(img_input, (str, Path)):
             target_img_path = str(img_path)
 
@@ -907,9 +883,17 @@ def process_image(
                         out_path=out_tgt_path,
                         kind="image",
                     )
+                elif task == "segmentation" and MASK_GEN is not None and img is not None:
+                    mask_result = MASK_GEN.generate(img, context={"task": task, "slug": slug})
+                    if mask_result.value is not None:
+                        out_tgt_path = _write_image_phase3(
+                            loaded_img=mask_result.value,
+                            source_bytes=b"",
+                            source_path=img_path,
+                            out_path=out_tgt_path,
+                            kind="mask",
+                        )
                 else:
-                    # Synthetic mode: target bytes equal image bytes.
-                    # Hardlink so both paths share the transcoded inode.
                     try:
                         os.link(str(out_img_path), str(out_tgt_path))
                     except (OSError, AttributeError):
@@ -954,11 +938,9 @@ def process_image(
                     kpts = normalize_points(a["keypoints"], w, hgt, stride=3)
                     annotations.append({"type": "pose", "cls": cls, "data": a["bbox"] + kpts})
                 elif "segmentation" in a and a["segmentation"]:
-                    poly_raw = (
-                        a["segmentation"][0]
-                        if isinstance(a["segmentation"], list) and len(a["segmentation"]) > 0
-                        else []
-                    )
+                    poly_raw = (a["segmentation"][0]
+                                if isinstance(a["segmentation"], list) and len(a["segmentation"]) > 0
+                                else [])
                     if poly_raw:
                         poly = normalize_points(poly_raw, w, hgt, stride=2)
                         annotations.append({"type": "segmentation", "cls": cls, "data": poly})
@@ -1079,19 +1061,30 @@ def process_image(
                         "data": [0.0, 0.0, 1.0, 1.0],
                     })
 
-        # ── Auto-labeling fallback ──────────────────────────────────────────
+        # ── Auto-labeling fallback (Phase 5 dispatch) ───────────────────────
+        # `img is not None` is required for Pyrefly to narrow the union
+        # before both the LabelGenerator call and the get_labeler fallback.
         is_autolabeled = False
-        if (
-            not annotations
-            and task not in ["quality", "classification"]
-            and not args.no_labeling
-            and not skip_labeling
-        ):
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            labeler = get_labeler(task, device)
-            annotations = cast("list[_Annotation]", labeler.predict(img))
-            if annotations:
-                is_autolabeled = True
+        if (not annotations
+                and task not in ["quality", "classification"]
+                and not args.no_labeling
+                and not skip_labeling
+                and img is not None):
+            if LABEL_GEN is not None:
+                gen_result = LABEL_GEN.generate(
+                    img, context={"task": task, "slug": slug, "path": str(img_path)}
+                )
+                if gen_result.kind == "label" and isinstance(gen_result.value, dict):
+                    gen_annotations = gen_result.value.get("annotations")
+                    if gen_annotations:
+                        annotations = cast("list[_Annotation]", gen_annotations)
+                        is_autolabeled = True
+            else:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                labeler = get_labeler(task, device)
+                annotations = cast("list[_Annotation]", labeler.predict(img))
+                if annotations:
+                    is_autolabeled = True
 
         # ── Write label file ────────────────────────────────────────────────
         label_file_path = Path(output_root_str) / "labels" / split / f"{name}.txt"
@@ -1105,11 +1098,8 @@ def process_image(
                     class_label: Any = 1
                     if isinstance(ann_data, dict) and "label" in ann_data:
                         class_label = ann_data["label"]
-                    elif (
-                        isinstance(ann_data, tuple)
-                        and len(ann_data) == 2
-                        and isinstance(ann_data[1], dict)
-                    ):
+                    elif (isinstance(ann_data, tuple) and len(ann_data) == 2
+                          and isinstance(ann_data[1], dict)):
                         df_subset, mapping = cast("tuple[Any, dict[str, Any]]", ann_data)
                         lbl_col = mapping.get("label", "label")
                         if lbl_col in df_subset.columns:
@@ -1119,7 +1109,6 @@ def process_image(
                         if any(k in p_lower for k in ["fake", "ai", "synthetic",
                                                       "nsfw", "porn", "explicit"]):
                             class_label = 0
-
                     if isinstance(class_label, float):
                         if not pd.isna(class_label):
                             class_label = int(class_label)
@@ -1135,12 +1124,9 @@ def process_image(
                             f.write(f"{cls} {' '.join(map(str, data))}\n")
                         elif ann["type"] == "pose":
                             yolo_box = convert_bbox_xywh_to_yolo(data[:4], w, hgt)
-                            f.write(
-                                f"{cls} {' '.join(map(str, yolo_box))} "
-                                f"{' '.join(map(str, data[4:]))}\n"
-                            )
+                            f.write(f"{cls} {' '.join(map(str, yolo_box))} "
+                                    f"{' '.join(map(str, data[4:]))}\n")
 
-        # ── Result ──────────────────────────────────────────────────────────
         size_bytes = 0
         try:
             if out_img_path.exists():
@@ -1169,11 +1155,7 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
     """Text-image processor for Diffusion manifolds."""
     try:
         if isinstance(img_path, (bytes, dict)):
-            raw = (
-                img_path["bytes"]
-                if isinstance(img_path, dict) and "bytes" in img_path
-                else img_path
-            )
+            raw = img_path["bytes"] if isinstance(img_path, dict) and "bytes" in img_path else img_path
             if not isinstance(raw, bytes):
                 return None
             img_data = raw
@@ -1216,9 +1198,7 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
         clip_latent = None
         if CLIP_MANIFOLD:
             style_tag = CLIP_MANIFOLD.tag_style(img)
-            clip_latent = (
-                CLIP_MANIFOLD.extract_features(img).cpu().numpy().flatten().tolist()
-            )
+            clip_latent = CLIP_MANIFOLD.extract_features(img).cpu().numpy().flatten().tolist()
 
         h = EXACT_HASHER.hash(img) if (CONFIG["enable_dedup"] and EXACT_HASHER) else None
         ph: str | None = None
@@ -1229,7 +1209,6 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
         name = f"{prefix}_{idx:09d}"
 
-        # Phase 3: transcode diffusion images via the shared transcoder.
         if TRANSCODER is not None and TRANSCODER.enabled:
             img_bytes, _fmt = TRANSCODER.encode(img, kind="image")
         else:
@@ -1239,15 +1218,9 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
         latent_blob = None
         if clip_latent:
-            latent_blob = sqlite3.Binary(
-                np.array(clip_latent).astype(np.float32).tobytes()
-            )
+            latent_blob = sqlite3.Binary(np.array(clip_latent).astype(np.float32).tobytes())
 
-        nima_val = (
-            float(nima_score[0])
-            if isinstance(nima_score, (tuple, list))
-            else float(nima_score)
-        )
+        nima_val = float(nima_score[0]) if isinstance(nima_score, (tuple, list)) else float(nima_score)
         return {
             "name": name, "source": slug, "task": "diffusion", "split": split,
             "hash": h, "perceptual_hash": ph,
@@ -1262,3 +1235,4 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
 
 
 # ─── ORCHESTRATOR ───────────────────────────────────────────────────────────
+# The orchestration body lives in manifold_compile.py.

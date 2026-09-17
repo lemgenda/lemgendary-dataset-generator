@@ -1,34 +1,48 @@
 """
-Generator protocol.
+Generator protocol and shared result type.
 
-Defines the shape that every generator (labels, prompts, masks) implements.
-Nothing here is called by the current compiler — Phase 5 wires these into
-`process_image` when the config requests a generation strategy.
+Phase 5 of the 2026 modernization roadmap.
+
+Every generator (labels, prompts, masks) returns a `GenerationResult`.
+The consumer (`process_image` or `generate_cli.py`) dispatches on `.kind`.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from PIL import Image
 
 
-@runtime_checkable
-class Generator(Protocol):
-    """Structural interface for a label/prompt/mask generator.
+@dataclass
+class GenerationResult:
+    """Structured output of a single generation call.
 
-    Implementations are stateful (model-loaded) and thread-safe within a
-    single worker process. Each worker instantiates its own copy.
+    kind is one of:
+        'label'   — value is a dict with optional keys:
+                        nima_probs:    list[float] (10-bin distribution)
+                        class_label:   int
+                        annotations:   list[dict] (bbox / pose / segmentation)
+        'prompt'  — value is a str
+        'mask'    — value is a PIL.Image in mode 'L' or '1'
     """
 
-    def __init__(self, device: str = "cuda") -> None: ...
+    kind: str
+    value: Any
+    strategy: str
+    confidence: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def generate(self, img: Image.Image, context: dict[str, Any] | None = None) -> Any:
-        """Produce the derived artifact for a single image.
 
-        Return type depends on the generator:
-            labels.py    -> dict | list
-            prompts.py   -> str
-            masks.py     -> PIL.Image (mode "L" or "1")
-        """
-        ...
+@runtime_checkable
+class Generator(Protocol):
+    """Structural interface for every generator."""
+
+    strategy: str
+
+    def generate(
+        self,
+        img: Image.Image,
+        context: dict[str, Any] | None = None,
+    ) -> GenerationResult: ...
