@@ -1,13 +1,90 @@
 """
-WebDataset TarWriter.
+WebDataset TAR writer.
 
-Single responsibility: write Samples to WebDataset `.tar` shards for
-diffusion manifolds.
+Single responsibility: write Samples to WebDataset `.tar` shards. Used by
+diffusion manifolds where captions are bundled as `<key>.txt` alongside
+`<key>.jpg`.
 
-The existing `ShardWriter` class in `compiler_core.py` is the pre-Phase-4
-implementation; Phase 4 moves it here.
+The `ShardWriter` class moved here from compiler_core.py in Phase 4; the
+old location re-exports it for backward compatibility.
+
+Phase 4 of the 2026 modernization roadmap.
 """
 
 from __future__ import annotations
 
-# Phase 4 will move ShardWriter from compiler_core into this module
+import io
+from pathlib import Path
+from typing import Any
+
+import webdataset as wds
+
+from .base import Sample
+
+
+class WebDatasetWriter:
+    """WebDataset .tar shard writer, driven by the Sample stream."""
+
+    def __init__(self) -> None:
+        self._sink: Any = None
+        self._out_dir: Path | None = None
+
+    def open(self, output_root: Path, policy: Any) -> None:
+        self._out_dir = Path(output_root) / "shards"
+        self._out_dir.mkdir(parents=True, exist_ok=True)
+        max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
+        self._sink = wds.ShardWriter(
+            str(self._out_dir / "shard-%05d.tar"),
+            maxsize=max_size,
+        )
+
+    def write(self, sample: Sample) -> None:
+        if self._sink is None:
+            return
+        row: dict[str, Any] = {
+            "__key__": sample.name,
+            "jpg": sample.image_bytes,
+        }
+        if sample.label:
+            row["txt"] = sample.label.encode("utf-8")
+        if sample.metadata:
+            import json
+            row["json"] = json.dumps(sample.metadata).encode("utf-8")
+        self._sink.write(row)
+
+    def close(self) -> None:
+        if self._sink is not None:
+            self._sink.close()
+            self._sink = None
+
+
+class ShardWriter:
+    """Legacy compatibility shim.
+
+    Pre-Phase-4 diffusion manifolds used this class directly. It is retained
+    here so existing imports keep working. New code should use
+    WebDatasetWriter.
+    """
+
+    def __init__(
+        self,
+        output_dir: str | Path,
+        prefix: str = "data",
+        max_size: float = 1e9,
+    ) -> None:
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.sink: Any = wds.ShardWriter(
+            str(self.output_dir / f"{prefix}-%05d.tar"),
+            maxsize=int(max_size),
+        )
+
+    def write(self, name: str, img_bytes: bytes, caption: str) -> None:
+        self.sink.write({
+            "__key__": name,
+            "jpg": img_bytes,
+            "txt": caption,
+        })
+
+    def close(self) -> None:
+        self.sink.close()
