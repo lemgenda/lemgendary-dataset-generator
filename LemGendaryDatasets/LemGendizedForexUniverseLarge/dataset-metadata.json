@@ -1,0 +1,861 @@
+{
+  "title": "LemGendized ForexUniverse",
+  "id": "lemtreursi/lemgendizedforexuniverselarge",
+  "subtitle": "High-fidelity manifold for Financial Time-Series & Forex Prediction models",
+  "description": "# LemGendizedForexUniverseLarge\n\n> High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.\n\n## Dataset Overview\n\n- **Category:** Forex & Financial Time-Series\n- **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator\n- **Pairs Included:** All Primary & Secondary FX Pairs\n- **Timeframe Rungs:** M1 (1min), M5 (5min), M15 (15min), H1 (60min), H4 (240min), D1 (1440min)\n- **Historical Horizon:** 2019-01-01 to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)\n- **Lookback Window:** 168 bars\n- **Total Samples:** 0\n- **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)\n- **Architecture Base:** Causal TCN + Cross-Timeframe Multi-Head Attention\n- **Primary Task:** Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss boundaries.\n\n## Year\u2011Chunked Shard Breakdown\n\nThe dataset is organised by year into unified Apache Parquet files (`ForexUniverseYYYY.parquet`), each containing all pairs and timeframes for that year with Zstandard compression.\n\n| Year | Pair | Timeframe | Samples |\n| :--- | :--- | :--- | :--- |\n| (dynamic) | (dynamic) | (dynamic) | (dynamic) |\n\n## Model Training Profiles\n\n### Model: LemGendary Forex Predictor (Multi-Scale CNN-Transformer)\n\n- **Architecture**: Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)\n- **Optimization**: forex_dual\n\n| Metric | Baseline | Advanced | SOTA |\n| :--- | :--- | :--- | :--- |\n| **Dir Acc** | ~46.8% | > 52.6% | **> 58.5%** |\n| **Win Rate** | ~44.8% | > 50.4% | **> 56.0%** |\n| **Profit Factor** | ~1.32 | > 1.48 | **> 1.65** |\n| **Sharpe Ratio** | ~1.48 | > 1.67 | **> 1.85** |\n| **Sortino Ratio** | ~1.68 | > 1.89 | **> 2.1** |\n| **Max Drawdown** | < 18.00 | < 14.40 | **< 12.0** |\n| **Tp Mae** | < 18.75 | < 15.00 | **< 12.5** |\n| **Sl Mae** | < 18.75 | < 15.00 | **< 12.5** |\n\n## Repository Structure\n\nStandardized directory logic for seamless integration into the **LemGendary Training Suite**.\n\n- **`category.txt`**: Top-level categorization tag.\n- **`classes.txt`**: Class labels mapping.\n- **`dataset-metadata.json`**: Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.\n- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.\n- **`README.md`**: This documentation file.\n\n---\n\n**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge)\n",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": [
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2019.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2019",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2019.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2019",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2020.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2020",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2020.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2020",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2021.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2021",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2021.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2021",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2022.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2022",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2022.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2022",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2023.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2023",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2023.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2023",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2024.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2024",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2024.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2024",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2025.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2025",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2025.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2025",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "LemGendizedForexUniverseLarge/ForexUniverse2026.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2026",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    },
+    {
+      "path": "ForexUniverse2026.parquet",
+      "description": "Annual OHLCV and feature tensor shards for year 2026",
+      "schema": {
+        "fields": [
+          {
+            "name": "pair",
+            "type": "string",
+            "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500)."
+          },
+          {
+            "name": "timeframe",
+            "type": "integer",
+            "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+          },
+          {
+            "name": "timestamp",
+            "type": "integer",
+            "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+          },
+          {
+            "name": "y_dir",
+            "type": "integer",
+            "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+          },
+          {
+            "name": "tp_pips",
+            "type": "number",
+            "description": "Optimal forward Take-Profit target excursion magnitude in pips."
+          },
+          {
+            "name": "sl_pips",
+            "type": "number",
+            "description": "Maximum adverse excursion Stop-Loss safety threshold in pips."
+          },
+          {
+            "name": "seq_len",
+            "type": "integer",
+            "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure)."
+          },
+          {
+            "name": "n_features",
+            "type": "integer",
+            "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+          },
+          {
+            "name": "features",
+            "type": "bytes",
+            "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix."
+          }
+        ]
+      }
+    }
+  ]
+}

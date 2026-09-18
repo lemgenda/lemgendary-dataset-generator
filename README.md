@@ -10,15 +10,33 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.7.0-SOLID` |
+| **Version** | `v16.7.2-SOLID` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + S.O.L.I.D. Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
-| **Roadmap** | [modernization_roadmap.md](./modernization_roadmap.md) |
+| **Roadmap** | [dataset_compiler_modernization_roadmap.md](../lemgendary-docs/roadmaps/dataset_compiler_modernization_roadmap.md) |
 
 ---
 
 ## Changelog
+
+### v16.7.2 — Encapsulation of Compiler Internals into `core/` Package
+
+Fully encapsulated compiler coordinator internals into the dedicated `core/` subpackage, finalizing root directory decluttering so that only canonical entrypoints, manifests, and subpackages reside at the project root:
+
+- **Compiler Internals Encapsulated (`core/`)** — Relocated `compiler_core.py`, `manifold_compile.py`, `config_schema.py`, `registry.py`, `presets.py`, `cli_args.py`, `doc_generator.py`, and `common_sync.py` into `core/` with PEP 562 lazy loading in `core/__init__.py`.
+- **Zero Circular Imports** — Eliminated circular import cascades between container format transcoders and compiler coordinator modules through lazy module initialization and clean boundary separation.
+- **Unified Path Resolution & CWD-Independence** — Hardened all tools in `tools/` and `core/` with automatic project root discovery and `sys.path` bootstrapping, ensuring 100% operational integrity whether invoked from repository root, project directory, or external orchestrators.
+- **Clean Root Surface** — The project root now exposes exclusively canonical entry points (`cli.py`, `lemgendary_datasets_hub.ps1`), configuration manifests (`unified_data.yaml`, `presets.yaml`), and subpackages.
+
+### v16.7.1 — Root Decluttering & Auxiliary Tools Reorganization
+
+Systematically decluttered the dataset compiler root directory by relocating auxiliary generators, cloud synchronizers, downsamplers, and metadata specifications into dedicated subpackages:
+
+- **Auxiliary Tools Relocation (`tools/`)** — Consolidated `notebook_generator.py`, `manifold_reduce.py`, `manifold_sync.py`, `generate_cli.py`, `generate_degrade.py`, `migrate_manifold_format.py`, `migrate_manifold_image_format.py`, `modernize_manifold.py`, `regenerate_manifolds_md.py`, `sync_kaggle_metadata.py`, and forex shims into `tools/`.
+- **Smart Archive Utility (`utils/archive.py`)** — Refactored archive management into pure utility module `utils.archive` (`verify_archive`, `create_archive`, `smart_extract`).
+- **Model Metadata Centralization (`models/models_metadata.yaml`)** — Moved `models_metadata.yaml` into `models/`, updating documentation generators, markdown inventory scripts, and `env_manager.validator` with seamless backwards-compatible fallbacks.
+- **Ecosystem Tooling Synchronization** — Updated `lemgendary_datasets_hub.ps1`, `cli.py`, `services.sync_service`, and `api.routes.kaggle` to resolve relocated scripts directly while preserving legacy entry points.
 
 ### v16.7.0 — S.O.L.I.D. Services Layer & Forex Encapsulation
 
@@ -404,33 +422,32 @@ python config_schema.py
 
 ```text
 lemgendary-datasets/
-├── cli.py                         # Unified Typer entry point (Phase 1.5)
-├── cli_args.py                    # SSOT for argparse + env-manager resolver
-├── compiler_core.py               # Coordinator & pipeline dispatcher
-├── manifold_compile.py            # Compilation engine
-├── manifold_reduce.py             # Reduction engine
-├── manifold_sync.py               # Kaggle sync orchestrator
-├── modernize_manifold.py          # Suffix-removal tool (Phase 0)
-├── migrate_registry.py            # Registry migration (Phase 1.3)
-├── migrate_manifold_image_format.py # Retroactive WebP transcoding (Phase 3)
-├── migrate_manifold_format.py     # Retroactive container migration (Phase 4)
-├── generate_cli.py                # Standalone smart generation runner (Phase 5)
-├── doc_generator.py               # Per-manifold docs
-├── regenerate_manifolds_md.py      # Top-level matrix regeneration
-├── config_schema.py               # Pydantic config (Phase 1.1)
-├── registry.py                    # Registry lifecycle (Phase 1.3 / 1.5.5)
-├── archive_manager.py             # Archive + resume
-├── common_sync.py                 # Kaggle streaming core
-├── notebook_generator.py          # Notebook matrix (Kaggle + Colab)
+├── cli.py                         # Unified Typer entry point (v16.7.2)
+├── lemgendary_datasets_hub.ps1    # Interactive terminal operations hub
+├── presets.yaml                   # Canonical compilation profiles
+├── unified_data.yaml              # Authoritative dataset registry manifest
+├── core/                          # Compiler coordinator & core internals (v16.7.2)
+│   ├── compiler_core.py, manifold_compile.py, config_schema.py
+│   ├── registry.py, presets.py, cli_args.py, doc_generator.py, common_sync.py
+├── services/                      # In-process S.O.L.I.D. services (v16.7.0)
+│   ├── compiler_service.py, degrade_service.py, audit_service.py
+│   ├── sync_service.py, doc_service.py, generation_service.py, migration_service.py
+├── tools/                         # Auxiliary tools, migrations & matrix generators
+│   ├── notebook_generator.py, manifold_reduce.py, manifold_sync.py
+│   ├── generate_cli.py, generate_degrade.py, migrate_manifold_format.py
+│   ├── migrate_manifold_image_format.py, modernize_manifold.py
+│   ├── regenerate_manifolds_md.py, sync_kaggle_metadata.py
+├── forex/                         # Encapsulated Forex & MT5 domain (v16.7.0)
+│   ├── schema.py, converter.py, injector.py, bridge.py, pipeline.py
 ├── api/                           # REST & WebSocket API sidecar server (Phase 7)
 │   ├── server.py, jobs.py, auth.py, events.py, models.py
-│   └── routes/ (health, config, jobs, datasets, sources, kaggle, gates, env)
+│   └── routes/ (health, config, jobs, datasets, sources, kaggle, gates, env, gui)
 ├── sources/                       # Fetch backends (Phase 1.2)
 │   ├── hf.py, gh.py, gd.py, kaggle.py
 │   └── base.py
 ├── converters/                    # Annotation parsers (Phase 1.4)
 │   ├── coco.py, parquet.py, xml.py, yolo.py, matlab.py, safetensors.py
-│   └── dispatch.py
+│   └── dispatch.py, category_map.json
 ├── audit/                         # Audit & Dedup engine (Phase 2)
 │   ├── vision_audit.py, dedup.py, reject_log.py, hardlinks.py
 │   └── ground_truth.py
@@ -443,14 +460,13 @@ lemgendary-datasets/
 │   ├── base.py, blur.py, noise.py, haze.py, rain.py, jpeg.py, lowlight.py, downsample.py, film.py
 ├── runtime/                       # Process bootstrap (Phase 1.5.5)
 │   └── environment.py
-├── utils/                         # Pure helpers (Phase 1.5.5)
-│   ├── fs.py, geometry.py, hashing.py, image.py
+├── utils/                         # Pure helpers & archiving (Phase 1.5.5)
+│   ├── archive.py, fs.py, geometry.py, hashing.py, image.py
 │   ├── math.py, naming.py, net.py
-├── models/                        # AI model wrappers (pre-existing)
-│   ├── quality_scorer.py, detection.py, diffusion.py, encoder.py
-│   └── nima.py
-├── mt5_bridge.py                  # MT5 IPC bridge (Phase 1.5.7)
-├── mt5_pipeline.py                # Forex MT5 pipeline
+├── models/                        # AI model wrappers & metadata
+│   ├── quality_scorer.py, detection.py, diffusion.py, encoder.py, nima.py
+│   └── models_metadata.yaml
+├── presets.yaml, presets.py       # Canonical compiler presets (Phase 8)
 └── unified_data.yaml              # Registry manifest
 ```
 

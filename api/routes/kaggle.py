@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from api.jobs import job_manager
 from api.models import JobResponse, JobType
-from cli_args import venv_python
+from core.cli_args import venv_python
 
 router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
 
@@ -46,8 +46,8 @@ async def get_kaggle_status() -> Dict[str, Any]:
 
 @router.post("/sync", response_model=JobResponse)
 async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
-    """Queue a Kaggle dataset synchronization task."""
-    cmd = [venv_python(), "manifold_sync.py"]
+    sync_script = "tools/manifold_sync.py" if (Path(__file__).resolve().parent.parent.parent / "tools" / "manifold_sync.py").exists() else "manifold_sync.py"
+    cmd = [venv_python(), sync_script]
     if req.manifold:
         cmd.extend(["--manifold", req.manifold])
     if req.push:

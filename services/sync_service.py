@@ -22,8 +22,7 @@ class SyncService:
         url: str | None = None,
         no_wait: bool = False,
     ) -> int:
-        """Push local compiled manifold to remote registry."""
-        import manifold_sync
+        from tools import manifold_sync
 
         try:
             manifold_sync.action_sync(
@@ -44,7 +43,7 @@ class SyncService:
         output_name: str | None = None,
     ) -> int:
         """Pull remote manifold from registry."""
-        import manifold_sync
+        from tools import manifold_sync
 
         try:
             manifold_sync.action_get(

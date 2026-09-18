@@ -1,0 +1,11 @@
+---
+count: 853546
+task: detection
+original_sources:
+- SFHQ (Synthetic Faces High Quality) Part 3
+- SFHQ (Synthetic Faces High Quality) Part 4
+- SFHQ (Synthetic Faces High Quality) Part 2
+- SFHQ (Synthetic Faces High Quality) Part 1
+path: ..\LemGendaryDatasets\LemGendizedRetinaFaceMobileNetLarge
+source: LemGendizedRetinaFaceMobileNetLarge-manifold
+last_processed: '2026-09-18T14:22:03.499086'

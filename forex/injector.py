@@ -91,8 +91,19 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
     return True
 
 
+import argparse
+
+
 def main():
-    base_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"
+    parser = argparse.ArgumentParser(description="Embed column descriptions into Forex Parquet files.")
+    parser.add_argument(
+        "--dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge",
+        help="Path to LemGendizedForexUniverseLarge directory",
+    )
+    args = parser.parse_args()
+    base_dir = args.dir.resolve()
     if not base_dir.exists():
         print(f"[ERROR] Manifold directory not found: {base_dir}")
         sys.exit(1)

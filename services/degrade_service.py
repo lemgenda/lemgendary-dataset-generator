@@ -30,7 +30,7 @@ class DegradeService:
         dry_run: bool = False,
     ) -> int:
         """Execute synthetic degradation manifold generation in-process."""
-        import generate_degrade
+        from tools import generate_degrade
 
         fmt = cast(Literal["webp", "jpeg", "png", "keep"], image_format)
         try:

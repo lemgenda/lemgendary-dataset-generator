@@ -1,0 +1,11 @@
+---
+count: 321369
+task: quality
+original_sources:
+- AVA
+- Tad66K For Image Aesthetics Assessment
+- KonIQ-10k
+- SPAQ
+path: ..\LemGendaryDatasets\LemGendizedNimaAestheticLarge
+source: LemGendizedNimaAestheticLarge-manifold
+last_processed: '2026-09-18T14:22:03.469889'

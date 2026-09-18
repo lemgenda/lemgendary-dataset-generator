@@ -1,0 +1,12 @@
+{
+  "title": "LemGendized UpnV2",
+  "id": "lemtreursi/lemgendizedupnv2large",
+  "subtitle": "High-fidelity manifold for Photographic Parameter Prediction models",
+  "description": "# LemGendizedUpnV2Large\n\n> High-precision dataset for camera parameter prediction, tone mapping, and photographic exposure estimation.\n\n## Dataset Overview\n\n- **Category:** Photographic Parameter Prediction\n- **Total Samples:** 1,378,070\n- **Architecture Base:** Deep Multi-Layer Perceptron / Convolutional Regressor\n- **Primary Task:** Predict global and local tone adjustment parameters from input images.\n\n## Composition & Lineage\n\nThis manifold is a high-fidelity merge of the following original sources:\n\n| Source Dataset | Train | Val | Total Contribution |\n| :--- | :--- | :--- | :--- |\n| **DPED (Smartphone Photography)** | 1,277,236 | 67,284 | 1,344,520 samples |\n| **Adobe FiveK** | 28,447 | 1,553 | 30,000 samples |\n| **Flickr** | 2,537 | 113 | 2,650 samples |\n| **DIV2K Dataset** | 853 | 47 | 900 samples |\n\n## Model Training Profiles\n\n### Model: LemGendary UPN v2 Parameter Predictor\n\n- **Architecture**: UPN_v2 (MobileNet-Lite Parameter Regressor)\n- **Optimization**: smooth_l1\n\n| Metric | Baseline | Advanced | SOTA |\n| :--- | :--- | :--- | :--- |\n| **Mae** | < 0.08 | < 0.06 | **< 0.05** |\n\n## Repository Structure\n\nStandardized directory logic for seamless integration into the **LemGendary Training Suite**.\n\n- **`category.txt`**: Top-level categorization tag.\n- **`classes.txt`**: Class labels mapping.\n- **`dataset-metadata.json`**: Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.\n- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.\n- **`README.md`**: This documentation file.\n\n## Physical Data Manifest\n\n| Folder | Train | Val |\n| :--- | :--- | :--- |\n| **images** | 1,309,073 | 68,997 |\n\n---\n\n**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/lemgendizedupnv2large)\n",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": []
+}

@@ -20,7 +20,8 @@ from api.models import JobResponse, JobState, JobType
 
 logger = logging.getLogger("lemgendary.api.jobs")
 
-_DB_DIR = Path(".lgd_server")
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_DB_DIR = _PROJECT_ROOT / ".lgd_server"
 _DB_PATH = _DB_DIR / "jobs.db"
 _LOGS_DIR = _DB_DIR / "logs"
 
@@ -168,6 +169,7 @@ class JobManager:
                     text=True,
                     bufsize=1,
                     env=env,
+                    cwd=str(_PROJECT_ROOT),
                 )
                 with self._lock:
                     self.active_processes[job_id] = proc

@@ -1,0 +1,3 @@
+SELL
+HOLD
+BUY

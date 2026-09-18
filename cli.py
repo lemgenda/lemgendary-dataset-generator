@@ -30,7 +30,10 @@ from rich.console import Console
 from rich.table import Table
 
 from api.auth import get_or_create_token
-from cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
+try:
+    from core.cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
+except ImportError:
+    from cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
 from services import (
     AuditService,
     CompilerService,
@@ -107,7 +110,7 @@ def _run(cmd: list[str]) -> int:
     """Run a subprocess, print the command, and return its exit code."""
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
     try:
-        result = subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False, cwd=str(Path(__file__).resolve().parent))
         return result.returncode
     except FileNotFoundError as e:
         console.print(f"[red]Command not found:[/red] {e}")
@@ -122,8 +125,9 @@ def _stub(phase: int, description: str) -> None:
 
 
 def _resolve_manifold_path(model: str) -> Path | None:
-    """Resolve a registry key to its manifold folder on disk."""
-    p = Path("./unified_data.yaml")
+    p = Path(__file__).resolve().parent / "unified_data.yaml"
+    if not p.exists():
+        p = Path("./unified_data.yaml")
     if not p.exists():
         return None
     with open(p, "r", encoding="utf-8") as f:
@@ -250,7 +254,8 @@ def reduce(
     max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
 ) -> None:
     """Create a downsampled manifold variant (delegates to manifold_reduce.py)."""
-    cmd = [venv_python(), "manifold_reduce.py", "--reduce"]
+    reduce_script = "tools/manifold_reduce.py" if (Path(__file__).resolve().parent / "tools" / "manifold_reduce.py").exists() else "manifold_reduce.py"
+    cmd = [venv_python(), reduce_script, "--reduce"]
     if max_gb is not None:
         cmd += ["--max_gb", str(max_gb)]
     raise typer.Exit(code=_run(cmd))
@@ -366,13 +371,14 @@ app.add_typer(docs_app, name="docs")
 @config_app.command("validate")
 def config_validate() -> None:
     """Validate unified_data.yaml against the Pydantic schema."""
-    raise typer.Exit(code=_run([venv_python(), "config_schema.py"]))
+    raise typer.Exit(code=_run([venv_python(), "core/config_schema.py"]))
 
 
 @config_app.command("show")
 def config_show() -> None:
-    """Print a summary of the current registry configuration."""
-    p = Path("./unified_data.yaml")
+    p = Path(__file__).resolve().parent / "unified_data.yaml"
+    if not p.exists():
+        p = Path("./unified_data.yaml")
     if not p.exists():
         console.print("[red]unified_data.yaml not found[/red]")
         raise typer.Exit(code=3)
@@ -482,7 +488,7 @@ app.add_typer(format_app, name="format")
 @presets_app.command("list")
 def presets_list() -> None:
     """List available compiler presets with format and gate details."""
-    import presets
+    from core import presets
     all_p = presets.list_presets()
     table = Table(title="LemGendary Compiler Presets")
     table.add_column("Preset", style="cyan", no_wrap=True)

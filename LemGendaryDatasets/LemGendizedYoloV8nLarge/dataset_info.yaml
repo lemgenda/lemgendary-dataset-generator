@@ -1,0 +1,12 @@
+---
+count: 153972
+task: detection
+original_sources:
+- KITTI Vision Benchmark
+- Pascal VOC 2012
+- COCO 2017
+- CrowdPose Dataset
+- MPII Human Pose
+path: ..\LemGendaryDatasets\LemGendizedYoloV8nLarge
+source: LemGendizedYoloV8nLarge-manifold
+last_processed: '2026-09-18T14:22:03.514084'

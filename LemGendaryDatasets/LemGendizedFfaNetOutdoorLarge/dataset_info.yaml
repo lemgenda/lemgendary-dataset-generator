@@ -1,0 +1,11 @@
+---
+count: 217113
+task: restoration
+original_sources:
+- Outdoor Dehazing Dataset
+- O-HAZE / NTIRE Dehazing
+- NH-HAZE Dataset
+- Hazing Images Dataset (CVPR)
+path: ..\LemGendaryDatasets\LemGendizedFfaNetOutdoorLarge
+source: LemGendizedFfaNetOutdoorLarge-manifold
+last_processed: '2026-09-18T14:22:03.420357'

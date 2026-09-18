@@ -25,7 +25,7 @@ from api.routes.health import router as health_router
 from api.routes.jobs import router as jobs_router, ws_router as jobs_ws_router
 from api.routes.kaggle import router as kaggle_router
 from api.routes.sources import router as sources_router
-from cli_args import __version__
+from core.cli_args import __version__
 
 logger = logging.getLogger("lemgendary.api.server")
 _PID_FILE = Path(".lgd_server/server.pid")

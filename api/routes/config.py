@@ -7,7 +7,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, status
 import yaml
 
-from config_schema import load_unified_data
+from core.config_schema import load_unified_data
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
 _CONFIG_PATH = Path("unified_data.yaml")

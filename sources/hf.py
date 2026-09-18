@@ -121,7 +121,10 @@ def main():
                             
                     # Auto-Extract to dedicated_dir
                     if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
-                        from archive_manager import smart_extract
+                        try:
+                            from utils.archive import smart_extract
+                        except ImportError:
+                            from archive_manager import smart_extract
                         smart_extract(path, dedicated_dir, delete_after=True)
                 except Exception as e:
                     print(f"  [WARN] Requests failed, falling back to basic HF-Hub: {e}")
@@ -130,7 +133,10 @@ def main():
 
         # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
         print(f"[SWEEP] Scanning {args.output_dir} for unextracted archives...")
-        from archive_manager import smart_extract
+        try:
+            from utils.archive import smart_extract
+        except ImportError:
+            from archive_manager import smart_extract
         for root, dirs, files in os.walk(args.output_dir):
             for f in files:
                 f_path = Path(root) / f

@@ -1,0 +1,11 @@
+---
+count: 1378070
+task: parameter_prediction
+original_sources:
+- DPED (Smartphone Photography)
+- Adobe FiveK
+- Flickr
+- DIV2K Dataset
+path: ..\LemGendaryDatasets\LemGendizedUpnV2Large
+source: LemGendizedUpnV2Large-manifold
+last_processed: '2026-09-18T14:22:03.510086'

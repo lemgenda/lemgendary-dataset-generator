@@ -1,0 +1,11 @@
+---
+count: 6679
+task: restoration
+original_sources:
+- GoPro Deblurring Dataset
+- RealBlur Dataset
+- HiDeBlur Dataset
+- Image Deblurring Performance
+path: ..\LemGendaryDatasets\LemGendizedNafNetDebluringLarge
+source: LemGendizedNafNetDebluringLarge-manifold
+last_processed: '2026-09-18T14:22:03.459364'

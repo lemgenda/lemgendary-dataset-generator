@@ -1,0 +1,12 @@
+{
+  "title": "LemGendized ClassificationMasterManifold",
+  "id": "lemtreursi/lemgendizedclassificationmastermanifoldlarge",
+  "subtitle": "High-fidelity manifold for Image Classification machine learning models",
+  "description": "# LemGendizedClassificationMasterManifoldLarge\n\n> High-throughput dataset for image classification and content tagging.\n\n## Dataset Overview\n\n- **Category:** Image Classification\n- **Total Samples:** 788,034\n- **Architecture Base:** MobileNetV2 / EfficientNet Categorical Embedding Network\n- **Primary Task:** Predict categorical classes and safety content labels.\n\n## Composition & Lineage\n\nThis manifold is a high-fidelity merge of the following original sources:\n\n| Source Dataset | Train | Val | Total Contribution |\n| :--- | :--- | :--- | :--- |\n| **Anime DB Rating (Danbooru)** | 544,611 | 74,903 | 619,514 samples |\n| **Food-101** | 89,105 | 11,894 | 101,000 samples |\n| **NSFW Dataset** | 59,324 | 8,168 | 67,520 samples |\n\n## Model Training Profiles\n\n### Model: LemGendary Universal NSFW Classifier\n\n- **Architecture**: EfficientNetV2-S (Multi-Class Categorical Head)\n- **Optimization**: cross_entropy\n\n| Metric | Baseline | Advanced | SOTA |\n| :--- | :--- | :--- | :--- |\n| **Accuracy** | ~0.78 | > 0.88 | **> 0.98** |\n\n## Repository Structure\n\nStandardized directory logic for seamless integration into the **LemGendary Training Suite**.\n\n- **`category.txt`**: Top-level categorization tag.\n- **`classes.txt`**: Class labels mapping.\n- **`dataset-metadata.json`**: Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.\n- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.\n- **`README.md`**: This documentation file.\n\n## Physical Data Manifest\n\n| Folder | Train | Val |\n| :--- | :--- | :--- |\n| **images** | 693,040 | 94,965 |\n| **labels** | 693,040 | 94,965 |\n\n---\n\n**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/lemgendizedclassificationmastermanifoldlarge)\n",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": []
+}

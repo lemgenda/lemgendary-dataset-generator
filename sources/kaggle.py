@@ -16,7 +16,7 @@ from pathlib import Path
 
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
-from common_sync import (
+from core.common_sync import (
     CHUNK_SIZE,
     DatasetVersionInfo,
     setup_kaggle_auth,

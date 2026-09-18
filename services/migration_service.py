@@ -27,7 +27,7 @@ class MigrationService:
         dry_run: bool = False,
     ) -> int:
         """Migrate directory layout to additional container formats (MDS, LitData, etc.)."""
-        import migrate_manifold_format
+        from tools import migrate_manifold_format
         from formats.base import parse_also_format
 
         try:
@@ -56,7 +56,7 @@ class MigrationService:
         dry_run: bool = False,
     ) -> int:
         """Transcode images and masks in an existing manifold in place."""
-        import migrate_manifold_image_format
+        from tools import migrate_manifold_image_format
 
         try:
             args = [
@@ -84,7 +84,7 @@ class MigrationService:
         skip_kaggle: bool = False,
     ) -> int:
         """Retire the legacy Large suffix across manifolds."""
-        import modernize_manifold
+        from tools import modernize_manifold
 
         try:
             args = []

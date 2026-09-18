@@ -1,0 +1,13 @@
+---
+count: 26093
+task: quality
+original_sources:
+- KonIQ-10k
+- TID2013
+- SPAQ
+- LIVE
+- DND & NAM Noise Data
+- CSIQ
+path: ..\LemGendaryDatasets\LemGendizedNimaTechnicalLarge
+source: LemGendizedNimaTechnicalLarge-manifold
+last_processed: '2026-09-18T14:22:03.481567'

@@ -30,8 +30,8 @@ from api.models import (
 )
 from api.routes.datasets import _resolve_output_root
 from api.routes.health import _START_TIME, get_hardware_info
-from cli_args import __version__, venv_python
-import presets
+from core.cli_args import __version__, venv_python
+from core import presets
 
 logger = logging.getLogger("lemgendary.api.routes.gui")
 router = APIRouter(prefix="/gui", tags=["Desktop GUI"])
@@ -306,7 +306,7 @@ async def quick_compile(
 
     cmd = [
         venv_python(),
-        "manifold_compile.py",
+        "core/manifold_compile.py",
         "--model", req.model,
         "--preset", req.preset,
     ]

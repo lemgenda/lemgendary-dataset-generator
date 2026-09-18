@@ -17,7 +17,7 @@ from api.models import (
     JobState,
     JobType,
 )
-from cli_args import venv_python
+from core.cli_args import venv_python
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -63,7 +63,7 @@ async def get_job_logs(job_id: str, tail: Optional[int] = Query(None, ge=1)) -> 
 @router.post("/compile", response_model=JobResponse)
 async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
     """Submit a manifold compile job."""
-    cmd = [venv_python(), "manifold_compile.py"]
+    cmd = [venv_python(), "core/manifold_compile.py"]
     if req.model:
         cmd.extend(["--model", req.model])
     if req.max_gb is not None:
@@ -111,9 +111,9 @@ async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
 
 @router.post("/degrade", response_model=JobResponse)
 async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
-    """Submit a synthetic degradation manifold derivation job."""
+    degrade_script = "tools/generate_degrade.py" if (Path(__file__).resolve().parent.parent.parent / "tools" / "generate_degrade.py").exists() else "generate_degrade.py"
     cmd = [
-        venv_python(), "generate_degrade.py",
+        venv_python(), degrade_script,
         "--source", req.source,
         "--output", req.output,
         "--profile", req.profile,

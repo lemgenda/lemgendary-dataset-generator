@@ -1,0 +1,12 @@
+{
+  "title": "LemGendized FilmRestorer",
+  "id": "lemtreursi/lemgendizedfilmrestorerlarge",
+  "subtitle": "High-fidelity manifold for Image Restoration machine learning models",
+  "description": "# LemGendizedFilmRestorerLarge\n\n> Standardized dataset for image old film restoration models.\n\n## Dataset Overview\n\n- **Category:** Image Restoration\n- **Total Samples:** 67,542\n- **Architecture Base:** Multi-Scale Progressive Restoration / Nonlinear Activation-Free Network\n- **Primary Task:** Restore degraded vintage film frames (scratches, noise, color fade).\n\n## Composition & Lineage\n\nThis manifold is a high-fidelity merge of the following original sources:\n\n| Source Dataset | Train | Val | Total Contribution |\n| :--- | :--- | :--- | :--- |\n| **Vintage & Degraded Film Archive** | 56,210 | 7,690 | 63,900 samples |\n| **Vintage Degraded Photos** | 1,235 | 333 | 1,568 samples |\n| **DIV2K Dataset** | 1,036 | 242 | 1,278 samples |\n| **SIDD (Smartphone Image Denoising)** | 508 | 132 | 640 samples |\n| **DND & NAM Noise Data** | 93 | 21 | 114 samples |\n| **Photo Restoration Dataset** | 33 | 9 | 42 samples |\n\n## Model Training Profiles\n\n### Model: LemGendary Universal Film Restorer\n\n- **Architecture**: UniversalFilmRestorer (Residual Dense Autoencoder)\n- **Optimization**: l1_lpips\n\n| Metric | Baseline | Advanced | SOTA |\n| :--- | :--- | :--- | :--- |\n| **PSNR** | ~20.4 dB | > 22.6 dB | **> 24.0 dB** |\n| **SSIM** | ~0.7040 | > 0.7600 | **> 0.8000** |\n| **LPIPS** | < 0.38 | < 0.30 | **< 0.25** |\n| **FID** | < 18.00 | < 14.40 | **< 12.0** |\n\n## Repository Structure\n\nStandardized directory logic for seamless integration into the **LemGendary Training Suite**.\n\n- **`category.txt`**: Top-level categorization tag.\n- **`classes.txt`**: Class labels mapping.\n- **`dataset-metadata.json`**: Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.\n- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.\n- **`README.md`**: This documentation file.\n\n## Physical Data Manifest\n\n| Folder | Train | Val |\n| :--- | :--- | :--- |\n| **images** | 59,115 | 8,427 |\n| **targets** | 59,115 | 8,427 |\n\n---\n\n**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/lemgendizedfilmrestorerlarge)\n",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": []
+}

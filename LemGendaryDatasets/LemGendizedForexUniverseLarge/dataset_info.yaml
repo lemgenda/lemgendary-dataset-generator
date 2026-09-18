@@ -1,0 +1,17 @@
+---
+count: 0
+task: forex
+original_sources:
+- MetaTrader 5 Native Cache
+path: ..\LemGendaryDatasets\LemGendizedForexUniverseLarge
+source: LemGendizedForexUniverseLarge-manifold
+last_processed: '2026-09-18T14:22:03.433356'
+name: LemGendizedForexUniverseLarge
+dataset_type: forex
+category: Forex & Financial Time-Series
+pairs: []
+timeframe_rungs: []
+start_date: '2019-01-01'
+lookback_bars: 168
+format: parquet
+compression: zstd

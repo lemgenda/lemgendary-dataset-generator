@@ -19,7 +19,7 @@ class DocService:
     @staticmethod
     def regenerate_all_docs(datasets_dir: Path | str | None = None) -> int:
         """Regenerate per-manifold README and dataset_info files."""
-        import doc_generator
+        from core import doc_generator
 
         try:
             doc_generator.regenerate_all_docs(datasets_dir=datasets_dir)
@@ -31,7 +31,7 @@ class DocService:
     @staticmethod
     def regenerate_single_doc(manifold_path: Path, manifold_name: str) -> int:
         """Regenerate documentation for a single manifold."""
-        import doc_generator
+        from core import doc_generator
 
         try:
             doc_generator.generate_dataset_docs(manifold_path, None, manifold_name)
@@ -43,7 +43,7 @@ class DocService:
     @staticmethod
     def rebuild_manifolds_md(check_only: bool = False) -> int:
         """Rebuild top-level manifolds.md from registry databases."""
-        import regenerate_manifolds_md
+        from tools import regenerate_manifolds_md
 
         try:
             parser = regenerate_manifolds_md.argparse.ArgumentParser()

@@ -1,0 +1,9 @@
+---
+count: 11142
+task: restoration
+original_sources:
+- Adobe Fivek
+- DPED (Smartphone Photography)
+path: ..\LemGendaryDatasets\LemGendizedMirNetExposureLarge
+source: LemGendizedMirNetExposureLarge-manifold
+last_processed: '2026-09-18T14:22:03.442358'

@@ -1,0 +1,12 @@
+{
+  "title": "LemGendized NimaAuthenticity",
+  "id": "lemtreursi/lemgendizednimaauthenticitylarge",
+  "subtitle": "High-fidelity manifold for Image Authenticity Assessment machine learning models",
+  "description": "# LemGendizedNimaAuthenticityLarge\n\n> Unified dataset for training SOTA models to distinguish between AI-generated images and real photographs.\n\n## Dataset Overview\n\n- **Category:** Image Authenticity Assessment\n- **Total Samples:** 6,180\n- **Architecture Base:** EfficientNetV2 Feature Extractor with Distribution Scoring Head\n- **Primary Task:** Predict image authenticity score and map to binary categorical distribution.\n\n## Composition & Lineage\n\nThis manifold is a high-fidelity merge of the following original sources:\n\n| Source Dataset | Train | Val | Total Contribution |\n| :--- | :--- | :--- | :--- |\n| **Ai Generated Vs Real** | 2,763 | 377 | 3,140 samples |\n| **Real Vs Fake Faces** | 1,795 | 245 | 2,040 samples |\n| **Sut Project** | 880 | 120 | 1,000 samples |\n\n## Model Training Profiles\n\n### Model: LemGendary Authenticity Scorer (AI vs Human)\n\n- **Architecture**: EfficientNetV2-S (Distribution Scorer)\n- **Optimization**: emd\n\n| Metric | Baseline | Advanced | SOTA |\n| :--- | :--- | :--- | :--- |\n| **Accuracy** | ~0.77 | > 0.86 | **> 0.96** |\n\n## Repository Structure\n\nStandardized directory logic for seamless integration into the **LemGendary Training Suite**.\n\n- **`category.txt`**: Top-level categorization tag.\n- **`classes.txt`**: Class labels mapping.\n- **`dataset-metadata.json`**: Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.\n- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.\n- **`README.md`**: This documentation file.\n\n## Physical Data Manifest\n\n| Folder | Train | Val |\n| :--- | :--- | :--- |\n| **images** | 5,438 | 742 |\n\n---\n\n**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/lemgendizednimaauthenticitylarge)\n",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": []
+}

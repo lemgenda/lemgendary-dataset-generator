@@ -114,9 +114,12 @@ $UnpackSB = {
     $fold = Join-Path $sharedPath $dn
     $z = Join-Path $sharedPath ($dn + '.zip')
 
-    Write-Output "STATUS:UNPACKING"
     try {
-        $ArchMgr = Join-Path (Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent) 'archive_manager.py'
+        $projRoot = Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent
+        $ArchMgr = Join-Path $projRoot 'utils\archive.py'
+        if (!(Test-Path $ArchMgr)) {
+            $ArchMgr = Join-Path $projRoot 'archive_manager.py'
+        }
 
         # If the zip is missing, it means HF or Kaggle messed up. But HF emits COMPLETED so it bypasses this!
         if (!(Test-Path $z)) {
@@ -814,7 +817,7 @@ while ($true) {
 
         foreach ($tm in $TargetModels) {
             Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
-            & $Vpy manifold_compile.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
+            & $Vpy core\manifold_compile.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
 
             # Post-Compile Verification
             $OutFolder = Join-Path (Get-Location) $OutFolderName
@@ -828,10 +831,11 @@ while ($true) {
         }
         # 2026: Finalized Global Cleanup (Moved outside loop to prevent I/O collisions)
         Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
-        & $Vpy manifold_compile.py --cleanup
+        & $Vpy core\manifold_compile.py --cleanup
     }
     elseif ($I -eq '2') {
-        & $Vpy manifold_reduce.py --reduce
+        $ReduceScript = if (Test-Path 'tools\manifold_reduce.py') { 'tools\manifold_reduce.py' } else { 'manifold_reduce.py' }
+        & $Vpy $ReduceScript --reduce
     }
     elseif ($I -eq '3') {
         while ($true) {
@@ -1001,7 +1005,10 @@ while ($true) {
     }
     elseif ($I -eq '4') {
         Write-Host "`n[MODERNIZE] Launching suffix-removal tool..." -ForegroundColor Cyan
-        $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
+        $ModernizeScript = Join-Path $PSScriptRoot 'tools\modernize_manifold.py'
+        if (-not (Test-Path $ModernizeScript)) {
+            $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
+        }
         if (Test-Path $ModernizeScript) {
             & $Vpy $ModernizeScript
             if ($LASTEXITCODE -ne 0) {

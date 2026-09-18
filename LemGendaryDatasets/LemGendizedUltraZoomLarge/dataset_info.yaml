@@ -1,0 +1,11 @@
+---
+count: 17724
+task: super-resolution
+original_sources:
+- Df2K Ost
+- Flickr2K
+- Div2K Dataset
+- Urban100
+path: ..\LemGendaryDatasets\LemGendizedUltraZoomLarge
+source: LemGendizedUltraZoomLarge-manifold
+last_processed: '2026-09-18T14:22:03.504086'

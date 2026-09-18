@@ -12,7 +12,7 @@ import torch
 
 from api.jobs import job_manager
 from api.models import FullHealthResponse, HardwareInfo, HealthResponse
-from cli_args import __version__
+from core.cli_args import __version__
 
 router = APIRouter(prefix="/health", tags=["Health"])
 

@@ -1,0 +1,13 @@
+---
+count: 67542
+task: restoration
+original_sources:
+- Vintage & Degraded Film Archive
+- DIV2K Dataset
+- Vintage Degraded Photos
+- SIDD (Smartphone Image Denoising)
+- Photo Restoration Dataset
+- DND & NAM Noise Data
+path: ..\LemGendaryDatasets\LemGendizedFilmRestorerLarge
+source: LemGendizedFilmRestorerLarge-manifold
+last_processed: '2026-09-18T14:22:03.427356'

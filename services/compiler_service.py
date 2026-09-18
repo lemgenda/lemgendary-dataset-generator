@@ -41,8 +41,7 @@ class CompilerService:
         prompt_strategy: str | None = None,
         mask_strategy: str | None = None,
     ) -> int:
-        """Run manifold compilation in-process."""
-        import manifold_compile
+        from core import manifold_compile
 
         # Build list of CLI arguments for parse_compile_args
         args_list: list[str] = []

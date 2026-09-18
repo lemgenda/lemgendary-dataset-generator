@@ -1,0 +1,18 @@
+---
+count: 343911
+task: restoration
+original_sources:
+- ffanetoutdoor Multi-Task Sub-Manifold
+- ffanetindoor Multi-Task Sub-Manifold
+- mprnetderaining Multi-Task Sub-Manifold
+- parsenet Multi-Task Sub-Manifold
+- codeformer Multi-Task Sub-Manifold
+- nafnetdenoising Multi-Task Sub-Manifold
+- nafnetdebluring Multi-Task Sub-Manifold
+- mirnetexposure Multi-Task Sub-Manifold
+- ultrazoom Multi-Task Sub-Manifold
+- mirnetlowlight Multi-Task Sub-Manifold
+- filmrestorer Multi-Task Sub-Manifold
+path: ..\LemGendaryDatasets\LemGendizedProfessionalMultitaskRestorationLarge
+source: LemGendizedProfessionalMultitaskRestorationLarge-manifold
+last_processed: '2026-09-18T14:22:03.494083'

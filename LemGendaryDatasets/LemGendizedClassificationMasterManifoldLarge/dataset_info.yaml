@@ -1,0 +1,10 @@
+---
+count: 788034
+task: classification
+original_sources:
+- Anime DB Rating (Danbooru)
+- NSFW Dataset
+- Food-101
+path: ..\LemGendaryDatasets\LemGendizedClassificationMasterManifoldLarge
+source: LemGendizedClassificationMasterManifoldLarge-manifold
+last_processed: '2026-09-18T14:22:03.405357'

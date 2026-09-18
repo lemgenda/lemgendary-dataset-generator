@@ -27,7 +27,7 @@ class GenerationService:
         dry_run: bool = False,
     ) -> int:
         """Run smart generation pass over an existing manifold."""
-        import generate_cli
+        from tools import generate_cli
 
         try:
             return generate_cli.run(

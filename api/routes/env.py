@@ -8,7 +8,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, status
 
 from api.models import EnvPassthroughResponse
-from cli_args import PROJECT_NAME, resolve_lem_env
+from core.cli_args import PROJECT_NAME, resolve_lem_env
 
 router = APIRouter(prefix="/env", tags=["Environment Manager"])
 

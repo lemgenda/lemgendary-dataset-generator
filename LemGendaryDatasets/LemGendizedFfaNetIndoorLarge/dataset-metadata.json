@@ -1,0 +1,12 @@
+{
+  "title": "LemGendized FfaNetIndoor",
+  "id": "lemtreursi/lemgendizedffanetindoorlarge",
+  "subtitle": "High-fidelity manifold for Image Restoration machine learning models",
+  "description": "# LemGendizedFfaNetIndoorLarge\n\n> Standardized dataset for image dehazing models.\n\n## Dataset Overview\n\n- **Category:** Image Restoration\n- **Total Samples:** 196,304\n- **Architecture Base:** Multi-Scale Progressive Restoration / Nonlinear Activation-Free Network\n- **Primary Task:** Remove haze from images and restore visual quality.\n\n## Composition & Lineage\n\nThis manifold is a high-fidelity merge of the following original sources:\n\n| Source Dataset | Train | Val | Total Contribution |\n| :--- | :--- | :--- | :--- |\n| **Dehazing and Desmoking** | 134,574 | 18,351 | 152,925 samples |\n| **RESIDE Standard Indoor** | 12,320 | 1,680 | 14,000 samples |\n\n## Model Training Profiles\n\n### Model: LemGendary FFANet Dehazing (Indoor)\n\n- **Architecture**: BranchedFFANet (Feature Fusion Attention)\n- **Optimization**: l1\n\n| Metric | Baseline | Advanced | SOTA |\n| :--- | :--- | :--- | :--- |\n| **PSNR** | ~31.0 dB | > 34.3 dB | **> 36.5 dB** |\n| **SSIM** | ~0.8712 | > 0.9405 | **> 0.9900** |\n| **LPIPS** | < 0.12 | < 0.10 | **< 0.08** |\n| **FID** | < 18.00 | < 14.40 | **< 12.0** |\n\n## Repository Structure\n\nStandardized directory logic for seamless integration into the **LemGendary Training Suite**.\n\n- **`category.txt`**: Top-level categorization tag.\n- **`classes.txt`**: Class labels mapping.\n- **`dataset-metadata.json`**: Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.\n- **`dataset_info.yaml`**: Manifest metadata for automated PyTorch loaders.\n- **`README.md`**: This documentation file.\n\n## Physical Data Manifest\n\n| Folder | Train | Val |\n| :--- | :--- | :--- |\n| **images** | 146,894 | 20,031 |\n| **targets** | 146,894 | 20,031 |\n\n---\n\n**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/lemgendizedffanetindoorlarge)\n",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": []
+}

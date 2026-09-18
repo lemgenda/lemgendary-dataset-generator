@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from PIL import Image
 
-from config_schema import ImageFormatPolicy
+from core.config_schema import ImageFormatPolicy
 
 
 _FORMAT_EXT: dict[str, str] = {
