@@ -36,7 +36,7 @@ class GenerationService:
                 strategy=strategy,
                 template=template,
                 device=device,
-                sample=sample,
+                sample_limit=sample,
                 dry_run=dry_run,
             )
         except Exception as exc:

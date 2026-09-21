@@ -46,14 +46,10 @@ class DocService:
         from tools import regenerate_manifolds_md
 
         try:
-            parser = regenerate_manifolds_md.argparse.ArgumentParser()
-            parser.add_argument("--check", action="store_true")
-            args = parser.parse_args(["--check"] if check_only else [])
-            # Run main logic
-            ret = regenerate_manifolds_md.main()
+            ret = regenerate_manifolds_md.main(["--check"] if check_only else [])
             return ret if isinstance(ret, int) else 0
         except SystemExit as exc:
-            return int(exc.code) if isinstance(exc.code, int) else 0
+            return exc.code if isinstance(exc.code, int) else 0
         except Exception as exc:
             console.print(f"[bold red]manifolds.md rebuild error:[/bold red] {exc}")
             return 1

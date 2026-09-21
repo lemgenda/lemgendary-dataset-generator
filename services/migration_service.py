@@ -32,16 +32,16 @@ class MigrationService:
 
         try:
             formats = parse_also_format(to_formats)
-            success = migrate_manifold_format.migrate_manifold(
+            ret = migrate_manifold_format.migrate_manifold(
                 root=manifold_path,
-                to_formats=formats,
+                formats=formats,
                 force_duplicate=force_duplicate,
                 accept_space_loss=accept_space_loss,
                 purge_source=purge_source,
                 verify=verify,
                 dry_run=dry_run,
             )
-            return 0 if success else 1
+            return ret
         except Exception as exc:
             console.print(f"[bold red]Container migration error:[/bold red] {exc}")
             return 1
@@ -82,8 +82,13 @@ class MigrationService:
         dry_run: bool = False,
         datasets: str | None = None,
         skip_kaggle: bool = False,
+        image_format: str = "webp",
+        image_quality: int = 92,
+        also_format: str = "webdataset",
+        skip_transcode: bool = False,
+        skip_container: bool = False,
     ) -> int:
-        """Retire the legacy Large suffix across manifolds."""
+        """Retire the legacy Large suffix across manifolds, transcode images, and convert to container formats."""
         from tools import modernize_manifold
 
         try:
@@ -98,6 +103,13 @@ class MigrationService:
                 args.extend(["--datasets", datasets])
             if skip_kaggle:
                 args.append("--skip-kaggle")
+            args.extend(["--image-format", image_format])
+            args.extend(["--image-quality", str(image_quality)])
+            args.extend(["--also-format", also_format])
+            if skip_transcode:
+                args.append("--skip-transcode")
+            if skip_container:
+                args.append("--skip-container")
             parser = modernize_manifold.build_parser()
             parsed = parser.parse_args(args)
             return modernize_manifold.run(parsed)

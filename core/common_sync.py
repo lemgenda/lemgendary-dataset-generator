@@ -356,6 +356,28 @@ def track_kaggle_dataset_status(
                     pbar.update(simulated_pct - last_pct)
                     last_pct = simulated_pct
                 pbar.set_postfix_str(status_val.upper())
+        else:
+            raw_status = get_dataset_status(clean_handle)
+            if raw_status and raw_status.lower() == "ready":
+                pbar.n = 100
+                pbar.set_postfix_str("COMPLETE")
+                pbar.refresh()
+                pbar.close()
+                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' is ready.")
+                return True
+            if raw_status and raw_status.lower() in ["error", "failed"]:
+                pbar.set_postfix_str("FAILED")
+                pbar.refresh()
+                pbar.close()
+                print(f"\n[ERROR] Kaggle reports processing failed for dataset '{clean_handle}'.")
+                return False
+
+            simulated_pct = min(90.0, (time.time() - start_time) / 180.0 * 75.0)
+            if simulated_pct > last_pct:
+                pbar.update(simulated_pct - last_pct)
+                last_pct = simulated_pct
+            status_text = (raw_status or "QUEUED / UNPACKING").upper()
+            pbar.set_postfix_str(status_text)
 
         time.sleep(poll_interval)
 
@@ -371,10 +393,7 @@ def _verify_or_create_staging_zip(
     file_count: int,
     newest_src_mtime: float
 ) -> None:
-    try:
-        from utils.archive import verify_archive, create_archive
-    except ImportError:
-        from archive_manager import verify_archive, create_archive
+    from utils.archive import create_archive, verify_archive
 
     can_reuse = False
     if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
@@ -494,10 +513,10 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     req = ApiUpdateDatasetMetadataRequest()
     req.owner_slug = owner
     req.dataset_slug = slug
-    req.settings = DatasetSettings()
-    req.settings.title = meta.get("title", slug)
-    req.settings.subtitle = meta.get("subtitle", "")
-    req.settings.description = meta.get("description", "")
+    settings = DatasetSettings()
+    settings.title = meta.get("title", slug)
+    settings.subtitle = meta.get("subtitle", "")
+    settings.description = meta.get("description", "")
 
     # Kaggle strictly requires exactly one license
     lic = SettingsLicense()
@@ -505,19 +524,19 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     raw_lic = meta.get("licenses", [])
     if raw_lic and isinstance(raw_lic, list) and isinstance(raw_lic[0], dict) and "name" in raw_lic[0]:
         lic.name = raw_lic[0]["name"]
-    req.settings.licenses = [lic]
+    settings.licenses = [lic]
 
     if meta.get("keywords"):
-        req.settings.keywords = [str(k) for k in meta["keywords"]]
+        settings.keywords = [str(k) for k in meta["keywords"]]
 
     # Build data array with column descriptions
-    files_data = []
+    files_data: list[DatasetSettingsFile | None] = []
     if "data" in meta and isinstance(meta["data"], list):
         for entry in meta["data"]:
             df = DatasetSettingsFile()
             df.name = entry.get("name", "")
             df.description = entry.get("description", "")
-            cols = []
+            cols: list[DatasetSettingsFileColumn | None] = []
             for c in entry.get("columns", []):
                 col = DatasetSettingsFileColumn()
                 col.name = c.get("name", "")
@@ -531,18 +550,20 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
             df = DatasetSettingsFile()
             df.name = r.get("path", "")
             df.description = r.get("description", "")
-            cols = []
+            resource_cols: list[DatasetSettingsFileColumn | None] = []
             for fld in r.get("schema", {}).get("fields", []):
                 col = DatasetSettingsFileColumn()
                 col.name = fld.get("name", "")
                 col.description = fld.get("description", "")
                 col.type = fld.get("type", "string")
-                cols.append(col)
-            df.columns = cols
+                resource_cols.append(col)
+            df.columns = resource_cols
             files_data.append(df)
 
     if files_data:
-        req.settings.data = files_data
+        settings.data = files_data
+
+    req.settings = settings
 
     client = api.build_kaggle_client()
     resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
@@ -628,10 +649,7 @@ def perform_dataset_download(
     ]
 
     existing_archive = None
-    try:
-        from utils.archive import verify_archive, smart_extract
-    except ImportError:
-        from archive_manager import verify_archive, smart_extract
+    from utils.archive import smart_extract, verify_archive
 
     for cand in archive_candidates:
         if cand.exists() and cand.is_file() and cand.stat().st_size > 0:

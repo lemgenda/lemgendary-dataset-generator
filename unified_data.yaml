@@ -1,4 +1,3 @@
----
 _registry_metadata:
   version: 4.2.0
   specialization: 2026_Resiliency
@@ -8,7 +7,6 @@ _registry_metadata:
   global_constraints:
     min_size_gb: 6.0
     max_size_gb: 190.0
-
 datasets:
   nima_aesthetic:
     name: NimaAesthetic
@@ -179,7 +177,7 @@ datasets:
     - ref: kaggle://harshraone/urban100
   yolov8n:
     name: YoloV8n
-    kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8nlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8n
     val_split: 0.12
     refs:
     - ref: kaggle://awsaf49/coco-2017-dataset
@@ -217,13 +215,11 @@ datasets:
       tag: general_nsfw
     - ref: hf://food101
       tag: sfw_baseline
-
-  # ── Unified Forex Foundation (16 symbols) ──
   forex_universe:
     name: ForexUniverse
     kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverselarge
     kaggle_dataset_urls:
-      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
+    - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
     acquisition_mode: mt5_terminal
     dataset_type: forex
     category: Forex & Financial Time-Series
@@ -244,7 +240,7 @@ datasets:
     - US500
     - NAS100
     - DE40
-    timeframe_rungs: &id001
+    timeframe_rungs:
     - 1
     - 5
     - 15
@@ -256,4 +252,5 @@ datasets:
     format: parquet
     compression: zstd
     storage_size_approx: 5.3 GB
-    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal Year Parquet Files.
+    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal
+      Year Parquet Files.

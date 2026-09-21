@@ -1,8 +1,0 @@
----
-count: 22000
-task: restoration
-original_sources:
-- Vintage & Degraded Film Archive
-path: ..\LemGendaryDatasets\LemGendizedCodeFormerLarge
-source: LemGendizedCodeFormerLarge-manifold
-last_processed: '2026-09-18T14:22:03.410358'

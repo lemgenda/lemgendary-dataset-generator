@@ -30,10 +30,7 @@ from rich.console import Console
 from rich.table import Table
 
 from api.auth import get_or_create_token
-try:
-    from core.cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
-except ImportError:
-    from cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
+from core.cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
 from services import (
     AuditService,
     CompilerService,
@@ -261,23 +258,6 @@ def reduce(
     raise typer.Exit(code=_run(cmd))
 
 
-@app.command()
-def modernize(
-    all_: bool = typer.Option(False, "--all", help="Migrate every eligible manifold"),
-    yes: bool = typer.Option(False, "--yes", help="Skip the confirmation gate"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without modifying"),
-    datasets: str | None = typer.Option(None, "--datasets", help="Comma-separated manifold list"),
-    skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Rename locally, no re-upload"),
-) -> None:
-    """Retire the legacy `Large` suffix (delegates to modernize_manifold.py)."""
-    code = MigrationService.modernize_manifolds(
-        all_=all_,
-        yes=yes,
-        dry_run=dry_run,
-        datasets=datasets,
-        skip_kaggle=skip_kaggle,
-    )
-    raise typer.Exit(code=code)
 
 
 
@@ -423,6 +403,36 @@ def transcode(
         target_quality=target_quality,
         mask_format=mask_format,
         dry_run=dry_run,
+    )
+    raise typer.Exit(code=code)
+
+
+# ─── modernize (Phase 1.6 / Modernization) ──────────────────────────────────
+@app.command()
+def modernize(
+    all_: bool = typer.Option(False, "--all", help="Select all eligible manifolds"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation gate"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do not modify anything"),
+    datasets: str | None = typer.Option(None, "--datasets", help="Comma-separated folder names or dataset keys"),
+    skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Skip Kaggle re-upload"),
+    image_format: str = typer.Option("webp", "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"),
+    image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
+    also_format: str = typer.Option("webdataset", "--also-format", help="Container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)"),
+    skip_transcode: bool = typer.Option(False, "--skip-transcode", help="Skip WebP transcoding"),
+    skip_container: bool = typer.Option(False, "--skip-container", help="Skip container format conversion"),
+) -> None:
+    """Modernize manifolds: retire legacy suffix, transcode images to WebP, and write container formats."""
+    code = MigrationService.modernize_manifolds(
+        all_=all_,
+        yes=yes,
+        dry_run=dry_run,
+        datasets=datasets,
+        skip_kaggle=skip_kaggle,
+        image_format=image_format,
+        image_quality=image_quality,
+        also_format=also_format,
+        skip_transcode=skip_transcode,
+        skip_container=skip_container,
     )
     raise typer.Exit(code=code)
 

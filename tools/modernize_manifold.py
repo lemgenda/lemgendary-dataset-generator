@@ -1,49 +1,58 @@
 """
 LemGendary Dataset Compiler — Modernize Manifold
 
-Retires the legacy 'Large' suffix from LemGendary manifold folder names.
-    LemGendizedNimaAestheticLarge -> LemGendizedNimaAesthetic
+Creates modernized manifold variants from legacy sets:
+    LemGendizedNimaAestheticLarge -> LemGendizedNimaAesthetic (new folder)
 
-This is a folder rename + metadata regeneration. It does NOT recompile any
-images. Fast operation.
+Safety & Architecture:
+    - The legacy manifold folder is PRESERVED untouched (never renamed).
+    - A new modernized directory is created for the target manifold.
+    - Directory layout, labels, annotations, notebooks, and metadata are replicated.
+    - Images are transcoded in parallel to modern WebP (or configured format).
+    - Modern dataset metadata (dataset_info.yaml, README.md, index.json) is regenerated.
+    - Pluggable container formats (WebDataset / MDS / LitData / Parquet) are generated.
+    - Remote Kaggle repositories are synchronized if not skipped.
+    - name_suffix in unified_data.yaml is updated only when all eligible sets are modernized.
 
 Usage:
-    python modernize_manifold.py                       # interactive
-    python modernize_manifold.py --dry-run             # show plan only
-    python modernize_manifold.py --all --yes           # batch, no prompts
-    python modernize_manifold.py --datasets nima_technical,nima_aesthetic
-
-Safety:
-    - Only datasets with actual data are eligible.
-    - Confirmation gate (Type YES) before any rename.
-    - Any single rename failure halts the entire batch.
-    - name_suffix in unified_data.yaml is only written after ALL renames AND
-      Kaggle re-uploads succeed.
-    - Renamed Kaggle slugs are NEW (Kaggle has no in-place rename); old
-      Kaggle datasets are preserved and must be manually deleted if desired.
+    python tools/modernize_manifold.py                                   # interactive selection
+    python tools/modernize_manifold.py --dry-run                         # preview plan
+    python tools/modernize_manifold.py --all --yes                       # batch creation
+    python tools/modernize_manifold.py --datasets yolov8n --also-format webdataset
 """
 
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
+
+from PIL import Image
+import yaml
 
 logger = logging.getLogger(__name__)
 
-import yaml
-
 # ─── Paths ──────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from core.config_schema import ImageFormatPolicy
+from formats.transcode import ImageTranscoder
+
 REGISTRY_YAML = ROOT / "unified_data.yaml"
 MANIFOLD_SYNC = ROOT / "tools" / "manifold_sync.py" if (ROOT / "tools" / "manifold_sync.py").exists() else ROOT / "manifold_sync.py"
 VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 
 LEGACY_SUFFIX = "Large"
 BRAND_PREFIX = "LemGendized"
+_IMAGE_EXTS: set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 def _out_parent() -> Path:
@@ -127,6 +136,10 @@ def _enumerate_eligible(registry: dict) -> list[dict]:
         new_name = entry.name[: -len(LEGACY_SUFFIX)]
         target_path = out / new_name
 
+        # If target already exists and contains data, it has already been modernized
+        if target_path.exists() and _has_manifold_data(target_path):
+            continue
+
         base = entry.name[len(BRAND_PREFIX): -len(LEGACY_SUFFIX)]
         kaggle_key = _find_kaggle_key(registry, base)
         old_ref = ""
@@ -149,7 +162,7 @@ def _enumerate_eligible(registry: dict) -> list[dict]:
 def _print_eligible(eligible: list[dict]) -> None:
     print()
     print("── Eligible Manifolds for Modernization ────────────────────────────")
-    print(f"{'#':<4} {'Current Folder Name':<48} {'Target Folder Name':<48}")
+    print(f"{'#':<4} {'Source Manifold (Legacy)':<48} {'Target Modern Manifold':<48}")
     print(f"{'─'*4} {'─'*48} {'─'*48}")
     for i, item in enumerate(eligible, 1):
         print(f"{i:<4} {item['folder_name']:<48} {item['target_name']:<48}")
@@ -158,7 +171,7 @@ def _print_eligible(eligible: list[dict]) -> None:
 
 def _parse_selection(raw: str, eligible: list[dict]) -> list[dict]:
     raw = raw.strip().lower()
-    if raw == "a" or raw == "all":
+    if raw in ("a", "all"):
         return list(eligible)
     picked: list[dict] = []
     for part in raw.split(","):
@@ -209,9 +222,10 @@ def _confirm(selected: list[dict]) -> bool:
     print()
     print("── Modernization Plan ───────────────────────────────────────────────")
     for item in selected:
-        print(f"  {item['folder_name']}  ->  {item['target_name']}")
+        print(f"  {item['folder_name']}  ->  {item['target_name']} (new folder)")
     print()
-    print(f"  Total: {len(selected)} manifold(s) will be renamed.")
+    print(f"  Total: {len(selected)} modernized manifold(s) will be created.")
+    print("  Legacy manifold folder(s) will be preserved untouched.")
     print()
     try:
         ans = input("Type YES to confirm: ").strip()
@@ -221,34 +235,109 @@ def _confirm(selected: list[dict]) -> bool:
     return ans == "YES"
 
 
-# ─── Rename (all-or-nothing) ────────────────────────────────────────────────
-def _rename_batch(selected: list[dict]) -> tuple[bool, list[dict]]:
-    """Rename all selected folders. Returns (success, renamed_list).
+# ─── Modernized Creation ────────────────────────────────────────────────────
+def _create_modernized_batch(
+    selected: list[dict],
+    policy: ImageFormatPolicy,
+    skip_transcode: bool,
+    max_workers: int = 16,
+) -> tuple[bool, list[dict]]:
+    """Create modernized manifold directories alongside the legacy manifolds.
 
-    Halt-on-any-failure policy: if a rename fails mid-batch, we still report
-    which renames succeeded so the user knows the partial state. The caller
-    must NOT write name_suffix.
+    The legacy manifold folders are preserved untouched.
+    Returns (success, created_list).
     """
-    renamed: list[dict] = []
+    created: list[dict] = []
+    transcoder = ImageTranscoder(policy)
+
     for item in selected:
-        if item["target_path"].exists():
-            print(f"[HALT] Target already exists: {item['target_path']}")
-            return False, renamed
+        src_dir: Path = item["current_path"]
+        dst_dir: Path = item["target_path"]
+
+        if dst_dir.exists() and _has_manifold_data(dst_dir):
+            print(f"[HALT] Target manifold already exists and has data: {dst_dir}")
+            return False, created
+
         try:
-            os.rename(item["current_path"], item["target_path"])
-            print(f"[OK] Renamed: {item['folder_name']} -> {item['target_name']}")
-            renamed.append(item)
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            print(f"[CREATE] Created modern target directory: {dst_dir.name}")
         except OSError as e:
-            print(f"[HALT] Rename failed for {item['folder_name']}: {e}")
-            return False, renamed
-    return True, renamed
+            print(f"[HALT] Failed creating directory {dst_dir.name}: {e}")
+            return False, created
+
+        transcode_tasks: list[tuple[Path, Path, Literal["image", "target", "mask"]]] = []
+        copy_tasks: list[tuple[Path, Path]] = []
+
+        for root, _dirs, files in os.walk(src_dir):
+            rel_dir = Path(root).relative_to(src_dir)
+            target_sub = dst_dir / rel_dir
+            target_sub.mkdir(parents=True, exist_ok=True)
+
+            for fname in files:
+                src_file = Path(root) / fname
+                suffix = src_file.suffix.lower()
+                rel_file = rel_dir / fname
+
+                is_image = suffix in _IMAGE_EXTS and any(
+                    part in rel_file.parts for part in ("images", "targets", "masks")
+                )
+
+                if is_image and not skip_transcode and policy.format != "keep":
+                    kind: Literal["image", "target", "mask"] = "image"
+                    if "masks" in rel_file.parts:
+                        kind = "mask"
+                    elif "targets" in rel_file.parts:
+                        kind = "target"
+
+                    out_ext = ".webp" if policy.format == "webp" else transcoder.extension_for(policy.format)
+                    if kind == "mask" and policy.mask_format == "webp-lossless":
+                        out_ext = ".webp"
+
+                    target_file = target_sub / (src_file.stem + out_ext)
+                    transcode_tasks.append((src_file, target_file, kind))
+                else:
+                    target_file = target_sub / fname
+                    copy_tasks.append((src_file, target_file))
+
+        print(f"[COPY] Copying {len(copy_tasks)} structure, label, and metadata file(s)...")
+        for s_f, d_f in copy_tasks:
+            try:
+                shutil.copy2(s_f, d_f)
+            except Exception as exc:
+                logger.debug("Copy failed for %s -> %s: %s", s_f, d_f, exc)
+
+        if transcode_tasks:
+            print(f"[TRANSCODE] Modernizing {len(transcode_tasks)} image(s) to {policy.format.upper()} in {dst_dir.name}...")
+
+            def _worker(task: tuple[Path, Path, Literal["image", "target", "mask"]]) -> bool:
+                s_p, d_p, k = task
+                try:
+                    with Image.open(s_p) as img:
+                        data, _ = transcoder.encode(img, kind=k)
+                    with open(d_p, "wb") as f_out:
+                        f_out.write(data)
+                    return True
+                except Exception as exc:
+                    logger.debug("Transcode failure for %s: %s", s_p, exc)
+                    try:
+                        shutil.copy2(s_p, d_p)
+                    except Exception:
+                        pass
+                    return False
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                results = list(executor.map(_worker, transcode_tasks))
+            successes = sum(1 for r in results if r)
+            print(f"[TRANSCODE] Completed: {successes}/{len(transcode_tasks)} images converted to {policy.format.upper()}.")
+
+        created.append(item)
+    return True, created
 
 
 # ─── Docs Regeneration ──────────────────────────────────────────────────────
 def _regen_docs(item: dict) -> bool:
-    """Regenerate dataset_info.yaml, README.md, category.txt, classes.txt."""
+    """Regenerate dataset_info.yaml, README.md, category.txt, classes.txt, and index.json."""
     try:
-        sys.path.insert(0, str(ROOT))
         from core.doc_generator import generate_dataset_docs
         generate_dataset_docs(
             item["target_path"],
@@ -320,7 +409,7 @@ def _write_name_suffix(registry: dict, value: str) -> None:
 
 # ─── Reporting ──────────────────────────────────────────────────────────────
 def _report(
-    renamed: list[dict],
+    modernized: list[dict],
     kaggle_ok: list[dict],
     kaggle_fail: list[tuple[dict, str]],
     suffix_written: bool,
@@ -329,9 +418,9 @@ def _report(
     print("══════════════════════════════════════════════════════════════════════")
     print(" MODERNIZATION SUMMARY")
     print("══════════════════════════════════════════════════════════════════════")
-    print(f" Renamed folders: {len(renamed)}")
-    for item in renamed:
-        print(f"   - {item['folder_name']}  ->  {item['target_name']}")
+    print(f" Modernized manifolds created: {len(modernized)}")
+    for item in modernized:
+        print(f"   - {item['folder_name']} (source) -> {item['target_name']} (new)")
     if kaggle_ok:
         print(f"\n Kaggle re-uploads succeeded: {len(kaggle_ok)}")
         for item in kaggle_ok:
@@ -342,14 +431,14 @@ def _report(
             print(f"   - {item['target_name']}: {err}")
     print(f"\n name_suffix updated to \"\": {'YES' if suffix_written else 'NO'}")
     if not suffix_written:
-        print("   (name_suffix write blocked — retry modernize after fixing failures)")
+        print("   (name_suffix write skipped or preserved for remaining legacy sets)")
     print("══════════════════════════════════════════════════════════════════════")
 
 
 # ─── Main ───────────────────────────────────────────────────────────────────
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="LemGendary Manifold Modernization (suffix removal)"
+        description="LemGendary Manifold Modernization (create modern manifold variants, WebP transcoding, container formats)"
     )
     parser.add_argument("--dry-run", action="store_true", help="Show plan, do not modify anything")
     parser.add_argument("--all", action="store_true", help="Select all eligible manifolds")
@@ -358,8 +447,26 @@ def main() -> int:
                         help="Comma-separated list of folder names, base names, or dataset keys")
     parser.add_argument("--skip-kaggle", action="store_true",
                         help="Skip Kaggle re-upload (metadata still written)")
-    args = parser.parse_args()
+    parser.add_argument("--image-format", type=str, default="webp",
+                        choices=["webp", "jpeg", "png", "keep"],
+                        help="Transcode images during modernization (default: webp)")
+    parser.add_argument("--image-quality", type=int, default=92,
+                        help="Quality for image transcoding (1-100)")
+    parser.add_argument("--target-quality", type=int, default=95,
+                        help="Quality for target image transcoding (1-100)")
+    parser.add_argument("--mask-format", type=str, default="webp-lossless",
+                        choices=["webp-lossless", "png"],
+                        help="Format for mask transcoding")
+    parser.add_argument("--also-format", type=str, default="webdataset",
+                        help="Container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)")
+    parser.add_argument("--skip-transcode", action="store_true",
+                        help="Skip WebP image transcoding")
+    parser.add_argument("--skip-container", action="store_true",
+                        help="Skip modern container format writing")
+    return parser
 
+
+def run(args: argparse.Namespace) -> int:
     if not REGISTRY_YAML.exists():
         print(f"[ERROR] Registry not found: {REGISTRY_YAML}")
         return 1
@@ -368,7 +475,7 @@ def main() -> int:
     eligible = _enumerate_eligible(registry)
 
     if not eligible:
-        print("[INFO] No eligible manifolds found (no folders with actual data).")
+        print("[INFO] No eligible manifolds found (no unmodernized folders with actual data).")
         return 0
 
     # ── Selection ──────────────────────────────────────────────────────────
@@ -391,6 +498,13 @@ def main() -> int:
             print("[ERROR] No manifolds selected.")
             return 1
 
+    policy = ImageFormatPolicy(
+        format=args.image_format,
+        quality=args.image_quality,
+        target_quality=args.target_quality,
+        mask_format=args.mask_format,
+    )
+
     # ── Confirmation ───────────────────────────────────────────────────────
     if not args.yes:
         if not _confirm(selected):
@@ -403,38 +517,71 @@ def main() -> int:
         print("[DRY-RUN] Would perform the following:")
         for item in selected:
             new_ref = _compute_new_kaggle_ref(item)
-            print(f"  {item['folder_name']}  ->  {item['target_name']}  (kaggle: {new_ref})")
+            print(f"  {item['folder_name']}  ->  {item['target_name']} (new folder)  (kaggle: {new_ref})")
+            print(f"    + create new modernized manifold directory: {item['target_name']}")
+            print("    + copy non-image structures, labels, and metadata files")
+            if not args.skip_transcode and policy.format != "keep":
+                print(f"    + transcode images -> {args.image_format} (q={args.image_quality})")
+            if not args.skip_container and args.also_format:
+                print(f"    + convert to modern container format -> {args.also_format}")
+            print("    + regenerate modern dataset documentation and index manifests")
+            if not args.skip_kaggle:
+                print(f"    + upload modernized manifold to kaggle: {new_ref}")
         print()
         print("[DRY-RUN] unified_data.yaml would be updated with new kaggle_ref values.")
         print("[DRY-RUN] name_suffix would be set to '' after all succeed.")
         return 0
 
-    # ── Phase A: Rename batch (all-or-nothing) ─────────────────────────────
+    # ── Phase A: Create modernized manifolds ───────────────────────────────
     print()
-    print("── Phase A: Rename ──────────────────────────────────────────────────")
-    rename_ok, renamed = _rename_batch(selected)
-    if not rename_ok:
+    print("── Phase A: Create Modernized Manifold Folders ──────────────────────")
+    create_ok, modernized = _create_modernized_batch(
+        selected,
+        policy=policy,
+        skip_transcode=args.skip_transcode,
+    )
+    if not create_ok:
         print()
-        print("[HALT] Rename batch aborted. name_suffix NOT written.")
-        _report(renamed, [], [], suffix_written=False)
+        print("[HALT] Modernization batch aborted. name_suffix NOT written.")
+        _report(modernized, [], [], suffix_written=False)
         return 1
 
     # ── Phase B: Docs regeneration ─────────────────────────────────────────
     print()
     print("── Phase B: Metadata regeneration ───────────────────────────────────")
-    for item in renamed:
+    for item in modernized:
         _regen_docs(item)
 
-    # ── Phase C: Kaggle re-upload ──────────────────────────────────────────
+    # ── Phase C: Modern Container Conversion ───────────────────────────────
+    if not args.skip_container and args.also_format:
+        print()
+        print(f"── Phase C: Modern Container Conversion ({args.also_format}) ──────────")
+        try:
+            from formats.base import parse_also_format
+            from tools import migrate_manifold_format
+            container_formats = parse_also_format(args.also_format)
+            for item in modernized:
+                target_path = item["target_path"]
+                print(f"[CONTAINER] Converting {target_path.name} to {', '.join(container_formats)}...")
+                migrate_manifold_format.migrate_manifold(
+                    root=target_path,
+                    formats=container_formats,
+                    force_duplicate=True,
+                    accept_space_loss=True,
+                )
+        except Exception as exc:
+            print(f"[WARN] Container conversion encountered an issue: {exc}")
+
+    # ── Phase D: Kaggle re-upload ──────────────────────────────────────────
     kaggle_ok: list[dict] = []
     kaggle_fail: list[tuple[dict, str]] = []
     if args.skip_kaggle:
         print()
-        print("── Phase C: Kaggle re-upload SKIPPED (--skip-kaggle) ────────────────")
+        print("── Phase D: Kaggle re-upload SKIPPED (--skip-kaggle) ────────────────")
     else:
         print()
-        print("── Phase C: Kaggle re-upload ────────────────────────────────────────")
-        for item in renamed:
+        print("── Phase D: Kaggle re-upload ────────────────────────────────────────")
+        for item in modernized:
             ok, msg = _kaggle_reupload(item, dry_run=False)
             if ok:
                 print(f"[OK] {item['target_name']}: {msg}")
@@ -444,23 +591,26 @@ def main() -> int:
                 print(f"[FAIL] {item['target_name']}: {msg}")
                 kaggle_fail.append((item, msg))
 
-    # ── Phase D: Persist registry updates ──────────────────────────────────
+    # ── Phase E: Persist registry updates ──────────────────────────────────
     if kaggle_ok or args.skip_kaggle:
         _save_registry(registry)
         print(f"[OK] unified_data.yaml updated ({len(kaggle_ok)} kaggle_ref entries).")
 
-    # ── Phase E: name_suffix write (only if everything succeeded) ──────────
-    all_success = (not kaggle_fail) and len(renamed) == len(selected)
+    # ── Phase F: name_suffix write (only if all eligible succeeded) ────────
+    all_success = (not kaggle_fail) and len(modernized) == len(selected)
     suffix_written = False
-    if all_success:
+    if all_success and len(modernized) == len(eligible):
         _write_name_suffix(registry, "")
         suffix_written = True
-    else:
-        print()
-        print("[HALT] name_suffix NOT written — Kaggle failures or incomplete batch.")
 
-    _report(renamed, kaggle_ok, kaggle_fail, suffix_written=suffix_written)
+    _report(modernized, kaggle_ok, kaggle_fail, suffix_written=suffix_written)
     return 0 if all_success else 1
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    return run(args)
 
 
 if __name__ == "__main__":

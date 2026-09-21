@@ -17,7 +17,6 @@ LemGendizedDatasets/
 
 # Python & Environment
 .cache/
-__init__.py
 __pycache__/
 *.py[cod]
 *$py.class

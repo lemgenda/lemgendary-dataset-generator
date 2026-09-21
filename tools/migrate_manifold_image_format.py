@@ -215,7 +215,7 @@ def migrate_manifold(
     return 0
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Retroactive image-format migration"
     )
@@ -234,8 +234,10 @@ def main() -> int:
         choices=["webp-lossless", "png"],
     )
     parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    return parser
 
+
+def run(args: argparse.Namespace) -> int:
     manifold = Path(args.manifold)
     if not manifold.exists():
         print(f"[ERROR] Manifold not found: {manifold}")
@@ -248,6 +250,12 @@ def main() -> int:
         mask_format=args.mask_format,
     )
     return migrate_manifold(manifold, policy, args.dry_run)
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    return run(args)
 
 
 if __name__ == "__main__":

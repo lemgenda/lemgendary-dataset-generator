@@ -10,8 +10,8 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.7.2-SOLID` |
-| **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + S.O.L.I.D. Hardening) |
+| **Version** | `v16.7.3-STABLE` |
+| **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
 | **Roadmap** | [dataset_compiler_modernization_roadmap.md](../lemgendary-docs/roadmaps/dataset_compiler_modernization_roadmap.md) |
@@ -20,10 +20,19 @@
 
 ## Changelog
 
-### v16.7.2 — Encapsulation of Compiler Internals into `core/` Package
+### v16.7.3 — Full Suite Audit Hardening & Modernized Pipeline Upgrades
 
-Fully encapsulated compiler coordinator internals into the dedicated `core/` subpackage, finalizing root directory decluttering so that only canonical entrypoints, manifests, and subpackages reside at the project root:
+Comprehensive audit and hardening across the LemGendary Dataset Compiler Suite:
 
+- **Unified Manifold Modernization Pipeline (`modernize`)** — Expanded `tools/modernize_manifold.py`, `services/migration_service.py`, and `cli.py modernize` beyond folder renaming. Added full in-place WebP transcoding and container format conversion (WebDataset / MDS / LitData / Parquet) with automatic metadata/Kaggle sync.
+- **`manifold_compile` Bug Fixes** — Fixed `NameError: db_path` on non-Forex manifold compilations and connected `args.also_format` to trigger automatic multi-container export immediately post-compilation.
+- **Service Layer Contracts & Interface Alignment** — Added public `build_parser()` and `run()` entry points to `tools/migrate_manifold_image_format.py` and `tools/modernize_manifold.py`. Corrected return codes in `MigrationService.migrate_containers`, aligned `SyncService.push` parameter names (`repo_id`), fixed `DocService.rebuild_manifolds_md` argument passing, and updated `AuditService` to use `VisionAuditor.verify_header()` and `VisionAuditor.audit_image()`.
+- **Worker Robustness & Diagnostics** — Added structured warning logging in `compiler_core.batch_worker` to prevent silent exception swallowing.
+- **Root Dataset Isolation** — Cleaned up compiled directory artifacts (`__pycache__`) in `LemGendaryDatasets`.
+
+- **WebDataset Windows URI Compatibility** — Resolved `no gopen handler defined` warning when reading or writing WebDataset shards on Windows platforms by normalizing local paths with `file:` URI schema.
+- **Kaggle Server-Side Extraction Tracking Resilience** — Hardened `core/common_sync.py` polling logic to gracefully handle newly initialized datasets during extraction/unpacking before Version 1 metadata is published, eliminating frozen progress indicators.
+- **Git Package Integrity & `.gitignore` Correction** — Purged erroneous `__init__.py` exclusion from `.gitignore`, restoring Git tracking across all package initialization modules (`core`, `formats`, `services`, `tools`, `utils`, `api`, `generators`).
 - **Compiler Internals Encapsulated (`core/`)** — Relocated `compiler_core.py`, `manifold_compile.py`, `config_schema.py`, `registry.py`, `presets.py`, `cli_args.py`, `doc_generator.py`, and `common_sync.py` into `core/` with PEP 562 lazy loading in `core/__init__.py`.
 - **Zero Circular Imports** — Eliminated circular import cascades between container format transcoders and compiler coordinator modules through lazy module initialization and clean boundary separation.
 - **Unified Path Resolution & CWD-Independence** — Hardened all tools in `tools/` and `core/` with automatic project root discovery and `sys.path` bootstrapping, ensuring 100% operational integrity whether invoked from repository root, project directory, or external orchestrators.
@@ -321,6 +330,7 @@ python cli.py reduce --max-gb 10
 python cli.py modernize --dry-run
 python cli.py modernize --all --yes
 python cli.py modernize --datasets nima_technical,nima_aesthetic
+python cli.py modernize --image-format webp --also-format webdataset
 python cli.py modernize --skip-kaggle      # rename locally, no re-upload
 
 # Kaggle sync

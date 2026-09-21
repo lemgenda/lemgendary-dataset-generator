@@ -229,6 +229,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
 
         output_root = OUT_PARENT / f"{prefix_str}{pascal_name}{suffix_str}"
         output_root_str = str(output_root)
+        db_path = output_root / "manifold_registry.db"
 
         if not output_root.exists():
             if model_config.get("dataset_type") != "forex" and model_config.get("acquisition_mode") != "mt5_terminal":
@@ -280,11 +281,11 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
 
             try:
                 from tools.notebook_generator import generate_training_notebook, generate_colab_training_notebook
-            except ImportError:
-                from notebook_generator import generate_training_notebook, generate_colab_training_notebook
-            target_model = "forex_predictor" if model_key == "forex_universe" else model_key
-            generate_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_training.ipynb"))
-            generate_colab_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
+                target_model = "forex_predictor" if model_key == "forex_universe" else model_key
+                generate_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_training.ipynb"))
+                generate_colab_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
+            except Exception as e:
+                print(f"[WARNING] Forex notebook generation skipped: {e}")
 
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
             yaml_info = {
@@ -900,6 +901,22 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
         remove_empty_dirs(output_root)
 
         generate_dataset_docs(output_root, final_index, pascal_name)
+
+        if getattr(args, "also_format", None):
+            try:
+                from formats.base import parse_also_format
+                from tools.migrate_manifold_format import migrate_manifold as write_containers
+                extra_formats = parse_also_format(args.also_format)
+                if extra_formats:
+                    print(f"[CONTAINER] Writing additional container format(s): {', '.join(extra_formats)}...")
+                    write_containers(
+                        root=output_root,
+                        formats=extra_formats,
+                        force_duplicate=getattr(args, "force_duplicate", False),
+                        accept_space_loss=getattr(args, "accept_space_loss", False),
+                    )
+            except Exception as e:
+                print(f"[ERROR] Failed writing additional container format: {e}")
 
         try:
             from tools.notebook_generator import (

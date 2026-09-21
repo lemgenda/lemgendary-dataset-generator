@@ -603,7 +603,8 @@ def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
                 results.extend(res)
             else:
                 results.append(res)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Worker task failed: %s with args %s: %s", getattr(task_func, "__name__", str(task_func)), task_args, exc)
             results.append(None)
     return results
 

@@ -8,14 +8,15 @@ between dataset compiler notebooks and training suite notebooks.
 import argparse
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from tools.notebooks import (
     generate_colab_inference_notebook,
-    generate_colab_training_notebook,
+    generate_colab_training_notebook as _raw_gen_colab_training,
     generate_colab_usage_notebook,
     generate_inference_notebook,
-    generate_training_notebook,
+    generate_training_notebook as _raw_gen_training,
     generate_usage_notebook,
     load_registry,
 )
@@ -23,6 +24,37 @@ from tools.notebooks.cells.env import (
     _build_env_var_lines,
     _load_runtime_env,
 )
+
+
+def generate_training_notebook(*args: Any, **kwargs: Any) -> str | None:
+    """Facade for generate_training_notebook supporting legacy and modern signatures.
+
+    Legacy: (pascal_name, model_key, output_path)
+    Modern: (model_key, export_dir, unified_models_registry=None, config=None)
+    """
+    if len(args) >= 3 and isinstance(args[2], (str, os.PathLike)):
+        # Legacy call: arg0=pascal_name, arg1=model_key, arg2=output_path
+        model_key = str(args[1])
+        out_p = Path(args[2])
+        export_dir = str(out_p.parent)
+        return _raw_gen_training(model_key, export_dir, **kwargs)
+    return _raw_gen_training(*args, **kwargs)
+
+
+def generate_colab_training_notebook(*args: Any, **kwargs: Any) -> str | None:
+    """Facade for generate_colab_training_notebook supporting legacy and modern signatures.
+
+    Legacy: (pascal_name, model_key, output_path)
+    Modern: (model_key, export_dir, unified_models_registry=None, config=None)
+    """
+    if len(args) >= 3 and isinstance(args[2], (str, os.PathLike)):
+        # Legacy call: arg0=pascal_name, arg1=model_key, arg2=output_path
+        model_key = str(args[1])
+        out_p = Path(args[2])
+        export_dir = str(out_p.parent)
+        return _raw_gen_colab_training(model_key, export_dir, **kwargs)
+    return _raw_gen_colab_training(*args, **kwargs)
+
 
 __all__ = [
     "_load_runtime_env",

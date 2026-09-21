@@ -261,11 +261,14 @@ def _render(rows: list[dict], reg: dict) -> str:
 
 
 # ─── Main ───────────────────────────────────────────────────────────────────
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Regenerate manifolds.md")
-    parser.add_argument("--check", action="store_true",
-                        help="Print summary, do not write the file")
-    args = parser.parse_args()
+def main(args: list[str] | argparse.Namespace | None = None) -> int:
+    if isinstance(args, argparse.Namespace):
+        parsed = args
+    else:
+        parser = argparse.ArgumentParser(description="Regenerate manifolds.md")
+        parser.add_argument("--check", action="store_true",
+                            help="Print summary, do not write the file")
+        parsed = parser.parse_args(args)
 
     reg = _load_yaml(REGISTRY_YAML)
     if not reg:
@@ -281,7 +284,7 @@ def main() -> int:
 
     content = _render(rows, reg)
 
-    if args.check:
+    if parsed.check:
         print(f"[CHECK] Would write {len(content)} bytes, {len(rows)} manifolds.")
         for r in rows:
             print(f"  {r['name']:<52} {r['samples']:>12,}  ({r['task']})")

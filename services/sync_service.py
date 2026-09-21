@@ -27,12 +27,12 @@ class SyncService:
         try:
             manifold_sync.action_sync(
                 manifold_name=model,
-                custom_url=url,
+                repo_id=url,
                 no_wait=no_wait,
             )
             return 0
         except SystemExit as exc:
-            return int(exc.code) if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         except Exception as exc:
             console.print(f"[bold red]Sync push failed:[/bold red] {exc}")
             return 1
@@ -52,7 +52,7 @@ class SyncService:
             )
             return 0
         except SystemExit as exc:
-            return int(exc.code) if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         except Exception as exc:
             console.print(f"[bold red]Sync pull failed:[/bold red] {exc}")
             return 1

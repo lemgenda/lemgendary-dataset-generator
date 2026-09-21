@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+import sys
 from typing import Any
 
 import webdataset as wds
@@ -34,17 +35,20 @@ class WebDatasetWriter:
         self._out_dir = Path(output_root) / "shards"
         self._out_dir.mkdir(parents=True, exist_ok=True)
         max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
+        shard_path = (self._out_dir / "shard-%05d.tar").resolve()
+        pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self._sink = WdsShardWriter(
-            str(self._out_dir / "shard-%05d.tar"),
+            pattern,
             maxsize=max_size,
         )
 
     def write(self, sample: Sample) -> None:
         if self._sink is None:
             return
+        img_key = sample.image_format.lower() if sample.image_format else "webp"
         row: dict[str, Any] = {
             "__key__": sample.name,
-            "jpg": sample.image_bytes,
+            img_key: sample.image_bytes,
         }
         if sample.label:
             row["txt"] = sample.label.encode("utf-8")
@@ -75,8 +79,10 @@ class ShardWriter:
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        shard_path = (self.output_dir / f"{prefix}-%05d.tar").resolve()
+        pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self.sink: Any = WdsShardWriter(
-            str(self.output_dir / f"{prefix}-%05d.tar"),
+            pattern,
             maxsize=int(max_size),
         )
 
