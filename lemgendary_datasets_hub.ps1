@@ -258,6 +258,66 @@ if ($GlobalData -and $GlobalData._registry_metadata.output_folder_name) {
 }
 $Out = Join-Path (Get-Location) $OutFolderName
 
+function Test-ManifoldData {
+    param([string]$Path)
+    if (![string]::IsNullOrWhiteSpace($Path) -and (Test-Path $Path)) {
+        # 1. Non-trivial index.json
+        $idx = Join-Path $Path 'index.json'
+        if ((Test-Path $idx) -and ((Get-Item $idx).Length -gt 100)) { return $true }
+
+        # 2. Known container/data files in root (*.parquet, *.arrow, *.tar, *.bin, *.h5, *.webp, *.png, *.jpg, *.jpeg)
+        $rootData = Get-ChildItem -Path $Path -File | Where-Object {
+            $_.Extension -match '\.(parquet|arrow|tar|bin|h5|hdf5|webp|png|jpg|jpeg)$' -or
+            ($_.Extension -eq '.csv' -and $_.Length -gt 10240)
+        } | Select-Object -First 1
+        if ($rootData) { return $true }
+
+        # 3. Known data subdirectories with content (images, shards, labels, train, val, test, data, parquet)
+        $dataDirs = @('images', 'shards', 'labels', 'train', 'val', 'test', 'data', 'parquet')
+        foreach ($d in $dataDirs) {
+            $sub = Join-Path $Path $d
+            if (Test-Path $sub) {
+                $subItem = Get-ChildItem -Path $sub | Select-Object -First 1
+                if ($subItem) { return $true }
+            }
+        }
+    }
+    return $false
+}
+
+function Resolve-ManifoldPath {
+    param(
+        [string]$OutDir,
+        [string]$Prefix,
+        [string]$Slug,
+        [string]$Suffix
+    )
+    $candidates = @()
+    if ($Suffix) {
+        $candidates += Join-Path $OutDir ($Prefix + $Slug + $Suffix)
+    }
+    $candidates += Join-Path $OutDir ($Prefix + $Slug)
+    $candidates += Join-Path $OutDir $Slug
+
+    # First priority: candidate path that exists AND contains actual data
+    foreach ($c in $candidates) {
+        if ((Test-Path $c) -and (Test-ManifoldData -Path $c)) {
+            return $c
+        }
+    }
+    # Second priority: candidate path that exists (even if empty skeleton)
+    foreach ($c in $candidates) {
+        if (Test-Path $c) {
+            return $c
+        }
+    }
+    # Default to standard canonical name
+    if ($Suffix) {
+        return Join-Path $OutDir ($Prefix + $Slug + $Suffix)
+    }
+    return Join-Path $OutDir ($Prefix + $Slug)
+}
+
 function Show-Stats {
     if (Test-Path $Out) {
         $Lat = Get-ChildItem $Out -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -363,12 +423,10 @@ function Test-MissingDatasets {
     foreach ($C in $ModelsToCheck) {
         $ds_info = $RegData.datasets.$C
         $Slug = $ds_info.name
-        $ManifoldName = $Prefix + $Slug + $Suffix
-        $ManifoldPath = Join-Path $Out $ManifoldName
-        $InfoPath = Join-Path $ManifoldPath "dataset_info.yaml"
+        $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $Slug -Suffix $Suffix
 
         # 2026: Check if the FULL manifold exists locally or on Kaggle mirror
-        if ($SkipIfCompiled -and (Test-Path $InfoPath)) {
+        if ($SkipIfCompiled -and (Test-ManifoldData -Path $ManifoldPath)) {
             Write-Host "  [OK] $Slug manifold verified locally." -ForegroundColor Green
             continue
         }
@@ -728,8 +786,8 @@ while ($true) {
         for ($i=0; $i -lt $DatasetNames.Count; $i++) {
             $dsName = $DatasetNames[$i]
             $slug = $RegData.datasets.$dsName.name
-            $ManifoldPath = Join-Path $Out ($Prefix + $slug + $Suffix)
-            if (Test-Path (Join-Path $ManifoldPath "dataset_info.yaml")) {
+            $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $slug -Suffix $Suffix
+            if (Test-ManifoldData -Path $ManifoldPath) {
                 Write-Host "$($i+1). $dsName [COMPILED]" -ForegroundColor Green
             } else {
                 Write-Host "$($i+1). $dsName" -ForegroundColor Gray
@@ -855,10 +913,12 @@ while ($true) {
                 for ($i=0; $i -lt $DatasetNames.Count; $i++) {
                     $dsName = $DatasetNames[$i]
                     $slug = $RegData.datasets.$dsName.name
-                    $ManifoldName = $Prefix + $slug + $Suffix
-                    $ManifoldPath = Join-Path $Out $ManifoldName
-                    if (Test-Path $ManifoldPath) {
+                    $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $slug -Suffix $Suffix
+                    $ManifoldName = Split-Path $ManifoldPath -Leaf
+                    if (Test-ManifoldData -Path $ManifoldPath) {
                         Write-Host "$($i+1). $dsName [READY] ($ManifoldName)" -ForegroundColor Green
+                    } elseif (Test-Path $ManifoldPath) {
+                        Write-Host "$($i+1). $dsName [NO DATA] ($ManifoldName)" -ForegroundColor Yellow
                     } else {
                         Write-Host "$($i+1). $dsName [NOT COMPILED]" -ForegroundColor DarkGray
                     }
@@ -871,11 +931,11 @@ while ($true) {
                     $tm = $DatasetNames[$Idx]
                     $ds_info = $RegData.datasets.$tm
                     $Slug = $ds_info.name
-                    $ManifoldName = $Prefix + $Slug + $Suffix
-                    $ManifoldPath = Join-Path $Out $ManifoldName
+                    $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $Slug -Suffix $Suffix
+                    $ManifoldName = Split-Path $ManifoldPath -Leaf
 
-                    if (!(Test-Path $ManifoldPath)) {
-                        Write-Host "  [ERROR] Compiled manifold not found at $ManifoldPath" -ForegroundColor Red
+                    if (!(Test-ManifoldData -Path $ManifoldPath)) {
+                        Write-Host "  [ERROR] Compiled manifold contains no actual data at $ManifoldPath" -ForegroundColor Red
                         Read-Host "Press Enter to return"
                         continue
                     }
@@ -911,12 +971,13 @@ while ($true) {
                     $dsName = $DatasetNames[$i]
                     $ds_info = $RegData.datasets.$dsName
                     $slug = $ds_info.name
-                    $ManifoldName = $Prefix + $slug + $Suffix
-                    $ManifoldPath = Join-Path $Out $ManifoldName
+                    $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $slug -Suffix $Suffix
                     $KagRef = if ($ds_info.kaggle_ref) { $ds_info.kaggle_ref.Replace("kaggle://", "") } else { "NOT CONFIGURED" }
 
-                    if (Test-Path $ManifoldPath) {
+                    if (Test-ManifoldData -Path $ManifoldPath) {
                         Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: READY]" -ForegroundColor Green
+                    } elseif (Test-Path $ManifoldPath) {
+                        Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NO DATA]" -ForegroundColor Yellow
                     } else {
                         Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NOT FOUND]" -ForegroundColor DarkGray
                     }
@@ -942,7 +1003,8 @@ while ($true) {
                         $tm = $DatasetNames[$Idx]
                         $ds_info = $RegData.datasets.$tm
                         $Slug = $ds_info.name
-                        $TargetFolder = $Prefix + $Slug + $Suffix
+                        $ResolvedDest = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $Slug -Suffix $Suffix
+                        $TargetFolder = Split-Path $ResolvedDest -Leaf
                         if ($ds_info.kaggle_ref) {
                             $TargetHandle = $ds_info.kaggle_ref.Replace("kaggle://", "")
                         } else {
@@ -961,8 +1023,8 @@ while ($true) {
                     $Slug = $TargetHandle.Split('/')[-1]
                     $SlugZip = Join-Path $Out ($Slug + ".zip")
 
-                    if (Test-Path $DestPath) {
-                        Write-Host "`n[INFO] Local manifold '$TargetFolder' exists at $DestPath." -ForegroundColor Cyan
+                    if ((Test-Path $DestPath) -and (Test-ManifoldData -Path $DestPath)) {
+                        Write-Host "`n[INFO] Local manifold '$TargetFolder' exists and contains data at $DestPath." -ForegroundColor Cyan
                         $Confirm = Read-Host "Resume extraction / synchronize missing files? (Y/n/overwrite)"
                         if ($Confirm -match '^[oO]') {
                             $Really = Read-Host "[CRITICAL] Type 'YES' to delete existing manifold folder"
@@ -977,6 +1039,8 @@ while ($true) {
                             Read-Host "Press Enter to return"
                             continue
                         }
+                    } elseif (Test-Path $DestPath) {
+                        Write-Host "`n[INFO] Local manifold folder '$TargetFolder' exists at $DestPath but contains no sample data." -ForegroundColor Yellow
                     } elseif ((Test-Path $ExistingZip) -or (Test-Path $SlugZip)) {
                         Write-Host "`n[RESUME] Found existing downloaded archive in LemGendaryDatasets root! Resuming extraction..." -ForegroundColor Green
                     }
