@@ -603,6 +603,8 @@ def _fetch_remote_archive(
         sys.path = [p for p in sys.path if not (os.path.basename(os.path.normpath(p)) == "sources" and os.path.exists(os.path.join(p, "kaggle.py")))]
         if "kaggle" in sys.modules and not hasattr(sys.modules["kaggle"], "api"):
             del sys.modules["kaggle"]
+        import socket
+        socket.setdefaulttimeout(60.0)
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
         api.authenticate()

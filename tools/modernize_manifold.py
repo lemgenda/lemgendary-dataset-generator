@@ -36,6 +36,11 @@ from typing import Literal
 from PIL import Image
 import yaml
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 logger = logging.getLogger(__name__)
 
 # ─── Paths ──────────────────────────────────────────────────────────────────
@@ -92,6 +97,13 @@ def _has_manifold_data(path: Path) -> bool:
     return False
 
 
+def _is_manifold_fully_modernized(path: Path) -> bool:
+    """Return True only if the target modern manifold is fully generated with docs/index."""
+    if not path.exists() or not _has_manifold_data(path):
+        return False
+    return (path / "dataset_info.yaml").exists() and (path / "index.json").exists()
+
+
 # ─── Registry I/O ───────────────────────────────────────────────────────────
 def _load_registry() -> dict:
     with open(REGISTRY_YAML, encoding="utf-8") as f:
@@ -136,9 +148,11 @@ def _enumerate_eligible(registry: dict) -> list[dict]:
         new_name = entry.name[: -len(LEGACY_SUFFIX)]
         target_path = out / new_name
 
-        # If target already exists and contains data, it has already been modernized
-        if target_path.exists() and _has_manifold_data(target_path):
+        # If target already exists and is fully modernized, skip it
+        if _is_manifold_fully_modernized(target_path):
             continue
+
+        is_resume = target_path.exists() and _has_manifold_data(target_path)
 
         base = entry.name[len(BRAND_PREFIX): -len(LEGACY_SUFFIX)]
         kaggle_key = _find_kaggle_key(registry, base)
@@ -154,6 +168,7 @@ def _enumerate_eligible(registry: dict) -> list[dict]:
             "kaggle_key": kaggle_key,
             "old_kaggle_ref": old_ref,
             "base_name": base,
+            "is_resume": is_resume,
         })
     return eligible
 
@@ -165,7 +180,8 @@ def _print_eligible(eligible: list[dict]) -> None:
     print(f"{'#':<4} {'Source Manifold (Legacy)':<48} {'Target Modern Manifold':<48}")
     print(f"{'─'*4} {'─'*48} {'─'*48}")
     for i, item in enumerate(eligible, 1):
-        print(f"{i:<4} {item['folder_name']:<48} {item['target_name']:<48}")
+        status = " [RESUMABLE]" if item.get("is_resume") else ""
+        print(f"{i:<4} {item['folder_name']:<48} {item['target_name'] + status:<48}")
     print()
 
 
@@ -222,9 +238,10 @@ def _confirm(selected: list[dict]) -> bool:
     print()
     print("── Modernization Plan ───────────────────────────────────────────────")
     for item in selected:
-        print(f"  {item['folder_name']}  ->  {item['target_name']} (new folder)")
+        status = " (RESUME partial)" if item.get("is_resume") else " (new folder)"
+        print(f"  {item['folder_name']}  ->  {item['target_name']}{status}")
     print()
-    print(f"  Total: {len(selected)} modernized manifold(s) will be created.")
+    print(f"  Total: {len(selected)} modernized manifold(s) will be processed.")
     print("  Legacy manifold folder(s) will be preserved untouched.")
     print()
     try:
@@ -254,19 +271,26 @@ def _create_modernized_batch(
         src_dir: Path = item["current_path"]
         dst_dir: Path = item["target_path"]
 
-        if dst_dir.exists() and _has_manifold_data(dst_dir):
-            print(f"[HALT] Target manifold already exists and has data: {dst_dir}")
-            return False, created
+        if dst_dir.exists() and _is_manifold_fully_modernized(dst_dir):
+            print(f"[SKIP] Target manifold already fully modernized: {dst_dir.name}")
+            created.append(item)
+            continue
 
+        is_resume = dst_dir.exists() and _has_manifold_data(dst_dir)
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
-            print(f"[CREATE] Created modern target directory: {dst_dir.name}")
+            if is_resume:
+                print(f"[RESUME] Target manifold exists with partial data: {dst_dir.name}. Checking for missing files...")
+            else:
+                print(f"[CREATE] Created modern target directory: {dst_dir.name}")
         except OSError as e:
             print(f"[HALT] Failed creating directory {dst_dir.name}: {e}")
             return False, created
 
         transcode_tasks: list[tuple[Path, Path, Literal["image", "target", "mask"]]] = []
         copy_tasks: list[tuple[Path, Path]] = []
+        skipped_copies = 0
+        skipped_images = 0
 
         for root, _dirs, files in os.walk(src_dir):
             rel_dir = Path(root).relative_to(src_dir)
@@ -294,17 +318,40 @@ def _create_modernized_batch(
                         out_ext = ".webp"
 
                     target_file = target_sub / (src_file.stem + out_ext)
-                    transcode_tasks.append((src_file, target_file, kind))
+                    if target_file.exists() and target_file.stat().st_size > 0:
+                        skipped_images += 1
+                    else:
+                        transcode_tasks.append((src_file, target_file, kind))
                 else:
                     target_file = target_sub / fname
-                    copy_tasks.append((src_file, target_file))
+                    if target_file.exists() and target_file.stat().st_size == src_file.stat().st_size:
+                        skipped_copies += 1
+                    else:
+                        copy_tasks.append((src_file, target_file))
 
-        print(f"[COPY] Copying {len(copy_tasks)} structure, label, and metadata file(s)...")
-        for s_f, d_f in copy_tasks:
-            try:
-                shutil.copy2(s_f, d_f)
-            except Exception as exc:
-                logger.debug("Copy failed for %s -> %s: %s", s_f, d_f, exc)
+        if skipped_copies > 0 or skipped_images > 0:
+            print(f"[RESUME] Found existing files: {skipped_images} image(s), {skipped_copies} metadata file(s) already complete.")
+
+        if copy_tasks:
+            print(f"[COPY] Copying {len(copy_tasks)} structure, label, and metadata file(s)...")
+            if tqdm is not None and len(copy_tasks) > 50:
+                copy_iter = tqdm(
+                    copy_tasks,
+                    desc=f"  -> Copying metadata [{dst_dir.name}]",
+                    unit="file",
+                    ncols=88,
+                    mininterval=0.5,
+                )
+            else:
+                copy_iter = copy_tasks
+
+            for s_f, d_f in copy_iter:
+                try:
+                    shutil.copy2(s_f, d_f)
+                except Exception as exc:
+                    logger.debug("Copy failed for %s -> %s: %s", s_f, d_f, exc)
+        elif skipped_copies > 0:
+            print(f"[COPY] All {skipped_copies} structure, label, and metadata file(s) already in place.")
 
         if transcode_tasks:
             print(f"[TRANSCODE] Modernizing {len(transcode_tasks)} image(s) to {policy.format.upper()} in {dst_dir.name}...")
@@ -326,9 +373,21 @@ def _create_modernized_batch(
                     return False
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                results = list(executor.map(_worker, transcode_tasks))
+                if tqdm is not None and len(transcode_tasks) > 20:
+                    results = list(tqdm(
+                        executor.map(_worker, transcode_tasks),
+                        total=len(transcode_tasks),
+                        desc=f"  -> Transcoding [{dst_dir.name}]",
+                        unit="img",
+                        ncols=88,
+                        mininterval=0.5,
+                    ))
+                else:
+                    results = list(executor.map(_worker, transcode_tasks))
             successes = sum(1 for r in results if r)
             print(f"[TRANSCODE] Completed: {successes}/{len(transcode_tasks)} images converted to {policy.format.upper()}.")
+        elif skipped_images > 0:
+            print(f"[TRANSCODE] All {skipped_images} image(s) already converted to {policy.format.upper()} in {dst_dir.name}.")
 
         created.append(item)
     return True, created

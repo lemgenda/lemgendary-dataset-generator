@@ -25,6 +25,8 @@
 Comprehensive audit and hardening across the LemGendary Dataset Compiler Suite:
 
 - **Unified Manifold Modernization Pipeline (`modernize`)** — Expanded `tools/modernize_manifold.py`, `services/migration_service.py`, and `cli.py modernize` beyond folder renaming. Added full in-place WebP transcoding and container format conversion (WebDataset / MDS / LitData / Parquet) with automatic metadata/Kaggle sync.
+  - **Two-Tier Resumption Architecture** — Intelligent completion detection (`dataset_info.yaml` + `index.json`) and file-level delta verification. Automatically skips already converted `.webp` images and metadata, seamlessly resuming interrupted runs from exact checkpoints.
+  - **Real-Time Visual Telemetry** — Integrated `tqdm` visual progress bars with dynamic conversion speeds (img/sec), elapsed runtime, and ETA countdowns for both metadata replication and multi-threaded image transcoding.
 - **`manifold_compile` Bug Fixes** — Fixed `NameError: db_path` on non-Forex manifold compilations and connected `args.also_format` to trigger automatic multi-container export immediately post-compilation.
 - **Service Layer Contracts & Interface Alignment** — Added public `build_parser()` and `run()` entry points to `tools/migrate_manifold_image_format.py` and `tools/modernize_manifold.py`. Corrected return codes in `MigrationService.migrate_containers`, aligned `SyncService.push` parameter names (`repo_id`), fixed `DocService.rebuild_manifolds_md` argument passing, and updated `AuditService` to use `VisionAuditor.verify_header()` and `VisionAuditor.audit_image()`.
 - **Worker Robustness & Diagnostics** — Added structured warning logging in `compiler_core.batch_worker` to prevent silent exception swallowing.
