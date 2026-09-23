@@ -84,7 +84,7 @@ class MigrationService:
         skip_kaggle: bool = False,
         image_format: str = "webp",
         image_quality: int = 92,
-        also_format: str = "webdataset",
+        also_format: str | None = None,
         skip_transcode: bool = False,
         skip_container: bool = False,
     ) -> int:
@@ -105,7 +105,8 @@ class MigrationService:
                 args.append("--skip-kaggle")
             args.extend(["--image-format", image_format])
             args.extend(["--image-quality", str(image_quality)])
-            args.extend(["--also-format", also_format])
+            if also_format:
+                args.extend(["--also-format", also_format])
             if skip_transcode:
                 args.append("--skip-transcode")
             if skip_container:

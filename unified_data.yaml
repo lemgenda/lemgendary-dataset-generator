@@ -1,4 +1,3 @@
----
 _registry_metadata:
   version: 4.2.0
   specialization: 2026_Resiliency
@@ -20,7 +19,7 @@ datasets:
     - ref: hf://Shuai1995/TAD66K_for_Image_Aesthetics_Assessment
   nima_technical:
     name: NimaTechnical
-    kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnicallarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnical
     val_split: 0.12
     refs:
     - ref: kaggle://generalhawking/koniq-10k-dataset

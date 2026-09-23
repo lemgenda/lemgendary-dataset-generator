@@ -31,6 +31,7 @@ Comprehensive audit and hardening across the LemGendary Dataset Compiler Suite:
 - **Root Dataset Isolation** — Cleaned up compiled directory artifacts (`__pycache__`) in `LemGendaryDatasets`.
 
 - **WebDataset Windows URI Compatibility** — Resolved `no gopen handler defined` warning when reading or writing WebDataset shards on Windows platforms by normalizing local paths with `file:` URI schema.
+- **Kaggle SDK Namespace Collision Resolution** — Pruned `sources/` from `sys.path` in `sources/kaggle.py` and guarded `core/common_sync.py` against local module shadowing, preventing `sources/kaggle.py` from shadowing the PyPI `kaggle` package and resolving `No module named 'kaggle.api'; 'kaggle' is not a package` warnings.
 - **Kaggle Server-Side Extraction Tracking Resilience** — Hardened `core/common_sync.py` polling logic to gracefully handle newly initialized datasets during extraction/unpacking before Version 1 metadata is published, eliminating frozen progress indicators.
 - **Git Package Integrity & `.gitignore` Correction** — Purged erroneous `__init__.py` exclusion from `.gitignore`, restoring Git tracking across all package initialization modules (`core`, `formats`, `services`, `tools`, `utils`, `api`, `generators`).
 - **Compiler Internals Encapsulated (`core/`)** — Relocated `compiler_core.py`, `manifold_compile.py`, `config_schema.py`, `registry.py`, `presets.py`, `cli_args.py`, `doc_generator.py`, and `common_sync.py` into `core/` with PEP 562 lazy loading in `core/__init__.py`.

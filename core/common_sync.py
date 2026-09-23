@@ -106,6 +106,9 @@ def setup_kaggle_auth(default_user="lemtreursi"):
         logger.debug("Kagglehub warning flag suppression skipped: %s", exc)
 
     try:
+        sys.path = [p for p in sys.path if not (os.path.basename(os.path.normpath(p)) == "sources" and os.path.exists(os.path.join(p, "kaggle.py")))]
+        if "kaggle" in sys.modules and not hasattr(sys.modules["kaggle"], "api"):
+            del sys.modules["kaggle"]
         from kaggle.api.kaggle_api_extended import KaggleApi
         KaggleApi.already_printed_version_warning = True
     except Exception as exc:
@@ -473,10 +476,13 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
             print(f"[WARN] Kaggle metadata update notice: {meta_ex}")
 
     if not no_wait:
+        # Scale timeout dynamically: base 30m + 2m per 10k files (up to 4 hours for massive manifolds)
+        dynamic_timeout = max(1800, min(14400, 1800 + (file_count // 10000) * 120))
         success = track_kaggle_dataset_status(
             clean_repo_id,
             target_version=target_version,
-            expected_files=file_count
+            expected_files=file_count,
+            timeout=dynamic_timeout,
         )
         if not success:
             return False
@@ -594,6 +600,9 @@ def _fetch_remote_archive(
 
     downloaded = False
     try:
+        sys.path = [p for p in sys.path if not (os.path.basename(os.path.normpath(p)) == "sources" and os.path.exists(os.path.join(p, "kaggle.py")))]
+        if "kaggle" in sys.modules and not hasattr(sys.modules["kaggle"], "api"):
+            del sys.modules["kaggle"]
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
         api.authenticate()

@@ -417,7 +417,7 @@ def modernize(
     skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Skip Kaggle re-upload"),
     image_format: str = typer.Option("webp", "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"),
     image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
-    also_format: str = typer.Option("webdataset", "--also-format", help="Container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)"),
+    also_format: str | None = typer.Option(None, "--also-format", help="Optional container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)"),
     skip_transcode: bool = typer.Option(False, "--skip-transcode", help="Skip WebP transcoding"),
     skip_container: bool = typer.Option(False, "--skip-container", help="Skip container format conversion"),
 ) -> None:

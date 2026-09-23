@@ -457,8 +457,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mask-format", type=str, default="webp-lossless",
                         choices=["webp-lossless", "png"],
                         help="Format for mask transcoding")
-    parser.add_argument("--also-format", type=str, default="webdataset",
-                        help="Container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)")
+    parser.add_argument("--also-format", type=str, default=None,
+                        help="Optional container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)")
     parser.add_argument("--skip-transcode", action="store_true",
                         help="Skip WebP image transcoding")
     parser.add_argument("--skip-container", action="store_true",

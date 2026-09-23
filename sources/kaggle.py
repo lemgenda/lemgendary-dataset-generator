@@ -1,8 +1,16 @@
 # 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
 # (common_sync, archive_manager, etc.) resolve when this file is invoked
 # directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Also prune the script directory (sources/) from sys.path to prevent sources/kaggle.py
+# from shadowing the installed PyPI 'kaggle' package.
+import os
+import sys
+
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_script_dir)
+sys.path = [p for p in sys.path if os.path.abspath(p) != _script_dir]
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 """
 LemGendary Kaggle Dataset Manager CLI
 =====================================
