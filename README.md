@@ -10,7 +10,7 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.7.3-STABLE` |
+| **Version** | `v16.7.4-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,13 @@
 ---
 
 ## Changelog
+
+### v16.7.4 — Progress Telemetry Resilience, Upload Streamline & Compliance Hardening
+
+- **Dynamic Column Width & Line Wrap Prevention** — Resolved terminal progress bar truncation in `tools/modernize_manifold.py` by transitioning from fixed `ncols=88` to `dynamic_ncols=True`, dynamically condensing long manifold names in progress bar prefixes (`[LemGendizedProfessio...]`), and reserving fixed-width bars so that elapsed time, ETA countdowns, and throughput rates remain fully visible across any terminal window width.
+- **Kaggle Cloud Upload Telemetry Hardening** — Patched `kagglehub.gcs_upload.tqdm` in `core/common_sync.py` and the active environment with `dynamic_ncols=True` and a compact 20-character bar format (`bar_format="{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]"`). Constrained the total progress output to $\le 76$ columns, eliminating multi-line wrapping and terminal buffer flooding during massive multi-gigabyte uploads.
+- **Pre-Commit Linter & YAML Standards Compliance** — Added standard document boundary marker `---` to `unified_data.yaml`, satisfying `yamllint` (`document-start`) and unblocking pre-commit validation.
+- **Type Safety & Scoping Isolation** — Eliminated local namespace shadowing of `kagglehub` in `core/common_sync.py` by using `importlib.import_module` and `setattr` for monkey-patching `tqdm`, resolving Pyright uninitialized variable and assignment type errors.
 
 ### v16.7.3 — Full Suite Audit Hardening & Modernized Pipeline Upgrades
 

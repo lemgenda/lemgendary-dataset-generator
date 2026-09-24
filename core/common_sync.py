@@ -5,6 +5,7 @@ Centralized Kaggle authentication, archive staging, status tracking,
 and resilient transfer utilities shared across dataset managers.
 """
 
+import importlib
 import json
 import logging
 import os
@@ -12,7 +13,8 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
+
 import kagglehub
 from tqdm import tqdm
 
@@ -455,6 +457,21 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
     upload_success = False
     try:
         print("[SYNC] Uploading archive to Kaggle via KaggleHub API...")
+        try:
+            gcs_mod = importlib.import_module("kagglehub.gcs_upload")
+            _orig_tqdm = getattr(gcs_mod, "tqdm", None)
+            if _orig_tqdm is not None:
+                def _safe_tqdm(*args: Any, **kwargs: Any) -> Any:
+                    kwargs.setdefault("dynamic_ncols", True)
+                    kwargs.setdefault(
+                        "bar_format",
+                        "{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+                    )
+                    return _orig_tqdm(*args, **kwargs)
+
+                setattr(gcs_mod, "tqdm", _safe_tqdm)
+        except Exception:
+            pass
         kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
         upload_success = True
     except Exception as e:
