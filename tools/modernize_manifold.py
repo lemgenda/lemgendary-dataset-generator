@@ -374,12 +374,14 @@ def _create_modernized_batch(
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 if tqdm is not None and len(transcode_tasks) > 20:
+                    name_disp = dst_dir.name if len(dst_dir.name) <= 24 else f"{dst_dir.name[:21]}..."
                     results = list(tqdm(
                         executor.map(_worker, transcode_tasks),
                         total=len(transcode_tasks),
-                        desc=f"  -> Transcoding [{dst_dir.name}]",
+                        desc=f"  -> Transcode [{name_disp}]",
                         unit="img",
-                        ncols=88,
+                        dynamic_ncols=True,
+                        bar_format="{l_bar}{bar:15}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
                         mininterval=0.5,
                     ))
                 else:
