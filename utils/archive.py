@@ -144,8 +144,61 @@ def create_archive(
         return False
 
 
+def _find_7z() -> str | None:
+    """Locate 7-Zip executable on Windows or system PATH."""
+    for c in ["C:\\Program Files\\7-Zip\\7z.exe", "C:\\Program Files (x86)\\7-Zip\\7z.exe"]:
+        if os.path.isfile(c):
+            return c
+    import shutil
+    return shutil.which("7z") or shutil.which("7z.exe")
+
+
+def _find_tar() -> str | None:
+    """Locate native tar executable."""
+    import shutil
+    return shutil.which("tar") or shutil.which("tar.exe")
+
+
+def _flatten_common_root(dest_path: Path) -> None:
+    """Promote children of a single top-level wrapper directory (e.g. LemGendizedMirNetExposureLarge)."""
+    try:
+        entries = [e for e in dest_path.iterdir() if e.name not in (".git", ".tmp")]
+        subdirs = [e for e in entries if e.is_dir()]
+        files = [e for e in entries if e.is_file()]
+        if len(subdirs) == 1 and len(files) <= 5:
+            cand = subdirs[0]
+            if cand.name.lower() == dest_path.name.lower() or cand.name.startswith("LemGendized") or dest_path.name.startswith("LemGendized"):
+                import shutil
+                for child in list(cand.iterdir()):
+                    dest_child = dest_path / child.name
+                    if dest_child.exists():
+                        if dest_child.is_dir() and child.is_dir():
+                            for subchild in list(child.iterdir()):
+                                target_sub = dest_child / subchild.name
+                                if not target_sub.exists():
+                                    shutil.move(str(subchild), str(target_sub))
+                            try:
+                                child.rmdir()
+                            except OSError:
+                                pass
+                        else:
+                            try:
+                                os.remove(dest_child)
+                            except OSError:
+                                pass
+                            shutil.move(str(child), str(dest_child))
+                    else:
+                        shutil.move(str(child), str(dest_child))
+                try:
+                    cand.rmdir()
+                except OSError:
+                    pass
+    except Exception as exc:
+        print(f"[DEBUG] Directory flattening note: {exc}")
+
+
 def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: bool = True) -> bool:
-    """Extract only missing files from archive with byte-level real-time progress bar."""
+    """Extract archive using native 7-Zip/tar engines when available with Python fallback."""
     source_archive = Path(archive_path).resolve()
     dest_path = Path(dest_dir).resolve()
     dest_path.mkdir(parents=True, exist_ok=True)
@@ -156,6 +209,56 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
 
     archive_str = str(source_archive)
     is_tar = archive_str.endswith((".tar", ".tar.gz", ".tgz"))
+
+    # Native 7-Zip acceleration
+    seven_z = _find_7z()
+    if seven_z:
+        print(f"[EXTRACT] High-throughput native extraction via 7-Zip: {source_archive.name}")
+        import subprocess
+        cmd = [
+            seven_z,
+            "x",
+            str(source_archive),
+            f"-o{dest_path}",
+            "-aos",
+            "-bsp1",
+            "-mmt=on",
+            "-y",
+        ]
+        try:
+            proc = subprocess.run(cmd)
+            if proc.returncode == 0:
+                _flatten_common_root(dest_path)
+                if delete_after:
+                    print(f"Extraction successful. Deleting source archive: {source_archive.name}")
+                    try:
+                        os.remove(source_archive)
+                    except OSError as ex:
+                        print(f"[WARN] Could not remove source archive: {ex}")
+                return True
+            print(f"[WARN] 7-Zip exited with return code {proc.returncode}. Attempting fallback...")
+        except Exception as exc:
+            print(f"[WARN] 7-Zip extraction encountered error: {exc}. Attempting fallback...")
+
+    # Native tar acceleration for tar archives
+    native_tar = _find_tar()
+    if is_tar and native_tar:
+        print(f"[EXTRACT] Native extraction via tar: {source_archive.name}")
+        import subprocess
+        cmd = [native_tar, "-xf", str(source_archive), "-C", str(dest_path)]
+        try:
+            proc = subprocess.run(cmd)
+            if proc.returncode == 0:
+                _flatten_common_root(dest_path)
+                if delete_after:
+                    print(f"Extraction successful. Deleting source archive: {source_archive.name}")
+                    try:
+                        os.remove(source_archive)
+                    except OSError as ex:
+                        print(f"[WARN] Could not remove source archive: {ex}")
+                return True
+        except Exception as exc:
+            print(f"[WARN] Native tar extraction encountered error: {exc}. Attempting fallback...")
 
     print(f"Opening archive: {source_archive.name}")
     try:

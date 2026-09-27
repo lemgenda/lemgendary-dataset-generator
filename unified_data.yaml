@@ -110,7 +110,7 @@ datasets:
     - ref: kaggle://weipengzhang/adobe-fivek
     - ref: hf://gitpull/DPED
     modernized_folder: LemGendizedUpnV2
-    canonical_format: litdata
+    canonical_format: webdataset
     title: LemGendized Upn V2
     subtitle: Massive 1.42M Sample Parameter Prediction Manifold for Universal Restoration
     keywords:
@@ -128,7 +128,7 @@ datasets:
     - Adobe FiveK
     - DPED
     container:
-      primary: litdata
+      primary: webdataset
   film_restorer:
     name: FilmRestorer
     kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorer
