@@ -67,20 +67,20 @@ def generate_colab_inference_notebook(
         "nbformat": 4,
         "cells": [
             make_markdown_cell([
-                f"# LemGendary Master Execution: {meta.pascal_name} (Google Colab Pro+)\n",
-                "Automated high-throughput cloud training with persistent Google Drive checkpoints.\n",
+                f"# LemGendary Master Execution: {meta.pascal_name} (v16.2.9 Nuclear-Hardened Colab Edition)\n",
+                "This unified notebook handles environment synchronization and automated cloud training.\n",
             ]),
             make_markdown_cell([
-                "## 1. Hardware & TPU/GPU Sentinel\n",
-                "Detect and configure environment accelerators.\n",
+                "## 1. Hardware Sentinel\n",
+                "Ensure the manifold has the required hardware acceleration.\n",
             ]),
             build_sentinel_cell("colab"),
-            make_markdown_cell(["## 2. Secrets Management & HuggingFace Auth\n"]),
+            make_markdown_cell(["## 2. Cloud Auth & Secrets\n"]),
             build_secrets_cell("colab"),
-            make_markdown_cell(["## 3. Remote Synchronization & Submodules\n"]),
+            make_markdown_cell(["## 3. Environment Synchronization\n"]),
             build_clone_cell("colab"),
             build_install_cell("colab"),
-            make_markdown_cell(["## 4. SOTA Hub Pull\n"]),
+            make_markdown_cell(["## 4. SOTA Hub Synchronization (Pull)\n"]),
             build_hub_prep_cell(meta, "colab"),
             make_markdown_cell([
                 "## 4.5 Google Drive Mount\n",

@@ -479,7 +479,8 @@ def generate_dataset_docs(
 def regenerate_all_docs(datasets_dir: str | Path | None = None) -> None:
     """Regenerate documentation for all manifolds discovered in configuration and workspace."""
     if datasets_dir is None:
-        datasets_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+        cand = Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets"
+        datasets_dir = cand if cand.exists() else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
     datasets_dir = Path(datasets_dir)
 
     print(f"Scanning manifolds in {datasets_dir}...")
@@ -521,7 +522,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.manifold:
-        m_path = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / args.manifold
+        cand_root = Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets"
+        datasets_root = cand_root if cand_root.exists() else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+        m_path = datasets_root / args.manifold
         generate_dataset_docs(m_path, None, args.manifold)
     else:
         regenerate_all_docs()

@@ -139,6 +139,14 @@ def build_structure_text(
                 desc = f"Year-chunked unified Parquet manifold: {name}"
             else:
                 desc = f"Year-chunked shard directory: {name}"
+        elif name.endswith(".tar"):
+            desc = "WebDataset POSIX `.tar` container shard."
+        elif name.endswith(".mds"):
+            desc = "MosaicML Streaming (`mds`) container shard."
+        elif name.endswith(".bin") and "chunk" in name.lower():
+            desc = "Lightning AI LitData streaming binary chunk."
+        elif name.endswith(".cache"):
+            desc = "Ultralytics pre-compiled binary label cache."
         else:
             desc = desc_map.get(name, "Dataset component.")
 

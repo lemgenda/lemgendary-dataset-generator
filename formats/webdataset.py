@@ -50,6 +50,10 @@ class WebDatasetWriter:
             "__key__": sample.name,
             img_key: sample.image_bytes,
         }
+        if sample.target_bytes:
+            row[f"target.{img_key}"] = sample.target_bytes
+        if sample.mask_bytes:
+            row["mask.webp"] = sample.mask_bytes
         if sample.label:
             row["txt"] = sample.label.encode("utf-8")
         if sample.metadata:

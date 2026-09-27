@@ -1,9 +1,9 @@
 ---
 _registry_metadata:
-  version: 4.2.0
+  version: 4.3.0
   specialization: 2026_Resiliency
   name_prefix: LemGendized
-  name_suffix: Large
+  name_suffix: ''
   output_folder_name: ../LemGendaryDatasets
   global_constraints:
     min_size_gb: 6.0
@@ -18,6 +18,26 @@ datasets:
     - ref: kaggle://generalhawking/koniq-10k-dataset
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
     - ref: hf://Shuai1995/TAD66K_for_Image_Aesthetics_Assessment
+    modernized_folder: LemGendizedNimaAesthetic
+    canonical_format: webdataset
+    title: LemGendized NIMA Aesthetic
+    subtitle: SOTA Aesthetic Image Quality Assessment Manifold for Swin-v2 and EfficientNet
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-classification
+    - benchmark
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - AVA
+    - TAD66K
+    - SPAQ
+    - KonIQ-10k
+    container:
+      primary: webdataset
   nima_technical:
     name: NimaTechnical
     kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnical
@@ -29,6 +49,28 @@ datasets:
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:csiq.tgz
     - ref: hf://chaofengc/IQA-PyTorch-Datasets:tid2013.tgz
     - ref: kaggle://hsyndmr/dnd-nam-noise-data
+    modernized_folder: LemGendizedNimaTechnical
+    canonical_format: webdataset
+    title: LemGendized NIMA Technical
+    subtitle: Human-Perceptual Technical Image Quality Assessment with Distortion Benchmarks
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - benchmark
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - KonIQ-10k
+    - SPAQ
+    - LIVE
+    - CSIQ
+    - TID2013
+    - DND-NAM
+    container:
+      primary: webdataset
   nima_authenticity:
     name: NimaAuthenticity
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticitylarge
@@ -37,6 +79,25 @@ datasets:
     - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
     - ref: kaggle://hiddenplant/sut-project
     - ref: kaggle://custom/RealVsFakeFaces
+    modernized_folder: LemGendizedNimaAuthenticity
+    canonical_format: webdataset
+    title: LemGendized NIMA Authenticity
+    subtitle: AI-Generated Synthetic vs Real Image Detection & Authenticity Quality Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - artificial-intelligence
+    - binary-classification
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - AI vs Real Images
+    - SUT Project
+    - RealVsFakeFaces
+    container:
+      primary: webdataset
   upn_v2:
     name: UpnV2
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
@@ -48,9 +109,29 @@ datasets:
     - ref: kaggle://daehoyang/flickr2k
     - ref: kaggle://weipengzhang/adobe-fivek
     - ref: hf://gitpull/DPED
+    modernized_folder: LemGendizedUpnV2
+    canonical_format: litdata
+    title: LemGendized Upn V2
+    subtitle: Massive 1.42M Sample Parameter Prediction Manifold for Universal Restoration
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - neural-networks
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - DIV2K
+    - Flickr2K
+    - Adobe FiveK
+    - DPED
+    container:
+      primary: litdata
   film_restorer:
     name: FilmRestorer
-    kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorerlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorer
     val_split: 0.12
     labeling: false
     refs:
@@ -64,12 +145,50 @@ datasets:
     - ref: kaggle://hsyndmr/dnd-nam-noise-data
     - ref: kaggle://joe1995/div2k-dataset
     - ref: gh://microsoft/Bringing-Old-Photos-Back-to-Life
+    modernized_folder: LemGendizedFilmRestorer
+    canonical_format: webdataset
+    title: LemGendized Film Restorer
+    subtitle: Vintage Film Degradation & Archival Frame Restoration Training Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - photography
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - Old Film Restoration
+    - Vintage Photos
+    - DIV2K
+    - SIDD
+    container:
+      primary: webdataset
   codeformer:
     name: CodeFormer
     kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
     val_split: 0.1
     refs:
     - ref: local://raw-sets/RealVsFakeFaces/
+    modernized_folder: LemGendizedCodeFormer
+    canonical_format: webdataset
+    title: LemGendized CodeFormer
+    subtitle: High-Fidelity Blind Face Restoration Manifold with Synthetic Degradation
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - facial-recognition
+    - image-processing
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - RealVsFakeFaces
+    - FFHQ-aligned
+    container:
+      primary: webdataset
   parsenet:
     name: ParseNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedparsenetlarge
@@ -80,6 +199,23 @@ datasets:
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
+    modernized_folder: LemGendizedParseNet
+    canonical_format: webdataset
+    title: LemGendized ParseNet
+    subtitle: Fine-Grained 19-Class Facial Semantic Segmentation & Parsing Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - segmentation
+    - facial-recognition
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - SFHQ Parts 1-4
+    container:
+      primary: webdataset
   retinaface_mobilenet:
     name: RetinaFaceMobileNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
@@ -90,6 +226,23 @@ datasets:
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
+    modernized_folder: LemGendizedRetinaFaceMobileNet
+    canonical_format: webdataset
+    title: LemGendized RetinaFace MobileNet
+    subtitle: Single-Shot Multi-Scale Facial Detection & 5-Point Landmark Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - object-detection
+    - facial-recognition
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - SFHQ Parts 1-4
+    container:
+      primary: webdataset
   ffanet_indoor:
     name: FfaNetIndoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoorlarge
@@ -98,6 +251,24 @@ datasets:
     - ref: kaggle://balraj98/indoor-training-set-its-residestandard
     - ref: kaggle://kmljts/reside-6k
     - ref: kaggle://adipuli2004/dehazing-and-desmoking
+    modernized_folder: LemGendizedFfaNetIndoor
+    canonical_format: webdataset
+    title: LemGendized FFA-Net Indoor
+    subtitle: Feature Fusion Attention Network Indoor Image Dehazing & Desmoking Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - neural-networks
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - RESIDE Standard ITS
+    - Dehazing and Desmoking
+    container:
+      primary: webdataset
   ffanet_outdoor:
     name: FfaNetOutdoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoorlarge
@@ -107,6 +278,25 @@ datasets:
     - ref: kaggle://polarrr/nhhaze
     - ref: kaggle://akashdaiict/ntire20202021ohaze
     - ref: kaggle://rajat95gupta/hazing-images-dataset-cvpr-2019
+    modernized_folder: LemGendizedFfaNetOutdoor
+    canonical_format: webdataset
+    title: LemGendized FFA-Net Outdoor
+    subtitle: High-Density Atmospheric Outdoor Dehazing & Dense Fog Restoration Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - neural-networks
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - Outdoor Dehazing
+    - NH-HAZE
+    - O-HAZE NTIRE
+    container:
+      primary: webdataset
   mirnet_lowlight:
     name: MirNetLowLight
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlightlarge
@@ -120,6 +310,25 @@ datasets:
     - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
     - ref: kaggle://alenken/low-light-image-enhancement-datasets
     - ref: kaggle://tanhyml/lol-v2-dataset
+    modernized_folder: LemGendizedMirNetLowLight
+    canonical_format: webdataset
+    title: LemGendized MIRNet Low Light
+    subtitle: Multi-Scale Residual Extreme Low-Light & Night Photo Enhancement Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - photography
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - LOL Dataset v1/v2
+    - ExDark
+    - SIDD
+    container:
+      primary: webdataset
   mirnet_exposure:
     name: MirNetExposure
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposurelarge
@@ -129,6 +338,24 @@ datasets:
     refs:
     - ref: kaggle://weipengzhang/adobe-fivek
     - ref: hf://gitpull/DPED
+    modernized_folder: LemGendizedMirNetExposure
+    canonical_format: webdataset
+    title: LemGendized MIRNet Exposure
+    subtitle: Dual-Illumination Multi-Scale Exposure Correction & Dynamic Range Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - photography
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - Adobe FiveK
+    - DPED
+    container:
+      primary: webdataset
   mprnet_deraining:
     name: MprNetDeraining
     kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaininglarge
@@ -141,6 +368,25 @@ datasets:
     - ref: kaggle://nguynhoitrung/rain100h
     - ref: hf://Ian824/High-Resolution-Rainy-Image
     - ref: kaggle://balraj98/rain-dataset
+    modernized_folder: LemGendizedMprNetDeraining
+    canonical_format: webdataset
+    title: LemGendized MPRNet Deraining
+    subtitle: Multi-Stage Progressive Restoration Heavy Rain Streak & Rain Drop Removal
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - neural-networks
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - Rain100L
+    - Rain100H
+    - Balraj Rain Dataset
+    container:
+      primary: webdataset
   nafnet_debluring:
     name: NafNetDebluring
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluringlarge
@@ -152,6 +398,25 @@ datasets:
     - ref: hf://slymachenko/image-deblurring-performance-analysis
     - ref: kaggle://darthvader4067/hideblur
     - ref: hf://rimchang/RealBlur
+    modernized_folder: LemGendizedNafNetDebluring
+    canonical_format: webdataset
+    title: LemGendized NAFNet Deblurring
+    subtitle: Nonlinear Activation-Free Network Motion Blur & Defocus Restoration Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - benchmark
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - GoPro Deblurring
+    - RealBlur
+    - HiDeBlur
+    container:
+      primary: webdataset
   nafnet_denoising:
     name: NafNetDenoising
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoisinglarge
@@ -165,6 +430,25 @@ datasets:
     - ref: kaggle://dibakarsil/9-classes-noisy-image-dataset
     - ref: kaggle://goutham1208/multi-noises-for-image-denoising
     - ref: kaggle://rajneesh231/salt-and-pepper-noise-images
+    modernized_folder: LemGendizedNafNetDenoising
+    canonical_format: webdataset
+    title: LemGendized NAFNet Denoising
+    subtitle: SOTA Raw & RGB Image Denoising Manifold across Real Smartphone Sensor Noise
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - benchmark
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - SIDD
+    - DND & NAM
+    - Multiple ISO Levels
+    container:
+      primary: webdataset
   ultrazoom:
     name: UltraZoom
     kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoomlarge
@@ -176,6 +460,26 @@ datasets:
     - ref: kaggle://daehoyang/flickr2k
     - ref: hf://Iceclear/DF2K-OST
     - ref: kaggle://harshraone/urban100
+    modernized_folder: LemGendizedUltraZoom
+    canonical_format: webdataset
+    title: LemGendized UltraZoom
+    subtitle: 4x-8x Super-Resolution & High-Frequency Detail Hallucination Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - neural-networks
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - DIV2K
+    - Flickr2K
+    - DF2K-OST
+    - Urban100
+    container:
+      primary: webdataset
   yolov8n:
     name: YoloV8n
     kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8n
@@ -186,6 +490,25 @@ datasets:
     - ref: kaggle://klemenko/kitti-dataset
     - ref: kaggle://harshpatel66/mpii-human-pose
     - ref: kaggle://elmahy/crowdpose
+    modernized_folder: LemGendizedYoloV8n
+    canonical_format: directory
+    title: LemGendized YOLOv8n Multi-Task
+    subtitle: Multi-Task Object Detection, Person & Face Localization Manifold in YOLO Format
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - object-detection
+    - neural-networks
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - COCO 2017
+    - Pascal VOC 2012
+    - KITTI Benchmark
+    container:
+      primary: directory
   professional_multitask_restoration:
     name: ProfessionalMultitaskRestoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge
@@ -204,6 +527,23 @@ datasets:
     - ref: manifold://FilmRestorerMultiTask
     - ref: manifold://CodeFormerMultiTask
     - ref: manifold://ParseNetMultiTask
+    modernized_folder: LemGendizedProfessionalMultitaskRestoration
+    canonical_format: mds
+    title: LemGendized Professional Multi-Task Restoration
+    subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur, and Dehaze
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-processing
+    - artificial-intelligence
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - 11 upstream restoration sub-manifolds (NAFNet, MPRNet, FFANet, MIRNet, etc.)
+    container:
+      primary: mds
   classification_master_manifold:
     name: ClassificationMasterManifold
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifold
@@ -216,6 +556,25 @@ datasets:
       tag: general_nsfw
     - ref: hf://food101
       tag: sfw_baseline
+    modernized_folder: LemGendizedClassificationMasterManifold
+    canonical_format: mds
+    title: LemGendized Classification Master Manifold
+    subtitle: Robust Visual Content Moderation & Multi-Class Safety Filtering Manifold
+    keywords:
+    - computer-vision
+    - deep-learning
+    - image
+    - image-classification
+    - benchmark
+    license: CC-BY-NC-4.0
+    expected_update_frequency: never
+    is_private: false
+    provenance_sources:
+    - Anime DB Rating
+    - General NSFW
+    - Food-101
+    container:
+      primary: mds
   forex_universe:
     name: ForexUniverse
     kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverselarge
@@ -253,5 +612,21 @@ datasets:
     format: parquet
     compression: zstd
     storage_size_approx: 5.3 GB
-    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal
-      Year Parquet Files.
+    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal Year Parquet Files.
+    modernized_folder: LemGendizedForexUniverse
+    canonical_format: parquet
+    title: LemGendized Forex Universe
+    subtitle: 30.8M Row 16-Symbol Multi-Timeframe Financial Foundation Parquet Manifold
+    keywords:
+    - finance
+    - time-series-analysis
+    - tabular
+    - deep-learning
+    - investing
+    license: CC-BY-NC-4.0
+    expected_update_frequency: annually
+    is_private: false
+    provenance_sources:
+    - MetaTrader 5 Terminal Native Cache (2019-2026)
+    container:
+      primary: parquet

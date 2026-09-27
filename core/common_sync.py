@@ -538,19 +538,53 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     req.dataset_slug = slug
     settings = DatasetSettings()
     settings.title = meta.get("title", slug)
-    settings.subtitle = meta.get("subtitle", "")
+    raw_sub = meta.get("subtitle", "")
+    if len(raw_sub) > 80:
+        raw_sub = raw_sub[:77].rsplit(" ", 1)[0]
+    settings.subtitle = raw_sub
     settings.description = meta.get("description", "")
 
-    # Kaggle strictly requires exactly one license
-    lic = SettingsLicense()
-    lic.name = "CC0-1.0"
+    # Kaggle strictly requires exactly one valid license
+    lic_name = "CC0-1.0"
     raw_lic = meta.get("licenses", [])
     if raw_lic and isinstance(raw_lic, list) and isinstance(raw_lic[0], dict) and "name" in raw_lic[0]:
-        lic.name = raw_lic[0]["name"]
+        lic_name = raw_lic[0]["name"]
+    canonical_lic = lic_name
+    lic_lower = lic_name.lower().replace("_", "-")
+    if "cc-by-nc" in lic_lower:
+        canonical_lic = "Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)"
+    elif "cc-by-sa" in lic_lower:
+        canonical_lic = "Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)"
+    elif "cc-by" in lic_lower:
+        canonical_lic = "Attribution 4.0 International (CC BY 4.0)"
+    elif "cc0" in lic_lower or "public" in lic_lower:
+        canonical_lic = "CC0-1.0"
+
+    lic = SettingsLicense()
+    lic.name = canonical_lic
     settings.licenses = [lic]
 
+    settings.expected_update_frequency = meta.get("expectedUpdateFrequency", meta.get("expected_update_frequency", "never"))
+    settings.is_private = meta.get("isPrivate", meta.get("is_private", False))
+
+    sources_val = meta.get("userSpecifiedSources") or meta.get("user_specified_sources")
+    if not sources_val and meta.get("provenanceSources"):
+        prov = meta["provenanceSources"]
+        if isinstance(prov, list):
+            sources_val = ", ".join(str(p) for p in prov)
+        elif isinstance(prov, str):
+            sources_val = prov
+    if sources_val:
+        settings.user_specified_sources = str(sources_val)
+
     if meta.get("keywords"):
-        settings.keywords = [str(k) for k in meta["keywords"]]
+        raw_kws = [str(k) for k in meta["keywords"]]
+        kws = []
+        for k in raw_kws:
+            spaced = k.replace("-", " ").strip()
+            if spaced not in kws:
+                kws.append(spaced)
+        settings.keywords = kws
 
     # Build data array with column descriptions
     files_data: list[DatasetSettingsFile | None] = []
@@ -588,10 +622,26 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
 
     req.settings = settings
 
-    client = api.build_kaggle_client()
-    resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
-    if resp and getattr(resp, "errors", None):
-        print(f"[ERROR] Kaggle metadata update rejected: {resp.errors}")
+    try:
+        import re
+        client = api.build_kaggle_client()
+        resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
+        if resp and getattr(resp, "errors", None):
+            has_kw_err = False
+            for err in resp.errors:
+                if "The following keywords are invalid:" in err:
+                    invalid_kws = re.findall(r'"([^"]+)"', err)
+                    if invalid_kws and settings.keywords:
+                        settings.keywords = [k for k in settings.keywords if k not in invalid_kws]
+                        has_kw_err = True
+            if has_kw_err:
+                resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
+
+        if resp and getattr(resp, "errors", None) and len(resp.errors) > 0:
+            print(f"[ERROR] Kaggle metadata update rejected for {clean_handle}: {resp.errors}")
+            return False
+    except Exception as exc:
+        print(f"[ERROR] Kaggle metadata update call failed for {clean_handle}: {exc}")
         return False
 
     print(f"[SUCCESS] Kaggle dataset metadata & column descriptors synced successfully ({len(files_data)} file definitions registered).")

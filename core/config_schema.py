@@ -134,6 +134,22 @@ class DatasetEntry(BaseModel):
     image_format: ImageFormatPolicy = Field(default_factory=ImageFormatPolicy)
     container: ContainerPolicy = Field(default_factory=ContainerPolicy)
 
+    # Canonical Container & Storage Format (Phase 2 SSOT)
+    canonical_format: Literal[
+        "directory", "mds", "litdata", "webdataset", "parquet"
+    ] | None = None
+    modernized_folder: str | None = None
+
+    # Kaggle Metadata & Usability Specification (Phase 2 SSOT)
+    title: str | None = None
+    subtitle: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    license: str = "CC-BY-NC-4.0"
+    expected_update_frequency: Literal["never", "annually", "monthly", "weekly", "daily"] = "never"
+    is_private: bool = False
+    author: str = "Lem Treursic"
+    provenance_sources: list[str] = Field(default_factory=list)
+
     # Forex-specific (only meaningful when dataset_type == "forex")
     pairs: list[str] | None = None
     timeframe_rungs: list[int] | None = None
@@ -144,6 +160,7 @@ class DatasetEntry(BaseModel):
     category: str | None = None
     storage_size_approx: str | None = None
     description: str | None = None
+
 
 
 # ─── Root document ──────────────────────────────────────────────────────────

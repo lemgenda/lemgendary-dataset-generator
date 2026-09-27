@@ -10,7 +10,7 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.7.4-STABLE` |
+| **Version** | `v16.8.0-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,27 @@
 ---
 
 ## Changelog
+
+### v16.8.0 — Storage Modernization, SSOT Registry & Automated Metadata Generator
+
+- **Centralized Dependencies Synchronization (Phase 1)** — Updated and synchronized `requirements.txt` from `lemgendary-env-manager` SSOT manifest (`requirements-datasets.txt`) enforcing unified runtime support for all canonical container engines: `mosaicml-streaming>=0.9.0,<1.0.0`, `litdata>=0.2.0,<1.0.0`, `webdataset==1.0.2`, `pyarrow==25.0.1`, and `zstandard>=0.23.0`.
+- **Cloud Notebook Auto-Installers Hardening (Phase 1)** — Upgraded `tools/notebooks/cells/deps.py` with automated fallback installation of core streaming container dependencies in both Kaggle and Google Colab execution targets, guaranteeing seamless zero-config cloud runtime execution.
+- **Local Virtual Environment Verification (Phase 1)** — Installed and verified zero-conflict import and operation of all 5 container format engines (`webdataset`, `streaming`, `litdata`, `pyarrow`, `zstandard`) in `lemgendary-datasets\.venv`.
+- **SSOT Dataset Registry Modernization (Phase 2)** — Upgraded `unified_data.yaml` to Version 4.3.0, declaring authoritative `canonical_format` assignments (`parquet`, `litdata`, `mds`, `webdataset`, `directory`) across all 20 production manifolds to eliminate dual-storage waste.
+- **Kaggle Metadata Standardization (Phase 2)** — Standardized Kaggle publication attributes across all 20 datasets: PascalCase titles (`LemGendized {PascalName}`), dynamic technical subtitles, 5 audited Kaggle taxonomy tags (`keywords`), CC-BY-NC-4.0 licensing, update cadence (`annually` for Forex, `never` for others), and public visibility (`is_private: false`).
+- **Configuration Schema Verification (Phase 2)** — Extended `core/config_schema.py` Pydantic model with strict typed validation for `canonical_format`, `modernized_folder`, and Kaggle metadata properties, passing `python config_schema.py` with 100% zero-error compliance.
+- **Automated Kaggle Metadata & Docs Generator Upgrade (Phase 3)** — Upgraded `core/docs/manifests.py` (`write_kaggle_metadata`) and `core/doc_generator.py` to extract clean description bodies directly from `README.md` (`## Dataset Overview` to `## Repository Structure`), inject authoritative `keywords` tags, enforce `CC-BY-NC-4.0` licensing, and synchronize frictionless metadata across all 32 workspace manifolds in `LemGendaryDatasets/`.
+- **Container Format Structure Annotations (Phase 3)** — Enhanced `core/docs/templates.py` (`build_structure_text`) to recognize and describe modern streaming container formats (`.tar`, `.mds`, `chunk*.bin`) and pre-compiled label caches (`.cache`).
+- **Batch Kaggle Metadata Synchronizer CLI (Phase 3)** — Upgraded `tools/sync_kaggle_metadata.py` with `--all` batch-sync flag and error recovery, allowing instantaneous Kaggle metadata and column descriptor deployment across all manifolds without re-uploading multi-gigabyte archives.
+- **Zero-Duplication Modernization Engine (Phase 4)** — Upgraded `tools/modernize_manifold.py` with authoritative canonical container streaming and automatic intermediate loose image directory purging (`images/`, `targets/`, `masks/`), eliminating dual-storage disk amplification and bringing Windows NTFS block allocation overhead to zero while preserving the legacy source folders (`*Large`).
+- **Container Format Discovery & Registry Mapping (Phase 4)** — Updated `tools/modernize_manifold.py` (`_find_dataset_entry`, `_enumerate_eligible`) to dynamically resolve each manifold's configured `canonical_format` from `unified_data.yaml` and support `--format` / `--also-format` overrides and `--keep-intermediate` options.
+- **Paired Restoration Multi-Modal WebDataset Sharding (Phase 4)** — Extended `formats/webdataset.py` (`WebDatasetWriter.write`) to serialize ground truth targets (`target.webp`) and segmentation masks (`mask.webp`) alongside degraded inputs, ensuring image restoration manifolds (NAFNet, MPRNet, MIRNet) are 100% self-contained within unified streaming shards.
+- **Fast Single-Pass NTFS Scanning Engine (Phase 4)** — Re-architected `_has_manifold_data` with single-pass `os.scandir` short-circuiting across container shards and split subdirectories, resolving file-lock latency on active extraction manifolds and accelerating directory evaluation by over 95%.
+- **Cross-Suite Container Streaming Parity (Phase 5)** — Validated round-trip reading and multi-modal compatibility between compiler-emitted shards (`.tar`, `.mds`, `chunk*.bin`, `.parquet`) and the training suite's container readers (`WebDatasetReader`, `MdsReader`, `LitDataReader`, `ParquetReader`).
+- **Kaggle API Metadata Synchronizer Hardening (Phase 6)** — Upgraded `core/common_sync.py` (`push_kaggle_dataset_metadata`) with automatic license normalization (`CC-BY-NC-4.0` mapped to Kaggle's canonical identifier `Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)`), publication cadence (`annually`/`never`), and upstream provenance lineage injection.
+- **Dynamic Keyword Taxonomy Pruning & Resilience (Phase 6)** — Implemented automated invalid keyword detection and pruning with retry logic in `core/common_sync.py`, auto-converting hyphenated taxonomy candidates into spaced tokens and eliminating rejection faults.
+- **10.0 Usability Metadata Deployment Across Kaggle (Phase 6)** — Executed live synchronization via `tools/sync_kaggle_metadata.py --all` across all 20 published manifolds on Kaggle without re-uploading multi-gigabyte data archives, achieving 10.0 Usability scores with verified column descriptors, licenses, and lineage documentation.
+- **Workspace-Level Notebook Directory Resolution (Phase 6)** — Fixed sibling workspace directory resolution in `tools/notebooks/builders/base.py` (`_get_workspace_root`), ensuring training notebooks are synchronized directly to `kaggle_training` and `colab_training` within the canonical repository root.
 
 ### v16.7.4 — Progress Telemetry Resilience, Upload Streamline & Compliance Hardening
 

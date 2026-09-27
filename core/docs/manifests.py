@@ -11,7 +11,55 @@ from pathlib import Path
 from typing import Any
 import yaml
 
-from core.docs.metadata import FOREX_COLUMN_FIELDS
+from core.docs.metadata import FOREX_COLUMN_FIELDS, UNIFIED_DATA
+
+
+def extract_kaggle_description(readme_content: str) -> str:
+    """Extract section from '## Dataset Overview' (inclusive) up to '## Repository Structure' (exclusive)."""
+    start_marker = "## Dataset Overview"
+    end_marker = "## Repository Structure"
+
+    start_idx = readme_content.find(start_marker)
+    if start_idx != -1:
+        end_idx = readme_content.find(end_marker, start_idx)
+        if end_idx != -1:
+            return readme_content[start_idx:end_idx].strip()
+        return readme_content[start_idx:].strip()
+    return readme_content.strip()
+
+
+def find_dataset_entry(manifold_name: str) -> dict[str, Any] | None:
+    """Find matching dataset entry from unified_data.yaml."""
+    datasets = UNIFIED_DATA.get("datasets", {})
+    if not isinstance(datasets, dict):
+        return None
+
+    norm_target = manifold_name.lower().replace("_", "").replace("large", "")
+
+    for d_key, d_info in datasets.items():
+        if not isinstance(d_info, dict):
+            continue
+        mod_folder = str(d_info.get("modernized_folder", "")).lower()
+        d_name = str(d_info.get("name", d_key)).lower()
+        if mod_folder == manifold_name.lower():
+            return d_info
+        if f"lemgendized{d_name}" == manifold_name.lower():
+            return d_info
+        if f"lemgendized{d_name}large" == manifold_name.lower():
+            return d_info
+
+    for d_key, d_info in datasets.items():
+        if not isinstance(d_info, dict):
+            continue
+        d_name = str(d_info.get("name", d_key)).lower()
+        norm_key = d_key.lower().replace("_", "")
+        norm_name = d_name.replace("_", "")
+        if norm_key == norm_target or norm_name == norm_target:
+            return d_info
+        if norm_key in norm_target or norm_target in norm_key:
+            return d_info
+
+    return None
 
 
 def write_index_json(output_root: Path, final_index: list[dict[str, Any]] | None) -> None:
@@ -57,8 +105,12 @@ def write_kaggle_metadata(
     cat_str: str,
     readme_content: str,
     task_key: str,
+    dataset_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate and write Kaggle Frictionless dataset-metadata.json."""
+    if dataset_info is None:
+        dataset_info = find_dataset_entry(manifold_name) or {}
+
     slug = manifold_name.lower().replace("_", "")
     resources: list[dict[str, Any]] = []
     is_forex = (task_key == "forex")
@@ -80,22 +132,48 @@ def write_kaggle_metadata(
                 },
             })
 
-    subtitle = f"High-fidelity manifold for {cat_str} machine learning models"
-    if len(subtitle) > 80:
-        subtitle = f"High-fidelity manifold for {cat_str} models"
-    if len(subtitle) > 80:
-        subtitle = subtitle[:77] + "..."
-    if len(subtitle) < 20:
-        subtitle = "High-fidelity machine learning training manifold"
+    subtitle = dataset_info.get("subtitle")
+    if not subtitle:
+        subtitle = f"High-fidelity manifold for {cat_str} machine learning models"
+        if len(subtitle) > 80:
+            subtitle = f"High-fidelity manifold for {cat_str} models"
+        if len(subtitle) > 80:
+            subtitle = subtitle[:77] + "..."
+        if len(subtitle) < 20:
+            subtitle = "High-fidelity machine learning training manifold"
+
+    title = dataset_info.get("title")
+    if not title:
+        title = manifold_name.replace("Large", "").replace("LemGendized", "LemGendized ")
+
+    keywords = dataset_info.get("keywords", [])
+    if not keywords:
+        keywords = ["computer-vision", "deep-learning", "image", "artificial-intelligence", "benchmark"]
+
+    description = extract_kaggle_description(readme_content)
+    license_name = dataset_info.get("license", "CC-BY-NC-4.0")
+    is_private = bool(dataset_info.get("is_private", False))
+    update_frequency = dataset_info.get("expected_update_frequency", "never")
 
     metadata_payload: dict[str, Any] = {
-        "title": manifold_name.replace("Large", "").replace("LemGendized", "LemGendized "),
+        "title": title,
         "id": f"lemtreursi/{slug}",
         "subtitle": subtitle,
-        "description": readme_content,
-        "licenses": [{"name": "CC0-1.0"}],
+        "description": description,
+        "keywords": keywords,
+        "licenses": [{"name": license_name}],
+        "isPrivate": is_private,
+        "expectedUpdateFrequency": update_frequency,
         "resources": resources,
     }
+
+    author = dataset_info.get("author", "lemtreursi")
+    if author:
+        metadata_payload["author"] = author
+
+    prov_sources = dataset_info.get("provenance_sources", [])
+    if prov_sources:
+        metadata_payload["provenanceSources"] = prov_sources
 
     with open(output_root / "dataset-metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata_payload, f, indent=2)

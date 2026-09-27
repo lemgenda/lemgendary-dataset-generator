@@ -97,8 +97,10 @@ class TestDocumentationGenerator(unittest.TestCase):
             self.assertTrue(meta_file.exists())
             with open(meta_file, "r", encoding="utf-8") as f:
                 meta_payload = json.load(f)
-            self.assertEqual(meta_payload["licenses"][0]["name"], "CC0-1.0")
+            self.assertEqual(meta_payload["licenses"][0]["name"], "CC-BY-NC-4.0")
             self.assertEqual(meta_payload["id"], "lemtreursi/lemgendizednafnetdebluring")
+            self.assertFalse(meta_payload["isPrivate"])
+            self.assertEqual(len(meta_payload["keywords"]), 5)
 
     def test_forex_dataset_docs_generation(self) -> None:
         """Verify documentation generation for a forex temporal manifold."""

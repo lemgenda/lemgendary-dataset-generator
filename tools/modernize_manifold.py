@@ -76,24 +76,38 @@ def _out_parent() -> Path:
 # ─── Data-Presence Check ────────────────────────────────────────────────────
 def _has_manifold_data(path: Path) -> bool:
     """Return True if the manifold folder has actual data (not just empty dirs)."""
-    # Forex: any *.parquet directly in the folder
     try:
-        if any(path.glob("*.parquet")):
-            return True
-    except OSError as exc:
-        logger.debug("Error checking parquet files in %s: %s", path, exc)
-
-    # Image / target / mask manifolds: check top-of-split for at least one file
-    for split in ("train", "val", "test"):
-        for sub in ("images", "targets", "masks"):
-            d = path / sub / split
-            if not d.exists():
-                continue
-            try:
-                if any(f.is_file() for f in d.iterdir()):
+        subdirs: set[str] = set()
+        with os.scandir(path) as it:
+            for entry in it:
+                name = entry.name
+                if name.endswith((".parquet", ".tar", ".mds", ".bin")):
                     return True
-            except OSError as exc:
-                logger.debug("Error checking directory %s: %s", d, exc)
+                if entry.is_dir():
+                    subdirs.add(entry.path)
+
+        for sub in subdirs:
+            bname = os.path.basename(sub)
+            if bname in ("shards", "mds", "litdata"):
+                try:
+                    with os.scandir(sub) as sit:
+                        if any(True for _ in sit):
+                            return True
+                except OSError:
+                    pass
+            elif bname in ("images", "targets", "masks"):
+                for split in ("train", "val", "test"):
+                    sp = os.path.join(sub, split)
+                    if os.path.isdir(sp):
+                        try:
+                            with os.scandir(sp) as sit:
+                                for sf in sit:
+                                    if sf.is_file():
+                                        return True
+                        except OSError:
+                            pass
+    except OSError as exc:
+        logger.debug("Error checking manifold data in %s: %s", path, exc)
     return False
 
 
@@ -120,12 +134,24 @@ def _save_registry(data: dict) -> None:
         )
 
 
+def _find_dataset_entry(registry: dict, base_name: str, folder_name: str) -> tuple[str | None, dict]:
+    """Find dataset key and entry from registry."""
+    datasets = registry.get("datasets", {})
+    for key, entry in datasets.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("name", "") == base_name:
+            return key, entry
+        mod_folder = entry.get("modernized_folder", "")
+        if mod_folder and (mod_folder == folder_name or f"{mod_folder}Large" == folder_name):
+            return key, entry
+    return None, {}
+
+
 def _find_kaggle_key(registry: dict, base_name: str) -> str | None:
     """Find the dataset key whose `name` matches the base_name (no prefix/suffix)."""
-    for key, entry in registry.get("datasets", {}).items():
-        if entry.get("name", "") == base_name:
-            return key
-    return None
+    key, _ = _find_dataset_entry(registry, base_name, "")
+    return key
 
 
 # ─── Eligibility Scan ───────────────────────────────────────────────────────
@@ -155,10 +181,9 @@ def _enumerate_eligible(registry: dict) -> list[dict]:
         is_resume = target_path.exists() and _has_manifold_data(target_path)
 
         base = entry.name[len(BRAND_PREFIX): -len(LEGACY_SUFFIX)]
-        kaggle_key = _find_kaggle_key(registry, base)
-        old_ref = ""
-        if kaggle_key:
-            old_ref = registry["datasets"][kaggle_key].get("kaggle_ref", "")
+        kaggle_key, dataset_entry = _find_dataset_entry(registry, base, entry.name)
+        old_ref = dataset_entry.get("kaggle_ref", "")
+        canonical_fmt = dataset_entry.get("canonical_format", "directory")
 
         eligible.append({
             "folder_name": entry.name,
@@ -169,6 +194,7 @@ def _enumerate_eligible(registry: dict) -> list[dict]:
             "old_kaggle_ref": old_ref,
             "base_name": base,
             "is_resume": is_resume,
+            "canonical_format": canonical_fmt,
         })
     return eligible
 
@@ -234,14 +260,16 @@ def _select_from_datasets_arg(
 
 
 # ─── Confirmation ───────────────────────────────────────────────────────────
-def _confirm(selected: list[dict]) -> bool:
+def _confirm(selected: list[dict], override_format: str | None = None) -> bool:
     print()
     print("── Modernization Plan ───────────────────────────────────────────────")
     for item in selected:
         status = " (RESUME partial)" if item.get("is_resume") else " (new folder)"
-        print(f"  {item['folder_name']}  ->  {item['target_name']}{status}")
+        fmt_disp = (override_format or item.get("canonical_format", "directory")).upper()
+        print(f"  {item['folder_name']}  ->  {item['target_name']}{status}  [Canonical: {fmt_disp}]")
     print()
     print(f"  Total: {len(selected)} modernized manifold(s) will be processed.")
+    print("  Zero Duplication: Intermediate loose files will be purged for containerized sets.")
     print("  Legacy manifold folder(s) will be preserved untouched.")
     print()
     try:
@@ -518,8 +546,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mask-format", type=str, default="webp-lossless",
                         choices=["webp-lossless", "png"],
                         help="Format for mask transcoding")
+    parser.add_argument("--format", type=str, default=None,
+                        help="Override target format for all selected datasets (default: auto-detect from unified_data.yaml canonical_format)")
     parser.add_argument("--also-format", type=str, default=None,
-                        help="Optional container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)")
+                        help="Alias for --format (e.g., webdataset, mds, litdata, parquet, directory)")
+    parser.add_argument("--keep-intermediate", action="store_true",
+                        help="Keep intermediate loose images after container conversion (default: false, purge for zero duplication)")
     parser.add_argument("--skip-transcode", action="store_true",
                         help="Skip WebP image transcoding")
     parser.add_argument("--skip-container", action="store_true",
@@ -566,11 +598,7 @@ def run(args: argparse.Namespace) -> int:
         mask_format=args.mask_format,
     )
 
-    # ── Confirmation ───────────────────────────────────────────────────────
-    if not args.yes:
-        if not _confirm(selected):
-            print("[ABORTED] User declined. No changes made.")
-            return 0
+    target_fmt_override = args.format or args.also_format
 
     # ── Dry-run short-circuit ──────────────────────────────────────────────
     if args.dry_run:
@@ -578,13 +606,16 @@ def run(args: argparse.Namespace) -> int:
         print("[DRY-RUN] Would perform the following:")
         for item in selected:
             new_ref = _compute_new_kaggle_ref(item)
-            print(f"  {item['folder_name']}  ->  {item['target_name']} (new folder)  (kaggle: {new_ref})")
+            canon_fmt = (target_fmt_override or item.get("canonical_format", "directory")).strip().lower()
+            print(f"  {item['folder_name']}  ->  {item['target_name']} (new folder)  [Canonical: {canon_fmt.upper()}]  (kaggle: {new_ref})")
             print(f"    + create new modernized manifold directory: {item['target_name']}")
             print("    + copy non-image structures, labels, and metadata files")
             if not args.skip_transcode and policy.format != "keep":
                 print(f"    + transcode images -> {args.image_format} (q={args.image_quality})")
-            if not args.skip_container and args.also_format:
-                print(f"    + convert to modern container format -> {args.also_format}")
+            if canon_fmt != "directory" and not args.skip_container:
+                print(f"    + convert to modern container format -> {canon_fmt}")
+                if not args.keep_intermediate:
+                    print("    + [ZERO-DUP] purge intermediate loose image directories (images/, targets/, masks/)")
             print("    + regenerate modern dataset documentation and index manifests")
             if not args.skip_kaggle:
                 print(f"    + upload modernized manifold to kaggle: {new_ref}")
@@ -592,6 +623,12 @@ def run(args: argparse.Namespace) -> int:
         print("[DRY-RUN] unified_data.yaml would be updated with new kaggle_ref values.")
         print("[DRY-RUN] name_suffix would be set to '' after all succeed.")
         return 0
+
+    # ── Confirmation ───────────────────────────────────────────────────────
+    if not args.yes:
+        if not _confirm(selected, override_format=target_fmt_override):
+            print("[ABORTED] User declined. No changes made.")
+            return 0
 
     # ── Phase A: Create modernized manifolds ───────────────────────────────
     print()
@@ -613,25 +650,53 @@ def run(args: argparse.Namespace) -> int:
     for item in modernized:
         _regen_docs(item)
 
-    # ── Phase C: Modern Container Conversion ───────────────────────────────
-    if not args.skip_container and args.also_format:
+    # ── Phase C: Canonical Container Conversion & Zero Duplication ─────────
+    if not args.skip_container:
         print()
-        print(f"── Phase C: Modern Container Conversion ({args.also_format}) ──────────")
-        try:
-            from formats.base import parse_also_format
-            from tools import migrate_manifold_format
-            container_formats = parse_also_format(args.also_format)
-            for item in modernized:
-                target_path = item["target_path"]
-                print(f"[CONTAINER] Converting {target_path.name} to {', '.join(container_formats)}...")
-                migrate_manifold_format.migrate_manifold(
+        print("── Phase C: Canonical Container Conversion & Zero Duplication ──")
+        for item in modernized:
+            target_path = item["target_path"]
+            target_format = (target_fmt_override or item.get("canonical_format", "directory")).strip().lower()
+
+            if target_format == "directory":
+                print(f"[CONTAINER] {target_path.name} canonical format is DIRECTORY. Retaining optimized WebP structure.")
+                continue
+
+            print(f"[CONTAINER] Modernizing {target_path.name} to canonical format: {target_format.upper()}...")
+            try:
+                from formats.base import parse_also_format
+                from tools import migrate_manifold_format
+                container_formats = parse_also_format(target_format)
+                purge_loose = not args.keep_intermediate
+
+                mig_code = migrate_manifold_format.migrate_manifold(
                     root=target_path,
                     formats=container_formats,
                     force_duplicate=True,
                     accept_space_loss=True,
+                    purge_source=purge_loose,
                 )
-        except Exception as exc:
-            print(f"[WARN] Container conversion encountered an issue: {exc}")
+                if mig_code == 0:
+                    if purge_loose:
+                        print(f"[ZERO-DUP] Purged intermediate loose image directories from {target_path.name}.")
+                    # Update format in dataset_info.yaml
+                    ds_info_path = target_path / "dataset_info.yaml"
+                    if ds_info_path.exists():
+                        try:
+                            with open(ds_info_path, "r", encoding="utf-8") as f_in:
+                                info_data = yaml.safe_load(f_in) or {}
+                            info_data["format"] = target_format
+                            with open(ds_info_path, "w", encoding="utf-8") as f_out:
+                                yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                        except Exception as exc:
+                            logger.debug("Failed updating format in dataset_info.yaml: %s", exc)
+
+                    # Re-run docs generator to update README structure listing without deleted loose images
+                    _regen_docs(item)
+                else:
+                    print(f"[WARN] Container migration returned code {mig_code} for {target_path.name}")
+            except Exception as exc:
+                print(f"[ERROR] Container conversion encountered an issue for {target_path.name}: {exc}")
 
     # ── Phase D: Kaggle re-upload ──────────────────────────────────────────
     kaggle_ok: list[dict] = []
