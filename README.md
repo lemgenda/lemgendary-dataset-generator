@@ -20,6 +20,12 @@
 
 ## Changelog
 
+### v16.9.1 — Direct In-Memory Streaming Ingestion & Terminal Progress Telemetry Hardening
+
+- **Direct In-Memory Streaming Extraction (`core/common_sync.py`)** — Upgraded `perform_dataset_download` to automatically detect legacy image archives from Kaggle. Instead of executing slow, disk-thrashing 7-Zip extraction of hundreds of thousands of loose `.png` files, it now seamlessly routes legacy archives into `stream_zip_to_webdataset`, transcoding to lossless WebP in memory and packing directly into streaming `.tar` WebDataset shards with automatic post-conversion archive deletion.
+- **Kaggle Download Progress Bar Line-Wrap Prevention** — Patched `tqdm` globally in `core/common_sync.py` to enforce `ncols=80` and `ascii=True` during `api.dataset_download_files`, eliminating Windows Terminal / PowerShell buffer-overflow wrapping cascades that previously generated hundreds of redundant progress rows.
+- **Silent 7-Zip Progress Streamline (`utils/archive.py`)** — Switched 7-Zip execution flag from `-bsp1` to `-bsp0` in `smart_extract`, preventing console output spam during native archive decompressions.
+
 ### v16.9.0 — Multi-Format Converters, MATLAB Ingestion & Comprehensive Test Battery
 
 - **Universal MATLAB Input Support & Heuristics** — Added native MATLAB `.mat` format support in `formats/converters.py` (`convert_matlab_annotations`), reading bounding boxes, classification targets, and spatial masks directly from `.mat` structs; integrated into `detect_annotations` for transparent source detection alongside COCO, YOLO, and Pascal VOC.

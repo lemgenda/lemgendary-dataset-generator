@@ -221,7 +221,7 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
             str(source_archive),
             f"-o{dest_path}",
             "-aos",
-            "-bsp1",
+            "-bsp0",
             "-mmt=on",
             "-y",
         ]

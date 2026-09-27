@@ -672,6 +672,22 @@ def _fetch_remote_archive(
             del sys.modules["kaggle"]
         import socket
         socket.setdefaulttimeout(60.0)
+
+        # Enforce single-line terminal rendering for tqdm to prevent Windows console line-wrapping cascade
+        try:
+            import tqdm
+            if not getattr(tqdm, "_lem_ncols_patched", False):
+                _orig_tqdm_cls = tqdm.tqdm
+                class _SingleLineTqdm(_orig_tqdm_cls):
+                    def __init__(self, *args, **kwargs):
+                        kwargs.setdefault("ncols", 80)
+                        kwargs.setdefault("ascii", True)
+                        super().__init__(*args, **kwargs)
+                tqdm.tqdm = _SingleLineTqdm
+                tqdm._lem_ncols_patched = True
+        except Exception:
+            pass
+
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
         api.authenticate()
@@ -751,6 +767,45 @@ def perform_dataset_download(
     )
 
     if archive_to_extract and archive_to_extract.exists():
+        # Check if the archive is a legacy vision dataset that should be streamed directly to WebDataset
+        use_streaming_webdataset = False
+        try:
+            import zipfile
+            if archive_to_extract.name.endswith(".zip"):
+                with zipfile.ZipFile(archive_to_extract, "r") as zf:
+                    sample_members = [m.filename.replace("\\", "/") for m in zf.infolist()[:100]]
+                    has_tar_shards = any(m.endswith(".tar") for m in sample_members)
+                    has_loose_images = any(
+                        m.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+                        or "/images/" in m.lower()
+                        or "/targets/" in m.lower()
+                        for m in sample_members
+                    )
+                    if has_loose_images and not has_tar_shards:
+                        use_streaming_webdataset = True
+        except Exception as check_exc:
+            print(f"[DEBUG] Archive inspection note: {check_exc}")
+
+        if use_streaming_webdataset:
+            print(f"[STREAM] Discovered legacy image matrix in {archive_to_extract.name}.")
+            print(f"[STREAM] Converting directly into modern WebDataset (.tar) shards via in-memory streaming...")
+            try:
+                from tools.stream_zip_to_container import stream_zip_to_webdataset
+                success = stream_zip_to_webdataset(
+                    zip_path=archive_to_extract,
+                    target_dir=target_dir,
+                    shard_size_samples=5000,
+                    delete_zip=True,
+                    transcode_webp=True,
+                )
+                if not success:
+                    print(f"[ERROR] Streaming conversion failed. Archive preserved at {archive_to_extract}.")
+                    return False
+                print(f"[SUCCESS] Manifold modernized directly into WebDataset shards at {target_dir}")
+                return True
+            except Exception as stream_err:
+                print(f"[WARN] Direct stream-to-container encountered error: {stream_err}. Falling back to standard extraction...")
+
         print(f"[EXTRACT] Unpacking manifold archive: {archive_to_extract.name}")
         success = smart_extract(archive_to_extract, str(target_dir), delete_after=True)
         if not success:
