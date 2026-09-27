@@ -20,6 +20,13 @@
 
 ## Changelog
 
+### v16.9.0 — Multi-Format Converters, MATLAB Ingestion & Comprehensive Test Battery
+
+- **Universal MATLAB Input Support & Heuristics** — Added native MATLAB `.mat` format support in `formats/converters.py` (`convert_matlab_annotations`), reading bounding boxes, classification targets, and spatial masks directly from `.mat` structs; integrated into `detect_annotations` for transparent source detection alongside COCO, YOLO, and Pascal VOC.
+- **Multi-Source Uniforming Pipeline** — Standardized automatic ingestion, format normalization, and conversion to modern container formats (WebDataset, Parquet, MDS, LitData) for sources added via `unified_data.yaml` from Kaggle, HuggingFace, Google Drive, and GitHub.
+- **Comprehensive 44-Test Quality Battery** — Implemented and verified full automated test suite (`tests/test_converters.py`, `tests/test_formats.py`, `tests/test_archive_stream.py`, `tests/test_api_and_services.py`) with 44/44 tests passing and 100% compliance under `lem-env validate`.
+- **FastAPI Sidecar Daemon Integration** — Hardened REST endpoints and services (`CompilerService`, `MigrationService`, `AuditService`) on port 8100 supporting the LemGendary AI Studio GUI tripartite architecture.
+
 ### v16.8.0 — Storage Modernization, SSOT Registry & Automated Metadata Generator
 
 - **Centralized Dependencies Synchronization (Phase 1)** — Updated and synchronized `requirements.txt` from `lemgendary-env-manager` SSOT manifest (`requirements-datasets.txt`) enforcing unified runtime support for all canonical container engines: `mosaicml-streaming>=0.9.0,<1.0.0`, `litdata>=0.2.0,<1.0.0`, `webdataset==1.0.2`, `pyarrow==25.0.1`, and `zstandard>=0.23.0`.
