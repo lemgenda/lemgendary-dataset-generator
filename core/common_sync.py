@@ -17,6 +17,7 @@ from typing import Any, TypedDict
 
 import kagglehub
 from tqdm import tqdm
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -673,20 +674,6 @@ def _fetch_remote_archive(
         import socket
         socket.setdefaulttimeout(60.0)
 
-        # Enforce single-line terminal rendering for tqdm to prevent Windows console line-wrapping cascade
-        try:
-            import tqdm
-            if not getattr(tqdm, "_lem_ncols_patched", False):
-                _orig_tqdm_cls = tqdm.tqdm
-                class _SingleLineTqdm(_orig_tqdm_cls):
-                    def __init__(self, *args, **kwargs):
-                        kwargs.setdefault("ncols", 80)
-                        kwargs.setdefault("ascii", True)
-                        super().__init__(*args, **kwargs)
-                tqdm.tqdm = _SingleLineTqdm
-                tqdm._lem_ncols_patched = True
-        except Exception:
-            pass
 
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi()
@@ -773,15 +760,31 @@ def perform_dataset_download(
             import zipfile
             if archive_to_extract.name.endswith(".zip"):
                 with zipfile.ZipFile(archive_to_extract, "r") as zf:
-                    sample_members = [m.filename.replace("\\", "/") for m in zf.infolist()[:100]]
+                    sample_members = [m.filename.replace("\\", "/") for m in zf.infolist()[:1000]]
                     has_tar_shards = any(m.endswith(".tar") for m in sample_members)
                     has_loose_images = any(
-                        m.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+                        m.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif"))
                         or "/images/" in m.lower()
                         or "/targets/" in m.lower()
                         for m in sample_members
                     )
-                    if has_loose_images and not has_tar_shards:
+                    # Also cross-reference registry canonical format
+                    is_webdataset_target = False
+                    try:
+                        yd_path = Path(__file__).resolve().parent.parent / "unified_data.yaml"
+                        if yd_path.exists():
+                            with open(yd_path, "r", encoding="utf-8") as yf:
+                                ydata = yaml.safe_load(yf) or {}
+                            for _, entry in ydata.get("datasets", {}).items():
+                                if entry.get("canonical_format") == "webdataset":
+                                    m_folder = entry.get("modernized_folder", "")
+                                    k_ref = entry.get("kaggle_ref", "")
+                                    if (m_folder and m_folder.lower() in target_dir.name.lower()) or (k_ref and slug.lower() in k_ref.lower()):
+                                        is_webdataset_target = True
+                                        break
+                    except Exception:
+                        pass
+                    if (has_loose_images or is_webdataset_target) and not has_tar_shards:
                         use_streaming_webdataset = True
         except Exception as check_exc:
             print(f"[DEBUG] Archive inspection note: {check_exc}")

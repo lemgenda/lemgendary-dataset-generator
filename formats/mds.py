@@ -56,7 +56,13 @@ class MDSWriter:
         self._out_dir = Path(output_root) / "mds"
         self._out_dir.mkdir(parents=True, exist_ok=True)
 
-        size_limit = int(getattr(policy, "mds_shard_size_bytes", 512 * 1024 * 1024))
+        # policy may be None when called from migration paths — guard safely
+        _default_shard_bytes = 512 * 1024 * 1024  # 512 MB
+        size_limit = int(
+            getattr(policy, "mds_shard_size_bytes", _default_shard_bytes)
+            if policy is not None
+            else _default_shard_bytes
+        )
         self._writer = mds_writer_cls(
             out=str(self._out_dir),
             columns=_COLUMNS,
@@ -68,13 +74,15 @@ class MDSWriter:
     def write(self, sample: Sample) -> None:
         if self._writer is None:
             return
+        # Guard None fields — MDS typed columns (jpeg/str) cannot receive None.
+        # Use empty bytes/str as sentinels so the schema remains consistent.
         row: dict[str, Any] = {
-            "image": sample.image_bytes,
-            "target": sample.target_bytes,
-            "mask": sample.mask_bytes,
-            "label": sample.label,
-            "task": sample.task,
-            "split": sample.split,
+            "image": sample.image_bytes or b"",
+            "target": sample.target_bytes if sample.target_bytes is not None else b"",
+            "mask": sample.mask_bytes if sample.mask_bytes is not None else b"",
+            "label": sample.label if sample.label is not None else "",
+            "task": sample.task or "",
+            "split": sample.split or "",
             "metadata": json.dumps(sample.metadata or {}),
         }
         self._writer.write(row)

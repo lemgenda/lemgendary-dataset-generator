@@ -112,7 +112,6 @@ def main():
                         unit='B',
                         unit_scale=True,
                         unit_divisor=1024,
-                        ascii=True,
                         bar_format='{desc}: {bar} | {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
                     ) as pbar:
                         for data in response.iter_content(chunk_size=1024*1024):

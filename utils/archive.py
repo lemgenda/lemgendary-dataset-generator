@@ -15,7 +15,10 @@ import tarfile
 from typing import Sequence
 import zipfile
 
-from tqdm import tqdm
+try:
+    from utils.progress import create_progress_bar
+except ImportError:
+    from .progress import create_progress_bar
 
 CHUNK_SIZE = 1024 * 1024  # 1MB chunks for smooth real-time progress tracking
 LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
@@ -97,15 +100,11 @@ def create_archive(
             "unit_scale": True,
             "unit_divisor": 1024,
             "desc": f"ARCHIVING: {archive_name}",
-            "colour": "cyan",
-            "file": sys.stdout,
-            "dynamic_ncols": True,
-            "mininterval": 0.25,
         }
         if archive_format.lower() in ["tar", "tar.gz", "tgz"]:
             mode = "w:gz" if archive_format.lower() in ["tar.gz", "tgz"] else "w:"
             with tarfile.open(target_output, mode) as tf:
-                with tqdm(**pbar_kwargs) as pbar:
+                with create_progress_bar(**pbar_kwargs) as pbar:
                     for full_path, arcname, size in file_entries:
                         tar_info = tf.gettarinfo(str(full_path), arcname=arcname)
                         if size > LARGE_FILE_THRESHOLD:
@@ -117,7 +116,7 @@ def create_archive(
                             pbar.update(size)
         else:
             with zipfile.ZipFile(target_output, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-                with tqdm(**pbar_kwargs) as pbar:
+                with create_progress_bar(**pbar_kwargs) as pbar:
                     for full_path, arcname, size in file_entries:
                         if size > LARGE_FILE_THRESHOLD:
                             with open(full_path, "rb") as f_in:
@@ -298,12 +297,8 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
                         "unit_scale": True,
                         "unit_divisor": 1024,
                         "desc": f"EXTRACTING: {source_archive.name}",
-                        "colour": "green",
-                        "file": sys.stdout,
-                        "dynamic_ncols": True,
-                        "mininterval": 0.25,
                     }
-                    with tqdm(**pbar_kwargs) as pbar:
+                    with create_progress_bar(**pbar_kwargs) as pbar:
                         for member, target_file in to_extract:
                             target_file.parent.mkdir(parents=True, exist_ok=True)
                             source = tf.extractfile(member)
@@ -354,12 +349,8 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
                         "unit_scale": True,
                         "unit_divisor": 1024,
                         "desc": f"EXTRACTING: {source_archive.name}",
-                        "colour": "green",
-                        "file": sys.stdout,
-                        "dynamic_ncols": True,
-                        "mininterval": 0.25,
                     }
-                    with tqdm(**pbar_kwargs) as pbar:
+                    with create_progress_bar(**pbar_kwargs) as pbar:
                         for member_zip, target_file in to_extract_zip:
                             target_file.parent.mkdir(parents=True, exist_ok=True)
                             if member_zip.file_size > LARGE_FILE_THRESHOLD:

@@ -20,6 +20,10 @@
 
 ## Changelog
 
+### v16.9.2 — Modernization Hub Interactive Shell Integration (`lemgendary_datasets_hub.ps1`)
+
+- **Modernization & Conversion Hub (`lemgendary_datasets_hub.ps1`)** — Upgraded Option 4 from an obsolete suffix-removal invocation into a full interactive Modernization Suite submenu. Directly integrates `tools/modernization_queue.py` to provide real-time modernization status tables, interactive per-dataset and batch conversion workflows (in-memory WebP transcoding, WebDataset `.tar` sharding, Parquet, MDS), customizable worker concurrency, and optional automated source archive / loose directory reclamation to eliminate disk bloat.
+
 ### v16.9.1 — Direct In-Memory Streaming Ingestion & Terminal Progress Telemetry Hardening
 
 - **Direct In-Memory Streaming Extraction (`core/common_sync.py`)** — Upgraded `perform_dataset_download` to automatically detect legacy image archives from Kaggle. Instead of executing slow, disk-thrashing 7-Zip extraction of hundreds of thousands of loose `.png` files, it now seamlessly routes legacy archives into `stream_zip_to_webdataset`, transcoding to lossless WebP in memory and packing directly into streaming `.tar` WebDataset shards with automatic post-conversion archive deletion.

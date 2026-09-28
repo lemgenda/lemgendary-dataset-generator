@@ -1068,18 +1068,85 @@ while ($true) {
         }
     }
     elseif ($I -eq '4') {
-        Write-Host "`n[MODERNIZE] Launching suffix-removal tool..." -ForegroundColor Cyan
-        $ModernizeScript = Join-Path $PSScriptRoot 'tools\modernize_manifold.py'
-        if (-not (Test-Path $ModernizeScript)) {
-            $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
-        }
-        if (Test-Path $ModernizeScript) {
-            & $Vpy $ModernizeScript
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "[MODERNIZE] Exited with code $LASTEXITCODE" -ForegroundColor Yellow
+        while ($true) {
+            Write-Host "`n--- LEMGENDARY DATASET MODERNIZATION & CONVERSION HUB ---" -ForegroundColor Cyan
+            Write-Host "1. [QUEUE]   View Modernization Status & Storage Matrix" -ForegroundColor Gray
+            Write-Host "2. [CONVERT] Select & Modernize Specific Manifold(s) (Shards / WebP / Containers)" -ForegroundColor Gray
+            Write-Host "3. [BATCH]   Run Full Modernization Queue (All Pending Sets)" -ForegroundColor Gray
+            Write-Host "4. [LEGACY]  Run Legacy Directory Suffix-Removal Tool" -ForegroundColor Gray
+            Write-Host "B. [BACK]    Return to Main Dashboard" -ForegroundColor Gray
+            $ModChoice = Read-Host "Selection"
+
+            $QueueScript = Join-Path $PSScriptRoot 'tools\modernization_queue.py'
+            if (-not (Test-Path $QueueScript)) {
+                $QueueScript = Join-Path $PSScriptRoot 'modernization_queue.py'
             }
-        } else {
-            Write-Host "[ERROR] modernize_manifold.py not found at $ModernizeScript" -ForegroundColor Red
+
+            if ($ModChoice -eq '1') {
+                if (Test-Path $QueueScript) {
+                    & $Vpy $QueueScript --list
+                } else {
+                    Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
+                }
+                Read-Host "`nPress Enter to continue"
+            }
+            elseif ($ModChoice -eq '2') {
+                if (Test-Path $QueueScript) {
+                    Write-Host "`n[MODERNIZE] Scanning dataset modernization states..." -ForegroundColor Cyan
+                    & $Vpy $QueueScript --list
+                    $TargetSet = Read-Host "`nEnter dataset key(s) to modernize (e.g. nafnet_debluring, or 'b' to cancel)"
+                    if ($TargetSet -match '^[bB]') { continue }
+                    if ($TargetSet) {
+                        $Workers = Read-Host "Transcoding worker threads (default: 12)"
+                        if (-not $Workers) { $Workers = '12' }
+                        $MdsShardMb = Read-Host "MDS shard size in MB (default: 512, only applies to MDS-format manifolds)"
+                        if (-not $MdsShardMb) { $MdsShardMb = '512' }
+                        $PurgeChoice = Read-Host "Purge source archives and loose images post-conversion? (Y/N, default: Y)"
+                        $PurgeFlag = if ($PurgeChoice -match '^[nN]') { '--keep-zip' } else { '--purge-loose' }
+                        Write-Host "`n[START] Launching modernization for: $TargetSet..." -ForegroundColor Green
+                        & $Vpy $QueueScript --datasets $TargetSet --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
+                        Read-Host "`nPress Enter to return"
+                    }
+                } else {
+                    Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
+                    Read-Host "`nPress Enter to return"
+                }
+            }
+            elseif ($ModChoice -eq '3') {
+                if (Test-Path $QueueScript) {
+                    Write-Host "`n[BATCH] Launching full modernization queue across all pending datasets..." -ForegroundColor Green
+                    $Workers = Read-Host "Transcoding worker threads (default: 12)"
+                    if (-not $Workers) { $Workers = '12' }
+                    $MdsShardMb = Read-Host "MDS shard size in MB (default: 512, only applies to MDS-format manifolds)"
+                    if (-not $MdsShardMb) { $MdsShardMb = '512' }
+                    $PurgeChoice = Read-Host "Purge source archives and loose images post-conversion? (Y/N, default: Y)"
+                    $PurgeFlag = if ($PurgeChoice -match '^[nN]') { '--keep-zip' } else { '--purge-loose' }
+                    & $Vpy $QueueScript --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
+                    Read-Host "`nPress Enter to return"
+                } else {
+                    Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
+                    Read-Host "`nPress Enter to return"
+                }
+            }
+            elseif ($ModChoice -eq '4') {
+                $ModernizeScript = Join-Path $PSScriptRoot 'tools\modernize_manifold.py'
+                if (-not (Test-Path $ModernizeScript)) {
+                    $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
+                }
+                if (Test-Path $ModernizeScript) {
+                    & $Vpy $ModernizeScript
+                } else {
+                    Write-Host "[ERROR] modernize_manifold.py not found at $ModernizeScript" -ForegroundColor Red
+                }
+                Read-Host "`nPress Enter to return"
+            }
+            elseif ($ModChoice -match '^[bBqQ]') {
+                break
+            }
+            else {
+                Write-Host "Invalid selection. Please choose 1, 2, 3, 4, or B." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
         }
     }
     elseif ($I -match '^q') { break }

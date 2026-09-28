@@ -217,8 +217,8 @@ datasets:
     container:
       primary: webdataset
   retinaface_mobilenet:
-    name: RetinaFaceMobileNet
-    kaggle_ref: kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
+    name: RetinaFace
+    kaggle_ref: kaggle://lemtreursi/lemgendizedretinaface
     val_split: 0.12
     labeling: true
     refs:
@@ -226,9 +226,9 @@ datasets:
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
     - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
-    modernized_folder: LemGendizedRetinaFaceMobileNet
+    modernized_folder: LemGendizedRetinaFace
     canonical_format: webdataset
-    title: LemGendized RetinaFace MobileNet
+    title: LemGendized RetinaFace
     subtitle: Single-Shot Multi-Scale Facial Detection & 5-Point Landmark Manifold
     keywords:
     - computer-vision
@@ -510,8 +510,8 @@ datasets:
     container:
       primary: directory
   professional_multitask_restoration:
-    name: ProfessionalMultitaskRestoration
-    kaggle_ref: kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge
+    name: MultitaskRestorationPro
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmultitaskrestorationpro
     val_split: 0.12
     labeling: false
     vetting: false
@@ -527,9 +527,9 @@ datasets:
     - ref: manifold://FilmRestorerMultiTask
     - ref: manifold://CodeFormerMultiTask
     - ref: manifold://ParseNetMultiTask
-    modernized_folder: LemGendizedProfessionalMultitaskRestoration
+    modernized_folder: LemGendizedMultitaskRestorationPro
     canonical_format: mds
-    title: LemGendized Professional Multi-Task Restoration
+    title: LemGendized Multitask Restoration Pro
     subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur, and Dehaze
     keywords:
     - computer-vision
@@ -545,8 +545,8 @@ datasets:
     container:
       primary: mds
   classification_master_manifold:
-    name: ClassificationMasterManifold
-    kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmastermanifold
+    name: ClassificationMaster
+    kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmaster
     val_split: 0.12
     nsfw_ratio: 0.5
     refs:
@@ -556,9 +556,9 @@ datasets:
       tag: general_nsfw
     - ref: hf://food101
       tag: sfw_baseline
-    modernized_folder: LemGendizedClassificationMasterManifold
+    modernized_folder: LemGendizedClassificationMaster
     canonical_format: mds
-    title: LemGendized Classification Master Manifold
+    title: LemGendized Classification Master
     subtitle: Robust Visual Content Moderation & Multi-Class Safety Filtering Manifold
     keywords:
     - computer-vision
