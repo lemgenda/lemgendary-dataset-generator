@@ -425,8 +425,13 @@ def convert_loose_directory_to_mds(
                 continue
 
             print(f"[CONVERT-MDS] Split '{split}': {total_samples} samples -> MDS.")
+            # mosaicml-streaming parses `out` with urllib.parse.urlparse to detect cloud vs
+            # local paths. On Windows, an absolute path such as C:\... is parsed as scheme 'c'
+            # which is not a recognised cloud provider prefix, causing ValueError. Using a
+            # relative path produces an empty scheme and correctly routes to LocalUploader.
+            mds_out_str = os.path.relpath(split_mds_dir)
             writer = MDSWriterCls(
-                out=str(split_mds_dir),
+                out=mds_out_str,
                 columns=_COLUMNS,
                 compression="zstd",
                 size_limit=mds_shard_size_bytes,
@@ -535,6 +540,8 @@ def _convert_item(
         return False
 
     if fmt == "mds":
+        # it.target_dir is guaranteed non-None when has_loose_files is True; assert to narrow type.
+        assert it.target_dir is not None, f"target_dir must not be None for loose MDS pack of {it.key}"
         print(f"[ACTION] Packing loose directory {src.name} into MDS shards...")
         ok = convert_loose_directory_to_mds(
             source_dir=src,
@@ -552,6 +559,8 @@ def _convert_item(
     # webdataset or fallback
     if fmt not in ("webdataset", "directory"):
         print(f"[NOTICE] Format '{fmt}' loose-to-container not yet implemented in queue. Packing as WebDataset.")
+    # it.target_dir is guaranteed non-None when has_loose_files is True; assert to narrow type.
+    assert it.target_dir is not None, f"target_dir must not be None for loose WebDataset pack of {it.key}"
     print(f"[ACTION] Packing loose directory {src.name} into WebDataset shards...")
     ok = convert_loose_directory_to_webdataset(
         source_dir=src,
@@ -612,7 +621,9 @@ def push_manifold_to_kaggle(
 
     import kagglehub
     import kagglehub.gcs_upload
-    kagglehub.gcs_upload.MAX_FILES_TO_UPLOAD = 5000
+    # kagglehub annotates MAX_FILES_TO_UPLOAD as Literal[50]; setattr bypasses the
+    # static type constraint while still performing the runtime assignment correctly.
+    setattr(kagglehub.gcs_upload, "MAX_FILES_TO_UPLOAD", 5000)
 
     try:
         kagglehub.dataset_upload(clean_handle, str(target_dir), version_notes=notes)

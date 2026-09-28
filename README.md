@@ -20,6 +20,10 @@
 
 ## Changelog
 
+### v16.9.3 — Windows Absolute Path Fix for MDS Shard Writer
+
+- **`tools/modernization_queue.py` — MDSWriter Windows Path Bug** — Fixed `ValueError: Invalid Cloud provider prefix: c.` raised when packing loose directories into MDS shards on Windows. The `mosaicml-streaming` library parses the `out` argument with `urllib.parse.urlparse`, which misinterprets a Windows absolute path (`C:\...`) as a URL with scheme `c`. Fix: `out` is now derived via `os.path.relpath(split_mds_dir)`, producing a relative path whose empty URL scheme correctly routes to `LocalUploader`. Affected manifolds: `classification_master_manifold`, `professional_multitask_restoration`.
+
 ### v16.9.2 — Modernization Hub Interactive Shell Integration (`lemgendary_datasets_hub.ps1`)
 
 - **Modernization & Conversion Hub (`lemgendary_datasets_hub.ps1`)** — Upgraded Option 4 from an obsolete suffix-removal invocation into a full interactive Modernization Suite submenu. Directly integrates `tools/modernization_queue.py` to provide real-time modernization status tables, interactive per-dataset and batch conversion workflows (in-memory WebP transcoding, WebDataset `.tar` sharding, Parquet, MDS), customizable worker concurrency, and optional automated source archive / loose directory reclamation to eliminate disk bloat.
@@ -27,6 +31,7 @@
 ### v16.9.1 — Direct In-Memory Streaming Ingestion & Terminal Progress Telemetry Hardening
 
 - **Direct In-Memory Streaming Extraction (`core/common_sync.py`)** — Upgraded `perform_dataset_download` to automatically detect legacy image archives from Kaggle. Instead of executing slow, disk-thrashing 7-Zip extraction of hundreds of thousands of loose `.png` files, it now seamlessly routes legacy archives into `stream_zip_to_webdataset`, transcoding to lossless WebP in memory and packing directly into streaming `.tar` WebDataset shards with automatic post-conversion archive deletion.
+
 - **Kaggle Download Progress Bar Line-Wrap Prevention** — Patched `tqdm` globally in `core/common_sync.py` to enforce `ncols=80` and `ascii=True` during `api.dataset_download_files`, eliminating Windows Terminal / PowerShell buffer-overflow wrapping cascades that previously generated hundreds of redundant progress rows.
 - **Silent 7-Zip Progress Streamline (`utils/archive.py`)** — Switched 7-Zip execution flag from `-bsp1` to `-bsp0` in `smart_extract`, preventing console output spam during native archive decompressions.
 
