@@ -430,6 +430,12 @@ def convert_loose_directory_to_mds(
             # which is not a recognised cloud provider prefix, causing ValueError. Using a
             # relative path produces an empty scheme and correctly routes to LocalUploader.
             mds_out_str = os.path.relpath(split_mds_dir)
+            # LocalUploader raises FileExistsError if the output directory is non-empty (e.g.
+            # from a previously interrupted run). Wipe it first so every invocation is
+            # idempotent. exist_ok=True would instead append shards and corrupt the dataset.
+            if split_mds_dir.exists():
+                shutil.rmtree(split_mds_dir)
+            split_mds_dir.mkdir(parents=True, exist_ok=True)
             writer = MDSWriterCls(
                 out=mds_out_str,
                 columns=_COLUMNS,

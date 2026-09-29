@@ -23,6 +23,7 @@
 ### v16.9.3 — Windows Absolute Path Fix for MDS Shard Writer
 
 - **`tools/modernization_queue.py` — MDSWriter Windows Path Bug** — Fixed `ValueError: Invalid Cloud provider prefix: c.` raised when packing loose directories into MDS shards on Windows. The `mosaicml-streaming` library parses the `out` argument with `urllib.parse.urlparse`, which misinterprets a Windows absolute path (`C:\...`) as a URL with scheme `c`. Fix: `out` is now derived via `os.path.relpath(split_mds_dir)`, producing a relative path whose empty URL scheme correctly routes to `LocalUploader`. Affected manifolds: `classification_master_manifold`, `professional_multitask_restoration`.
+- **`tools/modernization_queue.py` — MDSWriter Retry FileExistsError** — Fixed `FileExistsError: Directory is not empty` raised on any retry after an interrupted MDS conversion run (e.g. the first crash above left a partial `mds/train` directory). The split output directory is now wiped with `shutil.rmtree` before each `MDSWriter` instantiation, making every invocation fully idempotent. Using `exist_ok=True` was explicitly rejected as it would append shards to a partial run and corrupt the dataset.
 
 ### v16.9.2 — Modernization Hub Interactive Shell Integration (`lemgendary_datasets_hub.ps1`)
 
