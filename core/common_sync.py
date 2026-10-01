@@ -437,7 +437,7 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
         file_count += len(files)
         for f in files:
             try:
-                mt = (Path(root) / f).stat().st_mtime
+                mt = os.path.getmtime(os.path.join(root, f))
                 if mt > newest_src_mtime:
                     newest_src_mtime = mt
             except OSError as exc:

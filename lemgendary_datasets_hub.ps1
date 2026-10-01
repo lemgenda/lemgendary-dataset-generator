@@ -940,12 +940,26 @@ while ($true) {
                         continue
                     }
 
-                    $KagHandle = $ds_info.kaggle_ref
+                    $KagHandle = $null
+                    $MetaJson = Join-Path $ManifoldPath "dataset-metadata.json"
+                    if (Test-Path $MetaJson) {
+                        try {
+                            $MetaContent = Get-Content $MetaJson -Raw | ConvertFrom-Json
+                            if ($MetaContent.id) {
+                                $KagHandle = $MetaContent.id
+                            }
+                        } catch {}
+                    }
+                    if (!$KagHandle -and $ds_info.kaggle_ref) {
+                        $KagHandle = $ds_info.kaggle_ref.Replace("kaggle://", "").Trim()
+                    }
                     if (!$KagHandle) {
                         $KagHandle = Read-Host "Enter Kaggle Dataset Handle (e.g. username/dataset-name)"
                     } else {
-                        $KagHandle = $KagHandle.Replace("kaggle://", "")
-                        Write-Host "  [INFO] Target Kaggle Handle: $KagHandle" -ForegroundColor Gray
+                        $HandleInput = Read-Host "Target Kaggle Handle [Default: $KagHandle]"
+                        if (-not [string]::IsNullOrWhiteSpace($HandleInput)) {
+                            $KagHandle = $HandleInput.Replace("kaggle://", "").Trim()
+                        }
                     }
 
                     if ($KagHandle) {
@@ -1006,7 +1020,11 @@ while ($true) {
                         $ResolvedDest = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $Slug -Suffix $Suffix
                         $TargetFolder = Split-Path $ResolvedDest -Leaf
                         if ($ds_info.kaggle_ref) {
-                            $TargetHandle = $ds_info.kaggle_ref.Replace("kaggle://", "")
+                            $TargetHandle = $ds_info.kaggle_ref.Replace("kaggle://", "").Trim()
+                            $HandlePrompt = Read-Host "Source Kaggle Handle [Default: $TargetHandle]"
+                            if (-not [string]::IsNullOrWhiteSpace($HandlePrompt)) {
+                                $TargetHandle = $HandlePrompt.Replace("kaggle://", "").Trim()
+                            }
                         } else {
                             $TargetHandle = Read-Host "No Kaggle ref configured in registry. Enter Kaggle Handle"
                         }

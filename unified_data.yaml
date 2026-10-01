@@ -11,7 +11,7 @@ _registry_metadata:
 datasets:
   nima_aesthetic:
     name: NimaAesthetic
-    kaggle_ref: kaggle://lemtreursi/lemgendizednimaaestheticlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimaaesthetic
     val_split: 0.12
     refs:
     - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
@@ -73,7 +73,7 @@ datasets:
       primary: webdataset
   nima_authenticity:
     name: NimaAuthenticity
-    kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticitylarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticity
     val_split: 0.12
     refs:
     - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
@@ -100,7 +100,7 @@ datasets:
       primary: webdataset
   upn_v2:
     name: UpnV2
-    kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2large
+    kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2
     val_split: 0.12
     labeling: false
     task_override: parameter_prediction
@@ -167,7 +167,7 @@ datasets:
       primary: webdataset
   codeformer:
     name: CodeFormer
-    kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformerlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformer
     val_split: 0.1
     refs:
     - ref: local://raw-sets/RealVsFakeFaces/
@@ -191,7 +191,7 @@ datasets:
       primary: webdataset
   parsenet:
     name: ParseNet
-    kaggle_ref: kaggle://lemtreursi/lemgendizedparsenetlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedparsenet
     val_split: 0.12
     labeling: false
     refs:
@@ -245,7 +245,7 @@ datasets:
       primary: webdataset
   ffanet_indoor:
     name: FfaNetIndoor
-    kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoorlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoor
     val_split: 0.12
     refs:
     - ref: kaggle://balraj98/indoor-training-set-its-residestandard
@@ -271,7 +271,7 @@ datasets:
       primary: webdataset
   ffanet_outdoor:
     name: FfaNetOutdoor
-    kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoorlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoor
     val_split: 0.12
     refs:
     - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
@@ -299,7 +299,7 @@ datasets:
       primary: webdataset
   mirnet_lowlight:
     name: MirNetLowLight
-    kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlightlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlight
     val_split: 0.12
     labeling: false
     vetting: false
@@ -331,7 +331,7 @@ datasets:
       primary: webdataset
   mirnet_exposure:
     name: MirNetExposure
-    kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposurelarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposure
     val_split: 0.12
     labeling: false
     vetting: false
@@ -358,7 +358,7 @@ datasets:
       primary: webdataset
   mprnet_deraining:
     name: MprNetDeraining
-    kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaininglarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaining
     val_split: 0.12
     labeling: false
     vetting: false
@@ -389,7 +389,7 @@ datasets:
       primary: webdataset
   nafnet_debluring:
     name: NafNetDebluring
-    kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluringlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluring
     val_split: 0.12
     labeling: false
     vetting: false
@@ -419,7 +419,7 @@ datasets:
       primary: webdataset
   nafnet_denoising:
     name: NafNetDenoising
-    kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoisinglarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoising
     val_split: 0.12
     labeling: false
     vetting: false
@@ -451,7 +451,7 @@ datasets:
       primary: webdataset
   ultrazoom:
     name: UltraZoom
-    kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoomlarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoom
     val_split: 0.12
     labeling: false
     vetting: false
@@ -577,7 +577,7 @@ datasets:
       primary: mds
   forex_universe:
     name: ForexUniverse
-    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverselarge
+    kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse
     kaggle_dataset_urls:
     - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
     acquisition_mode: mt5_terminal
