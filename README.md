@@ -10,7 +10,7 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.8.0-STABLE` |
+| **Version** | `v16.9.5-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,19 @@
 ---
 
 ## Changelog
+
+### v16.9.5 — Modernized Dataset Naming Matrix Alignment & Zip Streaming Engine Hardening
+
+- **`tools/stream_zip_to_container.py` — ThreadPoolExecutor Engine & Type Unpacking Fix** — Replaced invalid `pool.imap()` invocations with `pool.map()` for standard `ThreadPoolExecutor`. Added explicit parameter passing to generator worker functions to eliminate static analyzer type confusion between image and target tuples during in-memory WebP transcoding.
+- **`models/models_metadata.yaml` & `unified_models_v2.yaml` — Modernized Dataset Naming Parity** — Synchronized model dataset bindings to match authoritative modernized directory names in `LemGendaryDatasets` (`LemGendizedForexUniverse`, `LemGendizedMultitaskRestorationPro`, `LemGendizedClassificationMaster`, etc.), eliminating legacy `*Large` references.
+- **`tools/manifold_sync.py`, `sources/kaggle.py` & `tools/notebooks/` — Canonical Manifold Discovery** — Prioritized `modernized_folder` resolution from `unified_data.yaml` and updated default suffix handling to empty strings, ensuring synchronization tools and notebook generators accurately target modernized on-disk structures.
+- **`manifolds.md` — Matrix Regeneration** — Re-rendered master documentation matrix with 100% bound model resolution across all 22 manifolds.
+
+### v16.9.4 — Universal MDS Shard Writer Windows Path & Idempotency Hardening
+
+- **`formats/mds.py` — Core MDSWriter Cloud Scheme & Retry Fix** — Fixed `ValueError: Invalid Cloud provider prefix: c.` and `FileExistsError` in `MDSWriter.open()`. On Windows, passing an absolute path `C:\...` caused `mosaicml-streaming`'s URL parser to identify `c` as an unknown cloud provider scheme. Output directories are now converted to relative paths via `os.path.relpath()` and existing non-empty directories from interrupted runs are idempotently cleaned with `shutil.rmtree()`. Fixes `migrate_manifold_format.py`, `formats/base.py`, and CLI container conversions.
+- **`tools/stream_zip_to_container.py` — Streaming Zip-to-MDS Writer Hardening** — Hardened both image and target-only streaming archive-to-MDS writer instantiations in `stream_zip_to_mds` with relative path resolution and pre-write directory cleanup, preventing crash loops on archive streaming conversions.
+- **`tests/test_formats.py` — TestMDSWriter Unit Test Suite** — Added comprehensive unit test verifying the `MDSWriter` open/write/close cycle, shard and `index.json` emission, and idempotent re-opening on Windows.
 
 ### v16.9.3 — Windows Absolute Path Fix for MDS Shard Writer
 

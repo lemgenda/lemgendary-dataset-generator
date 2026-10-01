@@ -287,5 +287,49 @@ class TestDirectoryWriterAndSource(unittest.TestCase):
                 self.assertEqual(s.metadata.get("custom_metric"), 42.0)
 
 
+class TestMDSWriter(unittest.TestCase):
+    """Test MDSWriter lifecycle, Windows relative path routing, and idempotency."""
+
+    def test_mds_writer_lifecycle_and_idempotency(self) -> None:
+        try:
+            import streaming  # noqa: F401
+        except ImportError:
+            self.skipTest("mosaicml-streaming not installed")
+
+        from formats.mds import MDSWriter
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_root = Path(tmp_dir) / "test_manifold"
+            writer = MDSWriter()
+            writer.open(out_root, None)
+
+            sample1 = Sample(
+                name="sample_01",
+                task="restoration",
+                split="train",
+                image_bytes=b"\x89PNG\r\n\x1a\nfakeimage",
+                image_format="png",
+                target_bytes=b"\x89PNG\r\n\x1a\nfaketarget",
+                label="test_label",
+                metadata={"foo": "bar"},
+            )
+            writer.write(sample1)
+            writer.close()
+
+            mds_dir = out_root / "mds"
+            self.assertTrue(mds_dir.exists(), "MDS directory was not created")
+            self.assertTrue(
+                (mds_dir / "index.json").exists(),
+                "MDS index.json was not created",
+            )
+
+            # Test idempotency: re-opening the existing non-empty directory must not raise FileExistsError
+            writer2 = MDSWriter()
+            writer2.open(out_root, None)
+            writer2.write(sample1)
+            writer2.close()
+            self.assertTrue((mds_dir / "index.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

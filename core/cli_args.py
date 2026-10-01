@@ -26,7 +26,7 @@ from pathlib import Path
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.7.4"
+__version__ = "16.9.5"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────

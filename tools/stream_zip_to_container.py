@@ -204,11 +204,11 @@ def stream_zip_to_webdataset(
 
                                 with tarfile.open(shard_file, "w") as tf:
                                     if transcode_webp:
-                                        def _gen_img():
-                                            for stem, ext, zinfo in chunk:
+                                        def _gen_img(items: list[tuple[str, str, zipfile.ZipInfo]]):
+                                            for stem, ext, zinfo in items:
                                                 yield stem, zf.read(zinfo), ext
 
-                                        for stem, data, out_ext in pool.imap(_worker_img, _gen_img(), chunksize=8):
+                                        for stem, data, out_ext in pool.map(_worker_img, _gen_img(chunk), chunksize=8):
                                             ti = tarfile.TarInfo(name=f"{stem}{out_ext}")
                                             ti.size = len(data)
                                             tf.addfile(ti, io.BytesIO(data))
@@ -236,12 +236,12 @@ def stream_zip_to_webdataset(
 
                                     with tarfile.open(shard_file, "a") as tf:
                                         if transcode_webp:
-                                            def _gen_tgt():
-                                                for stem in matched_stems:
+                                            def _gen_tgt(stems: list[str]):
+                                                for stem in stems:
                                                     tgt_ext, tgt_zinfo = target_map[stem]
                                                     yield stem, zf.read(tgt_zinfo), tgt_ext
 
-                                            for stem, data, out_ext in pool.imap(_worker_tgt, _gen_tgt(), chunksize=8):
+                                            for stem, data, out_ext in pool.map(_worker_tgt, _gen_tgt(matched_stems), chunksize=8):
                                                 ti = tarfile.TarInfo(name=f"{stem}.target{out_ext}")
                                                 ti.size = len(data)
                                                 tf.addfile(ti, io.BytesIO(data))
@@ -274,11 +274,11 @@ def stream_zip_to_webdataset(
 
                                 with tarfile.open(shard_file, "w") as tf:
                                     if transcode_webp:
-                                        def _gen_sample():
-                                            for stem, (ext, zinfo) in chunk:
+                                        def _gen_sample(items: list[tuple[str, tuple[str, zipfile.ZipInfo]]]):
+                                            for stem, (ext, zinfo) in items:
                                                 yield stem, zf.read(zinfo), ext
 
-                                        for stem, data, out_ext in pool.imap(_worker_sample, _gen_sample(), chunksize=8):
+                                        for stem, data, out_ext in pool.map(_worker_sample, _gen_sample(chunk), chunksize=8):
                                             ti = tarfile.TarInfo(name=f"{stem}{out_ext}")
                                             ti.size = len(data)
                                             tf.addfile(ti, io.BytesIO(data))
@@ -379,11 +379,17 @@ def stream_zip_to_mds(
                         target_map = targets_by_split.get(split, {})
                         total_samples = len(img_list)
                         split_mds_dir = mds_dir if split == "all" else mds_dir / split
+                        try:
+                            mds_out_str = os.path.relpath(split_mds_dir)
+                        except ValueError:
+                            mds_out_str = str(split_mds_dir)
+                        if split_mds_dir.exists():
+                            shutil.rmtree(split_mds_dir)
                         split_mds_dir.mkdir(parents=True, exist_ok=True)
                         print(f"[STREAM-MDS] Split '{split}': {total_samples} images -> MDS shards.")
 
                         writer = MDSWriterCls(
-                            out=str(split_mds_dir),
+                            out=mds_out_str,
                             columns=_COLUMNS,
                             compression="zstd",
                             size_limit=mds_shard_size_bytes,
@@ -391,12 +397,12 @@ def stream_zip_to_mds(
                         )
                         with create_progress_bar(total=total_samples, desc=f"MDS [{split}]", unit="img") as pbar:
                             if transcode_webp:
-                                def _gen_img_mds():
-                                    for stem, ext, zinfo in img_list:
+                                def _gen_img_mds(items: list[tuple[str, str, zipfile.ZipInfo]]):
+                                    for stem, ext, zinfo in items:
                                         yield stem, zf.read(zinfo), ext
 
                                 for (img_stem, img_data, img_ext), (stem, ext, zinfo) in zip(
-                                    pool.imap(_worker_img, _gen_img_mds(), chunksize=8),
+                                    pool.map(_worker_img, _gen_img_mds(img_list), chunksize=8),
                                     img_list,
                                 ):
                                     tgt_bytes = b""
@@ -438,11 +444,17 @@ def stream_zip_to_mds(
                         tgt_items = list(target_map.items())
                         total_samples = len(tgt_items)
                         split_mds_dir = mds_dir if split == "all" else mds_dir / split
+                        try:
+                            mds_out_str = os.path.relpath(split_mds_dir)
+                        except ValueError:
+                            mds_out_str = str(split_mds_dir)
+                        if split_mds_dir.exists():
+                            shutil.rmtree(split_mds_dir)
                         split_mds_dir.mkdir(parents=True, exist_ok=True)
                         print(f"[STREAM-MDS] Split '{split}': {total_samples} targets -> MDS shards.")
 
                         writer = MDSWriterCls(
-                            out=str(split_mds_dir),
+                            out=mds_out_str,
                             columns=_COLUMNS,
                             compression="zstd",
                             size_limit=mds_shard_size_bytes,
@@ -450,12 +462,12 @@ def stream_zip_to_mds(
                         )
                         with create_progress_bar(total=total_samples, desc=f"MDS [{split}]", unit="img") as pbar:
                             if transcode_webp:
-                                def _gen_tgt_mds():
-                                    for stem, (ext, zinfo) in tgt_items:
+                                def _gen_tgt_mds(items: list[tuple[str, tuple[str, zipfile.ZipInfo]]]):
+                                    for stem, (ext, zinfo) in items:
                                         yield stem, zf.read(zinfo), ext
 
                                 for (stem, data, out_ext), (orig_stem, _) in zip(
-                                    pool.imap(_worker_sample, _gen_tgt_mds(), chunksize=8),
+                                    pool.map(_worker_sample, _gen_tgt_mds(tgt_items), chunksize=8),
                                     tgt_items,
                                 ):
                                     writer.write({

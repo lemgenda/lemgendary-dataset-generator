@@ -63,7 +63,7 @@ def get_kaggle_ref(manifold_id):
     target_clean = str(manifold_id).strip()
     norm_target = target_clean.lower().replace("_", "").replace("-", "").replace("lemgendized", "").replace("large", "")
     prefix = META.get("name_prefix", "LemGendized")
-    suffix = META.get("name_suffix", "Large")
+    suffix = META.get("name_suffix", "")
 
     for k, v in DATASETS_META.items():
         ref = v.get("kaggle_ref", "")
@@ -124,11 +124,11 @@ def action_get(repo_id, output_name=None):
     if not output_name:
         output_name = slug
         prefix = META.get("name_prefix", "LemGendized")
-        suffix = META.get("name_suffix", "Large")
+        suffix = META.get("name_suffix", "")
         for _, v in DATASETS_META.items():
             ref = v.get("kaggle_ref", "")
             if clean_repo_id.lower() in ref.lower():
-                output_name = f"{prefix}{v.get('name', '')}{suffix}"
+                output_name = v.get("modernized_folder") or f"{prefix}{v.get('name', '')}{suffix}"
                 break
 
     dest_dir = OUT_PARENT / output_name
@@ -207,7 +207,7 @@ def main():
             sys.exit(1)
             
     prefix = META.get("name_prefix", "LemGendized")
-    suffix = META.get("name_suffix", "Large")
+    suffix = META.get("name_suffix", "")
     dataset_keys = list(DATASETS_META.keys())
 
     # Resolve Model/URL
@@ -218,7 +218,8 @@ def main():
         print("\n--- AVAILABLE MANIFOLDS TO SYNC ---")
         for i, k in enumerate(dataset_keys, 1):
             slug = DATASETS_META[k].get("name", "")
-            manifold_folder = f"{prefix}{slug}{suffix}"
+            mod_folder = DATASETS_META[k].get("modernized_folder")
+            manifold_folder = mod_folder or f"{prefix}{slug}{suffix}"
             folder_path = OUT_PARENT / manifold_folder
             status_tag = "[COMPILED]" if folder_path.exists() else "[NOT COMPILED]"
             print(f" {i:2d}. {k:<35} ({manifold_folder}) {status_tag}")

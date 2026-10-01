@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from pathlib import Path
+import shutil
 from typing import Any
 
 from .base import Sample
@@ -54,6 +56,19 @@ class MDSWriter:
 
         mds_writer_cls = getattr(streaming, "MDSWriter")
         self._out_dir = Path(output_root) / "mds"
+        # mosaicml-streaming parses `out` with urllib.parse.urlparse to detect cloud vs
+        # local paths. On Windows, an absolute path such as C:\... is parsed as scheme 'c'
+        # which is not a recognised cloud provider prefix, causing ValueError. Using a
+        # relative path produces an empty scheme and correctly routes to LocalUploader.
+        try:
+            mds_out_str = os.path.relpath(self._out_dir)
+        except ValueError:
+            mds_out_str = str(self._out_dir)
+        # LocalUploader raises FileExistsError if the output directory is non-empty (e.g.
+        # from a previously interrupted run). Wipe it first so every invocation is
+        # idempotent. exist_ok=True would instead append shards and corrupt the dataset.
+        if self._out_dir.exists():
+            shutil.rmtree(self._out_dir)
         self._out_dir.mkdir(parents=True, exist_ok=True)
 
         # policy may be None when called from migration paths — guard safely
@@ -64,7 +79,7 @@ class MDSWriter:
             else _default_shard_bytes
         )
         self._writer = mds_writer_cls(
-            out=str(self._out_dir),
+            out=mds_out_str,
             columns=_COLUMNS,
             compression="zstd",
             size_limit=size_limit,

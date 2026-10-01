@@ -48,9 +48,14 @@ def main():
         api.authenticate()
 
         owner = "lemtreursi"
+        existing_datasets: dict[str, str] = {}
         try:
-            remote_ds_list = api.dataset_list(user=owner)
-            existing_datasets = {ds.ref.lower(): ds.ref for ds in remote_ds_list}
+            remote_ds_list = api.dataset_list(user=owner) or []
+            existing_datasets = {
+                ds.ref.lower(): ds.ref
+                for ds in remote_ds_list
+                if ds is not None and getattr(ds, "ref", None) is not None
+            }
             print(f"[INFO] Discovered {len(existing_datasets)} active published datasets on Kaggle for @{owner}")
         except Exception as exc:
             print(f"[WARNING] Could not pre-fetch remote dataset list ({exc}); will attempt direct push for all.")
@@ -112,7 +117,7 @@ def main():
         if failures > 0:
             sys.exit(1)
     else:
-        metadata_dir = args.metadata_dir or r"LemGendaryDatasets\LemGendizedForexUniverseLarge"
+        metadata_dir = args.metadata_dir or r"LemGendaryDatasets\LemGendizedForexUniverse"
         repo_id = args.repo_id or "lemtreursi/lemgendizedforexuniverselarge"
         meta_path = Path(metadata_dir)
 

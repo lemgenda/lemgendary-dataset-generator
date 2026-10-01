@@ -52,16 +52,19 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
         manifold_name = slug
         try:
             import yaml
-            yd_path = Path(__file__).parent / "unified_data.yaml"
+            yd_path = Path(__file__).parent.parent / "unified_data.yaml"
+            if not yd_path.exists():
+                yd_path = Path(__file__).parent / "unified_data.yaml"
             if yd_path.exists():
                 with open(yd_path, "r", encoding="utf-8") as yf:
                     ydata = yaml.safe_load(yf) or {}
                 prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
-                suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "Large")
+                suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
                 for _, entry in ydata.get("datasets", {}).items():
                     ref = entry.get("kaggle_ref", "")
                     if slug.lower() in ref.lower():
-                        manifold_name = f"{prefix}{entry.get('name', '')}{suffix}"
+                        mod_folder = entry.get("modernized_folder")
+                        manifold_name = mod_folder or f"{prefix}{entry.get('name', '')}{suffix}"
                         break
         except Exception as exc:
             print(f"[DEBUG] Kaggle manifold name lookup fallback: {exc}")
