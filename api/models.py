@@ -146,12 +146,18 @@ class DatasetFormatStats(BaseModel):
 
 class DatasetDetailStats(BaseModel):
     name: str
+    key: Optional[str] = None
+    display_name: Optional[str] = None
     path: str
     task: str
     sample_count: int
     size_bytes: int
     size_gb: float
+    format: Optional[str] = "directory"
+    canonical_format: Optional[str] = "webdataset"
     formats: DatasetFormatStats
+    shards_count: int = 0
+    is_compiled: bool = False
     has_hardlinks: bool
     hardlink_ratio: float
 

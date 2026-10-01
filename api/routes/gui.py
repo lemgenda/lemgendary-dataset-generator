@@ -6,6 +6,7 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -37,8 +38,8 @@ logger = logging.getLogger("lemgendary.api.routes.gui")
 router = APIRouter(prefix="/gui", tags=["Desktop GUI"])
 
 
-def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatStats, int, int, bool, float]:
-    """Scan manifold directory to compute format breakdown, sample count, size, and hardlink metrics."""
+def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatStats, int, int, bool, float, int]:
+    """Scan manifold directory to compute format breakdown, sample count, size, hardlinks, and shards."""
     format_counts = {
         "webp": 0,
         "jpg": 0,
@@ -50,6 +51,7 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     file_count = 0
     unique_inodes: set[int] = set()
     hardlink_count = 0
+    shards_count = 0
 
     scan_dirs = [
         manifold_path / "images",
@@ -81,7 +83,10 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                     format_counts["png"] += 1
                 elif ext == "parquet":
                     format_counts["parquet"] += 1
-                elif ext in ("txt", "json", "yaml", "md"):
+                elif ext in ("tar", "bin", "mds"):
+                    shards_count += 1
+                    format_counts["other"] += 1
+                elif ext in ("txt", "json", "yaml", "md", "ipynb"):
                     continue
                 else:
                     format_counts["other"] += 1
@@ -100,6 +105,36 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
         except OSError as scan_exc:
             logger.debug("Failed scanning %s: %s", directory, scan_exc)
 
+    shards_dir = manifold_path / "shards"
+    if shards_dir.exists() and shards_dir.is_dir():
+        for root_d, _, files in os.walk(shards_dir):
+            for fname in files:
+                fpath = Path(root_d) / fname
+                if fpath in scanned_paths:
+                    continue
+                scanned_paths.add(fpath)
+                ext = fpath.suffix.lower().lstrip(".")
+                if ext in ("tar", "bin", "mds", "parquet"):
+                    shards_count += 1
+                if ext == "webp":
+                    format_counts["webp"] += 1
+                elif ext in ("jpg", "jpeg"):
+                    format_counts["jpg"] += 1
+                elif ext == "png":
+                    format_counts["png"] += 1
+                elif ext == "parquet":
+                    format_counts["parquet"] += 1
+                elif ext in ("txt", "json", "yaml", "md", "ipynb"):
+                    continue
+                else:
+                    format_counts["other"] += 1
+                file_count += 1
+                try:
+                    stat_res = fpath.stat()
+                    total_size += stat_res.st_size
+                except OSError:
+                    pass
+
     formats = DatasetFormatStats(
         webp=format_counts["webp"],
         jpg=format_counts["jpg"],
@@ -111,7 +146,7 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     has_hardlinks = hardlink_count > 0
     ratio = round(hardlink_count / max(1, file_count), 4) if has_hardlinks else 0.0
 
-    return formats, file_count, total_size, has_hardlinks, ratio
+    return formats, file_count, total_size, has_hardlinks, ratio, shards_count
 
 
 @router.get("/state", response_model=GuiStateResponse)
@@ -161,37 +196,87 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             total_size_gb=0.0,
         )
 
-    for entry in root.iterdir():
+    # Load canonical manifold registry metadata
+    unified_yaml = Path("unified_data.yaml")
+    if not unified_yaml.exists():
+        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+
+    registry_datasets: Dict[str, Any] = {}
+    if unified_yaml.exists():
+        try:
+            with open(unified_yaml, "r", encoding="utf-8") as f:
+                ydata = yaml.safe_load(f) or {}
+                registry_datasets = ydata.get("datasets", {})
+        except Exception as exc:
+            logger.debug("Failed reading unified_data.yaml: %s", exc)
+
+    folder_to_meta: Dict[str, tuple[str, Dict[str, Any]]] = {}
+    for k, v in registry_datasets.items():
+        m_folder = v.get("modernized_folder") or f"LemGendized{v.get('name', '')}"
+        folder_to_meta[m_folder.lower()] = (k, v)
+        if "name" in v:
+            folder_to_meta[v["name"].lower()] = (k, v)
+
+    for entry in sorted(root.iterdir(), key=lambda p: p.name.lower()):
         if not entry.is_dir() or entry.name.startswith("."):
             continue
 
+        meta_match = folder_to_meta.get(entry.name.lower())
+        reg_key = meta_match[0] if meta_match else entry.name
+        reg_info = meta_match[1] if meta_match else {}
+
+        display_name = reg_info.get("title")
+        if not display_name:
+            if entry.name == "LemGendizedUpnV2":
+                display_name = "Unified Perceptual Net V2"
+            elif entry.name.startswith("LemGendized"):
+                cleaned = entry.name.replace("LemGendized", "")
+                display_name = re.sub(r"([A-Z])", r" \1", cleaned).strip()
+            else:
+                display_name = entry.name
+
+        canonical_format = reg_info.get("canonical_format") or "webdataset"
+        format_val = reg_info.get("container", {}).get("primary") or canonical_format
+
         info_file = entry / "dataset_info.yaml"
         sample_count = 0
-        task = "vision"
+        task = reg_info.get("task", "vision")
 
         if info_file.exists():
             try:
                 with open(info_file, "r", encoding="utf-8") as f:
                     meta = yaml.safe_load(f) or {}
                     task = meta.get("task", task)
-                    sample_count = meta.get("total_samples", 0)
+                    sample_count = meta.get("count") or meta.get("total_samples") or meta.get("samples") or 0
+                    if meta.get("canonical_format"):
+                        canonical_format = meta.get("canonical_format")
+                    if meta.get("format"):
+                        format_val = meta.get("format")
             except Exception as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
-        formats, counted_files, size_bytes, has_hardlinks, ratio = _calculate_dataset_file_stats(entry)
+        formats, counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
         if sample_count == 0:
             sample_count = formats.webp + formats.jpg + formats.png + formats.parquet
+
+        is_compiled = bool(shards_count > 0 or formats.parquet > 0 or (format_val != "directory" and (formats.webp > 0 or shards_count > 0)))
 
         total_storage_bytes += size_bytes
         dataset_stats.append(
             DatasetDetailStats(
                 name=entry.name,
+                key=reg_key,
+                display_name=display_name,
                 path=str(entry),
                 task=task,
                 sample_count=sample_count,
                 size_bytes=size_bytes,
                 size_gb=round(size_bytes / (1024**3), 3),
+                format=format_val if is_compiled else "directory",
+                canonical_format=canonical_format,
                 formats=formats,
+                shards_count=shards_count,
+                is_compiled=is_compiled,
                 has_hardlinks=has_hardlinks,
                 hardlink_ratio=ratio,
             )
