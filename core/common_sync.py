@@ -103,6 +103,28 @@ def setup_kaggle_auth(default_user="lemtreursi"):
                 os.environ["KAGGLE_USERNAME"] = default_user
 
     try:
+        import certifi
+        cert_path = certifi.where()
+        if os.path.exists(cert_path):
+            if "SSL_CERT_FILE" not in os.environ:
+                os.environ["SSL_CERT_FILE"] = cert_path
+            if "REQUESTS_CA_BUNDLE" not in os.environ:
+                os.environ["REQUESTS_CA_BUNDLE"] = cert_path
+        else:
+            try:
+                pip_cert_mod = importlib.import_module("pip._vendor.certifi")
+                pip_cert_where = getattr(pip_cert_mod, "where", None)
+                if pip_cert_where:
+                    pip_path = pip_cert_where()
+                    if os.path.exists(pip_path):
+                        os.environ["SSL_CERT_FILE"] = pip_path
+                        os.environ["REQUESTS_CA_BUNDLE"] = pip_path
+            except (ImportError, AttributeError, OSError) as fallback_exc:
+                logger.debug("Pip certifi fallback resolution skipped: %s", fallback_exc)
+    except (ImportError, AttributeError, OSError) as cert_exc:
+        logger.debug("TLS CA certificate bundle check notice: %s", cert_exc)
+
+    try:
         import kagglehub.clients
         kagglehub.clients.already_printed_version_warning = True
     except Exception as exc:
@@ -233,7 +255,8 @@ def get_dataset_version_info(repo_id: str) -> DatasetVersionInfo:
                 "latest_version": max_v,
                 "versions": versions_dict,
             }
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed retrieving dataset version info for %s: %s", repo_id, exc)
         return {
             "current_version": 0,
             "latest_version": 0,
@@ -471,8 +494,8 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
                     return _orig_tqdm(*args, **kwargs)
 
                 setattr(gcs_mod, "tqdm", _safe_tqdm)
-        except Exception:
-            pass
+        except (ImportError, AttributeError) as patch_exc:
+            logger.debug("Tqdm patch notice: %s", patch_exc)
         kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
         upload_success = True
     except Exception as e:
