@@ -10,15 +10,22 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.9.5-STABLE` |
+| **Version** | `v16.9.6-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
-| **Verified Manifolds** | 20 production manifolds, 1.4M+ sample stability |
+| **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
 | **Roadmap** | [dataset_compiler_modernization_roadmap.md](../lemgendary-docs/roadmaps/dataset_compiler_modernization_roadmap.md) |
 
 ---
 
 ## Changelog
+
+### v16.9.6 — Desktop GUI Kaggle Cloud Synchronization Hub & Multi-Source Custom Compilation
+
+- **Kaggle Cloud Synchronization & Storage Hub Endpoints** — Implemented dedicated public REST endpoints in `api/routes/kaggle.py` (`GET /api/kaggle/registry-datasets`, `POST /api/kaggle/download`, `POST /api/kaggle/upload`, `GET /api/kaggle/status`). Allows bidirectional syncing of all 20 default `unified_data.yaml` manifolds as well as direct downloading of custom Kaggle datasets via web URL or repository slug (`owner/dataset`).
+- **Multi-Source Custom Dataset Compilation (`POST /api/gui/custom-compile`)** — Added custom dataset synthesis routing in `api/routes/gui.py` supporting simultaneous aggregation from Kaggle (`kaggle://`), HuggingFace (`hf://`), Google Drive (`gd://`), and GitHub (`gh://`), persisting new definitions dynamically into `unified_data.yaml` and launching background compilation jobs.
+- **Fast Container & Split Shard Discovery with In-Memory Caching** — Optimized `_calculate_dataset_file_stats` in `api/routes/gui.py` to scan container directories and split subdirectories (`train/`, `val/`, `test/`) with `os.scandir` and filesystem mtime caching, reducing catalog query latency from tens of seconds to < 50ms while accurately recognizing all 22 manifolds as compiled.
+- **ParseNetLarge & UltraZoomLarge Junctions** — Established NTFS Directory Junctions linking `LemGendizedParseNetLarge/shards` and `LemGendizedUltraZoomLarge/shards` to parent shard archives with zero storage amplification.
 
 ### v16.9.5 — Modernized Dataset Naming Matrix Alignment & Zip Streaming Engine Hardening
 

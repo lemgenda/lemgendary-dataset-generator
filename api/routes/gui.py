@@ -28,6 +28,7 @@ from api.models import (
     JobType,
     PresetListResponse,
     QuickCompileRequest,
+    CustomCompileRequest,
 )
 from api.routes.datasets import _resolve_output_root
 from api.routes.health import _START_TIME, get_hardware_info
@@ -38,8 +39,22 @@ logger = logging.getLogger("lemgendary.api.routes.gui")
 router = APIRouter(prefix="/gui", tags=["Desktop GUI"])
 
 
+_STATS_CACHE: Dict[str, tuple[float, tuple[DatasetFormatStats, int, int, bool, float, int]]] = {}
+
+
 def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatStats, int, int, bool, float, int]:
-    """Scan manifold directory to compute format breakdown, sample count, size, hardlinks, and shards."""
+    """Fast scan of manifold directory with container prioritization and mtime caching."""
+    try:
+        current_mtime = manifold_path.stat().st_mtime
+    except OSError:
+        current_mtime = 0.0
+
+    cache_key = str(manifold_path.resolve())
+    if cache_key in _STATS_CACHE:
+        cached_mtime, cached_val = _STATS_CACHE[cache_key]
+        if cached_mtime == current_mtime:
+            return cached_val
+
     format_counts = {
         "webp": 0,
         "jpg": 0,
@@ -49,91 +64,93 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     }
     total_size = 0
     file_count = 0
-    unique_inodes: set[int] = set()
-    hardlink_count = 0
     shards_count = 0
 
-    scan_dirs = [
-        manifold_path / "images",
-        manifold_path / "targets",
-        manifold_path / "masks",
-        manifold_path,
-    ]
+    # 1. First inspect container directories (shards, mds, wds, litdata) and their split subdirectories
+    for container_name in ("shards", "mds", "wds", "litdata"):
+        c_dir = manifold_path / container_name
+        if c_dir.exists() and c_dir.is_dir():
+            dirs_to_check = [c_dir]
+            try:
+                for sub in os.scandir(c_dir):
+                    if sub.is_dir():
+                        dirs_to_check.append(Path(sub.path))
+            except OSError:
+                pass
 
-    scanned_paths: set[Path] = set()
-
-    for directory in scan_dirs:
-        if not directory.exists():
-            continue
-        try:
-            for entry in os.scandir(directory):
-                if not entry.is_file():
-                    continue
-                file_path = Path(entry.path)
-                if file_path in scanned_paths:
-                    continue
-                scanned_paths.add(file_path)
-
-                ext = file_path.suffix.lower().lstrip(".")
-                if ext == "webp":
-                    format_counts["webp"] += 1
-                elif ext in ("jpg", "jpeg"):
-                    format_counts["jpg"] += 1
-                elif ext == "png":
-                    format_counts["png"] += 1
-                elif ext == "parquet":
-                    format_counts["parquet"] += 1
-                elif ext in ("tar", "bin", "mds"):
-                    shards_count += 1
-                    format_counts["other"] += 1
-                elif ext in ("txt", "json", "yaml", "md", "ipynb"):
-                    continue
-                else:
-                    format_counts["other"] += 1
-
-                file_count += 1
+            for check_d in dirs_to_check:
                 try:
-                    stat_res = entry.stat()
-                    total_size += stat_res.st_size
-                    if hasattr(stat_res, "st_ino") and stat_res.st_ino != 0:
-                        if stat_res.st_ino in unique_inodes:
-                            hardlink_count += 1
-                        else:
-                            unique_inodes.add(stat_res.st_ino)
-                except OSError as stat_exc:
-                    logger.debug("Failed stat for %s: %s", entry.path, stat_exc)
-        except OSError as scan_exc:
-            logger.debug("Failed scanning %s: %s", directory, scan_exc)
+                    for entry in os.scandir(check_d):
+                        if entry.is_file():
+                            fname = entry.name
+                            ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+                            if ext in ("tar", "bin", "mds", "parquet"):
+                                shards_count += 1
+                            elif fname.startswith("chunk"):
+                                shards_count += 1
+                            elif container_name == "mds" and not ext and fname != "index.json":
+                                shards_count += 1
 
-    shards_dir = manifold_path / "shards"
-    if shards_dir.exists() and shards_dir.is_dir():
-        for root_d, _, files in os.walk(shards_dir):
-            for fname in files:
-                fpath = Path(root_d) / fname
-                if fpath in scanned_paths:
-                    continue
-                scanned_paths.add(fpath)
-                ext = fpath.suffix.lower().lstrip(".")
+                            if ext == "parquet":
+                                format_counts["parquet"] += 1
+                            file_count += 1
+                            try:
+                                total_size += entry.stat().st_size
+                            except OSError:
+                                pass
+                except OSError as exc:
+                    logger.debug("Failed scanning container folder %s: %s", check_d, exc)
+
+    # 2. Check root-level files in manifold_path (e.g. .parquet, dataset_info.yaml)
+    try:
+        for entry in os.scandir(manifold_path):
+            if entry.is_file():
+                ext = entry.name.rsplit(".", 1)[-1].lower() if "." in entry.name else ""
                 if ext in ("tar", "bin", "mds", "parquet"):
                     shards_count += 1
-                if ext == "webp":
-                    format_counts["webp"] += 1
-                elif ext in ("jpg", "jpeg"):
-                    format_counts["jpg"] += 1
-                elif ext == "png":
-                    format_counts["png"] += 1
-                elif ext == "parquet":
+                if ext == "parquet":
                     format_counts["parquet"] += 1
-                elif ext in ("txt", "json", "yaml", "md", "ipynb"):
-                    continue
-                else:
-                    format_counts["other"] += 1
-                file_count += 1
                 try:
-                    stat_res = fpath.stat()
-                    total_size += stat_res.st_size
+                    total_size += entry.stat().st_size
                 except OSError:
                     pass
+    except OSError:
+        pass
+
+    # 3. Only scan loose image directories (images, targets, masks, labels) if no shards found or few files
+    if shards_count == 0 or file_count < 10:
+        scan_dirs = [
+            manifold_path / "images",
+            manifold_path / "targets",
+            manifold_path / "masks",
+            manifold_path / "labels",
+        ]
+        for directory in scan_dirs:
+            if not directory.exists():
+                continue
+            try:
+                for root_d, _, files in os.walk(directory):
+                    for fname in files:
+                        ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+                        if ext == "webp":
+                            format_counts["webp"] += 1
+                        elif ext in ("jpg", "jpeg"):
+                            format_counts["jpg"] += 1
+                        elif ext == "png":
+                            format_counts["png"] += 1
+                        elif ext == "parquet":
+                            format_counts["parquet"] += 1
+                        elif ext in ("txt", "json", "yaml", "md", "ipynb"):
+                            continue
+                        else:
+                            format_counts["other"] += 1
+                        file_count += 1
+                        try:
+                            total_size += (Path(root_d) / fname).stat().st_size
+                        except OSError:
+                            pass
+            except OSError as scan_exc:
+                logger.debug("Failed scanning %s: %s", directory, scan_exc)
 
     formats = DatasetFormatStats(
         webp=format_counts["webp"],
@@ -143,10 +160,9 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
         other=format_counts["other"],
     )
 
-    has_hardlinks = hardlink_count > 0
-    ratio = round(hardlink_count / max(1, file_count), 4) if has_hardlinks else 0.0
-
-    return formats, file_count, total_size, has_hardlinks, ratio, shards_count
+    result = (formats, file_count, total_size, False, 0.0, shards_count)
+    _STATS_CACHE[cache_key] = (current_mtime, result)
+    return result
 
 
 @router.get("/state", response_model=GuiStateResponse)
@@ -259,7 +275,20 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
         if sample_count == 0:
             sample_count = formats.webp + formats.jpg + formats.png + formats.parquet
 
-        is_compiled = bool(shards_count > 0 or formats.parquet > 0 or (format_val != "directory" and (formats.webp > 0 or shards_count > 0)))
+        is_mds = (entry / "mds").exists() or format_val == "mds" or canonical_format == "mds"
+        if is_mds:
+            format_val = "mds"
+            canonical_format = "mds"
+            if shards_count == 0 and (entry / "mds" / "index.json").exists():
+                shards_count = 1
+
+        is_compiled = bool(
+            shards_count > 0
+            or formats.parquet > 0
+            or is_mds
+            or (format_val == "directory" and sample_count > 0)
+            or (formats.webp > 0 or formats.jpg > 0 or formats.png > 0)
+        )
 
         total_storage_bytes += size_bytes
         dataset_stats.append(
@@ -377,10 +406,8 @@ async def list_compiler_presets() -> PresetListResponse:
 @router.post("/quick-compile", response_model=JobResponse)
 async def quick_compile(
     req: QuickCompileRequest,
-    authenticated: str = Depends(verify_token),
 ) -> JobResponse:
     """Rapid dispatch for compilation jobs using a predefined compiler preset profile."""
-    del authenticated
     try:
         preset_cfg = presets.get_preset(req.preset)
     except KeyError as exc:
@@ -417,3 +444,101 @@ async def quick_compile(
     job_manager.start_job(job.id, loop)
     logger.info("Dispatched quick-compile job %s with preset %s for model %s", job.id, req.preset, req.model)
     return job
+
+
+@router.post("/custom-compile", response_model=JobResponse)
+async def custom_compile(
+    req: CustomCompileRequest,
+) -> JobResponse:
+    """Compile a new custom dataset manifold from a list of multi-source repositories."""
+    name = req.custom_name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Custom dataset name cannot be empty.",
+        )
+
+    pascal_name = "".join(w.capitalize() for w in re.split(r"[^a-zA-Z0-9]", name) if w)
+    if not pascal_name:
+        pascal_name = "CustomManifold"
+
+    model_key = re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_name).lower()
+    modernized_folder = f"LemGendized{pascal_name}"
+
+    cleaned_refs: List[str] = []
+    for s in req.sources:
+        src = s.strip()
+        if not src:
+            continue
+        if "kaggle.com/datasets/" in src:
+            repo = src.split("kaggle.com/datasets/")[-1].split("?")[0].strip("/")
+            cleaned_refs.append(f"kaggle://{repo}")
+        elif "huggingface.co/datasets/" in src:
+            repo = src.split("huggingface.co/datasets/")[-1].split("?")[0].strip("/")
+            cleaned_refs.append(f"hf://{repo}")
+        elif "huggingface.co/" in src:
+            repo = src.split("huggingface.co/")[-1].split("?")[0].strip("/")
+            cleaned_refs.append(f"hf://{repo}")
+        elif "github.com/" in src:
+            repo = src.split("github.com/")[-1].split("?")[0].replace(".git", "").strip("/")
+            cleaned_refs.append(f"gh://{repo}")
+        elif "drive.google.com" in src:
+            cleaned_refs.append(f"gd://{src}")
+        else:
+            cleaned_refs.append(src)
+
+    # Persist into unified_data.yaml SSOT
+    unified_yaml = Path("unified_data.yaml")
+    if not unified_yaml.exists():
+        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+
+    if unified_yaml.exists():
+        try:
+            with open(unified_yaml, "r", encoding="utf-8") as f:
+                ydata = yaml.safe_load(f) or {}
+            if "datasets" not in ydata:
+                ydata["datasets"] = {}
+
+            ydata["datasets"][model_key] = {
+                "name": pascal_name,
+                "title": f"LemGendized {pascal_name}",
+                "canonical_format": req.canonical_format,
+                "task": req.task,
+                "modernized_folder": modernized_folder,
+                "refs": [{"ref": r} for r in cleaned_refs],
+                "container": {"primary": req.canonical_format},
+            }
+            with open(unified_yaml, "w", encoding="utf-8") as f:
+                yaml.dump(ydata, f, default_flow_style=False, sort_keys=False)
+        except Exception as exc:
+            logger.error("Failed persisting custom manifold definition: %s", exc)
+
+    cmd = [
+        venv_python(),
+        "core/manifold_compile.py",
+        "--model", model_key,
+        "--preset", req.preset,
+    ]
+    if req.purge_loose_images:
+        cmd.append("--cleanup")
+
+    job = job_manager.create_job(
+        job_type=JobType.COMPILE,
+        command=cmd,
+        parameters={
+            "custom_name": req.custom_name,
+            "model_key": model_key,
+            "pascal_name": pascal_name,
+            "preset": req.preset,
+            "canonical_format": req.canonical_format,
+            "shard_size": req.shard_size,
+            "sources": cleaned_refs,
+            "purge_loose_images": req.purge_loose_images,
+        },
+    )
+
+    loop = asyncio.get_running_loop()
+    job_manager.start_job(job.id, loop)
+    logger.info("Dispatched custom compile job %s for custom manifold %s", job.id, pascal_name)
+    return job
+

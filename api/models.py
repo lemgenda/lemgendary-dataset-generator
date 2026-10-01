@@ -227,3 +227,39 @@ class GuiStateResponse(BaseModel):
     hardware: HardwareInfo
     presets: List[str]
 
+
+class KaggleDatasetRegistryItem(BaseModel):
+    key: str
+    title: str
+    name: str
+    modernized_folder: str
+    kaggle_ref: str
+    clean_repo_id: str
+    is_local_present: bool = False
+    canonical_format: str = "webdataset"
+    sample_count: int = 0
+    size_gb: float = 0.0
+
+
+class KaggleDownloadRequest(BaseModel):
+    kaggle_ref: str = Field(..., description="Kaggle dataset handle, kaggle:// URI, or URL")
+    target_folder: Optional[str] = Field(None, description="Destination folder name under datasets root")
+    force: bool = Field(False, description="Force overwrite existing folder")
+
+
+class KaggleUploadRequest(BaseModel):
+    manifold: str = Field(..., description="Local manifold folder name or registry key")
+    kaggle_ref: Optional[str] = Field(None, description="Optional target Kaggle dataset handle")
+    no_wait: bool = Field(True, description="Do not wait for server-side extraction verification")
+
+
+class CustomCompileRequest(BaseModel):
+    custom_name: str = Field(..., description="Unique dataset manifold name (e.g. CustomFaceEnhance)")
+    task: str = Field("vision", description="Task type (restoration, segmentation, detection, quality, vision)")
+    preset: str = Field("streaming-webdataset", description="Compiler preset ID")
+    canonical_format: str = Field("webdataset", description="Target container format")
+    shard_size: int = Field(5000, description="Samples per shard container")
+    sources: List[str] = Field(default_factory=list, description="List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)")
+    purge_loose_images: bool = Field(True, description="Purge loose uncompressed images after compiling")
+
+

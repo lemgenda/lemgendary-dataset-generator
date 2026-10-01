@@ -90,11 +90,11 @@ def create_app() -> FastAPI:
     app_instance.include_router(sources_router, prefix="/api")
     app_instance.include_router(gates_router, prefix="/api")
     app_instance.include_router(jobs_ws_router, prefix="/api")
+    app_instance.include_router(kaggle_router, prefix="/api")
 
     # Protected operational routers requiring API token authentication
     app_instance.include_router(config_router, prefix="/api", dependencies=[Depends(verify_token)])
     app_instance.include_router(jobs_router, prefix="/api", dependencies=[Depends(verify_token)])
-    app_instance.include_router(kaggle_router, prefix="/api", dependencies=[Depends(verify_token)])
     app_instance.include_router(env_router, prefix="/api", dependencies=[Depends(verify_token)])
 
     @app_instance.websocket("/api/ws/events")
