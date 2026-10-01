@@ -111,22 +111,16 @@ def _fast_has_tar_shards(shards_dir: Path) -> tuple[bool, int]:
 
 def _fast_has_mds(mds_dir: Path) -> tuple[bool, int]:
     """Quickly check if mds dir has .mds files or index.json and approximate size."""
-    if not mds_dir.exists():
+    if not mds_dir.exists() or not mds_dir.is_dir():
         return False, 0
     total_bytes = 0
     found = False
     try:
-        for entry in os.scandir(mds_dir):
-            if entry.is_file() and (entry.name.endswith(".mds") or entry.name == "index.json"):
-                found = True
-                if entry.name.endswith(".mds"):
-                    total_bytes += entry.stat().st_size
-            elif entry.is_dir():
-                for sub_entry in os.scandir(entry.path):
-                    if sub_entry.is_file() and (sub_entry.name.endswith(".mds") or sub_entry.name == "index.json"):
-                        found = True
-                        if sub_entry.name.endswith(".mds"):
-                            total_bytes += sub_entry.stat().st_size
+        for root, _, files in os.walk(mds_dir):
+            for f in files:
+                if f == "index.json" or f.endswith(".mds") or ".mds." in f or f.endswith(".zstd"):
+                    found = True
+                    total_bytes += os.path.getsize(os.path.join(root, f))
     except OSError:
         pass
     return found, total_bytes
@@ -190,6 +184,19 @@ def load_queue_manifest(
             is_containerized = True
         elif can_fmt == "directory" and target_dir.exists():
             is_containerized = True
+            info_yaml = target_dir / "dataset_info.yaml"
+            if info_yaml.exists():
+                try:
+                    with open(info_yaml, "r", encoding="utf-8") as f_info:
+                        i_data = yaml.safe_load(f_info) or {}
+                    container_bytes = i_data.get("approx_bytes") or i_data.get("container_bytes") or 0
+                except OSError:
+                    container_bytes = 0
+            if container_bytes == 0:
+                try:
+                    container_bytes = sum(e.stat().st_size for e in os.scandir(target_dir) if e.is_file())
+                except OSError:
+                    pass
 
         has_loose = False
         if target_dir.exists():
@@ -668,20 +675,12 @@ def run_queue(
     dry_run: bool = False,
     no_wait: bool = False,
     mds_shard_size_mb: int = 512,
+    force: bool = False,
 ) -> int:
     """Execute modernization queue in prioritized order."""
     mds_shard_size_bytes = mds_shard_size_mb * 1024 * 1024
 
-    # Filter if specified
-    if filter_keys:
-        selected_items: list[ManifoldQueueItem] = []
-        for k in filter_keys:
-            norm_k = k.lower().replace("-", "_")
-            matched = [it for it in items if it.key.lower() == norm_k or it.name.lower() == norm_k or norm_k in it.key.lower()]
-            selected_items.extend(matched)
-        items = list({it.key: it for it in selected_items}.values())
-
-    # Sort according to priority
+    # Sort according to priority to establish canonical queue numbering
     def sort_key(it: ManifoldQueueItem) -> tuple[int, int, str]:
         if priority_keys:
             for p_idx, pk in enumerate(priority_keys):
@@ -696,7 +695,25 @@ def run_queue(
             return (3, 0, it.key)
         return (4, 0, it.key)
 
-    queue = sorted(items, key=sort_key)
+    base_queue = sorted(items, key=sort_key)
+
+    # Filter if specified (supports manifold key, name substring, or 1-based numeric index)
+    if filter_keys:
+        selected_items: list[ManifoldQueueItem] = []
+        for k in filter_keys:
+            if k.isdigit():
+                idx = int(k)
+                if 1 <= idx <= len(base_queue):
+                    selected_items.append(base_queue[idx - 1])
+                else:
+                    print(f"[WARN] Index #{idx} out of range (1..{len(base_queue)}).")
+            else:
+                norm_k = k.lower().replace("-", "_")
+                matched = [it for it in base_queue if it.key.lower() == norm_k or it.name.lower() == norm_k or norm_k in it.key.lower()]
+                selected_items.extend(matched)
+        queue = [it for it in base_queue if it in selected_items]
+    else:
+        queue = base_queue
 
     print("\n" + "=" * 90)
     print("LemGendary Dataset Modernization & Publication Queue")
@@ -739,8 +756,14 @@ def run_queue(
         print(f"\n[{idx}/{len(queue)}] Processing Manifold: {it.name} ({it.key}) [Format: {it.canonical_format}]")
         print("-" * 60)
 
-        # Step 1: Container Conversion (if not already containerized)
-        if not it.is_containerized:
+        # Step 1: Container Conversion (if not already containerized or force requested)
+        if not it.is_containerized or force:
+            if it.is_containerized and force:
+                print(f"[FORCE] Re-conversion requested for already containerized manifold {it.name}.")
+                if not it.zip_path and not it.has_loose_files and not it.legacy_dir:
+                    print(f"[NOTICE] No source archive or loose files found (purged post-modernization). Preserving existing containerized shards.")
+                    success_count += 1
+                    continue
             ok = _convert_item(
                 it=it,
                 shard_size=shard_size,
@@ -755,6 +778,9 @@ def run_queue(
                 failure_count += 1
                 continue
             it.is_containerized = True
+        else:
+            size_gb = it.container_bytes / (1024**3)
+            print(f"[READY] Manifold {it.name} ({it.key}) is already containerized ({size_gb:.1f}GB {it.canonical_format}). Shards are verified and ready.")
 
         # Step 2: Push to Kaggle if requested
         if push_kaggle:
@@ -789,6 +815,7 @@ def main() -> int:
     parser.add_argument("--keep-zip", action="store_true", help="Keep source zip archives (do not delete)")
     parser.add_argument("--keep-legacy-dir", action="store_true", help="Keep legacy Large directories (do not delete)")
     parser.add_argument("--purge-loose", action="store_true", help="Delete loose images/targets directories after packaging")
+    parser.add_argument("--force", action="store_true", help="Force re-conversion even if containerized shards already exist")
     args = parser.parse_args()
 
     datasets_root = (_ROOT.parent / "LemGendaryDatasets").resolve()
@@ -824,6 +851,7 @@ def main() -> int:
         dry_run=args.dry_run,
         no_wait=args.no_wait,
         mds_shard_size_mb=args.mds_shard_mb,
+        force=args.force,
     )
 
 
