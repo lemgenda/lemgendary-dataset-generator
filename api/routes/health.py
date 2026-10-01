@@ -37,6 +37,7 @@ def get_hardware_info() -> HardwareInfo:
 
 
 @router.get("", response_model=HealthResponse)
+@router.head("")
 async def check_health() -> HealthResponse:
     """Basic health and liveness endpoint."""
     uptime = round(time.time() - _START_TIME, 2)
