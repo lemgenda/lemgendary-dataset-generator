@@ -11,6 +11,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_PROJ_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJ_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJ_ROOT))
+
 from tools.notebooks import (
     generate_colab_inference_notebook,
     generate_colab_training_notebook as _raw_gen_colab_training,
