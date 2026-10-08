@@ -900,6 +900,8 @@ while ($true) {
             Write-Host "`n--- KAGGLE MANIFOLDS SYNC ---" -ForegroundColor Cyan
             Write-Host "1. [SYNC] Sync to Kaggle (Push compiled manifold to Kaggle)" -ForegroundColor Gray
             Write-Host "2. [GET]  Get from Kaggle (Download precompiled LemGendized set from Kaggle)" -ForegroundColor Gray
+            Write-Host "3. [META] Update Kaggle Metadata Only (single dataset - no re-upload)" -ForegroundColor Gray
+            Write-Host "A. [ALL]  Update ALL Datasets Metadata from unified_data.yaml" -ForegroundColor Gray
             Write-Host "B. [BACK] Return to Dashboard" -ForegroundColor Gray
             $SyncChoice = Read-Host "Selection"
 
@@ -1079,8 +1081,82 @@ while ($true) {
             elseif ($SyncChoice -match '^[bBqQ]') {
                 break
             }
+            elseif ($SyncChoice -eq '3') {
+                $RegData = Get-RegData
+                $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
+                $Prefix = $RegData._registry_metadata.name_prefix
+                $Suffix = $RegData._registry_metadata.name_suffix
+
+                Write-Host "`n--- SELECT MANIFOLD TO UPDATE METADATA ON KAGGLE ---" -ForegroundColor Cyan
+                for ($i=0; $i -lt $DatasetNames.Count; $i++) {
+                    $dsName = $DatasetNames[$i]
+                    $slug = $RegData.datasets.$dsName.name
+                    $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $slug -Suffix $Suffix
+                    $ManifoldName = Split-Path $ManifoldPath -Leaf
+                    $MetaFile = Join-Path $ManifoldPath 'dataset-metadata.json'
+                    $MetaStatus = if (Test-Path $MetaFile) { '[META OK]' } else { '[NO META]' }
+                    $Color = if (Test-Path $MetaFile) { 'Green' } else { 'Yellow' }
+                    Write-Host "$($i+1). $dsName $MetaStatus ($ManifoldName)" -ForegroundColor $Color
+                }
+
+                $MetaChoice = Read-Host "Select dataset number (or B to cancel)"
+                if ($MetaChoice -match '^[bBqQ]') { continue }
+                $MetaIdx = [int]$MetaChoice - 1
+                if ($MetaIdx -lt 0 -or $MetaIdx -ge $DatasetNames.Count) {
+                    Write-Host "Invalid selection." -ForegroundColor Red
+                    Start-Sleep -Seconds 1
+                    continue
+                }
+
+                $MetaDsName = $DatasetNames[$MetaIdx]
+                $MetaDsInfo = $RegData.datasets.$MetaDsName
+                $MetaSlug = $MetaDsInfo.name
+                $MetaManifold = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $MetaSlug -Suffix $Suffix
+                $MetaFile = Join-Path $MetaManifold 'dataset-metadata.json'
+
+                if (-not (Test-Path $MetaFile)) {
+                    Write-Host "[ERROR] No dataset-metadata.json found in $MetaManifold. Cannot update metadata without it." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                    continue
+                }
+
+                $KagHandle = $null
+                if ($MetaDsInfo.kaggle_ref) {
+                    $KagHandle = $MetaDsInfo.kaggle_ref.Replace("kaggle://", "").Trim()
+                }
+                if (-not $KagHandle) {
+                    $KagHandle = Read-Host "Enter Kaggle Dataset Handle (e.g. username/dataset-name)"
+                } else {
+                    $HandleInput = Read-Host "Target Kaggle Handle [Default: $KagHandle]"
+                    if ($HandleInput.Trim()) { $KagHandle = $HandleInput.Replace("kaggle://", "").Trim() }
+                }
+
+                Write-Host "`n[META] Updating Kaggle metadata for $KagHandle..." -ForegroundColor Cyan
+                Write-Host "  Manifold: $MetaManifold" -ForegroundColor Gray
+                Write-Host "  (No data re-upload - only title, description, license and column info)" -ForegroundColor DarkGray
+
+                & $Vpy $kagManagerPath --action metadata --repo_id $KagHandle --output_dir $MetaManifold
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[OK] [META] Kaggle metadata updated successfully for $KagHandle!" -ForegroundColor Green
+                } else {
+                    Write-Host "[FAILED] [META] Metadata update failed. Check output above for details." -ForegroundColor Red
+                }
+                Read-Host "Press Enter to return"
+            }
+            elseif ($SyncChoice -match '^[aA]$') {
+                Write-Host "`n[ALL META] Updating Kaggle metadata for ALL datasets in unified_data.yaml..." -ForegroundColor Cyan
+                Write-Host "  (No data re-upload - only title, description, license and column info for each dataset)" -ForegroundColor DarkGray
+
+                & $Vpy $kagManagerPath --action metadata --repo_id lemtreursi/placeholder --all-datasets --output_dir $Out
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[OK] [ALL META] Metadata updated for all configured datasets!" -ForegroundColor Green
+                } else {
+                    Write-Host "[WARN] [ALL META] Some datasets may have failed. Review output above." -ForegroundColor Yellow
+                }
+                Read-Host "Press Enter to return"
+            }
             else {
-                Write-Host "Invalid selection. Please choose 1, 2, or B." -ForegroundColor Red
+                Write-Host "Invalid selection. Please choose 1, 2, 3, A, or B." -ForegroundColor Red
                 Start-Sleep -Seconds 1
             }
         }

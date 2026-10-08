@@ -444,12 +444,97 @@ def _verify_or_create_staging_zip(
             raise RuntimeError(f"Archive creation failed for {src_path}")
 
 
+def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: str = "") -> bool:
+    """Create the Kaggle dataset with a README placeholder if it does not yet exist.
+
+    This prevents the 403 Forbidden error when calling UpdateDatasetMetadata on a
+    dataset that has never been created. A minimal public dataset containing only
+    README.md is pushed first, making the slug addressable before the actual upload.
+    """
+    version_info = get_dataset_version_info(clean_repo_id)
+    if version_info["latest_version"] > 0:
+        return True  # Dataset already exists
+
+    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
+    slug = clean_repo_id.split("/")[1] if "/" in clean_repo_id else clean_repo_id
+
+    print(f"[INIT] Dataset '{clean_repo_id}' not found on Kaggle. Creating empty public placeholder...")
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+
+        # Write placeholder README
+        readme = tmp_dir / "README.md"
+        placeholder_readme = readme_text or (
+            f"# {title}\n\n"
+            "This dataset is currently being compiled and will be populated shortly.\n\n"
+            "The full dataset will replace this placeholder upon upload completion."
+        )
+        readme.write_text(placeholder_readme, encoding="utf-8")
+
+        # Write dataset-metadata.json that dataset_create_new requires
+        safe_title = title[:50] if len(title) <= 50 else title[:50]
+        if len(safe_title) < 6:
+            safe_title = safe_title.ljust(6, " ")
+        meta = {
+            "id": f"{owner}/{slug}",
+            "title": safe_title,
+            "licenses": [{"name": "CC0-1.0"}],
+        }
+        (tmp_dir / "dataset-metadata.json").write_text(
+            json.dumps(meta, indent=2), encoding="utf-8"
+        )
+
+        try:
+            from kaggle.api.kaggle_api_extended import KaggleApi
+            api = KaggleApi()
+            api.authenticate()
+            resp = api.dataset_create_new(
+                folder=str(tmp_dir),
+                public=True,
+                quiet=False,
+                convert_to_csv=False,
+                dir_mode="skip",
+            )
+            if resp and getattr(resp, "status", None) == "error":
+                err_msg = getattr(resp, "error", str(resp))
+                if "already in use" in str(err_msg):
+                    print(f"[INIT] Dataset '{clean_repo_id}' already exists on Kaggle (concurrent creation). Proceeding.")
+                    return True
+                print(f"[ERROR] Failed to create Kaggle dataset '{clean_repo_id}': {err_msg}")
+                return False
+            print(f"[OK] [INIT] Kaggle dataset '{clean_repo_id}' created successfully. Ready for data upload.")
+            return True
+        except Exception as exc:
+            err_str = str(exc)
+            if "already in use" in err_str or "409" in err_str:
+                print(f"[INIT] Dataset '{clean_repo_id}' already exists on Kaggle. Proceeding.")
+                return True
+            print(f"[ERROR] Failed to create Kaggle dataset placeholder: {exc}")
+            return False
+
+
 def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = False) -> bool:
     """Stage, archive, upload, update metadata, and track a dataset upload to Kaggle."""
     src_path = Path(src_path).resolve()
     if not src_path.exists():
         print(f"[ERROR] Target directory does not exist: {src_path}")
         return False
+
+    # Read title from dataset-metadata.json for dataset creation
+    meta_src = src_path / "dataset-metadata.json"
+    dataset_title = src_path.name
+    if meta_src.exists():
+        try:
+            meta_content = json.loads(meta_src.read_text(encoding="utf-8"))
+            dataset_title = meta_content.get("title", src_path.name)
+        except Exception:
+            pass
+
+    # Ensure the Kaggle dataset exists before uploading (prevents 403 on metadata update)
+    if not ensure_kaggle_dataset_exists(clean_repo_id, title=dataset_title):
+        print(f"[WARN] Could not pre-create Kaggle dataset '{clean_repo_id}'. Upload may still succeed if dataset exists.")
 
     version_info = get_dataset_version_info(clean_repo_id)
     target_version: int = (version_info["latest_version"] or 0) + 1
@@ -544,6 +629,11 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
         return False
 
     meta = json.loads(meta_file.read_text(encoding="utf-8"))
+
+    # Ensure dataset exists on Kaggle before updating metadata; creates minimal README placeholder if missing to prevent 403 Forbidden
+    dataset_title = meta.get("title", slug)
+    if not ensure_kaggle_dataset_exists(clean_handle, title=dataset_title):
+        print(f"[WARN] Could not ensure Kaggle dataset placeholder exists for '{clean_handle}'. Attempting metadata update anyway...")
 
     from kaggle.api.kaggle_api_extended import KaggleApi
     from kagglesdk.datasets.types.dataset_api_service import ApiUpdateDatasetMetadataRequest

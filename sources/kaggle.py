@@ -37,6 +37,8 @@ from core.common_sync import (
     copy_tree_with_progress,
     perform_dataset_upload,
     perform_dataset_download,
+    push_kaggle_dataset_metadata,
+    ensure_kaggle_dataset_exists,
 )
 
 
@@ -80,7 +82,8 @@ def main():
     parser.add_argument("--repo_id", required=True, help="Kaggle dataset handle or URL")
     parser.add_argument("--output_dir", default="", help="Target local directory")
     parser.add_argument("--is_competition", action="store_true", help="Download from competition")
-    parser.add_argument("--action", default="download", choices=["download", "upload", "status"], help="Action to perform")
+    parser.add_argument("--action", default="download", choices=["download", "upload", "status", "metadata"], help="Action to perform")
+    parser.add_argument("--all-datasets", action="store_true", help="Update metadata for all datasets in unified_data.yaml (metadata action only)")
     parser.add_argument("--no-wait", action="store_true", help="Skip monitoring server-side extraction after upload")
     args = parser.parse_args()
 
@@ -120,6 +123,50 @@ def main():
         success = track_kaggle_dataset_status(clean_repo_id)
         if not success:
             sys.exit(1)
+
+    elif args.action == "metadata":
+        import yaml
+        if args.all_datasets:
+            # Update metadata for all datasets defined in unified_data.yaml
+            yd_path = Path(__file__).parent.parent / "unified_data.yaml"
+            if not yd_path.exists():
+                print("[ERROR] unified_data.yaml not found.")
+                sys.exit(1)
+            with open(yd_path, "r", encoding="utf-8") as yf:
+                ydata = yaml.safe_load(yf) or {}
+            prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
+            suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
+            all_ok = True
+            for ds_key, ds_entry in ydata.get("datasets", {}).items():
+                ref = ds_entry.get("kaggle_ref", "").replace("kaggle://", "").strip()
+                if not ref:
+                    continue
+                mod_folder = ds_entry.get("modernized_folder") or f"{prefix}{ds_entry.get('name', '')}{suffix}"
+                # Try resolving metadata file from LemGendaryDatasets or output_dir arg
+                base_dir = Path(args.output_dir).resolve() if args.output_dir else Path("../LemGendaryDatasets").resolve()
+                meta_candidate = base_dir / mod_folder / "dataset-metadata.json"
+                if not meta_candidate.exists():
+                    print(f"[SKIP] No dataset-metadata.json found for {ds_key} at {meta_candidate}")
+                    continue
+                print(f"[META] Updating Kaggle metadata for {ref} ({ds_key})...")
+                ok = push_kaggle_dataset_metadata(ref, meta_candidate)
+                if ok:
+                    print(f"[OK] Metadata updated for {ref}")
+                else:
+                    print(f"[FAILED] Metadata update failed for {ref}")
+                    all_ok = False
+            if not all_ok:
+                sys.exit(1)
+        else:
+            # Update metadata for single dataset
+            if not args.output_dir:
+                parser.error("--output_dir (path to manifold directory with dataset-metadata.json) is required for metadata action.")
+            meta_path = Path(args.output_dir).resolve()
+            print(f"[META] Updating Kaggle metadata for {clean_repo_id}...")
+            success = push_kaggle_dataset_metadata(clean_repo_id, meta_path)
+            if not success:
+                sys.exit(1)
+            print(f"[OK] Metadata successfully updated for {clean_repo_id}")
 
 
 if __name__ == "__main__":

@@ -248,3 +248,90 @@ async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
     loop = asyncio.get_running_loop()
     job_manager.start_job(job.id, loop)
     return job
+
+
+class KaggleMetadataRequest(BaseModel):
+    manifold: Optional[str] = None
+    """Specific manifold folder/key to update. If omitted, all_datasets must be True."""
+    kaggle_ref: Optional[str] = None
+    """Explicit Kaggle handle (owner/slug). Auto-resolved from unified_data.yaml if omitted."""
+    all_datasets: bool = False
+    """If True, update metadata for every dataset in unified_data.yaml."""
+
+
+@router.post("/update-metadata", response_model=JobResponse)
+async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
+    """Push Kaggle dataset metadata (title, description, license, columns) without re-uploading data."""
+    root = _resolve_output_root()
+
+    if req.all_datasets:
+        cmd = [
+            venv_python(),
+            "sources/kaggle.py",
+            "--action", "metadata",
+            "--repo_id", "lemtreursi/placeholder",   # required arg, overridden by --all-datasets
+            "--all-datasets",
+            "--output_dir", str(root),
+        ]
+        job = job_manager.create_job(
+            job_type=JobType.SYNC,
+            command=cmd,
+            parameters={"action": "metadata", "all_datasets": True},
+        )
+        loop = asyncio.get_running_loop()
+        job_manager.start_job(job.id, loop)
+        return job
+
+    if not req.manifold:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="Either 'manifold' or 'all_datasets: true' must be provided.")
+
+    # Resolve manifold path
+    manifold_dir = root / req.manifold
+    if not manifold_dir.exists():
+        unified_yaml = Path("unified_data.yaml")
+        if not unified_yaml.exists():
+            unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+        if unified_yaml.exists():
+            with open(unified_yaml, "r", encoding="utf-8") as f:
+                ydata = yaml.safe_load(f) or {}
+                if req.manifold in ydata.get("datasets", {}):
+                    mod_f = ydata["datasets"][req.manifold].get("modernized_folder")
+                    if mod_f and (root / mod_f).exists():
+                        manifold_dir = root / mod_f
+
+    repo_id = req.kaggle_ref
+    if not repo_id:
+        unified_yaml = Path("unified_data.yaml")
+        if not unified_yaml.exists():
+            unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+        if unified_yaml.exists():
+            with open(unified_yaml, "r", encoding="utf-8") as f:
+                ydata = yaml.safe_load(f) or {}
+                for k, v in ydata.get("datasets", {}).items():
+                    if k == req.manifold or v.get("modernized_folder") == manifold_dir.name:
+                        repo_id = v.get("kaggle_ref")
+                        break
+
+    if not repo_id:
+        repo_id = f"lemtreursi/{manifold_dir.name.lower()}"
+
+    clean_id = _clean_kaggle_ref(repo_id)
+
+    cmd = [
+        venv_python(),
+        "sources/kaggle.py",
+        "--action", "metadata",
+        "--repo_id", clean_id,
+        "--output_dir", str(manifold_dir),
+    ]
+
+    job = job_manager.create_job(
+        job_type=JobType.SYNC,
+        command=cmd,
+        parameters={"action": "metadata", "repo_id": clean_id, "output_dir": str(manifold_dir)},
+    )
+    loop = asyncio.get_running_loop()
+    job_manager.start_job(job.id, loop)
+    return job
+
