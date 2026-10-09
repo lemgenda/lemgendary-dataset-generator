@@ -21,6 +21,7 @@ from api.models import (
     CompilerPresetModel,
     DatasetDetailStats,
     DatasetFormatStats,
+    DatasetSourceInfo,
     DatasetStatsListResponse,
     GuiStateResponse,
     JobResponse,
@@ -84,11 +85,13 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                         if entry.is_file():
                             fname = entry.name
                             ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-                            if ext in ("tar", "bin", "mds", "parquet"):
+                            if fname == "index.json":
+                                pass
+                            elif ext in ("tar", "bin", "mds", "parquet", "zstd"):
                                 shards_count += 1
-                            elif fname.startswith("chunk"):
+                            elif fname.startswith("chunk") or fname.startswith("shard"):
                                 shards_count += 1
-                            elif container_name == "mds" and not ext and fname != "index.json":
+                            elif container_name == "mds" and not ext:
                                 shards_count += 1
 
                             if ext == "parquet":
@@ -105,8 +108,9 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     try:
         for entry in os.scandir(manifold_path):
             if entry.is_file():
-                ext = entry.name.rsplit(".", 1)[-1].lower() if "." in entry.name else ""
-                if ext in ("tar", "bin", "mds", "parquet"):
+                fname = entry.name
+                ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+                if fname != "index.json" and (ext in ("tar", "bin", "mds", "parquet", "zstd") or fname.startswith("shard") or fname.startswith("chunk")):
                     shards_count += 1
                 if ext == "parquet":
                     format_counts["parquet"] += 1
@@ -117,7 +121,18 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     except OSError:
         pass
 
-    # 3. Only scan loose image directories (images, targets, masks, labels) if no shards found or few files
+    # 3. Check split directories for directory-based manifolds (e.g. YOLO images/train, images/val)
+    if shards_count == 0:
+        images_dir = manifold_path / "images"
+        if images_dir.exists() and images_dir.is_dir():
+            try:
+                split_dirs = [s for s in os.scandir(images_dir) if s.is_dir()]
+                if split_dirs:
+                    shards_count = len(split_dirs)
+            except OSError:
+                pass
+
+    # 4. Only scan loose image directories (images, targets, masks, labels) if no shards found or few files
     if shards_count == 0 or file_count < 10:
         scan_dirs = [
             manifold_path / "images",
@@ -290,6 +305,62 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             or (formats.webp > 0 or formats.jpg > 0 or formats.png > 0)
         )
 
+        # Build upstream sources with sample counts
+        sources: List[DatasetSourceInfo] = []
+        raw_sources: List[str] = []
+        if info_file.exists():
+            try:
+                with open(info_file, "r", encoding="utf-8") as f:
+                    meta = yaml.safe_load(f) or {}
+                    raw_sources = meta.get("original_sources") or []
+            except Exception:
+                pass
+
+        if not raw_sources:
+            raw_sources = reg_info.get("provenance_sources") or []
+
+        refs = reg_info.get("refs") or []
+        ref_lookup: Dict[str, str] = {}
+        for r_item in refs:
+            if isinstance(r_item, dict) and "ref" in r_item:
+                r_val = str(r_item["ref"])
+                r_name = r_val.split("/")[-1]
+                ref_lookup[r_name.lower()] = r_val
+                ref_lookup[r_val.lower()] = r_val
+
+        n_sources = max(len(raw_sources), 1)
+        base_count = sample_count // n_sources if sample_count > 0 else None
+
+        for s_idx, s_entry in enumerate(raw_sources):
+            s_name = str(s_entry).strip()
+            s_lower = s_name.lower()
+            s_type = "SOURCE"
+            if any(k in s_lower for k in ("kaggle", "ava", "coco", "div2k", "flickr", "voc")):
+                s_type = "KAGGLE"
+            elif any(k in s_lower for k in ("hf", "huggingface", "tad66k", "spaq")):
+                s_type = "HUGGINGFACE"
+            elif any(k in s_lower for k in ("sub-manifold", "manifold", "multi-task")):
+                s_type = "SUB-MANIFOLD"
+            elif any(k in s_lower for k in ("terminal", "forex", "mt5")):
+                s_type = "TERMINAL"
+
+            this_count = None
+            if sample_count > 0:
+                if s_idx == n_sources - 1:
+                    this_count = sample_count - (base_count * (n_sources - 1))
+                else:
+                    this_count = base_count
+
+            matched_ref = None
+            for k_ref, v_ref in ref_lookup.items():
+                if k_ref in s_lower or s_lower in k_ref:
+                    matched_ref = v_ref
+                    break
+
+            sources.append(DatasetSourceInfo(name=s_name, ref=matched_ref, count=this_count, type=s_type))
+
+        kaggle_ref = reg_info.get("kaggle_ref")
+
         total_storage_bytes += size_bytes
         dataset_stats.append(
             DatasetDetailStats(
@@ -308,6 +379,8 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 is_compiled=is_compiled,
                 has_hardlinks=has_hardlinks,
                 hardlink_ratio=ratio,
+                sources=sources,
+                kaggle_ref=kaggle_ref,
             )
         )
 

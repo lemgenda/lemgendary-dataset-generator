@@ -160,6 +160,10 @@ class JobManager:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
 
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
         try:
             with open(log_file, "w", encoding="utf-8", buffering=1) as lf:
                 proc = subprocess.Popen(
@@ -170,6 +174,7 @@ class JobManager:
                     bufsize=1,
                     env=env,
                     cwd=str(_PROJECT_ROOT),
+                    creationflags=creationflags,
                 )
                 with self._lock:
                     self.active_processes[job_id] = proc

@@ -102,7 +102,7 @@ models_metadata:
       sl_mae: 12.5
   nima_aesthetic_mobile:
     name: LemGendary NIMA Aesthetic Scorer (Mobile)
-    arch: MobileNetV2 (Global Composition)
+    arch: MobileNetV3-Small (Global Composition)
     loss: emd
     datasets:
       - LemGendizedNimaAesthetic
@@ -301,7 +301,7 @@ models_metadata:
       accuracy: 0.98
   retinaface:
     name: LemGendary RetinaFace Detection
-    arch: RetinaFace (MobileNetV1-0.25 FPN Backbone)
+    arch: RetinaFace (MobileNetV3-Small Backbone)
     loss: retinaface
     datasets:
       - LemGendizedRetinaFace

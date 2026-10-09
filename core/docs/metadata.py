@@ -143,7 +143,7 @@ TASK_ARCH_BASE: dict[str, str] = {
     "restoration": "Multi-Scale Progressive Restoration / Nonlinear Activation-Free Network",
     "quality": "Deep Convolutional Network / Vision Transformer with Earth Mover's Distance Optimization",
     "authenticity": "EfficientNetV2 Feature Extractor with Distribution Scoring Head",
-    "classification": "MobileNetV2 / EfficientNet Categorical Embedding Network",
+    "classification": "EfficientNetV2 Categorical Embedding Network",
     "parameter_prediction": "Deep Multi-Layer Perceptron / Convolutional Regressor",
     "diffusion": "Latent Diffusion Model with UNet / Transformer Backbone",
     "forex": "Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)",

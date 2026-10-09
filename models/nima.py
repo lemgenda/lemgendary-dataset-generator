@@ -5,9 +5,9 @@ from torchvision import models
 class NIMA_Model(nn.Module):
     """
     NIMA (Neural IMage Assessment) Model.
-    Uses MobileNetV2 features and predicts a 10-class distribution of quality scores.
+    Uses MobileNetV3-Small features and predicts a 10-class distribution of quality scores.
     """
-    def __init__(self, backbone="mobilenet_v2"):
+    def __init__(self, backbone="mobilenet_v3_small"):
         super(NIMA_Model, self).__init__()
         
         # 2026 SOTA Upgrade: Branching backbones for high-precision technical assessment
@@ -15,10 +15,12 @@ class NIMA_Model(nn.Module):
             # EfficientNetV2-S offers significantly higher spatial awareness for micro-defects
             self.features = models.efficientnet_v2_s(weights=models.EfficientNet_V2_S_Weights.IMAGENET1K_V1).features
             in_features = 1280
-        else:
-            # Traditional MobileNetV2 fallback
+        elif backbone == "mobilenet_v2":
             self.features = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1).features
             in_features = 1280
+        else:
+            self.features = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1).features
+            in_features = 576
 
         # Flatten and predict 10 classes (representing scores 1 through 10)
         self.classifier = nn.Sequential(

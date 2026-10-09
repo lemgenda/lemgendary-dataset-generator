@@ -144,6 +144,13 @@ class DatasetFormatStats(BaseModel):
     other: int = 0
 
 
+class DatasetSourceInfo(BaseModel):
+    name: str
+    ref: Optional[str] = None
+    count: Optional[int] = None
+    type: Optional[str] = "SOURCE"
+
+
 class DatasetDetailStats(BaseModel):
     name: str
     key: Optional[str] = None
@@ -160,6 +167,8 @@ class DatasetDetailStats(BaseModel):
     is_compiled: bool = False
     has_hardlinks: bool
     hardlink_ratio: float
+    sources: List[DatasetSourceInfo] = []
+    kaggle_ref: Optional[str] = None
 
 
 class DatasetStatsListResponse(BaseModel):
