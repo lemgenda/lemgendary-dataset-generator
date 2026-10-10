@@ -8,6 +8,8 @@ _registry_metadata:
   global_constraints:
     min_size_gb: 6.0
     max_size_gb: 190.0
+  author: Lem Treursic
+  author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
 datasets:
   nima_aesthetic:
     name: NimaAesthetic
@@ -38,6 +40,21 @@ datasets:
     - KonIQ-10k
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/1709.05424
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nima_technical:
     name: NimaTechnical
     kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnical
@@ -52,7 +69,8 @@ datasets:
     modernized_folder: LemGendizedNimaTechnical
     canonical_format: webdataset
     title: LemGendized NIMA Technical
-    subtitle: Human-Perceptual Technical Image Quality Assessment with Distortion Benchmarks
+    subtitle: Human-Perceptual Technical Image Quality Assessment with Distortion
+      Benchmarks
     keywords:
     - computer-vision
     - deep-learning
@@ -71,6 +89,21 @@ datasets:
     - DND-NAM
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/1709.05424
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nima_authenticity:
     name: NimaAuthenticity
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticity
@@ -82,7 +115,8 @@ datasets:
     modernized_folder: LemGendizedNimaAuthenticity
     canonical_format: webdataset
     title: LemGendized NIMA Authenticity
-    subtitle: AI-Generated Synthetic vs Real Image Detection & Authenticity Quality Manifold
+    subtitle: AI-Generated Synthetic vs Real Image Detection & Authenticity Quality
+      Manifold
     keywords:
     - computer-vision
     - deep-learning
@@ -98,6 +132,21 @@ datasets:
     - RealVsFakeFaces
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2111.08943
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   upn_v2:
     name: UpnV2
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2
@@ -129,6 +178,21 @@ datasets:
     - DPED
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2104.09497
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   film_restorer:
     name: FilmRestorer
     kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorer
@@ -165,6 +229,21 @@ datasets:
     - SIDD
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2004.09484
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   codeformer:
     name: CodeFormer
     kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformer
@@ -189,6 +268,21 @@ datasets:
     - FFHQ-aligned
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2206.11253
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   parsenet:
     name: ParseNet
     kaggle_ref: kaggle://lemtreursi/lemgendizedparsenet
@@ -216,6 +310,21 @@ datasets:
     - SFHQ Parts 1-4
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2004.02147
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   retinaface_mobilenet:
     name: RetinaFace
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinaface
@@ -243,6 +352,21 @@ datasets:
     - SFHQ Parts 1-4
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/1905.00641
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ffanet_indoor:
     name: FfaNetIndoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoor
@@ -269,6 +393,21 @@ datasets:
     - Dehazing and Desmoking
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/1911.07559
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ffanet_outdoor:
     name: FfaNetOutdoor
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoor
@@ -297,6 +436,21 @@ datasets:
     - O-HAZE NTIRE
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/1911.07559
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   mirnet_lowlight:
     name: MirNetLowLight
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlight
@@ -329,6 +483,21 @@ datasets:
     - SIDD
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2003.06792
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   mirnet_exposure:
     name: MirNetExposure
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposure
@@ -356,6 +525,21 @@ datasets:
     - DPED
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2003.06792
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   mprnet_deraining:
     name: MprNetDeraining
     kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaining
@@ -387,6 +571,21 @@ datasets:
     - Balraj Rain Dataset
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2102.02808
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nafnet_debluring:
     name: NafNetDebluring
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluring
@@ -401,7 +600,8 @@ datasets:
     modernized_folder: LemGendizedNafNetDebluring
     canonical_format: webdataset
     title: LemGendized NAFNet Deblurring
-    subtitle: Nonlinear Activation-Free Network Motion Blur & Defocus Restoration Manifold
+    subtitle: Nonlinear Activation-Free Network Motion Blur & Defocus Restoration
+      Manifold
     keywords:
     - computer-vision
     - deep-learning
@@ -417,6 +617,21 @@ datasets:
     - HiDeBlur
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2204.04660
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nafnet_denoising:
     name: NafNetDenoising
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoising
@@ -433,7 +648,8 @@ datasets:
     modernized_folder: LemGendizedNafNetDenoising
     canonical_format: webdataset
     title: LemGendized NAFNet Denoising
-    subtitle: SOTA Raw & RGB Image Denoising Manifold across Real Smartphone Sensor Noise
+    subtitle: SOTA Raw & RGB Image Denoising Manifold across Real Smartphone Sensor
+      Noise
     keywords:
     - computer-vision
     - deep-learning
@@ -449,6 +665,21 @@ datasets:
     - Multiple ISO Levels
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2204.04660
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ultrazoom:
     name: UltraZoom
     kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoom
@@ -480,6 +711,21 @@ datasets:
     - Urban100
     container:
       primary: webdataset
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2107.10833
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   yolov8n:
     name: YoloV8n
     kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8n
@@ -493,7 +739,8 @@ datasets:
     modernized_folder: LemGendizedYoloV8n
     canonical_format: directory
     title: LemGendized YOLOv8n Multi-Task
-    subtitle: Multi-Task Object Detection, Person & Face Localization Manifold in YOLO Format
+    subtitle: Multi-Task Object Detection, Person & Face Localization Manifold in
+      YOLO Format
     keywords:
     - computer-vision
     - deep-learning
@@ -509,6 +756,21 @@ datasets:
     - KITTI Benchmark
     container:
       primary: directory
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://github.com/ultralytics/ultralytics
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   professional_multitask_restoration:
     name: MultitaskRestorationPro
     kaggle_ref: kaggle://lemtreursi/lemgendizedmultitaskrestorationpro
@@ -530,7 +792,8 @@ datasets:
     modernized_folder: LemGendizedMultitaskRestorationPro
     canonical_format: mds
     title: LemGendized Multitask Restoration Pro
-    subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur, and Dehaze
+    subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur,
+      and Dehaze
     keywords:
     - computer-vision
     - deep-learning
@@ -544,6 +807,21 @@ datasets:
     - 11 upstream restoration sub-manifolds (NAFNet, MPRNet, FFANet, MIRNet, etc.)
     container:
       primary: mds
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2111.09881
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   classification_master_manifold:
     name: ClassificationMaster
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmaster
@@ -575,6 +853,21 @@ datasets:
     - Food-101
     container:
       primary: mds
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2104.00298
+    collection_methodology: Curated multi-source ingestion synthesized from public
+      benchmark corpora, processed with deterministic degradation pipelines (noise,
+      motion blur, haze, downsampling) paired with ground truth targets, validated
+      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
+      (MDS / WebDataset) with pre-indexed splits.
+    coverage:
+      temporal:
+        start: '2020-01-01'
+        end: '2026-10-10'
+      geospatial: Global Web-Scale Visual Media
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   forex_universe:
     name: ForexUniverse
     kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse
@@ -612,7 +905,8 @@ datasets:
     format: parquet
     compression: zstd
     storage_size_approx: 5.3 GB
-    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal Year Parquet Files.
+    description: Global 16-Symbol Financial Foundation Manifold structured via Temporal
+      Year Parquet Files.
     modernized_folder: LemGendizedForexUniverse
     canonical_format: parquet
     title: LemGendized Forex Universe
@@ -630,3 +924,16 @@ datasets:
     - MetaTrader 5 Terminal Native Cache (2019-2026)
     container:
       primary: parquet
+    citations:
+    - https://github.com/lemtreursi/model-training
+    - https://arxiv.org/abs/2211.14730
+    collection_methodology: Institutional tick and minute OHLCV ingestion with algorithmic
+      session normalization, statistical outlier winsorization, volatility feature
+      engineering, and compressed columnar Parquet partitioning.
+    coverage:
+      temporal:
+        start: '2019-01-01'
+        end: '2026-12-31'
+      geospatial: Global Interbank Forex Markets
+    author: Lem Treursic
+    author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem

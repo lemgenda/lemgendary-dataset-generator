@@ -99,6 +99,114 @@ def write_classes_txt(output_root: Path, task_key: str) -> None:
             f.write(f"{class_name}\n")
 
 
+def _introspect_root_resources(
+    output_root: Path,
+    manifold_name: str,
+    task_key: str,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Introspect files and subdirectories directly in output_root and return Frictionless resource descriptors."""
+    resources: list[dict[str, Any]] = []
+    header_image: str | None = None
+    is_forex = (task_key == "forex")
+
+    if not output_root.exists() or not output_root.is_dir():
+        return resources, header_image
+
+    entries = sorted(
+        [
+            p
+            for p in output_root.iterdir()
+            if not p.name.startswith(".") and p.name != "dataset-metadata.json"
+        ],
+        key=lambda p: (not p.is_dir(), p.name.lower()),
+    )
+
+    for p in entries:
+        if p.is_file() and p.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+            header_image = p.name
+            break
+
+    seen_paths: set[str] = set()
+
+    for p in entries:
+        name = p.name
+        rel_path = name
+        is_dir = p.is_dir()
+
+        desc = ""
+        schema = None
+
+        if is_dir:
+            dir_name_lower = name.lower()
+            if dir_name_lower == "mds":
+                desc = "MosaicML Streaming (MDS) container directory with sharded indexed binary tensors for cloud multi-node streaming training."
+            elif dir_name_lower in ["shards", "webdataset"]:
+                desc = "Sharded WebDataset tar archive hierarchy containing paired image-tensor samples for high-throughput streaming."
+            elif dir_name_lower == "labels":
+                desc = "Pre-computed categorical class labels, bounding ground truths, and train/val split indices."
+            elif dir_name_lower in ["images", "imgs"]:
+                desc = "Partitioned visual imagery assets and target frames formatted for training."
+            else:
+                desc = f"Directory partition containing {name} assets."
+        else:
+            fn_lower = name.lower()
+            if fn_lower == "index.json":
+                desc = "Master sample inventory mapping cryptographic hashes to shard indices and class IDs."
+            elif fn_lower == "dataset_info.yaml":
+                desc = "Machine-readable YAML manifest detailing sample counts, sha256 checksums, and container topology."
+            elif fn_lower == "classes.txt":
+                desc = "Exhaustive newline-delimited class dictionary."
+            elif fn_lower == "category.txt":
+                desc = "Domain taxonomy descriptor defining the task archetype."
+            elif fn_lower == "readme.md":
+                desc = "Authoritative manifold documentation, lineage matrix, and SOTA metric targets."
+            elif fn_lower.endswith(".jpg") or fn_lower.endswith(".png"):
+                desc = "Canonical 564x284 architecture banner and visual sample preview."
+            elif "colab" in fn_lower and fn_lower.endswith(".ipynb"):
+                desc = "Standalone Google Colab GPU training notebook configured for accelerated cloud execution."
+            elif fn_lower.endswith(".ipynb"):
+                desc = "Standalone Kaggle GPU training notebook configured for accelerated cloud execution."
+            elif fn_lower.startswith("forexuniverse") and fn_lower.endswith(".parquet"):
+                shard_year = name.replace("ForexUniverse", "").replace(".parquet", "")
+                desc = f"Annual OHLCV and feature tensor shards with typed column schemas ({shard_year})."
+                schema = {"fields": FOREX_COLUMN_FIELDS}
+            elif fn_lower == "ai_helper_train.jsonl":
+                desc = "Fine-tuning prompt-completion instructions and domain training corpus."
+            elif fn_lower == "ai_helper_val.jsonl":
+                desc = "Evaluation validation prompt-completion instructions and benchmark test splits."
+            else:
+                desc = f"{name} data asset."
+
+        res_entry: dict[str, Any] = {
+            "path": rel_path,
+            "description": desc,
+        }
+        if schema:
+            res_entry["schema"] = schema
+
+        resources.append(res_entry)
+        seen_paths.add(rel_path)
+
+    if is_forex:
+        for y in range(2019, 2027):
+            pq_name = f"ForexUniverse{y}.parquet"
+            if pq_name not in seen_paths:
+                resources.append({
+                    "path": pq_name,
+                    "description": f"Annual OHLCV and feature tensor shards for year {y}",
+                    "schema": {"fields": FOREX_COLUMN_FIELDS},
+                })
+            prefixed = f"{manifold_name}/{pq_name}"
+            if prefixed not in seen_paths:
+                resources.append({
+                    "path": prefixed,
+                    "description": f"Annual OHLCV and feature tensor shards for year {y}",
+                    "schema": {"fields": FOREX_COLUMN_FIELDS},
+                })
+
+    return resources, header_image
+
+
 def write_kaggle_metadata(
     output_root: Path,
     manifold_name: str,
@@ -112,25 +220,8 @@ def write_kaggle_metadata(
         dataset_info = find_dataset_entry(manifold_name) or {}
 
     slug = manifold_name.lower().replace("_", "")
-    resources: list[dict[str, Any]] = []
-    is_forex = (task_key == "forex")
 
-    if is_forex:
-        for y in range(2019, 2027):
-            resources.append({
-                "path": f"{manifold_name}/ForexUniverse{y}.parquet",
-                "description": f"Annual OHLCV and feature tensor shards for year {y}",
-                "schema": {
-                    "fields": FOREX_COLUMN_FIELDS
-                },
-            })
-            resources.append({
-                "path": f"ForexUniverse{y}.parquet",
-                "description": f"Annual OHLCV and feature tensor shards for year {y}",
-                "schema": {
-                    "fields": FOREX_COLUMN_FIELDS
-                },
-            })
+    resources, header_image = _introspect_root_resources(output_root, manifold_name, task_key)
 
     subtitle = dataset_info.get("subtitle")
     if not subtitle:
@@ -155,6 +246,9 @@ def write_kaggle_metadata(
     is_private = bool(dataset_info.get("is_private", False))
     update_frequency = dataset_info.get("expected_update_frequency", "never")
 
+    author_name = dataset_info.get("author", "Lem Treursic")
+    author_bio = dataset_info.get("author_bio", "Lead AI Architect & Creator of the LemGendary AI Ecosystem")
+
     metadata_payload: dict[str, Any] = {
         "title": title,
         "id": f"lemtreursi/{slug}",
@@ -164,18 +258,40 @@ def write_kaggle_metadata(
         "licenses": [{"name": license_name}],
         "isPrivate": is_private,
         "expectedUpdateFrequency": update_frequency,
+        "author": author_name,
+        "authors": [
+            {
+                "name": author_name,
+                "bio": author_bio,
+                "role": "Author",
+            }
+        ],
         "resources": resources,
     }
 
-    author = dataset_info.get("author", "lemtreursi")
-    if author:
-        metadata_payload["author"] = author
+    if header_image:
+        metadata_payload["headerImage"] = header_image
+    elif dataset_info.get("header_image"):
+        metadata_payload["headerImage"] = dataset_info["header_image"]
 
     prov_sources = dataset_info.get("provenance_sources", [])
     if prov_sources:
         metadata_payload["provenanceSources"] = prov_sources
 
+    methodology = dataset_info.get("collection_methodology")
+    if methodology:
+        metadata_payload["collectionMethodology"] = methodology
+
+    citations = dataset_info.get("citations", [])
+    if citations:
+        metadata_payload["citations"] = citations
+
+    coverage = dataset_info.get("coverage", {})
+    if coverage:
+        metadata_payload["coverage"] = coverage
+
     with open(output_root / "dataset-metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata_payload, f, indent=2)
 
     return metadata_payload
+

@@ -684,14 +684,46 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     settings.is_private = meta.get("isPrivate", meta.get("is_private", False))
 
     sources_val = meta.get("userSpecifiedSources") or meta.get("user_specified_sources")
-    if not sources_val and meta.get("provenanceSources"):
-        prov = meta["provenanceSources"]
-        if isinstance(prov, list):
-            sources_val = ", ".join(str(p) for p in prov)
-        elif isinstance(prov, str):
-            sources_val = prov
+    if not sources_val:
+        sources_list: list[str] = []
+        if meta.get("provenanceSources"):
+            prov = meta["provenanceSources"]
+            if isinstance(prov, list):
+                sources_list.extend([str(p) for p in prov])
+            elif isinstance(prov, str):
+                sources_list.append(prov)
+        if meta.get("citations"):
+            cits = meta["citations"]
+            if isinstance(cits, list):
+                sources_list.extend([str(c) for c in cits])
+            elif isinstance(cits, str):
+                sources_list.append(cits)
+        if sources_list:
+            sources_val = ", ".join(sources_list)
     if sources_val:
         settings.user_specified_sources = str(sources_val)
+
+    # Attach header/cover image if present in metadata or folder
+    header_img_name = meta.get("headerImage") or meta.get("header_image")
+    meta_folder = meta_file.parent
+    if not header_img_name:
+        for f in meta_folder.iterdir():
+            if f.is_file() and f.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+                header_img_name = f.name
+                break
+
+    if header_img_name and (meta_folder / header_img_name).exists():
+        try:
+            cropped_upload = api._upload_dataset_image_file(
+                metadata_file_path=str(meta_folder),
+                relative_image_file_path=header_img_name,
+                quiet=True,
+            )
+            if cropped_upload:
+                settings.image = cropped_upload
+                print(f"[INFO] Uploaded header image {header_img_name} for {clean_handle}")
+        except Exception as img_err:
+            print(f"[WARN] Could not upload header image {header_img_name} for {clean_handle}: {img_err}")
 
     if meta.get("keywords"):
         raw_kws = [str(k) for k in meta["keywords"]]

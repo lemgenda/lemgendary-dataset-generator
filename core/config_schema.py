@@ -160,6 +160,10 @@ class DatasetEntry(BaseModel):
     category: str | None = None
     storage_size_approx: str | None = None
     description: str | None = None
+    citations: list[str] = Field(default_factory=list)
+    collection_methodology: str | None = None
+    coverage: dict[str, Any] | None = None
+    author_bio: str | None = None
 
 
 

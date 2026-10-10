@@ -96,9 +96,13 @@ def main():
                     print(f"\n[DRY-RUN] Would synchronize {manifold_dir.name} -> {target_repo_id}:")
                     print(f"  Title: {meta.get('title')}")
                     print(f"  Subtitle: {meta.get('subtitle')}")
+                    print(f"  Author: {meta.get('author')}")
+                    print(f"  Header Image: {meta.get('headerImage')}")
                     print(f"  License: {meta.get('licenses')}")
                     print(f"  Keywords: {meta.get('keywords')}")
-                    print(f"  Sources: {meta.get('provenanceSources')}")
+                    print(f"  Provenance Sources: {meta.get('provenanceSources')}")
+                    print(f"  Citations: {meta.get('citations')}")
+                    print(f"  Resources: {len(meta.get('resources', []))} items registered")
                     successes += 1
                     continue
 

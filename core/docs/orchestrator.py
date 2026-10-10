@@ -10,8 +10,13 @@ import argparse
 from datetime import datetime
 import json
 from pathlib import Path
+import sys
 from typing import Any
 import yaml
+
+_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_MODULE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_MODULE_ROOT))
 
 from core.docs.manifests import (
     write_category_txt,
@@ -528,3 +533,8 @@ def main() -> None:
         generate_dataset_docs(m_path, None, args.manifold)
     else:
         regenerate_all_docs()
+
+
+if __name__ == "__main__":
+    main()
+
