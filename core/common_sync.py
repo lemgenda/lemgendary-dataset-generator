@@ -604,8 +604,10 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
             print(f"[WARN] Kaggle metadata update notice: {meta_ex}")
 
     if not no_wait:
-        # Scale timeout dynamically: base 30m + 2m per 10k files (up to 4 hours for massive manifolds)
-        dynamic_timeout = max(1800, min(14400, 1800 + (file_count // 10000) * 120))
+        # Scale timeout dynamically: base 30m + 3m per GB + 2m per 10k files (up to 4 hours for massive manifolds)
+        size_timeout_sec = int(zip_size_gb * 180)
+        file_timeout_sec = (file_count // 10000) * 120
+        dynamic_timeout = max(1800, min(14400, 1800 + size_timeout_sec + file_timeout_sec))
         success = track_kaggle_dataset_status(
             clean_repo_id,
             target_version=target_version,
@@ -752,8 +754,12 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
             files_data.append(df)
     elif "resources" in meta and isinstance(meta["resources"], list):
         for r in meta["resources"]:
+            res_path = r.get("path", "")
+            # Skip directories or extensionless paths; Kaggle file settings only support individual files
+            if not res_path or (meta_folder / res_path).is_dir() or "." not in os.path.basename(res_path):
+                continue
             df = DatasetSettingsFile()
-            df.name = r.get("path", "")
+            df.name = res_path
             df.description = r.get("description", "")
             resource_cols: list[DatasetSettingsFileColumn | None] = []
             for fld in r.get("schema", {}).get("fields", []):

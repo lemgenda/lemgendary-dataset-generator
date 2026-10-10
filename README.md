@@ -20,6 +20,13 @@
 
 ## Changelog
 
+### v16.9.7 — Deduplication of Notebook Generation & SSOT Delegation
+
+- **Notebook Generator Deduplication & SSOT Centralization** — Completely removed redundant local notebook generator modules (`tools/notebook_generator.py` and `tools/notebooks/`), establishing `lemgendary-training-suite` as the authoritative Single Source of Truth across the ecosystem.
+- **Dynamic SSOT Integration (`core/manifold_compile.py`)** — Upgraded dataset compiler to dynamically resolve and import `generate_training_notebook` and `generate_colab_training_notebook` from sibling `lemgendary-training-suite`, eliminating duplicate code paths and keeping manifold notebooks 100% identical to training suite outputs.
+- **Manifold Purge of Stale Legacy Notebooks** — Purged obsolete legacy notebooks (`LemGendizedClassificationMaster/classification_master_manifold_training.ipynb`, `LemGendizedRetinaFace/retinaface_mobilenet_*`) and refreshed all 22 manifold directories with fresh, synchronized Kaggle and Colab notebooks.
+- **Updated CLI & Reduction Tooling (`tools/manifold_reduce.py`, `tools/__init__.py`)** — Updated dataset tools to delegate regeneration commands to `lemtrain notebooks generate --all`.
+
 ### v16.9.6 — Desktop GUI Kaggle Cloud Synchronization Hub & Multi-Source Custom Compilation
 
 - **Kaggle Cloud Synchronization & Storage Hub Endpoints** — Implemented dedicated public REST endpoints in `api/routes/kaggle.py` (`GET /api/kaggle/registry-datasets`, `POST /api/kaggle/download`, `POST /api/kaggle/upload`, `GET /api/kaggle/status`). Allows bidirectional syncing of all 20 default `unified_data.yaml` manifolds as well as direct downloading of custom Kaggle datasets via web URL or repository slug (`owner/dataset`).

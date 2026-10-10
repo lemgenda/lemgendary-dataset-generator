@@ -130,9 +130,11 @@ def build_structure_text(
         name = item.name
         if name.endswith("_colab_training.ipynb"):
             desc = "Auto-generated Google Colab notebook for cloud training."
+        elif name.endswith("_kaggle_training.ipynb"):
+            desc = "Auto-generated Kaggle notebook for cloud training."
         elif "_training" in name and name.endswith(".ipynb"):
             desc = "Auto-generated Jupyter notebook for model training."
-        elif name.endswith("_usage.ipynb"):
+        elif name.endswith("_usage.ipynb") or name.endswith("-usage.ipynb"):
             desc = "Auto-generated notebook demonstrating standalone model inference."
         elif is_forex and name.startswith("ForexUniverse"):
             if name.endswith(".parquet"):

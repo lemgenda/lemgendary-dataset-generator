@@ -17,7 +17,6 @@ from . import (
     modernize_manifold,
     mt5_bridge,
     mt5_pipeline,
-    notebook_generator,
     regenerate_manifolds_md,
     sync_kaggle_metadata,
 )
@@ -35,7 +34,6 @@ __all__ = [
     "modernize_manifold",
     "mt5_bridge",
     "mt5_pipeline",
-    "notebook_generator",
     "regenerate_manifolds_md",
     "sync_kaggle_metadata",
 ]

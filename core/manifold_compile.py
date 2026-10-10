@@ -64,6 +64,19 @@ ParquetAnnData = tuple[Path, dict[str, Any], list[str]]
 MatlabAnnData = tuple[dict[str, Any], str]
 
 
+def _get_training_suite_notebook_generators():
+    """Import notebook generator functions from lemgendary-training-suite (Single Source of Truth)."""
+    suite_dir = Path(__file__).resolve().parents[2] / "lemgendary-training-suite"
+    if suite_dir.exists() and str(suite_dir) not in sys.path:
+        sys.path.insert(0, str(suite_dir))
+    from training.notebooks import (
+        generate_training_notebook,
+        generate_colab_training_notebook,
+    )
+    return generate_training_notebook, generate_colab_training_notebook
+
+
+
 def _fast_scan(path, valid_exts):
     for entry in os.scandir(path):
         if entry.is_dir():
@@ -280,10 +293,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
                 raise e
 
             try:
-                from tools.notebook_generator import generate_training_notebook, generate_colab_training_notebook
+                gen_train_nb, gen_colab_nb = _get_training_suite_notebook_generators()
                 target_model = "forex_predictor" if model_key == "forex_universe" else model_key
-                generate_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_training.ipynb"))
-                generate_colab_training_notebook(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
+                gen_train_nb(pascal_name, target_model, str(output_root / f"{target_model}_kaggle_training.ipynb"))
+                gen_colab_nb(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
             except Exception as e:
                 print(f"[WARNING] Forex notebook generation skipped: {e}")
 
@@ -919,10 +932,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
                 print(f"[ERROR] Failed writing additional container format: {e}")
 
         try:
-            from tools.notebook_generator import (
-                generate_training_notebook as gen_nb,
-                generate_colab_training_notebook as gen_colab_nb,
-            )
+            gen_nb, gen_colab_nb = _get_training_suite_notebook_generators()
 
             resolved_model = model_key
             if not resolved_model:
@@ -936,7 +946,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
             gen_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_kaggle_training.ipynb")
             gen_colab_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_colab_training.ipynb")
         except Exception as e:
-            print(f"\\n[ERROR] Silent Failure Detected! Could not import notebook_generator: {e}\\n")
+            print(f"\\n[ERROR] Silent Failure Detected! Could not generate notebooks: {e}\\n")
 
         print(f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for {pascal_name}.")
         executor.shutdown(wait=True)

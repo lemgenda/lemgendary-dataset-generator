@@ -299,7 +299,7 @@ def reduce_dataset():
 
         remove_empty_dirs(target_root)
         generate_dataset_docs(target_root, new_index, target_name)
-        print("[INFO] Run `python notebook_generator.py --all` to regenerate notebooks for reduced datasets.")
+        print("[INFO] Run `lemtrain notebooks generate --all` to regenerate notebooks for reduced datasets.")
         print(f"\n[SUCCESS] Reduced manifold created at {target_root.name}")
 
 

@@ -937,3 +937,80 @@ datasets:
       geospatial: Global Interbank Forex Markets
     author: Lem Treursic
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
+  ai_helper_lemgend:
+    name: AIHelperLemGend
+    dataset_type: ai_helper
+    category: Technical Documentation & AI Assistant Training
+    modernized_folder: LemGendizedAIHelperLemGend
+    canonical_format: jsonl
+    title: AI LemGend — LemGendary AI Assistant Training Manifold
+    subtitle: Documentation-Grounded Assistant for Dataset Engineering, Model Training, and Troubleshooting
+    description: >
+      Supervised instruction corpus for AI LemGend, the user-facing assistant
+      for LemGendary AI. Teaches documentation-grounded technical question
+      answering, GUI/CLI/API guidance, dataset quality and compilation,
+      model selection, training diagnostics, evaluation, safe recovery,
+      terminology disambiguation, and uncertainty-aware responses.
+    keywords:
+    - deep-learning
+    - machine-learning
+    - natural-language-processing
+    - computer-science
+    - data-science
+    license: CC-BY-NC-4.0
+    expected_update_frequency: monthly
+    is_private: true
+    provenance_sources:
+    - LemGendary AI Documentation Hub
+    - General AI Training Knowledge Reference
+    - Ecosystem Architecture and Current State Manifest
+    - Master Operations Manuals (GUI, CLI, API)
+    - Dataset Compiler and Environment Manager Whitepapers
+    - Training Suite and Training Pathology Documentation
+    - Model-Family Architecture Whitepapers
+    - Canonical Glossary and AI Helper Troubleshooting Knowledge Base
+    - Curated AI LemGend instruction and validation examples
+    refs:
+    - ref: https://lemgenda.github.io/ai-training-whitepapers/index.html
+      tag: documentation_hub
+    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/general-ai-training-knowledge.html
+      tag: general_ai_knowledge
+    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/ai-helper-troubleshooting-knowledge.html
+      tag: ai_helper_troubleshooting
+    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/manuals-hub.html
+      tag: operations_manuals
+    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/dataset-compiler.html
+      tag: dataset_compiler
+    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/training-suite-master.html
+      tag: training_suite
+    container:
+      primary: jsonl
+    train_file: ai_helper_train.jsonl
+    val_file: ai_helper_val.jsonl
+    split_strategy: predefined
+    val_split: 0.0
+    collection_methodology: >
+      Curated supervised instruction examples derived from reviewed documentation
+      and general AI/ML engineering principles. Each example is designed around
+      a user task, diagnostic decision, terminology distinction, or documentation
+      authority rule. Records use one JSON object per line with messages in
+      system/user/assistant order. Keep source provenance in a companion audit
+      manifest if the active compiler schema does not permit additional fields.
+      Validate factual support, JSONL schema, duplicate and semantic leakage,
+      source-version compatibility, and held-out task performance before training.
+    validation_requirements:
+    - valid_jsonl
+    - trainer_schema_compatibility
+    - duplicate_detection
+    - semantic_train_validation_leakage_check
+    - source_grounding_review
+    - version_consistency_check
+    - held_out_task_evaluation
+    - unsupported_claim_rate
+    coverage:
+      temporal:
+        start: '2024-01-01'
+        end: '2026-10-10'
+      geospatial: Global Digital Documentation and AI Engineering
+    author: Lem Treursic
+    author_bio: Creator of LemGendary AI and the AI LemGend assistant
