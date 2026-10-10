@@ -10,7 +10,7 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.9.6-STABLE` |
+| **Version** | `v16.9.9-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,20 @@
 ---
 
 ## Changelog
+
+### v16.9.9 — Modernization Queue & API Endpoints Alignment, CLI Subcommands & Bulk Kaggle Metadata Push
+
+- **Modernization Queue REST Endpoints (`api/routes/modernize.py`)** — Implemented dedicated FastAPI routes registered under `/api/modernize`: `GET /api/modernize/queue` (scans on-disk manifolds for legacy formats and builds transcode queue), `POST /api/modernize/run` (dispatches multi-threaded WebP batch modernizations), `POST /api/modernize/reduce` (dispatches spatial downsampling derivation jobs), and `POST /api/modernize/regenerate-manifolds` (regenerates master `manifolds.json` and synchronized `dataset-metadata.json` across all manifolds).
+- **Bulk Kaggle Metadata Synchronization (`POST /api/kaggle/update-metadata`)** — Upgraded Kaggle route to support `all_datasets: true`, executing bulk schema and description updates across all 20 canonical Kaggle-bound production manifolds in a single call.
+- **CLI Modernization & Sync Commands (`cli.py`)** — Added dedicated Typer subcommands `python cli.py modernize queue`, `run`, `reduce`, `regen`, and `python cli.py sync metadata [--all]`.
+- **Desktop GUI Alignment** — Full integration with `lemgendary-ai-studio-gui` CompilerPanel subtabs (Modernization Queue, Scale Reduction, and top toolbar bulk actions).
+
+### v16.9.8 — AI Assistant Manifold Taxonomy Unification & JSONL Compilation Support
+
+- **Taxonomy Alignment & Deduplication** — Unified AI assistant training manifold under canonical SSOT `LemGendizedAIHelperLemGend` matching `unified_data.yaml` (`ai_helper_lemgend`). Completely removed obsolete orphan directory `LemGendizedAIHelperCorpus`, eliminating duplicate card collisions in the AI Studio GUI.
+- **Corpus Generator SSOT Output & Metadata Synchronization (`tools/corpus_generator.py`)** — Upgraded corpus generator to synthesize directly into `LemGendaryDatasets/LemGendizedAIHelperLemGend`, automatically populating synchronized `dataset_info.yaml`, `dataset-metadata.json`, `classes.txt`, and `category.txt` with verified sample counts and provenance documentation sources.
+- **JSONL Manifold Compilation & Discovery Support (`api/routes/gui.py`, `api/routes/datasets.py`)** — Upgraded sidecar dataset endpoints to recognize `jsonl` shards, accurately compute sample counts across JSONL lines, tag upstream documentation sources with the `DOCUMENTATION` badge archetype, and correctly mark JSONL manifolds as compiled.
+- **Manifolds Registry Documentation Synchronization (`tools/regenerate_manifolds_md.py`, `manifolds.md`)** — Updated master manifolds index and specifications table with accurate JSONL sample metrics and domain categorization for `LemGendizedAIHelperLemGend`.
 
 ### v16.9.7 — Deduplication of Notebook Generation & SSOT Delegation
 

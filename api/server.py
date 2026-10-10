@@ -24,6 +24,7 @@ from api.routes.gui import router as gui_router
 from api.routes.health import router as health_router
 from api.routes.jobs import router as jobs_router, ws_router as jobs_ws_router
 from api.routes.kaggle import router as kaggle_router
+from api.routes.modernize import router as modernize_router
 from api.routes.sources import router as sources_router
 from core.cli_args import __version__
 
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app_instance.include_router(gates_router, prefix="/api")
     app_instance.include_router(jobs_ws_router, prefix="/api")
     app_instance.include_router(kaggle_router, prefix="/api")
+    app_instance.include_router(modernize_router, prefix="/api")
 
     # Protected operational routers requiring API token authentication
     app_instance.include_router(config_router, prefix="/api", dependencies=[Depends(verify_token)])

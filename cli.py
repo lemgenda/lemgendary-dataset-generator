@@ -62,6 +62,7 @@ config_app = typer.Typer(help="Configuration inspection and validation.")
 format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
 presets_app = typer.Typer(help="Inspect and manage canonical compiler preset profiles.")
 forex_app = typer.Typer(help="Forex universe and Parquet conversion operations.")
+modernize_app = typer.Typer(help="Dataset modernization queue, transcode, and scale reduction.")
 
 
 def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
@@ -321,6 +322,26 @@ def sync_pull(
 ) -> None:
     """Pull a compiled manifold from Kaggle."""
     code = SyncService.pull(url=url)
+    raise typer.Exit(code=code)
+
+
+@sync_app.command("metadata")
+def sync_metadata(
+    model: str | None = typer.Option(None, "--model", "-m", help="Specific dataset or manifold key"),
+    all_datasets: bool = typer.Option(False, "--all", "-a", help="Update metadata for all registered datasets"),
+) -> None:
+    """Push Kaggle dataset metadata without re-uploading file archives."""
+    if not model and not all_datasets:
+        console.print("[red]Error: specify either --model <key> or --all[/red]")
+        raise typer.Exit(code=1)
+
+    cmd = [venv_python(), "sources/kaggle.py", "--action", "metadata"]
+    if all_datasets:
+        cmd.extend(["--repo_id", "lemtreursi/placeholder", "--all-datasets", "--output_dir", str(Path("..") / "LemGendaryDatasets")])
+    else:
+        cmd.extend(["--repo_id", f"lemtreursi/{model.lower()}", "--output_dir", str(Path("..") / "LemGendaryDatasets" / model)])
+
+    code = subprocess.call(cmd)
     raise typer.Exit(code=code)
 
 
@@ -826,6 +847,78 @@ def forex_embed() -> None:
 
 
 app.add_typer(forex_app, name="forex")
+
+
+# ─── modernize sub-app ──────────────────────────────────────────────────────
+@modernize_app.command("queue")
+def modernize_queue() -> None:
+    """Display modernization queue status and pending conversions."""
+    from tools.modernization_queue import load_queue_manifest, scan_queue
+    datasets_root = Path("..") / "LemGendaryDatasets"
+    registry_yaml = Path("unified_data.yaml")
+    items = load_queue_manifest(datasets_root.resolve(), registry_yaml.resolve())
+    queue_items = scan_queue(items)
+
+    table = Table(title="LemGendary Dataset Modernization Queue")
+    table.add_column("Dataset Key", style="cyan")
+    table.add_column("Folder", style="green")
+    table.add_column("Format", style="magenta")
+    table.add_column("Status", style="yellow")
+    table.add_column("Reason", style="dim")
+
+    for item in queue_items:
+        table.add_row(
+            item.dataset_key,
+            item.modernized_folder,
+            item.canonical_format,
+            item.status,
+            item.reason,
+        )
+    console.print(table)
+
+
+@modernize_app.command("run")
+def modernize_run(
+    dataset: str | None = typer.Option(None, "--dataset", "-d", help="Specific dataset key to modernize"),
+    workers: int | None = typer.Option(None, "--workers", "-w", help="Worker threads for WebP transcoding"),
+    push_kaggle: bool = typer.Option(False, "--push-kaggle", help="Push to Kaggle after conversion"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without executing conversions"),
+    force: bool = typer.Option(False, "--force", help="Force re-conversion"),
+) -> None:
+    """Run batch modernization queue conversion."""
+    cmd = [venv_python(), "tools/modernization_queue.py"]
+    if dataset:
+        cmd.extend(["--datasets", dataset])
+    if workers:
+        cmd.extend(["--workers", str(workers)])
+    if push_kaggle:
+        cmd.append("--push-kaggle")
+    if dry_run:
+        cmd.append("--dry-run")
+    if force:
+        cmd.append("--force")
+
+    code = subprocess.call(cmd)
+    raise typer.Exit(code=code)
+
+
+@modernize_app.command("reduce")
+def modernize_reduce() -> None:
+    """Launch interactive manifold downsampling and scale reduction."""
+    cmd = [venv_python(), "tools/manifold_reduce.py"]
+    code = subprocess.call(cmd)
+    raise typer.Exit(code=code)
+
+
+@modernize_app.command("regen")
+def modernize_regen() -> None:
+    """Regenerate manifolds.md registry index."""
+    cmd = [venv_python(), "tools/regenerate_manifolds_md.py"]
+    code = subprocess.call(cmd)
+    raise typer.Exit(code=code)
+
+
+app.add_typer(modernize_app, name="modernize")
 
 
 # ─── Entry point ────────────────────────────────────────────────────────────

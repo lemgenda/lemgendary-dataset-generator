@@ -57,6 +57,9 @@ async def list_datasets() -> DatasetListResponse:
             formats.append("litdata")
         if (entry / "wds").exists():
             formats.append("wds")
+        if any(entry.glob("*.jsonl")):
+            formats.append("jsonl")
+
 
         # Basic size approximation
         size_bytes = 0

@@ -110,10 +110,11 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
             if entry.is_file():
                 fname = entry.name
                 ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-                if fname != "index.json" and (ext in ("tar", "bin", "mds", "parquet", "zstd") or fname.startswith("shard") or fname.startswith("chunk")):
+                if fname != "index.json" and (ext in ("tar", "bin", "mds", "parquet", "zstd", "jsonl") or fname.startswith("shard") or fname.startswith("chunk")):
                     shards_count += 1
                 if ext == "parquet":
                     format_counts["parquet"] += 1
+
                 try:
                     total_size += entry.stat().st_size
                 except OSError:
@@ -287,8 +288,17 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
         formats, counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
+        has_jsonl = any(entry.glob("*.jsonl"))
         if sample_count == 0:
-            sample_count = formats.webp + formats.jpg + formats.png + formats.parquet
+            if has_jsonl:
+                for jf in entry.glob("*.jsonl"):
+                    try:
+                        with open(jf, "r", encoding="utf-8") as jf_in:
+                            sample_count += sum(1 for line in jf_in if line.strip())
+                    except OSError as exc:
+                        logger.debug("Failed counting lines in %s: %s", jf, exc)
+            else:
+                sample_count = formats.webp + formats.jpg + formats.png + formats.parquet
 
         is_mds = (entry / "mds").exists() or format_val == "mds" or canonical_format == "mds"
         if is_mds:
@@ -301,6 +311,7 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             shards_count > 0
             or formats.parquet > 0
             or is_mds
+            or has_jsonl
             or (format_val == "directory" and sample_count > 0)
             or (formats.webp > 0 or formats.jpg > 0 or formats.png > 0)
         )
@@ -343,6 +354,9 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 s_type = "SUB-MANIFOLD"
             elif any(k in s_lower for k in ("terminal", "forex", "mt5")):
                 s_type = "TERMINAL"
+            elif any(k in s_lower for k in ("documentation", "manual", "manifest", "whitepaper", "glossary", "guide")):
+                s_type = "DOCUMENTATION"
+
 
             this_count = None
             if sample_count > 0:

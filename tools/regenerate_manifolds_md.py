@@ -98,8 +98,22 @@ def _count_from_disk(manifold_path: Path) -> int:
         if total:
             return total
 
+    # JSONL manifolds: count valid lines in *.jsonl directly in folder
+    jsonl_files = list(manifold_path.glob("*.jsonl"))
+    if jsonl_files:
+        total = 0
+        for jf in jsonl_files:
+            try:
+                with open(jf, "r", encoding="utf-8") as f:
+                    total += sum(1 for line in f if line.strip())
+            except OSError as exc:
+                logger.debug("Could not read lines from %s: %s", jf, exc)
+        if total:
+            return total
+
     # Image manifolds: count files under images/ across all splits
     total = 0
+
     for split in ("train", "val", "test"):
         d = manifold_path / "images" / split
         if d.exists():
@@ -133,7 +147,10 @@ def _format_domain(task: str) -> str:
         return "Financial & Time-Series"
     if task in ("diffusion", "vlm"):
         return "Image Generation & Multimodal"
+    if task in ("ai_helper", "assistant", "nlp"):
+        return "Technical Documentation & AI Assistant"
     return "Image Manipulation & Restoration"
+
 
 
 def _format_storage(manifold_path: Path) -> str:
@@ -145,9 +162,12 @@ def _format_storage(manifold_path: Path) -> str:
         return "LitData + Directory"
     if (manifold_path / "shards").exists():
         return "WebDataset + Directory"
+    if list(manifold_path.glob("*.jsonl")):
+        return "JSONL (Instruction Corpus)"
     if (manifold_path / "targets").exists():
         return "Directory Pair (images/, targets/)"
     return "Directory Pair (images/, labels/)"
+
 
 
 def _bound_models(models_meta: dict, manifold_name: str) -> list[str]:
