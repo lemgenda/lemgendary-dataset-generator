@@ -468,8 +468,10 @@ def _kaggle_reupload(item: dict, dry_run: bool = False) -> tuple[bool, str]:
         "--url", clean_ref,
     ]
     try:
+        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
         result = subprocess.run(
             cmd, cwd=str(ROOT), capture_output=False, text=True, check=False,
+            creationflags=cflags,
         )
         if result.returncode == 0:
             return True, f"Uploaded to {new_ref}"

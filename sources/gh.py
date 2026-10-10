@@ -18,7 +18,8 @@ def main():
         os.makedirs(args.output_dir, exist_ok=True)
     
     # Simple git clone
-    subprocess.run(["git", "clone", args.repo_url, args.output_dir])
+    cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+    subprocess.run(["git", "clone", args.repo_url, args.output_dir], creationflags=cflags)
 
 if __name__ == "__main__":
     main()

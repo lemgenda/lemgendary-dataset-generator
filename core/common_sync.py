@@ -280,12 +280,14 @@ def get_dataset_status(repo_id: str) -> str | None:
 
     try:
         import subprocess
+        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
         res = subprocess.run(
             ["kaggle", "datasets", "status", clean_handle],
             capture_output=True,
             text=True,
             timeout=15,
-            check=False
+            check=False,
+            creationflags=cflags,
         )
         out = res.stdout.strip().lower()
         if "ready" in out:
@@ -773,7 +775,12 @@ def _fetch_remote_archive(
     import subprocess
 
     if is_competition:
-        subprocess.run(["kaggle", "competitions", "download", "-c", clean_repo_id, "-p", str(root_datasets_dir)], check=True)
+        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        subprocess.run(
+            ["kaggle", "competitions", "download", "-c", clean_repo_id, "-p", str(root_datasets_dir)],
+            check=True,
+            creationflags=cflags,
+        )
         for cand in archive_candidates:
             if cand.exists():
                 return cand

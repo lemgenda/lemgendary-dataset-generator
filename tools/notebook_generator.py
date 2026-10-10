@@ -135,11 +135,11 @@ def main(argv: list[str] | None = None) -> int:
         generate_colab_usage_notebook(m_key, m_dir, unified_models_registry=models_registry, config=d_info)
 
     if args.all:
-        print(f"[NUCLEAR] Initiating Global Notebook Refresh for {len(datasets)} datasets...")
-        for d_key, d_info in datasets.items():
-            models = dataset_to_models.get(d_key, [d_key])
-            for m_key in models:
-                _emit_for_model(m_key, d_info if isinstance(d_info, dict) else {})
+        target_models = [k for k in models_registry.keys() if not k.startswith("_")]
+        print(f"[NUCLEAR] Initiating Global Notebook Refresh for {len(target_models)} models from unified_models_v2.yaml...")
+        for m_key in target_models:
+            d_info = datasets.get(m_key, {})
+            _emit_for_model(m_key, d_info if isinstance(d_info, dict) else {})
         print("\n[SUCCESS] Notebook Matrix Synchronized.")
         return 0
 
