@@ -13,7 +13,7 @@ import yaml
 from api.jobs import job_manager
 from api.models import JobResponse, JobType
 from core.cli_args import venv_python
-from tools.modernization_queue import scan_queue
+from tools.modernization_queue import load_queue_manifest
 
 logger = logging.getLogger("lemgendary.api.routes.modernize")
 router = APIRouter(prefix="/modernize", tags=["Modernization Hub"])
@@ -57,15 +57,7 @@ def get_modernization_queue() -> List[QueueItemResponse]:
     if not unified_yaml.exists():
         unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
 
-    unified_data: Dict[str, Any] = {}
-    if unified_yaml.exists():
-        try:
-            with open(unified_yaml, "r", encoding="utf-8") as f:
-                unified_data = yaml.safe_load(f) or {}
-        except Exception as exc:
-            logger.debug("Failed reading %s: %s", unified_yaml, exc)
-
-    items = scan_queue(root, unified_data)
+    items = load_queue_manifest(root, unified_yaml) if unified_yaml.exists() else []
     results: List[QueueItemResponse] = []
 
     for it in items:

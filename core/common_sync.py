@@ -655,7 +655,12 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     req.owner_slug = owner
     req.dataset_slug = slug
     settings = DatasetSettings()
-    settings.title = meta.get("title", slug)
+    raw_title = meta.get("title", slug)
+    if len(raw_title) > 50:
+        raw_title = raw_title[:50].rsplit(" ", 1)[0]
+    if len(raw_title) < 6:
+        raw_title = raw_title.ljust(6, " ")
+    settings.title = raw_title
     raw_sub = meta.get("subtitle", "")
     if len(raw_sub) > 80:
         raw_sub = raw_sub[:77].rsplit(" ", 1)[0]
@@ -776,27 +781,52 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
 
     req.settings = settings
 
+    import re
+    client = api.build_kaggle_client()
+
     try:
-        import re
-        client = api.build_kaggle_client()
         resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
-        if resp and getattr(resp, "errors", None):
-            has_kw_err = False
-            for err in resp.errors:
+        for _retry in range(5):
+            if not resp or not getattr(resp, "errors", None) or len(resp.errors) == 0:
+                break
+            should_retry = False
+            for err in list(resp.errors):
                 if "The following keywords are invalid:" in err:
                     invalid_kws = re.findall(r'"([^"]+)"', err)
                     if invalid_kws and settings.keywords:
                         settings.keywords = [k for k in settings.keywords if k not in invalid_kws]
-                        has_kw_err = True
-            if has_kw_err:
+                        should_retry = True
+                elif "contain a file named" in err:
+                    if settings.data:
+                        settings.data = None
+                        should_retry = True
+                elif "The title must be between 6 and 50 characters" in err:
+                    if len(settings.title) > 50:
+                        settings.title = settings.title[:50].rsplit(" ", 1)[0]
+                        should_retry = True
+            if should_retry:
                 resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
+            else:
+                break
 
         if resp and getattr(resp, "errors", None) and len(resp.errors) > 0:
             print(f"[ERROR] Kaggle metadata update rejected for {clean_handle}: {resp.errors}")
             return False
     except Exception as exc:
-        print(f"[ERROR] Kaggle metadata update call failed for {clean_handle}: {exc}")
-        return False
+        if not files_data:
+            print(f"[ERROR] Kaggle metadata update call failed for {clean_handle}: {exc}")
+            return False
+        print(f"[WARN] Metadata call failed with file schemas ({exc}); retrying without column descriptors...")
+        settings.data = None
+        files_data = []
+        try:
+            resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
+        except Exception as retry_exc:
+            print(f"[ERROR] Kaggle metadata update call failed for {clean_handle}: {retry_exc}")
+            return False
+        if resp and getattr(resp, "errors", None) and len(resp.errors) > 0:
+            print(f"[ERROR] Kaggle metadata update rejected for {clean_handle}: {resp.errors}")
+            return False
 
     print(f"[SUCCESS] Kaggle dataset metadata & column descriptors synced successfully ({len(files_data)} file definitions registered).")
     return True

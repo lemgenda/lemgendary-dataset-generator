@@ -943,8 +943,8 @@ datasets:
     category: Technical Documentation & AI Assistant Training
     modernized_folder: LemGendizedAIHelperLemGend
     canonical_format: jsonl
-    title: AI LemGend — LemGendary AI Assistant Training Manifold
-    subtitle: Documentation-Grounded Assistant for Dataset Engineering, Model Training, and Troubleshooting
+    title: LemGendized AI Helper Assistant
+    subtitle: AI Assistant for Dataset Engineering, Training, and Safe Troubleshooting
     description: >
       Supervised instruction corpus for AI LemGend, the user-facing assistant
       for LemGendary AI. Teaches documentation-grounded technical question
@@ -959,7 +959,7 @@ datasets:
     - data-science
     license: CC-BY-NC-4.0
     expected_update_frequency: monthly
-    is_private: true
+    is_private: false
     provenance_sources:
     - LemGendary AI Documentation Hub
     - General AI Training Knowledge Reference

@@ -73,19 +73,32 @@ def main():
                 meta = json.loads(mf.read_text(encoding="utf-8"))
                 raw_id = meta.get("id") or f"lemtreursi/{manifold_dir.name.lower().replace('_', '')}"
 
+                ALIAS_HANDLES = {
+                    "lemtreursi/lemgendizedclassificationmaster": "lemtreursi/lemgendizedclassificationmastermanifoldlarge",
+                    "lemtreursi/lemgendizedmultitaskrestorationpro": "lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge",
+                    "lemtreursi/lemgendizedretinaface": "lemtreursi/lemgendizedretinafacemobilenetlarge",
+                }
+
                 target_repo_id = None
                 if existing_datasets:
                     if raw_id.lower() in existing_datasets:
                         target_repo_id = existing_datasets[raw_id.lower()]
                     elif (raw_id + "large").lower() in existing_datasets:
                         target_repo_id = existing_datasets[(raw_id + "large").lower()]
-                else:
-                    target_repo_id = raw_id
+                    elif raw_id.lower() in ALIAS_HANDLES and ALIAS_HANDLES[raw_id.lower()] in existing_datasets:
+                        target_repo_id = ALIAS_HANDLES[raw_id.lower()]
+                    if not target_repo_id:
+                        from core.docs.context import find_unified_entry
+                        u_entry = find_unified_entry(manifold_dir.name)
+                        if u_entry and u_entry.get("kaggle_ref"):
+                            clean_kref = u_entry["kaggle_ref"].replace("kaggle://", "").lower()
+                            if clean_kref in existing_datasets:
+                                target_repo_id = existing_datasets[clean_kref]
+                            elif (clean_kref + "large") in existing_datasets:
+                                target_repo_id = existing_datasets[clean_kref + "large"]
 
                 if not target_repo_id:
-                    print(f"[SKIP] {manifold_dir.name} -> {raw_id} not published on Kaggle yet.")
-                    skipped += 1
-                    continue
+                    target_repo_id = raw_id
 
                 if target_repo_id in synced_slugs:
                     # Avoid duplicate updates for paired regular/Large folders

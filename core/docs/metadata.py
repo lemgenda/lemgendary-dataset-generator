@@ -7,9 +7,12 @@ and source name normalization dictionaries.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 import yaml
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 MODELS_META_FILE = ROOT / "models" / "models_metadata.yaml"
@@ -18,41 +21,59 @@ if not MODELS_META_FILE.exists():
 
 _meta_data: dict[str, Any] = {}
 if MODELS_META_FILE.exists():
-    with open(MODELS_META_FILE, "r", encoding="utf-8") as f:
-        _meta_data = yaml.safe_load(f) or {}
+    try:
+        with open(MODELS_META_FILE, "r", encoding="utf-8") as f:
+            _meta_data = yaml.safe_load(f) or {}
+    except (yaml.YAMLError, OSError) as exc:
+        logger.warning("Failed to load models_metadata.yaml: %s", exc)
 
 UNIFIED_DATA_FILE = ROOT / "unified_data.yaml"
 UNIFIED_DATA: dict[str, Any] = {}
 if UNIFIED_DATA_FILE.exists():
-    with open(UNIFIED_DATA_FILE, "r", encoding="utf-8") as f:
-        UNIFIED_DATA = yaml.safe_load(f) or {}
+    try:
+        with open(UNIFIED_DATA_FILE, "r", encoding="utf-8") as f:
+            UNIFIED_DATA = yaml.safe_load(f) or {}
+    except (yaml.YAMLError, OSError) as exc:
+        logger.warning("Failed to load unified_data.yaml: %s", exc)
 
 TASK_META: dict[str, Any] = _meta_data.get("task_metadata", {})
+if "ai_helper" not in TASK_META:
+    TASK_META["ai_helper"] = {
+        "category": "Technical Documentation & AI Assistant Training",
+        "desc": "Fine-tuning prompt-completion instructions and technical documentation for the LemGendary AI Assistant.",
+        "obj": "Answer architectural, operational, and development inquiries across the LemGendary ecosystem.",
+        "targets_desc": "Instruction tasks utilize prompt-response JSONL pairs; physical image targets are inapplicable.",
+    }
+
 MODELS_META: dict[str, Any] = _meta_data.get("models_metadata", {})
 
 MANIFOLD_TASK_MAP: dict[str, str] = {
-    # Modern (2026 suffix-free)
-    "LemGendizedForexUniverse": "forex",
-    "LemGendizedClassificationMasterManifold": "classification",
-    "LemGendizedNimaAesthetic": "quality",
-    "LemGendizedNimaTechnical": "quality",
-    "LemGendizedNimaAuthenticity": "authenticity",
-    "LemGendizedUpnV2": "parameter_prediction",
-    "LemGendizedFilmRestorer": "restoration",
+    # Modern (2026 Canonical Folder Names in LemGendaryDatasets)
+    "LemGendizedAIHelperLemGend": "ai_helper",
+    "LemGendizedClassificationMaster": "classification",
     "LemGendizedCodeFormer": "restoration",
-    "LemGendizedParseNet": "segmentation",
-    "LemGendizedRetinaFaceMobileNet": "detection",
     "LemGendizedFfaNetIndoor": "restoration",
     "LemGendizedFfaNetOutdoor": "restoration",
-    "LemGendizedMirNetLowLight": "restoration",
+    "LemGendizedFilmRestorer": "restoration",
+    "LemGendizedForexUniverse": "forex",
     "LemGendizedMirNetExposure": "restoration",
+    "LemGendizedMirNetLowLight": "restoration",
     "LemGendizedMprNetDeraining": "restoration",
+    "LemGendizedMultitaskRestorationPro": "restoration",
     "LemGendizedNafNetDebluring": "restoration",
     "LemGendizedNafNetDenoising": "restoration",
+    "LemGendizedNimaAesthetic": "quality",
+    "LemGendizedNimaAuthenticity": "authenticity",
+    "LemGendizedNimaTechnical": "quality",
+    "LemGendizedParseNet": "segmentation",
+    "LemGendizedRetinaFace": "detection",
     "LemGendizedUltraZoom": "super-resolution",
+    "LemGendizedUpnV2": "parameter_prediction",
     "LemGendizedYoloV8n": "detection",
+    # Legacy & Aliased Names
+    "LemGendizedClassificationMasterManifold": "classification",
+    "LemGendizedRetinaFaceMobileNet": "detection",
     "LemGendizedProfessionalMultitaskRestoration": "restoration",
-    # Legacy (with 'Large' suffix)
     "LemGendizedForexUniverseLarge": "forex",
     "LemGendizedClassificationMasterManifoldLarge": "classification",
     "LemGendizedNimaAestheticLarge": "quality",
@@ -132,7 +153,8 @@ if MANIFEST_CACHE_PATH.exists():
     try:
         with open(MANIFEST_CACHE_PATH, "r", encoding="utf-8") as f:
             MANIFEST_CACHE = json.load(f)
-    except Exception:
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to load manifest_cache.json: %s", exc)
         MANIFEST_CACHE = {}
 
 TASK_ARCH_BASE: dict[str, str] = {
@@ -147,6 +169,7 @@ TASK_ARCH_BASE: dict[str, str] = {
     "parameter_prediction": "Deep Multi-Layer Perceptron / Convolutional Regressor",
     "diffusion": "Latent Diffusion Model with UNet / Transformer Backbone",
     "forex": "Multi-Scale CNN-Transformer (Causal TCN + Cross-Timeframe Attention)",
+    "ai_helper": "Transformer-Based Causal Language Model (Fine-Tuned Instruction Head)",
 }
 
 
@@ -220,7 +243,7 @@ def format_source(name: str) -> str:
         (["rain-dataset", "rain_dataset", "rain dataset"], "Balraj Rain Dataset"),
         (["rain"], "Rain Streaks Dataset"),
         (["vintage"], "Vintage Degraded Photos"),
-        (["old-photo", "old_photo", "old-film", "old"], "Vintage & Degraded Film Archive"),
+        (["old-photo", "old_photo", "old-film", "old_film"], "Vintage & Degraded Film Archive"),
         (["photo-restoration", "photo"], "Photo Restoration Dataset"),
         (["realvsfake", "real_vs_fake"], "Real vs Fake Faces"),
         (["sut-project"], "SUT Project Authenticity"),

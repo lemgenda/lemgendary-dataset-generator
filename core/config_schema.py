@@ -44,9 +44,7 @@ class SourceRef(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     ref: str
-    tag: Literal[
-        "sfw", "nsfw", "anime_nsfw", "general_nsfw", "sfw_baseline"
-    ] = "sfw"
+    tag: str = "sfw"
 
 
 # ─── Registry-level ─────────────────────────────────────────────────────────
@@ -90,7 +88,7 @@ class ContainerPolicy(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     primary: Literal[
-        "directory", "mds", "litdata", "webdataset", "parquet"
+        "directory", "mds", "litdata", "webdataset", "parquet", "jsonl"
     ] = "directory"
     extra: list[str] = Field(default_factory=list)
     preserve_hardlinks: bool = True
@@ -122,7 +120,7 @@ class DatasetEntry(BaseModel):
     task: str | None = None
 
     # Domain classification
-    dataset_type: Literal["vision", "forex", "diffusion", "vlm"] = "vision"
+    dataset_type: Literal["vision", "forex", "diffusion", "vlm", "ai_helper", "nlp", "llm"] = "vision"
     acquisition_mode: Literal[
         "hf", "kaggle", "gh", "gdrive", "mt5_terminal", "local"
     ] = "kaggle"
@@ -136,7 +134,7 @@ class DatasetEntry(BaseModel):
 
     # Canonical Container & Storage Format (Phase 2 SSOT)
     canonical_format: Literal[
-        "directory", "mds", "litdata", "webdataset", "parquet"
+        "directory", "mds", "litdata", "webdataset", "parquet", "jsonl"
     ] | None = None
     modernized_folder: str | None = None
 
@@ -164,6 +162,12 @@ class DatasetEntry(BaseModel):
     collection_methodology: str | None = None
     coverage: dict[str, Any] | None = None
     author_bio: str | None = None
+
+    # AI Helper / NLP instruction fine-tuning fields
+    train_file: str | None = None
+    val_file: str | None = None
+    split_strategy: str | None = None
+    validation_requirements: list[str] = Field(default_factory=list)
 
 
 

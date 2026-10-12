@@ -853,11 +853,10 @@ app.add_typer(forex_app, name="forex")
 @modernize_app.command("queue")
 def modernize_queue() -> None:
     """Display modernization queue status and pending conversions."""
-    from tools.modernization_queue import load_queue_manifest, scan_queue
+    from tools.modernization_queue import load_queue_manifest
     datasets_root = Path("..") / "LemGendaryDatasets"
     registry_yaml = Path("unified_data.yaml")
     items = load_queue_manifest(datasets_root.resolve(), registry_yaml.resolve())
-    queue_items = scan_queue(items)
 
     table = Table(title="LemGendary Dataset Modernization Queue")
     table.add_column("Dataset Key", style="cyan")
@@ -866,13 +865,23 @@ def modernize_queue() -> None:
     table.add_column("Status", style="yellow")
     table.add_column("Reason", style="dim")
 
-    for item in queue_items:
+    for item in items:
+        if item.is_containerized:
+            status, reason = "CONTAINERIZED", f"{item.container_bytes / (1024**3):.1f} GB ready"
+        elif item.zip_path:
+            status, reason = "PENDING STREAM", item.zip_path.name
+        elif item.has_loose_files:
+            status, reason = "PENDING PACK", "Loose images"
+        elif item.legacy_dir:
+            status, reason = "PENDING LEGACY", item.legacy_dir.name
+        else:
+            status, reason = "MISSING SOURCE", "-"
         table.add_row(
-            item.dataset_key,
+            item.key,
             item.modernized_folder,
             item.canonical_format,
-            item.status,
-            item.reason,
+            status,
+            reason,
         )
     console.print(table)
 

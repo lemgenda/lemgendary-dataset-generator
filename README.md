@@ -10,7 +10,7 @@
 
 | | |
 | --- | --- |
-| **Version** | `v16.9.9-STABLE` |
+| **Version** | `v16.9.10-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -20,7 +20,19 @@
 
 ## Changelog
 
-### v16.9.9 — Modernization Queue & API Endpoints Alignment, CLI Subcommands & Bulk Kaggle Metadata Push
+### v16.9.10 — Modular Document Generator Architecture, Individual Asset Generators & Frictionless Kaggle Metadata Sync
+
+- **Single Responsibility Principle (SRP) Generator Decomposition (`core/docs/generators/`)** — Refactored monolithic documentation serialization into 7 isolated, standalone generator scripts adhering strictly to S.O.L.I.D. principles:
+  - `category_txt.py` — Emits authoritative domain taxonomy classification tags from SSOT configuration.
+  - `classes_txt.py` — Generates verified newline-delimited class dictionaries per domain archetype (Forex BUY/HOLD/SELL, object detection, restoration, segmentation).
+  - `cover_image.py` — Validates and synthesizes canonical 564x284 architecture preview banners (`<ModelName>.jpg`) matching Kaggle display ratios.
+  - `dataset_info_yaml.py` — Serializes verified sample counts, canonical container topologies, and lineage sources to `dataset_info.yaml`.
+  - `index_json.py` — Serializes, verifies, and reconstructs master sample inventories mapping sample IDs, shard allocations, and splits.
+  - `readme_md.py` — Compiles Markdown documentation with overview, composition lineage tables, and benchmark targets.
+  - `kaggle_metadata.py` — Generates Frictionless `dataset-metadata.json` with strict Kaggle API constraint enforcement (title <= 50 chars, subtitle 20-80 chars, header image binding, exhaustive resource file/folder descriptions, and Parquet column descriptors).
+- **Master Documentation Orchestrator (`core/docs/orchestrator.py`)** — Coordinates execution sequence across all 7 generators with zero folder corruption, eliminating legacy folder creation bugs and providing CLI commands (`--all`, `--manifold`, `--force-images`).
+- **Unified Context Resolver (`core/docs/context.py`)** — Resolves typed `ManifoldContext` dataclass directly from `unified_data.yaml` and `models_metadata.yaml` with zero fuzzy substring matching and typed exception handling.
+- **Bulk Kaggle Metadata Synchronization Hardening (`tools/sync_kaggle_metadata.py`)** — Added alias resolution and automated fallback for published dataset handles on Kaggle, applying cover images, subtitles, descriptions, and resource descriptors across all 21 production manifolds.
 
 - **Modernization Queue REST Endpoints (`api/routes/modernize.py`)** — Implemented dedicated FastAPI routes registered under `/api/modernize`: `GET /api/modernize/queue` (scans on-disk manifolds for legacy formats and builds transcode queue), `POST /api/modernize/run` (dispatches multi-threaded WebP batch modernizations), `POST /api/modernize/reduce` (dispatches spatial downsampling derivation jobs), and `POST /api/modernize/regenerate-manifolds` (regenerates master `manifolds.json` and synchronized `dataset-metadata.json` across all manifolds).
 - **Bulk Kaggle Metadata Synchronization (`POST /api/kaggle/update-metadata`)** — Upgraded Kaggle route to support `all_datasets: true`, executing bulk schema and description updates across all 20 canonical Kaggle-bound production manifolds in a single call.
