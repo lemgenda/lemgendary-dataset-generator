@@ -173,6 +173,8 @@ class JobManager:
 
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
 
         creationflags = 0
         if sys.platform == "win32":
@@ -185,6 +187,8 @@ class JobManager:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1,
                     env=env,
                     cwd=str(_PROJECT_ROOT),
