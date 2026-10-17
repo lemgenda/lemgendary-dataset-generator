@@ -207,6 +207,16 @@ class JobManager:
                     )
                     # Broadcast to global dashboard stream
                     clean_line = line.rstrip("\r\n")
+                    is_progress = (
+                        "\r" in line
+                        or ("%" in clean_line and ("|" in clean_line or "/" in clean_line))
+                        or "ARCHIVING:" in clean_line
+                        or "Uploading:" in clean_line
+                        or "EXTRACTING" in clean_line
+                        or "UNPACKING" in clean_line
+                        or "it/s" in clean_line
+                        or "B/s" in clean_line
+                    )
                     global_log = {
                         "job_id": job_id,
                         "type": "log",
@@ -214,6 +224,7 @@ class JobManager:
                         "status": "info",
                         "chunk": line,
                         "message": clean_line,
+                        "is_progress": is_progress,
                         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     }
                     asyncio.run_coroutine_threadsafe(
