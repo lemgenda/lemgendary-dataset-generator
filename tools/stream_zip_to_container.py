@@ -162,12 +162,14 @@ def stream_zip_to_webdataset(
     legacy_dir: Path | None = None,
     transcode_webp: bool = True,
     max_workers: int | None = None,
+    shard_ext: str = "data",
 ) -> bool:
     """Stream paired or single vision datasets directly from zip into WebDataset tar shards."""
     target_dir = target_dir.resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
     shards_dir = target_dir / "shards"
     shards_dir.mkdir(parents=True, exist_ok=True)
+    ext = shard_ext.lstrip(".")
 
     workers = max_workers or min(12, os.cpu_count() or 4)
     print(f"[STREAM] Opening source archive: {zip_path.name}")
@@ -199,7 +201,7 @@ def stream_zip_to_webdataset(
                             for shard_idx in range(total_shards):
                                 start_i = shard_idx * shard_size_samples
                                 end_i = min(start_i + shard_size_samples, total_samples)
-                                shard_file = split_shards_dir / f"shard-{shard_idx:05d}.tar"
+                                shard_file = split_shards_dir / f"shard-{shard_idx:05d}.{ext}"
                                 chunk = img_list[start_i:end_i]
 
                                 with tarfile.open(shard_file, "w") as tf:
@@ -227,7 +229,7 @@ def stream_zip_to_webdataset(
                                 for shard_idx in range(total_shards):
                                     start_i = shard_idx * shard_size_samples
                                     end_i = min(start_i + shard_size_samples, total_samples)
-                                    shard_file = split_shards_dir / f"shard-{shard_idx:05d}.tar"
+                                    shard_file = split_shards_dir / f"shard-{shard_idx:05d}.{ext}"
                                     chunk = img_list[start_i:end_i]
 
                                     matched_stems = [stem for stem, _, _ in chunk if stem in target_map]
@@ -269,7 +271,7 @@ def stream_zip_to_webdataset(
                             for shard_idx in range(total_shards):
                                 start_i = shard_idx * shard_size_samples
                                 end_i = min(start_i + shard_size_samples, total_samples)
-                                shard_file = split_shards_dir / f"shard-{shard_idx:05d}.tar"
+                                shard_file = split_shards_dir / f"shard-{shard_idx:05d}.{ext}"
                                 chunk = tgt_items[start_i:end_i]
 
                                 with tarfile.open(shard_file, "w") as tf:
@@ -308,7 +310,7 @@ def stream_zip_to_webdataset(
                 print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
         # Verify shards exist and are non-empty
-        shards_created = list(shards_dir.glob("**/*.tar"))
+        shards_created = list(shards_dir.glob(f"**/*.{ext}")) or list(shards_dir.glob("**/*.tar")) or list(shards_dir.glob("**/*.data"))
         total_shard_bytes = sum(s.stat().st_size for s in shards_created)
         print(f"[VERIFY] Created {len(shards_created)} shards ({total_shard_bytes / (1024**3):.2f} GB total).")
         if not shards_created or total_shard_bytes == 0:

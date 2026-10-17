@@ -48,6 +48,7 @@ class CompileJobRequest(BaseModel):
     label_strategy: Optional[str] = Field(None, description="Auto-labeling strategy")
     prompt_strategy: Optional[str] = Field(None, description="Diffusion prompt template")
     mask_strategy: Optional[str] = Field(None, description="Segmentation mask strategy")
+    shard_ext: Optional[str] = Field("data", description="WebDataset shard file extension without dot (default: 'data')")
 
 
 

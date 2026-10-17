@@ -88,7 +88,7 @@ class ManifoldQueueItem:
 
 
 def _fast_has_tar_shards(shards_dir: Path) -> tuple[bool, int]:
-    """Quickly check if shards dir has .tar files and approximate size."""
+    """Quickly check if shards dir has .data or .tar files and approximate size."""
     if not shards_dir.exists():
         return False, 0
     total_bytes = 0
@@ -96,12 +96,12 @@ def _fast_has_tar_shards(shards_dir: Path) -> tuple[bool, int]:
     try:
         # Check root of shards or immediate subdirectories (train, val, test)
         for entry in os.scandir(shards_dir):
-            if entry.is_file() and entry.name.endswith(".tar"):
+            if entry.is_file() and (entry.name.endswith(".data") or entry.name.endswith(".tar")):
                 found = True
                 total_bytes += entry.stat().st_size
             elif entry.is_dir():
                 for sub_entry in os.scandir(entry.path):
-                    if sub_entry.is_file() and sub_entry.name.endswith(".tar"):
+                    if sub_entry.is_file() and (sub_entry.name.endswith(".data") or sub_entry.name.endswith(".tar")):
                         found = True
                         total_bytes += sub_entry.stat().st_size
     except OSError:
@@ -236,11 +236,13 @@ def convert_loose_directory_to_webdataset(
     transcode_webp: bool = True,
     max_workers: int | None = None,
     purge_loose: bool = False,
+    shard_ext: str = "data",
 ) -> bool:
     """Convert a directory containing loose images/targets into WebDataset shards."""
     target_dir.mkdir(parents=True, exist_ok=True)
     shards_dir = target_dir / "shards"
     shards_dir.mkdir(parents=True, exist_ok=True)
+    ext = shard_ext.lstrip(".")
     workers = max_workers or min(12, os.cpu_count() or 4)
 
     images_dir = source_dir / "images"
@@ -286,7 +288,7 @@ def convert_loose_directory_to_webdataset(
                         start_i = s_idx * shard_size_samples
                         end_i = min(start_i + shard_size_samples, total_samples)
                         chunk = img_files[start_i:end_i]
-                        shard_path = split_out_dir / f"shard-{s_idx:05d}.tar"
+                        shard_path = split_out_dir / f"shard-{s_idx:05d}.{ext}"
 
                         def _read_and_transcode(p: Path) -> tuple[str, bytes, str]:
                             raw = p.read_bytes()
@@ -323,7 +325,7 @@ def convert_loose_directory_to_webdataset(
                         start_i = s_idx * shard_size_samples
                         end_i = min(start_i + shard_size_samples, total_samples)
                         chunk = tgt_list[start_i:end_i]
-                        shard_path = split_out_dir / f"shard-{s_idx:05d}.tar"
+                        shard_path = split_out_dir / f"shard-{s_idx:05d}.{ext}"
 
                         def _read_and_transcode_tgt(p: Path) -> tuple[str, bytes, str]:
                             raw = p.read_bytes()

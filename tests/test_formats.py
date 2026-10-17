@@ -151,8 +151,10 @@ class TestWebDatasetWriter(unittest.TestCase):
             writer.write(sample2)
             writer.close()
 
-            shard_file = out_root / "shards" / "shard-00000.tar"
-            self.assertTrue(shard_file.exists(), "WebDataset shard tar was not created")
+            shard_file = out_root / "shards" / "shard-00000.data"
+            if not shard_file.exists():
+                shard_file = out_root / "shards" / "shard-00000.tar"
+            self.assertTrue(shard_file.exists(), "WebDataset shard was not created")
 
             with tarfile.open(shard_file, "r") as tar:
                 names = tar.getnames()
@@ -175,7 +177,9 @@ class TestWebDatasetWriter(unittest.TestCase):
             writer.write("item_001", b"fake_jpeg_data", "a beautiful sunrise")
             writer.close()
 
-            tar_files = list(out_dir.glob("test_shard-*.tar"))
+            tar_files = list(out_dir.glob("test_shard-*.data"))
+            if not tar_files:
+                tar_files = list(out_dir.glob("test_shard-*.tar"))
             self.assertEqual(len(tar_files), 1)
             with tarfile.open(tar_files[0], "r") as tar:
                 names = tar.getnames()

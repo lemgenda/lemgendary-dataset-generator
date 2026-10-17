@@ -40,6 +40,7 @@ class CompilerService:
         label_strategy: str | None = None,
         prompt_strategy: str | None = None,
         mask_strategy: str | None = None,
+        shard_ext: str | None = None,
     ) -> int:
         from core import manifold_compile
 
@@ -71,6 +72,8 @@ class CompilerService:
             args_list.extend(["--mask-format", mask_format])
         if also_format:
             args_list.extend(["--also-format", also_format])
+        if shard_ext:
+            args_list.extend(["--shard-ext", shard_ext])
         if force_duplicate:
             args_list.append("--force-duplicate")
         if accept_space_loss:

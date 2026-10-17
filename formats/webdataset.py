@@ -35,7 +35,10 @@ class WebDatasetWriter:
         self._out_dir = Path(output_root) / "shards"
         self._out_dir.mkdir(parents=True, exist_ok=True)
         max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
-        shard_path = (self._out_dir / "shard-%05d.tar").resolve()
+        shard_ext = getattr(policy, "shard_extension", "data")
+        if shard_ext.startswith("."):
+            shard_ext = shard_ext[1:]
+        shard_path = (self._out_dir / f"shard-%05d.{shard_ext}").resolve()
         pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self._sink = WdsShardWriter(
             pattern,
@@ -80,10 +83,12 @@ class ShardWriter:
         output_dir: str | Path,
         prefix: str = "data",
         max_size: float = 1e9,
+        extension: str = "data",
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        shard_path = (self.output_dir / f"{prefix}-%05d.tar").resolve()
+        shard_ext = extension[1:] if extension.startswith(".") else extension
+        shard_path = (self.output_dir / f"{prefix}-%05d.{shard_ext}").resolve()
         pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self.sink: Any = WdsShardWriter(
             pattern,

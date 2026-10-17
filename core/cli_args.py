@@ -88,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--also-format", dest="also_format", type=str, default=None,
                         help="Comma-separated container formats to write in addition "
                              "to the canonical directory layout (e.g. 'mds' or 'mds,litdata')")
+    parser.add_argument("--shard-ext", dest="shard_ext", type=str, default="data",
+                        help="WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle backend ingestion)")
     parser.add_argument("--force-duplicate", dest="force_duplicate", action="store_true",
                         help="Proceed with container write despite WARN-tier hardlink fraction")
     parser.add_argument("--accept-space-loss", dest="accept_space_loss", action="store_true",

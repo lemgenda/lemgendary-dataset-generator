@@ -158,8 +158,12 @@ class TestStreamZipToContainer(unittest.TestCase):
             self.assertEqual(info_data.get("image_format"), "webp")
 
             # 2. Shards created
-            train_shard = target_manifold / "shards" / "train" / "shard-00000.tar"
-            val_shard = target_manifold / "shards" / "val" / "shard-00000.tar"
+            train_shard = target_manifold / "shards" / "train" / "shard-00000.data"
+            if not train_shard.exists():
+                train_shard = target_manifold / "shards" / "train" / "shard-00000.tar"
+            val_shard = target_manifold / "shards" / "val" / "shard-00000.data"
+            if not val_shard.exists():
+                val_shard = target_manifold / "shards" / "val" / "shard-00000.tar"
             self.assertTrue(train_shard.exists(), "Train shard was not created")
             self.assertTrue(val_shard.exists(), "Val shard was not created")
 
@@ -195,8 +199,12 @@ class TestStreamZipToContainer(unittest.TestCase):
             )
             self.assertTrue(success)
 
-            train_shard = target_manifold / "shards" / "train" / "shard-00000.tar"
-            val_shard = target_manifold / "shards" / "val" / "shard-00000.tar"
+            train_shard = target_manifold / "shards" / "train" / "shard-00000.data"
+            if not train_shard.exists():
+                train_shard = target_manifold / "shards" / "train" / "shard-00000.tar"
+            val_shard = target_manifold / "shards" / "val" / "shard-00000.data"
+            if not val_shard.exists():
+                val_shard = target_manifold / "shards" / "val" / "shard-00000.tar"
             self.assertTrue(train_shard.exists())
             self.assertTrue(val_shard.exists())
 

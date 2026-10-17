@@ -87,7 +87,7 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                             ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
                             if fname == "index.json":
                                 pass
-                            elif ext in ("tar", "bin", "mds", "parquet", "zstd"):
+                            elif ext in ("data", "tar", "bin", "mds", "parquet", "zstd"):
                                 shards_count += 1
                             elif fname.startswith("chunk") or fname.startswith("shard"):
                                 shards_count += 1
@@ -110,7 +110,7 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
             if entry.is_file():
                 fname = entry.name
                 ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-                if fname != "index.json" and (ext in ("tar", "bin", "mds", "parquet", "zstd", "jsonl") or fname.startswith("shard") or fname.startswith("chunk")):
+                if fname != "index.json" and (ext in ("data", "tar", "bin", "mds", "parquet", "zstd", "jsonl") or fname.startswith("shard") or fname.startswith("chunk")):
                     shards_count += 1
                 if ext == "parquet":
                     format_counts["parquet"] += 1
@@ -358,8 +358,8 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 s_type = "DOCUMENTATION"
 
 
-            this_count = None
-            if sample_count > 0:
+            this_count: int | None = None
+            if sample_count > 0 and base_count is not None:
                 if s_idx == n_sources - 1:
                     this_count = sample_count - (base_count * (n_sources - 1))
                 else:

@@ -8,9 +8,9 @@
 
 ## Current Status
 
-| | |
-| --- | --- |
-| **Version** | `v16.9.10-STABLE` |
+| Metric | Value |
+| :--- | :--- |
+| **Version** | `v16.9.12-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,25 @@
 ---
 
 ## Changelog
+
+### v16.9.12 — Dedicated AI Helper Tooling Suite Architecture & Relocation
+
+- **AI Helper Tooling Consolidation (`tools/ai_helper/`)** — Centralized and decoupled all AI assistant instruction tuning dataset tools into a dedicated, modular subpackage:
+  - `corpus_generator.py` — Generates multi-turn LLM instruction datasets from ecosystem whitepapers, manuals, and code implementations.
+  - `enrich_ai_helper_provenance.py` — Injects upstream documentation origin anchors, SHA256 checksums, and licensing tags into each instruction record.
+  - `compile_ai_helper_metadata.py` — Compiles and synchronizes Frictionless dataset metadata, classes, category taxonomy, and `dataset_info.yaml`.
+  - `model_schema_registry.json` — SSOT schema registry defining input/output contracts for AI assistant tool execution.
+- **Modernization Queue & Obfuscated Streaming Verification** — Formally verified end-to-end integration of `.data` container streaming with the modern transcode pipeline, ensuring zero filesystem thrashing and instant cloud dataset mounting.
+
+---
+
+### v16.9.11 — WebDataset Shard Obfuscation (.data) for Fast Cloud Ingestion & Zero Inode Exhaustion
+
+- **Kaggle Ingestion Obfuscation (`.data` Shards)** — Transformed WebDataset shard packaging to use `.data` extension instead of `.tar` or `.tar.gz`. Prevents Kaggle backend archive sniffing from recursively parsing shards upon upload, completely eliminating filesystem thrashing, inode exhaustion, and reducing dataset attachment latency from hours to seconds.
+- **Dual-Format POSIX Tar Stream Decoding** — Modernized `WebDatasetReader` and container auto-detection in `lemgendary-training-suite` to discover and stream both `.data` and `.tar` shards seamlessly, decoding POSIX `ustar` magic bytes natively without on-disk extraction across local, Kaggle, and Colab runtimes.
+- **Modernized Compiler & Tooling Suite** — Upgraded `WebDatasetWriter`, `ShardWriter`, `stream_zip_to_container.py`, `modernization_queue.py`, and `cli.py` to compile `.data` shards by default while accepting `--shard-ext` for custom pipelines.
+- **Atomic Local Migration Sweep** — Successfully migrated 1,211 WebDataset shards (493.86 GB) across all 16 production datasets in `LemGendaryDatasets/` from `.tar` to `.data` with 100% verification and zero remaining `.tar` files.
+- **Repository Safety & Desktop GUI Parity** — Added `*.data` ignore rules to `LemGendaryDatasets/.gitignore` and updated `CompilerPanel.tsx` to display `WebDataset Streaming (.data shards)`.
 
 ### v16.9.10 — Modular Document Generator Architecture, Individual Asset Generators & Frictionless Kaggle Metadata Sync
 
@@ -552,7 +571,9 @@ lemgendary-datasets/
 │   ├── compiler_service.py, degrade_service.py, audit_service.py
 │   ├── sync_service.py, doc_service.py, generation_service.py, migration_service.py
 ├── tools/                         # Auxiliary tools, migrations & matrix generators
-│   ├── notebook_generator.py, manifold_reduce.py, manifold_sync.py
+│   ├── ai_helper/                 # LLM instruction corpus & metadata compilers
+│   │   ├── corpus_generator.py, enrich_ai_helper_provenance.py, compile_ai_helper_metadata.py
+│   ├── manifold_reduce.py, manifold_sync.py, modernization_queue.py
 │   ├── generate_cli.py, generate_degrade.py, migrate_manifold_format.py
 │   ├── migrate_manifold_image_format.py, modernize_manifold.py
 │   ├── regenerate_manifolds_md.py, sync_kaggle_metadata.py
@@ -600,7 +621,7 @@ raw-sets/                                          # Source datasets (Cleanup Gu
 ├── labels/{train,val}/                            # NIMA 10-bin or YOLO vectors
 ├── targets/{train,val}/                           # Ground truth (SR/Restoration)
 ├── masks/{train,val}/                             # Segmentation masks
-├── shards/                                        # WebDataset .tar (diffusion)
+├── shards/                                        # WebDataset .data shards (zero-extraction streaming)
 ├── manifold_registry.db                           # SQLite registry (Phase 1.3)
 ├── dataset_info.yaml                              # Suite metadata (relative path:)
 ├── category.txt

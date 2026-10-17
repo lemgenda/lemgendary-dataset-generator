@@ -23,11 +23,11 @@ import time
 from pathlib import Path
 
 import requests
+from rich.console import Console
+from rich.table import Table
 import typer
 from websockets.sync.client import connect
 import yaml
-from rich.console import Console
-from rich.table import Table
 
 from api.auth import get_or_create_token
 from core.cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
@@ -183,6 +183,9 @@ def compile(
     label_strategy: str | None = typer.Option(None, "--label-strategy"),
     prompt_strategy: str | None = typer.Option(None, "--prompt-strategy"),
     mask_strategy: str | None = typer.Option(None, "--mask-strategy"),
+    shard_ext: str = typer.Option(
+        "data", "--shard-ext", help="WebDataset shard file extension without dot (default: 'data')"
+    ),
     no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
 ) -> None:
     """Compile a manifold from raw sources (delegates to manifold_compile.py or API)."""
@@ -202,6 +205,7 @@ def compile(
             "target_quality": target_quality or 95,
             "mask_format": mask_format or "webp-lossless",
             "also_format": also_format,
+            "shard_ext": shard_ext,
             "force_duplicate": force_duplicate,
             "accept_space_loss": accept_space_loss,
             "label_strategy": label_strategy,
@@ -217,10 +221,15 @@ def compile(
             )
             if resp.status_code == 200:
                 job_id = resp.json()["id"]
-                console.print(f"[bold green]Routed through LemGendary Dataset Compiler API[/bold green] [dim](job_id: {job_id})[/dim]")
+                console.print(
+                    f"[bold green]Routed through LemGendary Dataset Compiler API[/bold green] "
+                    f"[dim](job_id: {job_id})[/dim]"
+                )
                 exit_code = _stream_job_logs(job_id)
                 raise typer.Exit(code=exit_code)
-            console.print(f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]")
+            console.print(
+                f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]"
+            )
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
 
@@ -238,6 +247,7 @@ def compile(
         target_quality=target_quality,
         mask_format=mask_format,
         also_format=also_format,
+        shard_ext=shard_ext,
         force_duplicate=force_duplicate,
         accept_space_loss=accept_space_loss,
         label_strategy=label_strategy,
@@ -252,7 +262,8 @@ def reduce(
     max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
 ) -> None:
     """Create a downsampled manifold variant (delegates to manifold_reduce.py)."""
-    reduce_script = "tools/manifold_reduce.py" if (Path(__file__).resolve().parent / "tools" / "manifold_reduce.py").exists() else "manifold_reduce.py"
+    tools_script = Path(__file__).resolve().parent / "tools" / "manifold_reduce.py"
+    reduce_script = "tools/manifold_reduce.py" if tools_script.exists() else "manifold_reduce.py"
     cmd = [venv_python(), reduce_script, "--reduce"]
     if max_gb is not None:
         cmd += ["--max_gb", str(max_gb)]
@@ -337,9 +348,21 @@ def sync_metadata(
 
     cmd = [venv_python(), "sources/kaggle.py", "--action", "metadata"]
     if all_datasets:
-        cmd.extend(["--repo_id", "lemtreursi/placeholder", "--all-datasets", "--output_dir", str(Path("..") / "LemGendaryDatasets")])
+        cmd.extend([
+            "--repo_id",
+            "lemtreursi/placeholder",
+            "--all-datasets",
+            "--output_dir",
+            str(Path("..") / "LemGendaryDatasets"),
+        ])
     else:
-        cmd.extend(["--repo_id", f"lemtreursi/{model.lower()}", "--output_dir", str(Path("..") / "LemGendaryDatasets" / model)])
+        assert model is not None, "Model key must be provided when --all is not set"
+        cmd.extend([
+            "--repo_id",
+            f"lemtreursi/{model.lower()}",
+            "--output_dir",
+            str(Path("..") / "LemGendaryDatasets" / model),
+        ])
 
     code = subprocess.call(cmd)
     raise typer.Exit(code=code)
@@ -436,9 +459,15 @@ def modernize(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do not modify anything"),
     datasets: str | None = typer.Option(None, "--datasets", help="Comma-separated folder names or dataset keys"),
     skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Skip Kaggle re-upload"),
-    image_format: str = typer.Option("webp", "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"),
+    image_format: str = typer.Option(
+        "webp", "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"
+    ),
     image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
-    also_format: str | None = typer.Option(None, "--also-format", help="Optional container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)"),
+    also_format: str | None = typer.Option(
+        None,
+        "--also-format",
+        help="Optional container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)",
+    ),
     skip_transcode: bool = typer.Option(False, "--skip-transcode", help="Skip WebP transcoding"),
     skip_container: bool = typer.Option(False, "--skip-container", help="Skip container format conversion"),
 ) -> None:
@@ -683,10 +712,15 @@ def degrade(
             )
             if resp.status_code == 200:
                 job_id = resp.json()["id"]
-                console.print(f"[bold green]Routed through LemGendary Dataset Compiler API[/bold green] [dim](job_id: {job_id})[/dim]")
+                console.print(
+                    f"[bold green]Routed through LemGendary Dataset Compiler API[/bold green] "
+                    f"[dim](job_id: {job_id})[/dim]"
+                )
                 exit_code = _stream_job_logs(job_id)
                 raise typer.Exit(code=exit_code)
-            console.print(f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]")
+            console.print(
+                f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]"
+            )
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
 
@@ -731,7 +765,10 @@ def server_start(
         )
         time.sleep(1.5)
         if _is_server_available(host, port):
-            console.print(f"[bold green]Started LemGendary Dataset Compiler API server in background[/bold green] [dim](http://{host}:{port}, PID: {proc.pid})[/dim]")
+            console.print(
+                f"[bold green]Started LemGendary Dataset Compiler API server in background[/bold green] "
+                f"[dim](http://{host}:{port}, PID: {proc.pid})[/dim]"
+            )
             console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
         else:
             console.print(f"[yellow]Server process launched (PID {proc.pid}), still initializing at http://{host}:{port}...[/yellow]")
@@ -822,7 +859,9 @@ def forex_convert(
 ) -> None:
     """Convert raw .npy Forex manifolds into unified Apache Parquet files."""
     from forex.converter import convert_year
-    base_manifold = Path(r"c:\Development\python\model-training\LemGendaryDatasets\LemGendizedForexUniverseLarge").resolve()
+    base_manifold = (
+        Path(r"c:\Development\python\model-training\LemGendaryDatasets\LemGendizedForexUniverseLarge").resolve()
+    )
     if not base_manifold.exists():
         console.print(f"[red]Base manifold directory does not exist: {base_manifold}[/red]")
         raise typer.Exit(code=1)
@@ -933,3 +972,4 @@ app.add_typer(modernize_app, name="modernize")
 # ─── Entry point ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app()
+

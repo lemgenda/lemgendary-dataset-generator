@@ -4,7 +4,8 @@ torchvision==0.20.1+cu121
 transformers>=4.48.0,<5.0.0
 pillow==12.3.0
 numpy>=2.0.0,<2.2.0
-pydantic>=2.9,<3
+pydantic==2.14.0
+pydantic-core==2.50.0
 fastapi==0.141.1
 uvicorn==0.53.0
 websockets==17.1
