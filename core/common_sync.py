@@ -741,12 +741,42 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
                 kws.append(spaced)
         settings.keywords = kws
 
+    # Discover actual files on Kaggle for accurate path mapping
+    remote_files: set[str] = set()
+    try:
+        remote_file_list = api.dataset_list_files(clean_handle)
+        raw_files = getattr(remote_file_list, "files", None)
+        if raw_files is not None:
+            remote_files = {
+                f.name for f in raw_files
+                if f is not None and getattr(f, "name", None) is not None
+            }
+    except Exception as exc:
+        logger.debug("Notice querying remote files for %s: %s", clean_handle, exc)
+
+    manifold_prefix = meta_folder.name
+
     # Build data array with column descriptions
     files_data: list[DatasetSettingsFile | None] = []
     if "data" in meta and isinstance(meta["data"], list):
         for entry in meta["data"]:
             df = DatasetSettingsFile()
-            df.name = entry.get("name", "")
+            raw_name = entry.get("name", "")
+            target_name = raw_name
+            if remote_files:
+                if raw_name in remote_files:
+                    target_name = raw_name
+                elif f"{manifold_prefix}/{raw_name}" in remote_files:
+                    target_name = f"{manifold_prefix}/{raw_name}"
+                else:
+                    for rf in remote_files:
+                        if rf.endswith(f"/{raw_name}"):
+                            target_name = rf
+                            break
+            elif not target_name.startswith(f"{manifold_prefix}/"):
+                target_name = f"{manifold_prefix}/{raw_name}"
+
+            df.name = target_name
             df.description = entry.get("description", "")
             cols: list[DatasetSettingsFileColumn | None] = []
             for c in entry.get("columns", []):
@@ -764,7 +794,25 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
             if not res_path or (meta_folder / res_path).is_dir() or "." not in os.path.basename(res_path):
                 continue
             df = DatasetSettingsFile()
-            df.name = res_path
+            target_name = res_path
+            if remote_files:
+                if res_path in remote_files:
+                    target_name = res_path
+                elif f"{manifold_prefix}/{res_path}" in remote_files:
+                    target_name = f"{manifold_prefix}/{res_path}"
+                else:
+                    for rf in remote_files:
+                        if rf.endswith(f"/{res_path}"):
+                            target_name = rf
+                            break
+            elif not target_name.startswith(f"{manifold_prefix}/"):
+                target_name = f"{manifold_prefix}/{res_path}"
+
+            # Only register if file actually exists remotely (when remote_files available)
+            if remote_files and target_name not in remote_files:
+                continue
+
+            df.name = target_name
             df.description = r.get("description", "")
             resource_cols: list[DatasetSettingsFileColumn | None] = []
             for fld in r.get("schema", {}).get("fields", []):
@@ -797,7 +845,14 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
                         settings.keywords = [k for k in settings.keywords if k not in invalid_kws]
                         should_retry = True
                 elif "contain a file named" in err:
-                    if settings.data:
+                    missing_match = re.search(r"contain a file named '([^']+)'", err)
+                    if missing_match and settings.data:
+                        missing_name = missing_match.group(1)
+                        settings.data = [f for f in settings.data if getattr(f, "name", None) != missing_name]
+                        if not settings.data:
+                            settings.data = None
+                        should_retry = True
+                    elif settings.data:
                         settings.data = None
                         should_retry = True
                 elif "The title must be between 6 and 50 characters" in err:

@@ -157,6 +157,20 @@ class JobManager:
         logger.info("Executing job %s: %s", job_id, " ".join(cmd))
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # Broadcast job launch to global dashboard stream
+        start_payload = {
+            "job_id": job_id,
+            "type": "event",
+            "step_name": "Compiler",
+            "status": "info",
+            "message": f"[JOB_START] Job {job_id} ({row['job_type']}) started: {' '.join(cmd)}",
+            "timestamp": started_at,
+        }
+        asyncio.run_coroutine_threadsafe(
+            manager.broadcast_global(start_payload),
+            loop,
+        )
+
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
 
@@ -185,6 +199,21 @@ class JobManager:
                     # Broadcast to active WebSocket subscribers asynchronously
                     asyncio.run_coroutine_threadsafe(
                         manager.broadcast_job_log(job_id, line),
+                        loop,
+                    )
+                    # Broadcast to global dashboard stream
+                    clean_line = line.rstrip("\r\n")
+                    global_log = {
+                        "job_id": job_id,
+                        "type": "log",
+                        "step_name": "Compiler",
+                        "status": "info",
+                        "chunk": line,
+                        "message": clean_line,
+                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    }
+                    asyncio.run_coroutine_threadsafe(
+                        manager.broadcast_global(global_log),
                         loop,
                     )
 
@@ -226,6 +255,18 @@ class JobManager:
         terminal_event = f"\n[PROCESS_TERMINATED] Job {job_id} {final_state.value.upper()} (Exit Code: {exit_code})\n"
         asyncio.run_coroutine_threadsafe(
             manager.broadcast_job_log(job_id, terminal_event),
+            loop,
+        )
+        term_payload = {
+            "job_id": job_id,
+            "type": "event",
+            "step_name": "Compiler",
+            "status": "success" if final_state == JobState.COMPLETED else "error",
+            "message": f"[JOB_{final_state.value.upper()}] Job {job_id} ({row['job_type']}) finished with exit code {exit_code}",
+            "timestamp": completed_at,
+        }
+        asyncio.run_coroutine_threadsafe(
+            manager.broadcast_global(term_payload),
             loop,
         )
 
