@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Iterable, Iterator, TypeVar
+from collections.abc import Iterable, Iterator, Sized
+from typing import Any, TypeVar
 from tqdm import tqdm
 
 T = TypeVar("T")
 
-# Unified single-line bar format across the entire LemGendary ecosystem:
-STANDARD_BAR_FORMAT = "{desc:<26} |{bar:28}| {percentage:5.1f}% [{n_fmt}/{total_fmt}, {rate_fmt}]"
+# Modern clean progress format across the entire LemGendary ecosystem:
+# Operational metadata, unconstrained percentage, numeric size/count, and rate (never truncated)
+# Visual progress bar is rendered natively by the GUI telemetry engine
+STANDARD_BAR_FORMAT = "{desc} - {percentage:5.1f}% [{n_fmt}/{total_fmt}, {rate_fmt}{postfix}]"
 
 
 def supports_unicode() -> bool:
@@ -36,7 +39,7 @@ def create_progress_bar(
     total: int | None = None,
     desc: str = "PROCESSING",
     unit: str = "img",
-    ncols: int | None = 90,
+    ncols: int | None = None,
     ascii_blocks: bool | None = None,
     mininterval: float = 0.25,
     **kwargs: Any,
@@ -55,7 +58,8 @@ def create_progress_bar(
         kwargs["ncols"] = ncols
         kwargs["dynamic_ncols"] = False
     else:
-        kwargs.setdefault("dynamic_ncols", True)
+        kwargs.setdefault("dynamic_ncols", False)
+        kwargs["ncols"] = None
 
     return tqdm(total=total, desc=desc, unit=unit, **kwargs)
 
@@ -69,7 +73,9 @@ def track_progress(
     **kwargs: Any,
 ) -> Iterator[T]:
     """Iterate over an iterable with standardized real-time single-item progress bar updates."""
-    count = total if total is not None else (len(iterable) if hasattr(iterable, "__len__") else None)
+    count = total
+    if count is None and isinstance(iterable, Sized):
+        count = len(iterable)
     pbar = create_progress_bar(
         total=count,
         desc=desc,

@@ -20,6 +20,14 @@
 
 ## Changelog
 
+### v16.9.13 — Modern Progress Tracking Architecture & Outdated Bar Elimination
+
+- **Unconstrained Metric Telemetry (`utils/progress.py`)** — Refactored `STANDARD_BAR_FORMAT` to output clean, unconstrained numerical operational metrics (operation description, exact percentage, current/total item counts, bandwidth rate, ETA) without terminal line clipping or column truncations.
+- **ASCII Bar Elimination & Stream Governance (`api/jobs.py`, `core/common_sync.py`)** — Purged outdated ASCII progress bars (`|████████|`) from subprocess stdout streams and WebSocket broadcasts, delegating visual rendering to the GUI Radix UI progress engine and eliminating console clutter.
+- **Strict Protocol Typing (`utils/progress.py`)** — Resolved Pyright `Sized` protocol compatibility on generic iterables by narrowing `isinstance(iterable, Sized)` without any suppression annotations.
+
+---
+
 ### v16.9.12 — Dedicated AI Helper Tooling Suite Architecture & Relocation
 
 - **AI Helper Tooling Consolidation (`tools/ai_helper/`)** — Centralized and decoupled all AI assistant instruction tuning dataset tools into a dedicated, modular subpackage:

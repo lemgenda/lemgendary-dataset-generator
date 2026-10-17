@@ -333,8 +333,8 @@ def track_kaggle_dataset_status(
         desc=f"KAGGLE EXTRACTION (v{target_ver})",
         unit="%",
         colour="cyan",
-        dynamic_ncols=True,
-        bar_format="{desc}: {percentage:3.0f}%|{bar}| {elapsed} [{postfix}]"
+        dynamic_ncols=False,
+        bar_format="{desc} - {percentage:3.0f}% [{elapsed}, {postfix}]",
     )
 
     last_pct = 0.0
@@ -573,10 +573,10 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
             _orig_tqdm = getattr(gcs_mod, "tqdm", None)
             if _orig_tqdm is not None:
                 def _safe_tqdm(*args: Any, **kwargs: Any) -> Any:
-                    kwargs.setdefault("dynamic_ncols", True)
+                    kwargs.setdefault("dynamic_ncols", False)
                     kwargs.setdefault(
                         "bar_format",
-                        "{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+                        "{desc} - {percentage:3.0f}% [{n_fmt}/{total_fmt}, {elapsed}<{remaining}, {rate_fmt}]",
                     )
                     return _orig_tqdm(*args, **kwargs)
 

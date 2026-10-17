@@ -207,6 +207,9 @@ class JobManager:
                     )
                     # Broadcast to global dashboard stream
                     clean_line = line.rstrip("\r\n")
+                    if not clean_line.strip():
+                        continue
+
                     is_progress = (
                         "\r" in line
                         or ("%" in clean_line and ("|" in clean_line or "/" in clean_line))
@@ -217,6 +220,13 @@ class JobManager:
                         or "it/s" in clean_line
                         or "B/s" in clean_line
                     )
+
+                    # Strip outdated ASCII progress bars; the modern GUI progress tracker renders the bar
+                    if is_progress:
+                        import re
+                        clean_line = re.sub(r"(\|[ █━─\-=#]+?\||\[[ █━─\-=#]+?\])", "", clean_line)
+                        clean_line = re.sub(r"\s{2,}", " ", clean_line).strip()
+
                     global_log = {
                         "job_id": job_id,
                         "type": "log",
