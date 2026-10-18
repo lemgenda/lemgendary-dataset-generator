@@ -350,13 +350,17 @@ def track_kaggle_dataset_status(
                 pbar.set_postfix_str("COMPLETE")
                 pbar.refresh()
                 pbar.close()
-                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' version {target_ver} is ready.")
+                elapsed_sec = int(time.time() - start_time)
+                print(f"KAGGLE EXTRACTION: {clean_handle} - 100% [{elapsed_sec}s, COMPLETE]", flush=True)
+                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' version {target_ver} is ready.", flush=True)
                 return True
             if status_val in ["error", "failed"]:
                 pbar.set_postfix_str("FAILED")
                 pbar.refresh()
                 pbar.close()
-                print(f"\n[ERROR] Kaggle reports extraction/processing failed for version {target_ver}.")
+                elapsed_sec = int(time.time() - start_time)
+                print(f"KAGGLE EXTRACTION: {clean_handle} - 0% [{elapsed_sec}s, FAILED]", flush=True)
+                print(f"\n[ERROR] Kaggle reports extraction/processing failed for version {target_ver}.", flush=True)
                 return False
 
             file_pct = None
@@ -394,13 +398,17 @@ def track_kaggle_dataset_status(
                 pbar.set_postfix_str("COMPLETE")
                 pbar.refresh()
                 pbar.close()
-                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' is ready.")
+                elapsed_sec = int(time.time() - start_time)
+                print(f"KAGGLE EXTRACTION: {clean_handle} - 100% [{elapsed_sec}s, COMPLETE]", flush=True)
+                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' is ready.", flush=True)
                 return True
             if raw_status and raw_status.lower() in ["error", "failed"]:
                 pbar.set_postfix_str("FAILED")
                 pbar.refresh()
                 pbar.close()
-                print(f"\n[ERROR] Kaggle reports processing failed for dataset '{clean_handle}'.")
+                elapsed_sec = int(time.time() - start_time)
+                print(f"KAGGLE EXTRACTION: {clean_handle} - 0% [{elapsed_sec}s, FAILED]", flush=True)
+                print(f"\n[ERROR] Kaggle reports processing failed for dataset '{clean_handle}'.", flush=True)
                 return False
 
             simulated_pct = min(90.0, (time.time() - start_time) / 180.0 * 75.0)
@@ -409,6 +417,11 @@ def track_kaggle_dataset_status(
                 last_pct = simulated_pct
             status_text = (raw_status or "QUEUED / UNPACKING").upper()
             pbar.set_postfix_str(status_text)
+
+        elapsed_sec = int(time.time() - start_time)
+        pct_display = int(pbar.n)
+        status_postfix = pbar.postfix or "PROCESSING"
+        print(f"KAGGLE EXTRACTION: {clean_handle} - {pct_display}% [{elapsed_sec}s, {status_postfix}]", flush=True)
 
         time.sleep(poll_interval)
 

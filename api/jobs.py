@@ -217,6 +217,7 @@ class JobManager:
                         or "Uploading:" in clean_line
                         or "EXTRACTING" in clean_line
                         or "UNPACKING" in clean_line
+                        or "KAGGLE EXTRACTION" in clean_line
                         or "it/s" in clean_line
                         or "B/s" in clean_line
                     )

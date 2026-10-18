@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.14-STABLE` |
+| **Version** | `v16.9.15-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,14 @@
 ---
 
 ## Changelog
+
+### v16.9.15 — Kaggle Server-Side Extraction Progress Streaming & Pipe Flush
+
+- **`core/common_sync.py` — Real-Time Subprocess Pipe Flushing in `track_kaggle_dataset_status`** — Replaced carriage-return only (`\r`) terminal line rewrites with explicit newline-terminated, flushed progress logs (`KAGGLE EXTRACTION: <handle> - <pct>% [<elapsed>s, <status>]`, `flush=True`) on every polling interval and extraction status transition. Prevents line-buffered subprocess pipes (`for line in proc.stdout`) in `api/jobs.py` from holding intermediate extraction ticks, broadcasting live updates to WebSocket subscribers every 4 seconds.
+- **`api/jobs.py` — Live Extraction Progress Classification** — Added `KAGGLE EXTRACTION` to the `is_progress` pattern matcher, ensuring server extraction progress events are tagged with `is_progress: True` for desktop GUI roll-up and real-time visualization.
+- **Unit Test Coverage (`tests/test_kaggle_extraction.py`)** — Added dedicated automated unit tests verifying newline-terminated flush logging during status tracking and proper `is_progress` classification in `api/jobs.py`. All tests passing cleanly.
+
+---
 
 ### v16.9.14 — Kaggle Metadata Updater Legacy Manifold Safeguard
 
