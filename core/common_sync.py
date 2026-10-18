@@ -446,6 +446,17 @@ def _verify_or_create_staging_zip(
             raise RuntimeError(f"Archive creation failed for {src_path}")
 
 
+def is_kaggle_large_manifold(repo_id: str) -> bool:
+    """Detect whether a repository handle points to a legacy *large manifold on Kaggle."""
+    clean = repo_id.strip()
+    if "kaggle.com/datasets/" in clean:
+        clean = clean.split("kaggle.com/datasets/")[-1].split("?")[0].strip("/")
+    elif clean.startswith("kaggle://"):
+        clean = clean.replace("kaggle://", "").strip("/")
+    slug = clean.split("/")[-1].lower() if "/" in clean else clean.lower()
+    return slug.endswith("large") or "manifoldlarge" in slug or "large" in slug.split("_") or "large" in slug.split("-")
+
+
 def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: str = "") -> bool:
     """Create the Kaggle dataset with a README placeholder if it does not yet exist.
 
@@ -453,6 +464,10 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
     dataset that has never been created. A minimal public dataset containing only
     README.md is pushed first, making the slug addressable before the actual upload.
     """
+    if is_kaggle_large_manifold(clean_repo_id):
+        print(f"[SAFEGUARD] Refusing to create placeholder for legacy *large manifold: {clean_repo_id}")
+        return False
+
     version_info = get_dataset_version_info(clean_repo_id)
     if version_info["latest_version"] > 0:
         return True  # Dataset already exists
@@ -519,6 +534,10 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
 
 def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = False) -> bool:
     """Stage, archive, upload, update metadata, and track a dataset upload to Kaggle."""
+    if is_kaggle_large_manifold(clean_repo_id):
+        print(f"[SAFEGUARD] Refusing to upload to legacy *large manifold: {clean_repo_id}")
+        return False
+
     src_path = Path(src_path).resolve()
     if not src_path.exists():
         print(f"[ERROR] Target directory does not exist: {src_path}")
@@ -622,7 +641,16 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
 
 def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     """Pushes complete Kaggle metadata including single license and column descriptors."""
-    clean_handle = repo_id.replace("kaggle://", "")
+    clean_handle = repo_id.strip()
+    if "kaggle.com/datasets/" in clean_handle:
+        clean_handle = clean_handle.split("kaggle.com/datasets/")[-1].split("?")[0].strip("/")
+    elif clean_handle.startswith("kaggle://"):
+        clean_handle = clean_handle.replace("kaggle://", "").strip("/")
+
+    if is_kaggle_large_manifold(clean_handle):
+        print(f"[SAFEGUARD] Refusing to touch legacy *large manifold: {clean_handle}")
+        return False
+
     owner = clean_handle.split("/")[0] if "/" in clean_handle else "lemtreursi"
     slug = clean_handle.split("/")[1] if "/" in clean_handle else clean_handle
     setup_kaggle_auth(default_user=owner)

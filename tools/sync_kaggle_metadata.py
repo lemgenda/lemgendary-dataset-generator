@@ -19,6 +19,17 @@ if str(_ROOT) not in sys.path:
 from core.common_sync import push_kaggle_dataset_metadata
 
 
+def is_large_manifold(repo_id: str) -> bool:
+    """Detect whether a repository handle points to a legacy *large manifold on Kaggle."""
+    clean = repo_id.strip()
+    if "kaggle.com/datasets/" in clean:
+        clean = clean.split("kaggle.com/datasets/")[-1].split("?")[0].strip("/")
+    elif clean.startswith("kaggle://"):
+        clean = clean.replace("kaggle://", "").strip("/")
+    slug = clean.split("/")[-1].lower() if "/" in clean else clean.lower()
+    return slug.endswith("large") or "manifoldlarge" in slug or "large" in slug.split("_") or "large" in slug.split("-")
+
+
 def main():
     """CLI entrypoint to push dataset metadata to Kaggle."""
     parser = argparse.ArgumentParser(description="Synchronize dataset metadata and column descriptors to Kaggle.")
@@ -55,6 +66,7 @@ def main():
                 ds.ref.lower(): ds.ref
                 for ds in remote_ds_list
                 if ds is not None and getattr(ds, "ref", None) is not None
+                and not is_large_manifold(ds.ref)
             }
             print(f"[INFO] Discovered {len(existing_datasets)} active published datasets on Kaggle for @{owner}")
         except Exception as exc:
@@ -73,20 +85,10 @@ def main():
                 meta = json.loads(mf.read_text(encoding="utf-8"))
                 raw_id = meta.get("id") or f"lemtreursi/{manifold_dir.name.lower().replace('_', '')}"
 
-                ALIAS_HANDLES = {
-                    "lemtreursi/lemgendizedclassificationmaster": "lemtreursi/lemgendizedclassificationmastermanifoldlarge",
-                    "lemtreursi/lemgendizedmultitaskrestorationpro": "lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge",
-                    "lemtreursi/lemgendizedretinaface": "lemtreursi/lemgendizedretinafacemobilenetlarge",
-                }
-
                 target_repo_id = None
                 if existing_datasets:
                     if raw_id.lower() in existing_datasets:
                         target_repo_id = existing_datasets[raw_id.lower()]
-                    elif (raw_id + "large").lower() in existing_datasets:
-                        target_repo_id = existing_datasets[(raw_id + "large").lower()]
-                    elif raw_id.lower() in ALIAS_HANDLES and ALIAS_HANDLES[raw_id.lower()] in existing_datasets:
-                        target_repo_id = ALIAS_HANDLES[raw_id.lower()]
                     if not target_repo_id:
                         from core.docs.context import find_unified_entry
                         u_entry = find_unified_entry(manifold_dir.name)
@@ -94,11 +96,16 @@ def main():
                             clean_kref = u_entry["kaggle_ref"].replace("kaggle://", "").lower()
                             if clean_kref in existing_datasets:
                                 target_repo_id = existing_datasets[clean_kref]
-                            elif (clean_kref + "large") in existing_datasets:
-                                target_repo_id = existing_datasets[clean_kref + "large"]
+                            elif not is_large_manifold(clean_kref):
+                                target_repo_id = clean_kref
 
                 if not target_repo_id:
                     target_repo_id = raw_id
+
+                if is_large_manifold(target_repo_id):
+                    print(f"[SKIP] Refusing to touch legacy *large manifold: {target_repo_id} ({manifold_dir.name})")
+                    skipped += 1
+                    continue
 
                 if target_repo_id in synced_slugs:
                     # Avoid duplicate updates for paired regular/Large folders
@@ -135,7 +142,10 @@ def main():
             sys.exit(1)
     else:
         metadata_dir = args.metadata_dir or r"LemGendaryDatasets\LemGendizedForexUniverse"
-        repo_id = args.repo_id or "lemtreursi/lemgendizedforexuniverselarge"
+        repo_id = args.repo_id or "lemtreursi/lemgendizedforexuniverse"
+        if is_large_manifold(repo_id):
+            print(f"[ERROR] Refusing to touch legacy *large manifold: {repo_id}")
+            sys.exit(1)
         meta_path = Path(metadata_dir)
 
         if args.dry_run:

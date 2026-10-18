@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.12-STABLE` |
+| **Version** | `v16.9.14-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,16 @@
 ---
 
 ## Changelog
+
+### v16.9.14 — Kaggle Metadata Updater Legacy Manifold Safeguard
+
+- **Legacy `*large` Manifold Mutation Safeguard (`tools/sync_kaggle_metadata.py`, `core/common_sync.py`, `sources/kaggle.py`, `api/routes/kaggle.py`)** — Hardened Kaggle metadata synchronization and dataset operations with strict safeguards prohibiting mutations on legacy `*large` manifolds (`lemtreursi/*large`, `*manifoldlarge`, etc.):
+  - Removed legacy alias mapping dictionary (`ALIAS_HANDLES`) and fallback suffix heuristics (`raw_id + "large"`, `clean_kref + "large"`).
+  - Implemented `is_large_manifold` / `is_kaggle_large_manifold` verification across CLI tools, REST routes, and background synchronization routines.
+  - Hardened default single-manifold synchronization target to canonical `lemtreursi/lemgendizedforexuniverse`.
+  - Added unit test suite `tests/test_kaggle_safeguard.py` verifying detection and immediate rejection of `*large` manifold handles and URLs across metadata updates, placeholder creations, and uploads.
+
+---
 
 ### v16.9.13 — Modern Progress Tracking Architecture & Outdated Bar Elimination
 

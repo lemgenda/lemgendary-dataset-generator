@@ -320,6 +320,10 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         repo_id = f"lemtreursi/{manifold_dir.name.lower()}"
 
     clean_id = _clean_kaggle_ref(repo_id)
+    slug_lower = (clean_id.split("/")[-1] if "/" in clean_id else clean_id).lower()
+    if slug_lower.endswith("large") or "manifoldlarge" in slug_lower or "large" in slug_lower.split("_") or "large" in slug_lower.split("-"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Refusing to update metadata for legacy *large manifold: {clean_id}")
 
     cmd = [
         venv_python(),

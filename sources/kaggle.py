@@ -39,6 +39,7 @@ from core.common_sync import (
     perform_dataset_download,
     push_kaggle_dataset_metadata,
     ensure_kaggle_dataset_exists,
+    is_kaggle_large_manifold,
 )
 
 
@@ -141,6 +142,9 @@ def main():
                 ref = ds_entry.get("kaggle_ref", "").replace("kaggle://", "").strip()
                 if not ref:
                     continue
+                if is_kaggle_large_manifold(ref):
+                    print(f"[SKIP] Refusing to touch legacy *large manifold: {ref}")
+                    continue
                 mod_folder = ds_entry.get("modernized_folder") or f"{prefix}{ds_entry.get('name', '')}{suffix}"
                 # Try resolving metadata file from LemGendaryDatasets or output_dir arg
                 base_dir = Path(args.output_dir).resolve() if args.output_dir else Path("../LemGendaryDatasets").resolve()
@@ -159,6 +163,9 @@ def main():
                 sys.exit(1)
         else:
             # Update metadata for single dataset
+            if is_kaggle_large_manifold(clean_repo_id):
+                print(f"[ERROR] Refusing to touch legacy *large manifold: {clean_repo_id}")
+                sys.exit(1)
             if not args.output_dir:
                 parser.error("--output_dir (path to manifold directory with dataset-metadata.json) is required for metadata action.")
             meta_path = Path(args.output_dir).resolve()
