@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.15-STABLE` |
+| **Version** | `v16.9.16-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,15 @@
 ---
 
 ## Changelog
+
+### v16.9.16 — MosaicML Streaming Deprecation, Physical MDS Transcoding & PyTorch cu126 Alignment
+
+- **`tools/modernization_queue.py` — Automated MDS-to-WebDataset Transcoding (`transcode_mds_to_webdataset`)** — Implemented native streaming transcoding using `zstandard.ZstdDecompressor` to unpack binary MDS v2 record headers and slice row column payloads directly into WebDataset `.data` archives (`shard-%05d.data`). Zero-loss byte preservation copies compressed image bytes directly without re-encoding, achieving 2,500–4,000 img/s throughput.
+- **Queue Manifest MDS Recognition (`load_queue_manifest`)** — Recognizes `has_mds_flag` when legacy `.mds.zstd` shards exist without `.data` shards, setting item status to `MDS MIGRATION READY`. Executed full physical migration on `LemGendizedClassificationMaster` (68.7 GB, 789 shards) and `LemGendizedMultitaskRestorationPro` (42.2 GB, 54 shards), safely purging 110.9 GB of legacy `mds/` directories. Both report `CONTAINERIZED` with `Shards ready`.
+- **`mosaicml-streaming` Elimination** — Completely removed `mosaicml-streaming` and heavy cloud SDKs (`oci`, `azure-storage-blob`, `paramiko`), standardizing 100% on **Lightning AI LitData** (`litdata>=0.2.0`) and **WebDataset** (`webdataset==1.0.2`). Unblocked 7 packages in dependency audit.
+- **PyTorch cu126 Stack Promotion** — Promoted `torch==2.14.1+cu126`, `torchvision==0.29.1+cu126`, `transformers>=5.0.0,<6.0.0` (active: `5.20.1`), `sympy==1.14.0`, and `numpy>=2.1.0`. `pip check` confirmed clean. All 60 unit tests pass.
+
+---
 
 ### v16.9.15 — Kaggle Server-Side Extraction Progress Streaming & Pipe Flush
 

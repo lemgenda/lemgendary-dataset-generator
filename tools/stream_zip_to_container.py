@@ -341,8 +341,16 @@ def stream_zip_to_mds(
         import importlib as _il
         _streaming = _il.import_module("streaming")
     except ImportError:
-        print("[ERROR] mosaicml-streaming is not installed. Run: pip install mosaicml-streaming")
-        return False
+        print("[NOTICE] mosaicml-streaming is not installed. Routing directly to WebDataset streaming...")
+        return stream_zip_to_webdataset(
+            zip_path=zip_path,
+            target_dir=target_dir,
+            shard_size_samples=1000,
+            delete_zip=delete_zip,
+            legacy_dir=legacy_dir,
+            transcode_webp=transcode_webp,
+            max_workers=max_workers,
+        )
 
     target_dir = target_dir.resolve()
     target_dir.mkdir(parents=True, exist_ok=True)

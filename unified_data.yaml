@@ -790,7 +790,7 @@ datasets:
     - ref: manifold://CodeFormerMultiTask
     - ref: manifold://ParseNetMultiTask
     modernized_folder: LemGendizedMultitaskRestorationPro
-    canonical_format: mds
+    canonical_format: webdataset
     title: LemGendized Multitask Restoration Pro
     subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur,
       and Dehaze
@@ -806,7 +806,7 @@ datasets:
     provenance_sources:
     - 11 upstream restoration sub-manifolds (NAFNet, MPRNet, FFANet, MIRNet, etc.)
     container:
-      primary: mds
+      primary: webdataset
     citations:
     - https://github.com/lemtreursi/model-training
     - https://arxiv.org/abs/2111.09881
@@ -835,7 +835,7 @@ datasets:
     - ref: hf://food101
       tag: sfw_baseline
     modernized_folder: LemGendizedClassificationMaster
-    canonical_format: mds
+    canonical_format: webdataset
     title: LemGendized Classification Master
     subtitle: Robust Visual Content Moderation & Multi-Class Safety Filtering Manifold
     keywords:
@@ -852,7 +852,7 @@ datasets:
     - General NSFW
     - Food-101
     container:
-      primary: mds
+      primary: webdataset
     citations:
     - https://github.com/lemtreursi/model-training
     - https://arxiv.org/abs/2104.00298

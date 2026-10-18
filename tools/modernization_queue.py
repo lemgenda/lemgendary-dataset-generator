@@ -17,10 +17,13 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import struct
 import sys
 import tarfile
 import time
 from typing import Any
+
+import zstandard as zstd
 
 from PIL import Image
 import yaml
@@ -85,6 +88,8 @@ class ManifoldQueueItem:
     container_bytes: int = 0
     file_count: int = 0
     remote_version: int = 0
+    has_mds: bool = False
+    mds_bytes: int = 0
 
 
 def _fast_has_tar_shards(shards_dir: Path) -> tuple[bool, int]:
@@ -223,6 +228,8 @@ def load_queue_manifest(
             is_containerized=is_containerized,
             has_loose_files=has_loose,
             container_bytes=container_bytes,
+            has_mds=has_mds_flag,
+            mds_bytes=mds_bytes,
         )
         items.append(item)
 
@@ -380,17 +387,24 @@ def convert_loose_directory_to_mds(
     purge_loose: bool = False,
 ) -> bool:
     """Convert a loose images/targets directory into MDS shards."""
+    workers = max_workers or min(12, os.cpu_count() or 4)
     try:
         import importlib as _il
         _streaming = _il.import_module("streaming")
     except ImportError:
-        print("[ERROR] mosaicml-streaming is not installed. Run: pip install mosaicml-streaming")
-        return False
+        print("[NOTICE] mosaicml-streaming is not installed. Routing loose directory directly to WebDataset shards...")
+        return convert_loose_directory_to_webdataset(
+            source_dir=source_dir,
+            target_dir=target_dir,
+            shard_size_samples=1000,
+            transcode_webp=transcode_webp,
+            max_workers=workers,
+            purge_loose=purge_loose,
+        )
 
     target_dir.mkdir(parents=True, exist_ok=True)
     mds_dir = target_dir / "mds"
     mds_dir.mkdir(parents=True, exist_ok=True)
-    workers = max_workers or min(12, os.cpu_count() or 4)
 
     images_dir = source_dir / "images"
     targets_dir = source_dir / "targets"
@@ -508,6 +522,188 @@ def convert_loose_directory_to_mds(
     return True
 
 
+def transcode_mds_to_webdataset(
+    target_dir: Path,
+    shard_size_samples: int = 1000,
+    shard_ext: str = "data",
+    purge_mds: bool = True,
+) -> bool:
+    """Transcode legacy MosaicML MDS shards (.mds.zstd) directly into WebDataset (.data) shards."""
+    mds_dir = target_dir / "mds"
+    if not mds_dir.exists():
+        print(f"[ERROR] MDS directory does not exist: {mds_dir}")
+        return False
+
+    shards_dir = target_dir / "shards"
+    shards_dir.mkdir(parents=True, exist_ok=True)
+    ext = shard_ext.lstrip(".")
+
+    def _detect_img_ext(b: bytes) -> str:
+        if b.startswith(b"RIFF") and len(b) > 12 and b[8:12] == b"WEBP":
+            return "webp"
+        if b.startswith(b"\xff\xd8\xff"):
+            return "jpg"
+        if b.startswith(b"\x89PNG"):
+            return "png"
+        return "webp"
+
+    splits = ["train", "val", "test"]
+    found_splits = [s for s in splits if (mds_dir / s).exists() and (mds_dir / s / "index.json").exists()]
+    if not found_splits:
+        if (mds_dir / "index.json").exists():
+            found_splits = ["all"]
+        else:
+            print(f"[ERROR] No valid MDS index.json discovered in {mds_dir}")
+            return False
+
+    total_samples_all_splits = 0
+    total_shards_all_splits = 0
+    dctx = zstd.ZstdDecompressor()
+
+    for split in found_splits:
+        split_mds_dir = mds_dir / split if split != "all" else mds_dir
+        split_out_dir = shards_dir / split if split != "all" else shards_dir
+        split_out_dir.mkdir(parents=True, exist_ok=True)
+
+        index_file = split_mds_dir / "index.json"
+        with open(index_file, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+
+        shards_meta = meta.get("shards", [])
+        split_samples_expected = sum(s["samples"] for s in shards_meta)
+        print(f"[MDS-TRANSCODE] Split '{split}': {len(shards_meta)} MDS shards, {split_samples_expected:,} samples expected.")
+
+        current_shard_idx = 0
+        samples_in_current_shard = 0
+        split_samples_written = 0
+
+        current_shard_path = split_out_dir / f"shard-{current_shard_idx:05d}.{ext}"
+        tf = tarfile.open(current_shard_path, "w")
+
+        with tqdm(total=split_samples_expected, desc=f"MDS -> WEBDATASET [{split}]", unit="img", dynamic_ncols=True) as pbar:
+            try:
+                for s_info in shards_meta:
+                    columns = s_info["column_names"]
+                    encodings = s_info["column_encodings"]
+                    num_cols = len(columns)
+
+                    mds_basename = s_info["zip_data"]["basename"]
+                    mds_file = split_mds_dir / mds_basename
+                    if not mds_file.exists():
+                        raise FileNotFoundError(f"MDS shard file not found: {mds_file}")
+
+                    raw_data = dctx.decompress(mds_file.read_bytes())
+                    shard_samples = struct.unpack("<I", raw_data[:4])[0]
+                    sample_offsets = struct.unpack(f"<{shard_samples + 1}I", raw_data[4:4 + (shard_samples + 1) * 4])
+
+                    for idx in range(shard_samples):
+                        s_bytes = raw_data[sample_offsets[idx]:sample_offsets[idx + 1]]
+                        col_sizes = struct.unpack(f"<{num_cols}I", s_bytes[:num_cols * 4])
+
+                        offset = num_cols * 4
+                        fields: dict[str, bytes | None] = {}
+                        for col, enc, sz in zip(columns, encodings, col_sizes):
+                            fields[col] = s_bytes[offset:offset + sz] if sz > 0 else None
+                            offset += sz
+
+                        raw_name = fields.get("name")
+                        key = raw_name.decode("utf-8") if raw_name else f"sample_{split_samples_written:08d}"
+
+                        # 1. Main image
+                        img_b = fields.get("image")
+                        if img_b:
+                            c_ext = _detect_img_ext(img_b)
+                            ti = tarfile.TarInfo(name=f"{key}.{c_ext}")
+                            ti.size = len(img_b)
+                            tf.addfile(ti, io.BytesIO(img_b))
+
+                        # 2. Target image
+                        tgt_b = fields.get("target")
+                        if tgt_b:
+                            c_ext = _detect_img_ext(tgt_b)
+                            ti = tarfile.TarInfo(name=f"{key}.target.{c_ext}")
+                            ti.size = len(tgt_b)
+                            tf.addfile(ti, io.BytesIO(tgt_b))
+
+                        # 3. Mask image
+                        msk_b = fields.get("mask")
+                        if msk_b:
+                            c_ext = _detect_img_ext(msk_b)
+                            ti = tarfile.TarInfo(name=f"{key}.mask.{c_ext}")
+                            ti.size = len(msk_b)
+                            tf.addfile(ti, io.BytesIO(msk_b))
+
+                        # 4. JSON metadata
+                        meta_dict: dict[str, Any] = {}
+                        lbl_b = fields.get("label")
+                        if lbl_b:
+                            meta_dict["label"] = lbl_b.decode("utf-8", errors="replace")
+                        splt_b = fields.get("split")
+                        if splt_b:
+                            meta_dict["split"] = splt_b.decode("utf-8", errors="replace")
+                        tsk_b = fields.get("task")
+                        if tsk_b:
+                            meta_dict["task"] = tsk_b.decode("utf-8", errors="replace")
+
+                        if meta_dict:
+                            jb = json.dumps(meta_dict, ensure_ascii=False).encode("utf-8")
+                            ti = tarfile.TarInfo(name=f"{key}.json")
+                            ti.size = len(jb)
+                            tf.addfile(ti, io.BytesIO(jb))
+
+                        samples_in_current_shard += 1
+                        split_samples_written += 1
+                        pbar.update(1)
+
+                        if samples_in_current_shard >= shard_size_samples:
+                            tf.close()
+                            current_shard_idx += 1
+                            current_shard_path = split_out_dir / f"shard-{current_shard_idx:05d}.{ext}"
+                            tf = tarfile.open(current_shard_path, "w")
+                            samples_in_current_shard = 0
+            finally:
+                tf.close()
+                if samples_in_current_shard == 0 and current_shard_path.exists() and current_shard_path.stat().st_size == 0:
+                    current_shard_path.unlink()
+
+        total_shards_in_split = current_shard_idx + (1 if samples_in_current_shard > 0 else 0)
+        total_samples_all_splits += split_samples_written
+        total_shards_all_splits += total_shards_in_split
+        print(f"[MDS-TRANSCODE] Split '{split}' complete: {split_samples_written:,} samples -> {total_shards_in_split} shards.")
+
+    # Update dataset_info.yaml
+    info_path = target_dir / "dataset_info.yaml"
+    if info_path.exists():
+        try:
+            with open(info_path, "r", encoding="utf-8") as f_in:
+                idata = yaml.safe_load(f_in) or {}
+            idata["format"] = "webdataset"
+            idata["canonical_format"] = "webdataset"
+            idata["shard_extension"] = ext
+            idata["total_samples"] = total_samples_all_splits
+            idata["total_shards"] = total_shards_all_splits
+            with open(info_path, "w", encoding="utf-8") as f_out:
+                yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            print(f"[METADATA] Updated {info_path.name} format to webdataset ({ext} shards).")
+        except Exception as exc:
+            print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
+
+    # Verify shards exist before purging legacy mds
+    has_valid_shards, total_shard_bytes = _fast_has_tar_shards(shards_dir)
+    if not has_valid_shards or total_shard_bytes == 0:
+        print("[ERROR] Shard verification failed: output shards directory is empty. Aborting MDS cleanup.")
+        return False
+
+    print(f"[VERIFIED] Created {total_shards_all_splits} WebDataset shards ({total_shard_bytes / (1024**3):.1f} GB total).")
+
+    if purge_mds:
+        print(f"[CLEANUP] Safely purging legacy MDS directory {mds_dir.name} to reclaim storage...")
+        shutil.rmtree(mds_dir, ignore_errors=True)
+        print("[SUCCESS] Legacy MDS directory purged.")
+
+    return True
+
+
 def _convert_item(
     it: ManifoldQueueItem,
     shard_size: int,
@@ -547,6 +743,17 @@ def _convert_item(
                 transcode_webp=True,
                 max_workers=workers,
             )
+
+    # ── From legacy MDS shards ────────────────────────────────────────────────
+    if it.has_mds and fmt in ("webdataset", "directory"):
+        assert it.target_dir is not None, f"target_dir must not be None for MDS transcode of {it.key}"
+        print(f"[ACTION] Transcoding legacy MDS shards in {it.target_dir.name} to WebDataset (.data) shards...")
+        return transcode_mds_to_webdataset(
+            target_dir=it.target_dir,
+            shard_size_samples=shard_size,
+            shard_ext="data",
+            purge_mds=True,
+        )
 
     # ── From loose directory (target_dir or legacy_dir) ───────────────────────
     src = it.target_dir if it.has_loose_files else it.legacy_dir
@@ -695,6 +902,8 @@ def run_queue(
             return (2, 0, it.key)
         if it.has_loose_files:
             return (3, 0, it.key)
+        if it.has_mds:
+            return (3, 1, it.key)
         return (4, 0, it.key)
 
     base_queue = sorted(items, key=sort_key)
@@ -736,6 +945,10 @@ def run_queue(
         elif it.has_loose_files:
             status_str = "PENDING PACK"
             src_str = "Loose WebP/Images"
+        elif it.has_mds:
+            mds_gb = it.mds_bytes / (1024**3)
+            status_str = "MDS MIGRATION"
+            src_str = f"MDS ({mds_gb:.1f}GB)"
         elif it.legacy_dir:
             status_str = "PENDING LEGACY"
             src_str = f"{it.legacy_dir.name}/"
