@@ -21,10 +21,12 @@ import yaml
 
 SYSTEM_PROMPT = (
     "You are the authoritative LemGendary AI Studio Assistant. You possess deep, precise technical knowledge "
-    "of the LemGendary AI ecosystem, its 22 neural architectures, the proprietary Dataset Compiler, "
-    "the Training Suite with its Sawtooth Governor, and sidecar REST APIs. "
-    "Authority Hierarchy: Code Manifests (unified_models_v2.yaml) > Master Manuals > Architectural Whitepapers > Educational Guides. "
-    "Strictly differentiate general deep learning concepts from native Studio-supported features. "
+    "of the LemGendary AI ecosystem, its 23 neural architectures, the proprietary Dataset Compiler, the Training "
+    "Suite with its Sawtooth Governor, and sidecar REST APIs. Authority Hierarchy: Code Manifests "
+    "(unified_models_v2.yaml) > Master Manuals > Architectural Whitepapers > Educational Guides. Strictly "
+    "differentiate general deep learning concepts from native Studio-supported features. Follow the 3-Stage "
+    "Diagnostic Intake Protocol: Stage 1 Initial Triage (safe checks), Stage 2 Targeted Diagnosis (telemetry "
+    "verification), and Stage 3 Bounded Remediation with epistemic tags [CONFIRMED], [PROBABLE], or [ILLUSTRATIVE]. "
     "Do not use ungrounded absolute guarantees; provide mathematically bounded engineering answers. Do not use emojis."
 )
 
@@ -55,9 +57,10 @@ def generate_gui_examples() -> List[Dict[str, Any]]:
                 "3. In the **Manifold ID** input, provide your unique canonical slug (e.g. `portrait-restoration-512`).\n"
                 "4. Choose your **Target Domain** (e.g. `restoration`, `detection`, `face`, or `forex`) to govern schema validation.\n"
                 "5. Select the **Storage Format**:\n"
-                "   - `Streaming WebDataset Shards`: High-throughput containerized tar shards for distributed vision training.\n"
-                "   - `MosaicML MDS`: Cloud-streaming format with low-latency indexed random access.\n"
+                "   - `Streaming WebDataset Shards (.data)`: High-throughput containerized tar shards for distributed vision training.\n"
+                "   - `Lightning AI LitData`: Memory-mapped tensor streaming for parameter prediction and regression manifolds.\n"
                 "   - `Columnar Parquet`: Optimized columnar format for tabular embeddings and time-series.\n"
+                "   - *Note*: MosaicML MDS is deprecated across the ecosystem and superseded by WebDataset (.data) and LitData.\n"
                 "6. Configure partition density: set **Samples Per Shard** (canonical default: `5000` samples per archive, ~500 MB).\n"
                 "7. Enter your repository paths in the **Source URL / Path** input (e.g. `kaggle://username/slug`, HuggingFace `hf://...`, Google Drive, or GitHub).\n"
                 "8. Click **Compile Multi-Source Manifold** (triggers `POST http://127.0.0.1:8100/api/gui/custom-compile`).\n"
@@ -77,7 +80,7 @@ def generate_gui_examples() -> List[Dict[str, Any]]:
                 "1. Navigate to the **Dataset Compiler** panel.\n"
                 "2. Ensure the mode is set to **Compiler Presets** (Standard Mode).\n"
                 "3. Select a preset profile from the dropdown (e.g. `nima_aesthetic`, `nafnet_debluring`, or `yolov8n_detection`).\n"
-                "4. Verify the container format (`webdataset` or `mds`) and default shard size (`5000`).\n"
+                "4. Verify the container format (`webdataset` or `litdata`) and default shard size (`5000`).\n"
                 "5. Optionally check **Purge Loose Images** to clean up intermediate extracted folders after container packaging.\n"
                 "6. Click **Compile Manifold** (dispatches `POST http://127.0.0.1:8100/api/gui/quick-compile`).\n"
                 "7. View real-time chunk progress and ETA in the execution telemetry drawer."
@@ -98,7 +101,7 @@ def generate_gui_examples() -> List[Dict[str, Any]]:
                 "   - `All`: Shows all discovered storage folders.\n"
                 "   - `Compiled`: Limits display to manifolds possessing verified container archives and valid `manifest.json` metadata.\n"
                 "   - `Raw / Uncompiled`: Displays raw loose-image folders requiring compilation.\n"
-                "3. **Format Dropdown**: Filter specifically by container type (`WebDataset`, `MDS`, `Parquet`, `YOLO Directory`, or `Loose Directory`).\n"
+                "3. **Format Dropdown**: Filter specifically by container type (`WebDataset`, `LitData`, `Parquet`, `YOLO Directory`, or `Loose Directory`).\n"
                 "4. **Domain Dropdown**: Filter by model task (`All`, `Restoration`, `Quality`, `Face`, `Detection`, `Forex`).\n\n"
                 "Each manifold card displays its sample count, total byte size, container format, and a 2x2 action grid for Metadata, Notebooks, Download, and Upload."
             )}
@@ -819,7 +822,7 @@ def generate_model_pipeline_examples(models: Dict[str, Any]) -> List[Dict[str, A
                 f"1. **Dataset Compilation**:\n"
                 f"   - **Source Dataset**: `{m['dataset']}`\n"
                 f"   - **Structure**: {m['dataset_structure']}\n"
-                f"   - Compiled via `python cli.py compile` into containerized WebDataset/MDS shards with WebP tiles (~500 MB per shard, 5,000 samples default)."
+                f"   - Compiled via `python cli.py compile` into containerized WebDataset `.data` shards with WebP tiles (or LitData for tensor streaming) (~500 MB per shard, 5,000 samples default)."
             )
             training_desc = (
                 f"2. **Training & Architecture**:\n"
@@ -946,6 +949,26 @@ def generate_balanced_corpus() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any
         "unsupported_and_negative": generate_negative_examples(),
         "cross_document_pipeline": generate_model_pipeline_examples(models),
     }
+
+    try:
+        from tools.ai_helper.extended_records import EXTENDED_RECORDS
+    except ImportError:
+        from extended_records import EXTENDED_RECORDS
+
+    for r in EXTENDED_RECORDS:
+        cat = r["category"]
+        item = {
+            "id": r["id"],
+            "category": cat,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": r["user"]},
+                {"role": "assistant", "content": r["assistant"]},
+            ],
+        }
+        if cat not in category_buckets:
+            category_buckets[cat] = []
+        category_buckets[cat].append(item)
 
     train_set: List[Dict[str, Any]] = []
     val_set: List[Dict[str, Any]] = []
@@ -1106,7 +1129,37 @@ def synthesize_corpus() -> None:
         json.dump(meta_json, f, indent=2, ensure_ascii=False)
         f.write("\n")
 
-    # 6. Print breakdown
+    # 6. Execute provenance enrichment & metadata compilation
+    import subprocess
+    import sys
+
+    enrich_script = os.path.join(os.path.dirname(__file__), "enrich_ai_helper_provenance.py")
+    compile_script = os.path.join(os.path.dirname(__file__), "compile_ai_helper_metadata.py")
+    subprocess.run([sys.executable, enrich_script], check=True)
+    subprocess.run([sys.executable, compile_script], check=True)
+
+    # 7. Mirror enriched corpus to LemGendaryModels/ai_helper_lemgend/ and data/
+    model_dir = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "..",
+            "LemGendaryModels",
+            "ai_helper_lemgend",
+        )
+    )
+    model_data_dir = os.path.join(model_dir, "data")
+    os.makedirs(model_data_dir, exist_ok=True)
+    import shutil
+
+    shutil.copy2(train_path, os.path.join(model_dir, "ai_helper_train.jsonl"))
+    shutil.copy2(val_path, os.path.join(model_dir, "ai_helper_val.jsonl"))
+    shutil.copy2(train_path, os.path.join(model_data_dir, "ai_helper_train.jsonl"))
+    shutil.copy2(val_path, os.path.join(model_data_dir, "ai_helper_val.jsonl"))
+    print(f"Mirrored enriched corpus shards to {model_dir} and {model_data_dir}")
+
+    # 8. Print breakdown
     print(f"Synthesized AI Helper Corpus successfully:")
     print(f"  Total examples: {len(all_items)}")
     print(f"  Train shard:    {len(train_set)} -> {train_path}")

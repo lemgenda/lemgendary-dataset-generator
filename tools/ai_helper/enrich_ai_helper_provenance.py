@@ -80,7 +80,7 @@ def enrich_file(filepath: str, split_name: str) -> int:
         provenance = {
             "source_doc_id": mapping["doc_id"],
             "canonical_url": mapping["url"],
-            "doc_version": "v16.9.26-STABLE",
+            "doc_version": "v16.9.31-STABLE",
             "section_anchor": mapping["anchor"],
             "curation_method": "expert_authored_verified",
             "content_sha256": compute_content_sha256(

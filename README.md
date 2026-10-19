@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.16-STABLE` |
+| **Version** | `v16.9.17-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,15 @@
 ---
 
 ## Changelog
+
+### v16.9.17 — AI Helper Corpus Expansion (157 Records), Pipeline Ordering Fix & Tooling Consolidation
+
+- **AI Helper Corpus Expansion (`tools/ai_helper/extended_records.py`)** — Consolidated 94 curated extended records across 10 newly ingested documentation hub sources (`PAPER_TRAINING_PATHOLOGY.md`, `PAPER_DATASET_COMPILER.md`, `PAPER_ENV_MANAGER.md`, `LEMGENDARY_CURRENT_STATE.md`, `VERSIONING_POLICY.md`, `GUI_CONTROL_REGISTRY.md`, `PAPER_LEMGENDARY_NIMA.md`, `PAPER_LEMGENDARY_MPRNET.md`, `PAPER_LEMGENDARY_NAFNET.md`, `PAPER_AI_STUDIO_GUI.md`). Total balanced corpus expanded to 157 conversational records (125 train, 32 val) across all 8 canonical categories.
+- **Corpus Generator Pipeline Ordering Fix (`tools/ai_helper/corpus_generator.py`)** — Fixed post-synthesis execution sequence to guarantee record-level provenance enrichment (`enrich_ai_helper_provenance.py`) and Frictionless metadata compilation (`compile_ai_helper_metadata.py`) execute prior to mirroring JSONL shards to `LemGendaryModels/ai_helper_lemgend/` and `LemGendaryModels/ai_helper_lemgend/data/`.
+- **Generator Separation of Concerns Cleanup** — Removed duplicate ad-hoc script `build_expanded_corpus.py` from `LemGendaryDatasets/LemGendizedAIHelperLemGend/` to uphold S.O.L.I.D. separation of concerns, maintaining `tools/ai_helper/corpus_generator.py` as the sole Single Source of Truth generator.
+- **Factual Gate & Verification Hardening** — Passed end-to-end factual consistency gate against Level 1 SSOT manifests, 100% SHA256 provenance checksum validation, zero train/val data leakage, and strict zero-suppression / zero-emoji enforcement.
+
+---
 
 ### v16.9.16 — MosaicML Streaming Deprecation, Physical MDS Transcoding & PyTorch cu126 Alignment
 
