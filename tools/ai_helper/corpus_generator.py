@@ -1044,92 +1044,7 @@ def synthesize_corpus() -> None:
     with open(os.path.join(out_dir, "classes.txt"), "w", encoding="utf-8") as f:
         f.write("ai_helper\n")
 
-    # 5. Synchronize dataset-metadata.json
-    metadata_path = os.path.join(out_dir, "dataset-metadata.json")
-    meta_json: Dict[str, Any] = {}
-    if os.path.exists(metadata_path):
-        try:
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                meta_json = json.load(f)
-        except Exception:
-            pass
-
-    meta_json.update({
-        "title": "AI LemGend — LemGendary AI Assistant Training Manifold",
-        "id": "lemtreursi/lemgendizedaihelperlemgend",
-        "subtitle": "Documentation-Grounded Assistant for Dataset Engineering, Model Training, and Troubleshooting",
-        "description": (
-            "## Dataset Overview\n\n"
-            "- **Category:** Technical Documentation & AI Assistant Training\n"
-            "- **Total Samples:** " + str(len(all_items)) + "\n"
-            "- **Architecture Base:** Supervised Instruction Fine-Tuning Corpus (JSONL)\n"
-            "- **Primary Task:** Documentation-grounded technical Q&A, diagnostics, and workflow guidance.\n\n"
-            "## Composition & Lineage\n\n"
-            "This manifold is synthesized from the authoritative LemGendary AI Documentation Hub, "
-            "operations manuals, architectural whitepapers, and system architecture manifests.\n\n"
-            "## Model Training Profiles\n\n"
-            "Bound to AI LemGend assistant instruction fine-tuning pipelines."
-        ),
-        "keywords": [
-            "deep-learning",
-            "machine-learning",
-            "natural-language-processing",
-            "computer-science",
-            "data-science",
-        ],
-        "licenses": [{"name": "CC-BY-NC-4.0"}],
-        "isPrivate": True,
-        "expectedUpdateFrequency": "monthly",
-        "author": "Lem Treursic",
-        "authors": [
-            {
-                "name": "Lem Treursic",
-                "bio": "Creator of LemGendary AI and the AI LemGend assistant",
-                "role": "Author",
-            }
-        ],
-        "resources": [
-            {
-                "path": "ai_helper_train.jsonl",
-                "description": "Fine-tuning prompt-completion instructions and domain training corpus.",
-            },
-            {
-                "path": "ai_helper_val.jsonl",
-                "description": "Evaluation validation prompt-completion instructions and benchmark test splits.",
-            },
-            {
-                "path": "category.txt",
-                "description": "Domain taxonomy descriptor defining the task archetype.",
-            },
-            {
-                "path": "classes.txt",
-                "description": "Exhaustive newline-delimited class dictionary.",
-            },
-            {
-                "path": "dataset_info.yaml",
-                "description": "Machine-readable YAML manifest detailing sample counts, sha256 checksums, and container topology.",
-            },
-            {
-                "path": "README.md",
-                "description": "Authoritative manifold documentation, lineage matrix, and SOTA metric targets.",
-            },
-        ],
-        "provenanceSources": sources_list,
-        "collectionMethodology": (
-            "Curated supervised instruction examples derived from reviewed documentation "
-            "and general AI/ML engineering principles. Records use JSONL format with "
-            "messages in system/user/assistant order.\n"
-        ),
-        "coverage": {
-            "temporal": {"start": "2024-01-01", "end": "2026-10-10"},
-            "geospatial": "Global Digital Documentation and AI Engineering",
-        },
-    })
-    with open(metadata_path, "w", encoding="utf-8") as f:
-        json.dump(meta_json, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-
-    # 6. Execute provenance enrichment & metadata compilation
+    # 5. Execute provenance enrichment & metadata compilation
     import subprocess
     import sys
 
@@ -1138,7 +1053,7 @@ def synthesize_corpus() -> None:
     subprocess.run([sys.executable, enrich_script], check=True)
     subprocess.run([sys.executable, compile_script], check=True)
 
-    # 7. Mirror enriched corpus to LemGendaryModels/ai_helper_lemgend/ and data/
+    # 6. Mirror enriched corpus to LemGendaryModels/ai_helper_lemgend/ and data/
     model_dir = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__),
