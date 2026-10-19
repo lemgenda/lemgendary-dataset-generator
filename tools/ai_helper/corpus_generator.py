@@ -11,12 +11,26 @@ conforming to:
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import json
 import os
+from pathlib import Path
 import random
 import re
+import sys
 from typing import Any, Dict, List, Tuple
 import yaml
+
+try:
+    from .extended_records import EXTENDED_RECORDS
+except (ImportError, ValueError):
+    _rec_path = os.path.join(os.path.dirname(__file__), "extended_records.py")
+    _spec = importlib.util.spec_from_file_location("ai_helper_extended_records", _rec_path)
+    if _spec is None or _spec.loader is None:
+        raise ImportError(f"Could not load extended records from {_rec_path}")
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    EXTENDED_RECORDS = _mod.EXTENDED_RECORDS
 
 
 SYSTEM_PROMPT = (
@@ -949,11 +963,6 @@ def generate_balanced_corpus() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any
         "unsupported_and_negative": generate_negative_examples(),
         "cross_document_pipeline": generate_model_pipeline_examples(models),
     }
-
-    try:
-        from tools.ai_helper.extended_records import EXTENDED_RECORDS
-    except ImportError:
-        from extended_records import EXTENDED_RECORDS
 
     for r in EXTENDED_RECORDS:
         cat = r["category"]
