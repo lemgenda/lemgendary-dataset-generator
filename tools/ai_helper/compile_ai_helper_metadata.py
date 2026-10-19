@@ -58,15 +58,17 @@ category: Technical Documentation & AI Assistant Training
 canonical_format: jsonl
 original_sources:
 - LemGendary AI Documentation Hub
-- Ecosystem Architecture And Current State Manifest
+- General AI Training Knowledge Reference
+- Ecosystem Architecture and Current State Manifest
 - Master Operations Manuals (GUI, CLI, API)
-- Dataset Compiler And Environment Manager Whitepapers
-- Model Family Architecture Whitepapers
-- Canonical Glossary And AI Helper Troubleshooting Knowledge Base
-- Curated AI LemGend Instruction And Validation Examples
+- Dataset Compiler and Environment Manager Whitepapers
+- Training Suite and Training Pathology Documentation
+- Model-Family Architecture Whitepapers
+- Canonical Glossary and AI Helper Troubleshooting Knowledge Base
+- Curated AI LemGend Instruction and Validation Examples
 path: ..\\LemGendaryDatasets\\LemGendizedAIHelperLemGend
 source: LemGendizedAIHelperLemGend-manifold
-last_processed: '2026-10-16T17:30:00.000000+00:00'
+last_processed: '2026-10-17T12:00:00.000000+00:00'
 train_samples: {train_count}
 val_samples: {val_count}
 """
@@ -208,6 +210,7 @@ if manifest_pattern.search(readme_text):
 
 # Ensure zero mention of Rain Streaks
 readme_text = readme_text.replace("Rain Streaks Dataset", "LemGendary AI Documentation Hub")
+readme_text = re.sub(r"release `v16\.9\.\d+-STABLE`", "release `v16.9.27-STABLE`", readme_text)
 
 with open(readme_path, "w", encoding="utf-8") as f:
     f.write(readme_text)

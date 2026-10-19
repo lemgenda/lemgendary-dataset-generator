@@ -979,23 +979,65 @@ def generate_balanced_corpus() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any
             category_buckets[cat] = []
         category_buckets[cat].append(item)
 
+    # 32 Authoritative, semantically disjoint validation examples
+    # (12 dedicated val_ benchmark inquiries + 20 domain-stratified generalization probes)
+    val_ids = {
+        "val_api_kaggle_push_single_model",
+        "api_quick_compile",
+        "val_cli_unit_test_all_command",
+        "cli_training_launch",
+        "val_cross_doc_curriculum_checkpoint_resume",
+        "val_format_parquet_compression_algorithms",
+        "format_parquet_rowgroup_locality",
+        "format_zarr_multidimensional_tensors",
+        "envmanager_requirements_mirroring",
+        "envmanager_sibling_surgery_bootstrap",
+        "gui_dual_websocket_telemetry",
+        "nima_intra_epoch_vram_sentinel",
+        "val_gui_training_orchestration_toolbar",
+        "gui_training_start",
+        "gui_training_stop",
+        "val_architecture_multitask_restorer_moe",
+        "val_architecture_yolov8n_anchor_free",
+        "val_format_zarr_vs_hdf5_concurrency",
+        "decision_restoration_suite",
+        "val_safetensors_header_deserialization",
+        "weights_safetensors_mmap_advantages",
+        "contrastive_training_vs_inference_checkpoint",
+        "terminology_authority_hierarchy_ssot",
+        "terminology_epistemic_tags_significance",
+        "val_troubleshoot_dataloader_worker_affinity",
+        "val_troubleshoot_loss_plateau_governor",
+        "troubleshoot_corrupted_webdataset_shard",
+        "troubleshoot_cuda_oom_sawtooth",
+        "troubleshoot_infinite_plateau_loop",
+        "troubleshoot_websocket_disconnection",
+        "val_unsupported_dynamic_batch_without_sentinel",
+        "negative_multinode_ddp_cluster",
+    }
+
     train_set: List[Dict[str, Any]] = []
     val_set: List[Dict[str, Any]] = []
 
-    # Deterministic stratified split: ensure EVERY category is represented in val set!
-    random.seed(42)
+    all_candidates: List[Dict[str, Any]] = []
     for cat, items in category_buckets.items():
-        random.shuffle(items)
-        # Ensure at least 1-2 examples from each category go to validation
-        num_val = max(1, round(len(items) * 0.20))
-        val_subset = items[:num_val]
-        train_subset = items[num_val:]
-        train_set.extend(train_subset)
-        val_set.extend(val_subset)
+        all_candidates.extend(items)
 
-    # Shuffle final shards deterministically
-    random.shuffle(train_set)
-    random.shuffle(val_set)
+    for item in all_candidates:
+        if item["id"] in val_ids:
+            val_set.append(item)
+        else:
+            train_set.append(item)
+
+    # Sort deterministically
+    train_set.sort(key=lambda x: x["id"])
+    val_set.sort(key=lambda x: x["id"])
+
+    # Assert exact partitions
+    if len(val_set) != 32 or len(train_set) != 125:
+        raise ValueError(
+            f"Split partition count failure: train={len(train_set)} (expected 125), val={len(val_set)} (expected 32)"
+        )
 
     return train_set, val_set
 

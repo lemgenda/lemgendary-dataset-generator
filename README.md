@@ -10,15 +10,24 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.17-STABLE` |
+| **Version** | `v16.9.18-STABLE` |
 | **Phase** | Post-Modernization S.O.L.I.D. Architecture Complete (Phases 0-8 + Suite Audit Hardening) |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
-| **Roadmap** | [dataset_compiler_modernization_roadmap.md](../lemgendary-docs/roadmaps/dataset_compiler_modernization_roadmap.md) |
+| **Documentation & Specification** | [PAPER_DATASET_COMPILER.md](../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md) |
 
 ---
 
 ## Changelog
+
+### v16.9.18 — AI Helper Provenance Bijective Alignment (48 Docs), Version Harmonization (v16.9.27-STABLE) & Disjoint Validation Split Hardening
+
+- **Exact 48-Publication Canonical URL Bijection (`tools/ai_helper/enrich_ai_helper_provenance.py`)** — Resolved 100% of canonical URLs in the AI Helper dataset (157/157 records) to match real published lowercase/kebab-case HTML filenames in `lemgendary-docs/papers/`.
+- **Ecosystem Version Harmonization (`doc_version = "v16.9.27-STABLE"`)** — Aligned record-level documentation version claims strictly with the authoritative documentation hub baseline and manifest (`v16.9.27-STABLE`).
+- **Disjoint Validation Split & Generalization Hardening (`tools/ai_helper/corpus_generator.py`)** — Enforced a mathematically verified, semantically disjoint validation split (125 train / 32 val) preserving all 12 dedicated `val_` benchmark evaluations, maintaining complete 19-model pipeline training coverage, and guaranteeing 0 prompt/response duplicates and low prompt Jaccard word similarity (<0.40).
+- **Lineage Manifest Synchronization (`tools/ai_helper/compile_ai_helper_metadata.py`)** — Harmonized the complete 9-source lineage taxonomy across `dataset_info.yaml`, `dataset-metadata.json`, and `index.json` under `CC-BY-NC-4.0`.
+
+---
 
 ### v16.9.17 — AI Helper Corpus Expansion (157 Records), Pipeline Ordering Fix & Tooling Consolidation
 
