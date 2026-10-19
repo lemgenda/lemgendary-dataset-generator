@@ -952,11 +952,11 @@ datasets:
       model selection, training diagnostics, evaluation, safe recovery,
       terminology disambiguation, and uncertainty-aware responses.
     keywords:
-    - deep-learning
-    - machine-learning
-    - natural-language-processing
     - computer-science
-    - data-science
+    - deep-learning
+    - artificial-intelligence
+    - software
+    - text
     license: CC-BY-NC-4.0
     expected_update_frequency: monthly
     is_private: false

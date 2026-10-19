@@ -901,6 +901,8 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
                         settings.title = settings.title[:50].rsplit(" ", 1)[0]
                         should_retry = True
             if should_retry:
+                # Kaggle image upload tokens are single-use; clear image on retry to prevent 500 / JSONDecodeError
+                settings.image = None
                 resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
             else:
                 break
@@ -909,6 +911,17 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
             print(f"[ERROR] Kaggle metadata update rejected for {clean_handle}: {resp.errors}")
             return False
     except Exception as exc:
+        # If an exception happened (such as JSONDecodeError due to consumed image token), retry without image first while preserving file descriptions
+        if getattr(settings, "image", None) is not None:
+            settings.image = None
+            try:
+                resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
+                if not resp or not getattr(resp, "errors", None) or len(resp.errors) == 0:
+                    print(f"[SUCCESS] Kaggle dataset metadata & column descriptors synced successfully ({len(files_data)} file definitions registered).")
+                    return True
+            except Exception as img_retry_exc:
+                logger.debug("Retry without image token also encountered: %s", img_retry_exc)
+
         if not files_data:
             print(f"[ERROR] Kaggle metadata update call failed for {clean_handle}: {exc}")
             return False

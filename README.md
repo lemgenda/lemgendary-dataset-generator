@@ -190,6 +190,7 @@
 - **Direct Streaming Zip-to-Container Engine (Phase 7)** — Built `tools/stream_zip_to_container.py`, allowing multi-gigabyte legacy archives (`mirnet_exposure`, `upn_v2`) to stream directly into canonical WebDataset POSIX `.tar` shards in memory with in-flight 12-thread WebP transcoding, eliminating NTFS MFT lock contention, cluster slack, and real-time antivirus filter driver slowdowns.
 - **Native 7-Zip & Tar Multi-Threaded Archive Acceleration (Phase 7)** — Upgraded `utils/archive.py` (`smart_extract`) to auto-discover 64-bit `7z.exe` and `tar.exe`, executing hardware-saturated multi-threaded decompression (`-mmt=on -bsp1 -aos -y`) with transparent single-root directory flattening.
 - **Automated Local Storage Reclamation (Phase 7)** — Integrated automated post-conversion source archive unlinking (`--delete-zip`) and legacy uncompressed folder removal (`--delete-legacy-dir`), reclaiming hundreds of gigabytes of physical local SSD storage.
+- **Kaggle Metadata Image Token & Descriptor Preservation Fix (Phase 8)** — Resolved silent file descriptor drop in `core/common_sync.py` (`push_kaggle_dataset_metadata`). Replaced blind fallback deletion of `settings.data` with single-use image token clearance on API retry, and aligned dataset taxonomy keywords with valid Kaggle tags to prevent retry cascades. Registered all 10 file definitions and valid taxonomy tags for `lemgendizedaihelperlemgend`.
 
 ### v16.7.4 — Progress Telemetry Resilience, Upload Streamline & Compliance Hardening
 
