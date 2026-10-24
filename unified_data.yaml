@@ -14,7 +14,7 @@ datasets:
   nima_aesthetic:
     name: NimaAesthetic
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaesthetic
-    val_split: 0.12
+    val_split: 0.10
     refs:
     - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
     - ref: kaggle://generalhawking/koniq-10k-dataset
