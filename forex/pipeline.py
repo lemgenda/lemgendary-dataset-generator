@@ -11,25 +11,28 @@ LemGendary MT5 Data Pipeline v5.4 (Final - NAS100 renamed, Disk-Error Resilient)
 - Logical pair "NAS100" is now called "NAS100".
 """
 
-import os
-import sys
-import json
-import importlib
 import argparse
+from datetime import datetime
+import importlib
+import os
+import shutil
+import sys
+import time
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Any, List, Dict, Optional
-import time
-import yaml
 import pyarrow as pa
 import pyarrow.parquet as pq
+import yaml
 
+from . import bridge as mt5_bridge
 from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA
+
 FEATURES = [
     "open", "high", "low", "close", "volume",
     "rsi", "macd", "macd_signal", "atr", "bb_width",
-    "session_sin", "session_cos", "atr_percentile", "bar_range_ratio"
+    "session_sin", "session_cos", "atr_percentile", "bar_range_ratio",
 ]
 
 LABEL_HORIZON_BARS = 20
@@ -40,27 +43,26 @@ PAIR_SPREADS_PIPS = {
     "USDCAD": 1.8,  "USDCHF": 1.5,  "AUDUSD": 1.4,  "NZDUSD": 2.0,
     "EURGBP": 1.5,  "EURJPY": 1.8,  "GBPJPY": 2.5,  "USOIL":  40.0,
     "US500":  10.0, "NAS100": 20.0,
-    "DE40":   10.0,  "XAGUSD": 20.0,
+    "DE40":   10.0, "XAGUSD": 20.0,
 }
 
 TIMEFRAME_LOOKBACK = {1: 512, 5: 288, 15: 192, 60: 168, 240: 90, 1440: 252}
 MT5_TIMEFRAMES = {
     1: "TIMEFRAME_M1", 5: "TIMEFRAME_M5", 15: "TIMEFRAME_M15",
-    60: "TIMEFRAME_H1", 240: "TIMEFRAME_H4", 1440: "TIMEFRAME_D1"
+    60: "TIMEFRAME_H1", 240: "TIMEFRAME_H4", 1440: "TIMEFRAME_D1",
 }
 
 # ─── Symbol Mapping (logical -> preferred MT5 name) ─────────────────────
 MT5_SYMBOL_MAP = {
     "USOIL": "WTI",      # oil is WTI in this broker
     "NAS100": "NAS100",  # optional, explicit
-    # add others if needed
 }
 
 # ─── Alternative keywords for fuzzy resolution ──────────────────────────
 ALTERNATIVE_KEYWORDS = {
     "USOIL": ["WTI", "OIL"],
     "US500": ["SPX", "SP500", "SPX500"],
-    "NAS100": ["US100", "NDX"],   # logical name is now NAS100
+    "NAS100": ["US100", "NDX"],
     "DE40": ["DAX", "GER40"],
     "XAGUSD": ["SILVER", "XAG"],
     "XAUUSD": ["GOLD", "XAU"],
@@ -70,17 +72,9 @@ CHUNK_SIZE = 20000
 
 # ─── MT5 Connection ────────────────────────────────────────────────────────
 
+
 def _mt5_call(method_name: str, *args: Any, **kwargs: Any) -> Any:
-    try:
-        mt5_mod = importlib.import_module("MetaTrader5")
-    except ImportError as exc:
-        raise RuntimeError(
-            "[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5"
-        ) from exc
-    func = getattr(mt5_mod, method_name, None)
-    if func is None:
-        raise AttributeError(f"[MT5] Method '{method_name}' not found on MetaTrader5")
-    return func(*args, **kwargs)
+    return mt5_bridge.call(method_name, *args, **kwargs)
 
 
 def connect_mt5(login=None, password=None, server=None, api_key=None):
@@ -88,7 +82,10 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
         if _mt5_call("initialize"):
             info = _mt5_call("account_info")
             if info:
-                print(f" [MT5] Connected -> Account: {info.login} | Server: {info.server} | Balance: {info.balance} {info.currency}")
+                print(
+                    f" [MT5] Connected -> Account: {info.login} | Server: {info.server} "
+                    f"| Balance: {info.balance} {info.currency}"
+                )
                 return True
     except Exception as e:
         print(f" [MT5] Failed to attach to terminal: {e}")
@@ -112,7 +109,10 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
             if _mt5_call("initialize", **init_kwargs):
                 info = _mt5_call("account_info")
                 if info:
-                    print(f" [MT5] Connected -> Account: {info.login} | Server: {info.server} | Balance: {info.balance} {info.currency}")
+                    print(
+                        f" [MT5] Connected -> Account: {info.login} | Server: {info.server} "
+                        f"| Balance: {info.balance} {info.currency}"
+                    )
                     return True
                 raise RuntimeError("[MT5] Connected but no account info.")
             err = _mt5_call("last_error")
@@ -139,7 +139,7 @@ def disconnect_mt5():
 
 # ─── Symbol Resolution (dynamic, caches results) ────────────────────────
 
-_SYMBOL_CACHE = {}  # pair -> resolved symbol name
+_SYMBOL_CACHE: Dict[str, str] = {}  # pair -> resolved symbol name
 
 
 def _find_matching_symbol(all_symbols, candidates):
@@ -152,7 +152,9 @@ def _find_matching_symbol(all_symbols, candidates):
             continue
         for sym in all_symbols:
             name_upper = sym.name.upper()
-            if name_upper.startswith(alt) and (len(name_upper) == len(alt) or name_upper[len(alt)] in ('.', '_', '-')):
+            if name_upper.startswith(alt) and (
+                len(name_upper) == len(alt) or name_upper[len(alt)] in ('.', '_', '-')
+            ):
                 return sym.name
 
     for alt in candidates:
@@ -188,15 +190,12 @@ def resolve_symbol(pair: str) -> Optional[str]:
 
 # ─── Data Download with Fallbacks ────────────────────────────────────────
 
+
 def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
     tf_attr = MT5_TIMEFRAMES.get(timeframe_min)
     if tf_attr is None:
         raise ValueError(f"Unsupported timeframe: {timeframe_min}min")
-    try:
-        import MetaTrader5 as mt5
-        tf = getattr(mt5, tf_attr)
-    except ImportError as exc:
-        raise RuntimeError("MetaTrader5 package not installed. Run: pip install MetaTrader5") from exc
+    tf = mt5_bridge.get_timeframe_const(tf_attr)
 
     dt_from = datetime.strptime(start_date, "%Y-%m-%d")
     dt_to = datetime.now()
@@ -233,14 +232,18 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                     df['volume'] = df['tick_volume']
                     df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
                     time_s = pd.Series(df['time'])
-                    print(f" [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min "
-                          f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})")
-                    # Cache the successful symbol for this pair
+                    print(
+                        f" [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min "
+                        f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})"
+                    )
                     _SYMBOL_CACHE[pair] = mt5_symbol
                     return df
 
                 # Fallback: chunked download
-                print(f" [MT5] Range returned empty. Falling back to chunked from_pos for {mt5_symbol} {timeframe_min}min...")
+                print(
+                    f" [MT5] Range returned empty. Falling back to chunked from_pos "
+                    f"for {mt5_symbol} {timeframe_min}min..."
+                )
                 all_rates = []
                 start_pos = 0
                 chunk_size = 100000
@@ -255,7 +258,11 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                     total_fetched += len(chunk)
                     start_pos += chunk_size
                     oldest_in_chunk = pd.to_datetime(chunk[-1][0], unit='s', utc=True)
-                    print(f"   [MT5] Downloaded chunk: {len(chunk)} bars (total {total_fetched}), oldest: {oldest_in_chunk.strftime('%Y-%m-%d')}", end='\r')
+                    print(
+                        f"   [MT5] Downloaded chunk: {len(chunk)} bars (total {total_fetched}), "
+                        f"oldest: {oldest_in_chunk.strftime('%Y-%m-%d')}",
+                        end='\r',
+                    )
                     if oldest_in_chunk <= dt_from:
                         break
 
@@ -277,8 +284,10 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                     df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
 
                 time_s = pd.Series(df['time'])
-                print(f"\n [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min via fallback "
-                      f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})")
+                print(
+                    f"\n [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min via fallback "
+                    f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})"
+                )
                 _SYMBOL_CACHE[pair] = mt5_symbol
                 return df
 
@@ -289,15 +298,14 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                     time.sleep(wait)
                 else:
                     print(f" [MT5] Failed to download for {mt5_symbol} after {retries} attempts: {e}")
-                    # Break out of retry loop to try next candidate
                     break
 
-    # If all candidates fail
     print(f" [MT5] WARNING: No symbol found for pair {pair}. Skipping.")
     return None
 
 
 # ─── Technical Indicators ────────────────────────────────────────────────
+
 
 def compute_indicators(df):
     df = df.copy()
@@ -307,7 +315,8 @@ def compute_indicators(df):
 
     computed_ta = False
     try:
-        import pandas_ta_classic as ta
+        # Importing the optional package registers the `DataFrame.ta` accessor.
+        importlib.import_module("pandas_ta_classic")
         df_ta = df.copy()
         df_ta.ta.rsi(length=14, append=True)
         df_ta.ta.macd(fast=12, slow=26, signal=9, append=True)
@@ -315,9 +324,15 @@ def compute_indicators(df):
         df_ta.ta.bbands(length=20, std=2, append=True)
 
         rsi_col = next((c for c in df_ta.columns if c.upper().startswith('RSI_')), None)
-        macd_col = next((c for c in df_ta.columns if 'MACD_' in c.upper() and 'H' not in c.upper() and 'S' not in c.upper()), None)
+        macd_col = next(
+            (c for c in df_ta.columns if 'MACD_' in c.upper() and 'H' not in c.upper() and 'S' not in c.upper()),
+            None,
+        )
         macds_col = next((c for c in df_ta.columns if 'MACDS_' in c.upper()), None)
-        atr_col = next((c for c in df_ta.columns if c.upper().startswith('ATRR_') or c.upper().startswith('ATR')), None)
+        atr_col = next(
+            (c for c in df_ta.columns if c.upper().startswith('ATRR_') or c.upper().startswith('ATR')),
+            None,
+        )
         bbu_col = next((c for c in df_ta.columns if 'BBU_' in c.upper()), None)
         bbl_col = next((c for c in df_ta.columns if 'BBL_' in c.upper()), None)
 
@@ -326,7 +341,10 @@ def compute_indicators(df):
             df['macd'] = (np.asarray(df_ta[macd_col], dtype=np.float64) / (close + 1e-8)).tolist()
             df['macd_signal'] = (np.asarray(df_ta[macds_col], dtype=np.float64) / (close + 1e-8)).tolist()
             df['atr'] = (np.asarray(df_ta[atr_col], dtype=np.float64) / (close + 1e-8)).tolist()
-            df['bb_width'] = ((np.asarray(df_ta[bbu_col], dtype=np.float64) - np.asarray(df_ta[bbl_col], dtype=np.float64)) / (close + 1e-8)).tolist()
+            df['bb_width'] = (
+                (np.asarray(df_ta[bbu_col], dtype=np.float64) - np.asarray(df_ta[bbl_col], dtype=np.float64))
+                / (close + 1e-8)
+            ).tolist()
             computed_ta = True
     except Exception:
         computed_ta = False
@@ -343,17 +361,20 @@ def compute_indicators(df):
     df.replace([np.inf, -np.inf], 0.0, inplace=True)
 
     if 'time' in df.columns:
-        hours = pd.to_datetime(df['time'], utc=True).dt.hour
+        hours = pd.Series(pd.to_datetime(df['time'], utc=True)).dt.hour
     else:
         hours = pd.Series([0.0] * len(df))
     hour_norm = np.asarray(hours, dtype=np.float64) / 23.0 * 2.0 * np.pi
     df['session_sin'] = np.sin(hour_norm).tolist()
     df['session_cos'] = np.cos(hour_norm).tolist()
 
-    raw_atr = _atr_manual(np.asarray(df['high'], dtype=np.float64),
-                          np.asarray(df['low'], dtype=np.float64),
-                          np.asarray(df['close'], dtype=np.float64), 14)
-    atr_series = pd.Series(list(raw_atr), dtype=float)
+    raw_atr = _atr_manual(
+        np.asarray(df['high'], dtype=np.float64),
+        np.asarray(df['low'], dtype=np.float64),
+        np.asarray(df['close'], dtype=np.float64),
+        14,
+    )
+    atr_series = pd.Series([float(v) for v in raw_atr])
     atr_pct = atr_series.rolling(100, min_periods=1).apply(
         lambda x: float(np.sum(x <= x[-1])) / float(len(x)), raw=True
     )
@@ -372,8 +393,8 @@ def _rsi_manual(close, period=14):
     delta = np.diff(close, prepend=close[0])
     gain = np.where(delta > 0, delta, 0.0).astype(np.float64)
     loss = np.where(delta < 0, -delta, 0.0).astype(np.float64)
-    avg_g = np.asarray(pd.Series(gain.tolist()).ewm(alpha=1/period, min_periods=period).mean(), dtype=np.float64)
-    avg_l = np.asarray(pd.Series(loss.tolist()).ewm(alpha=1/period, min_periods=period).mean(), dtype=np.float64)
+    avg_g = np.asarray(pd.Series(gain.tolist()).ewm(alpha=1 / period, min_periods=period).mean(), dtype=np.float64)
+    avg_l = np.asarray(pd.Series(loss.tolist()).ewm(alpha=1 / period, min_periods=period).mean(), dtype=np.float64)
     rs = avg_g / (avg_l + 1e-8)
     return np.asarray(1.0 - 1.0 / (1.0 + rs), dtype=np.float64)
 
@@ -406,6 +427,7 @@ def _bbwidth_manual(close, period=20, std_mult=2.0):
 
 # ─── Labels ────────────────────────────────────────────────────────────────
 
+
 def generate_labels(df, pair, horizon=LABEL_HORIZON_BARS, threshold_pips=DIRECTION_THRESHOLD_PIPS):
     if any(x in pair for x in ["JPY"]):
         pip_size = 0.01
@@ -431,8 +453,8 @@ def generate_labels(df, pair, horizon=LABEL_HORIZON_BARS, threshold_pips=DIRECTI
 
     for i in range(n - horizon):
         entry = close_arr[i]
-        fut_high = high_arr[i+1 : i+1+horizon].max()
-        fut_low = low_arr[i+1 : i+1+horizon].min()
+        fut_high = high_arr[i + 1 : i + 1 + horizon].max()
+        fut_low = low_arr[i + 1 : i + 1 + horizon].min()
         up_move = (fut_high - entry) / pip_size
         down_move = (entry - fut_low) / pip_size
 
@@ -453,6 +475,7 @@ def generate_labels(df, pair, horizon=LABEL_HORIZON_BARS, threshold_pips=DIRECTI
 
 # ─── Normalisation ────────────────────────────────────────────────────────
 
+
 def normalize_ohlcv(df):
     df = df.copy()
     close = np.asarray(df['close'], dtype=np.float64)
@@ -464,7 +487,10 @@ def normalize_ohlcv(df):
 
     vol = np.asarray(df['volume'], dtype=np.float64)
     vol_s = pd.Series(vol.tolist())
-    df['volume'] = np.asarray((vol_s - vol_s.rolling(50).mean()) / (vol_s.rolling(50).std() + 1e-8), dtype=np.float64).tolist()
+    df['volume'] = np.asarray(
+        (vol_s - vol_s.rolling(50).mean()) / (vol_s.rolling(50).std() + 1e-8),
+        dtype=np.float64,
+    ).tolist()
 
     df.fillna(0.0, inplace=True)
     df.replace([np.inf, -np.inf], 0.0, inplace=True)
@@ -472,6 +498,7 @@ def normalize_ohlcv(df):
 
 
 # ─── Sharding with Resumption and Parquet Compilation ────────────────────
+
 
 def year_chunk_complete(out_dir, year, pair, tf, chunk_suffix=None):
     year_parquet = os.path.join(out_dir, f"ForexUniverse{year}.parquet")
@@ -490,8 +517,17 @@ def year_chunk_complete(out_dir, year, pair, tf, chunk_suffix=None):
     return os.path.isfile(x_file) and os.path.isfile(y_dir_file) and os.path.isfile(y_mag_file)
 
 
-def save_shards(X, y_dir, y_mag, out_dir, pair, timeframe_min, year_split,
-                timestamps=None, chunk_suffix=None):
+def save_shards(
+    X,
+    y_dir,
+    y_mag,
+    out_dir,
+    pair,
+    timeframe_min,
+    year_split,
+    timestamps=None,
+    chunk_suffix=None,
+):
     shard_dir = os.path.join(out_dir, f"ForexUniverse{year_split}", pair, str(timeframe_min))
     os.makedirs(shard_dir, exist_ok=True)
 
@@ -504,17 +540,20 @@ def save_shards(X, y_dir, y_mag, out_dir, pair, timeframe_min, year_split,
     ts_arr = timestamps if timestamps is not None else np.zeros(num_samples, dtype=np.int64)
 
     x_bytes = [sample.tobytes() for sample in X]
-    table = pa.Table.from_arrays([
-        pa.array([pair] * num_samples, type=pa.string()),
-        pa.array([timeframe_min] * num_samples, type=pa.int32()),
-        pa.array(ts_arr, type=pa.int64()),
-        pa.array(y_dir, type=pa.int8()),
-        pa.array(y_mag[:, 0], type=pa.float32()),
-        pa.array(y_mag[:, 1], type=pa.float32()),
-        pa.array([seq_len] * num_samples, type=pa.int16()),
-        pa.array([n_features] * num_samples, type=pa.int16()),
-        pa.array(x_bytes, type=pa.binary()),
-    ], schema=PARQUET_SCHEMA)
+    table = pa.Table.from_arrays(
+        [
+            pa.array([pair] * num_samples, type=pa.string()),
+            pa.array([timeframe_min] * num_samples, type=pa.int32()),
+            pa.array(ts_arr, type=pa.int64()),
+            pa.array(y_dir, type=pa.int8()),
+            pa.array(y_mag[:, 0], type=pa.float32()),
+            pa.array(y_mag[:, 1], type=pa.float32()),
+            pa.array([seq_len] * num_samples, type=pa.int16()),
+            pa.array([n_features] * num_samples, type=pa.int16()),
+            pa.array(x_bytes, type=pa.binary()),
+        ],
+        schema=PARQUET_SCHEMA,
+    )
 
     pq.write_table(table, parquet_path, compression="zstd", compression_level=3)
     print(f" [MT5Pipeline] Parquet Shard Written -> {parquet_path} ({num_samples} samples)")
@@ -539,13 +578,19 @@ def consolidate_year_parquet(out_dir, year):
         tbl = pq.read_table(sf)
         writer.write_table(tbl, row_group_size=5000)
     writer.close()
-    import shutil
     shutil.rmtree(year_dir, ignore_errors=True)
     print(f" [MT5Pipeline] Consolidated -> {final_parquet}")
 
 
-def build_windows_and_save_by_year(df, seq_len, out_dir, pair, tf,
-                                   max_samples=50000, stride=None):
+def build_windows_and_save_by_year(
+    df,
+    seq_len,
+    out_dir,
+    pair,
+    tf,
+    max_samples=50000,
+    stride=None,
+):
     available = [c for c in FEATURES if c in df.columns]
     feat_arr = np.asarray(df[available], dtype=np.float32)
     dir_arr = np.asarray(df['direction'], dtype=np.int64)
@@ -553,7 +598,7 @@ def build_windows_and_save_by_year(df, seq_len, out_dir, pair, tf,
     sl_arr = np.asarray(df['sl_pips'], dtype=np.float32)
 
     if 'time' in df.columns:
-        df_time = pd.to_datetime(df['time'], utc=True)
+        df_time = pd.Series(pd.to_datetime(df['time'], utc=True))
         ts_arr = np.asarray(df_time.astype(np.int64) // 10**9, dtype=np.int64)
     else:
         raise ValueError("DataFrame missing explicit chronological 'time' axis.")
@@ -568,7 +613,7 @@ def build_windows_and_save_by_year(df, seq_len, out_dir, pair, tf,
     indices = np.arange(0, n_total, stride)
     target_indices = indices + seq_len
     target_times = df_time.iloc[target_indices]
-    sample_years = target_times.dt.year.values
+    sample_years = pd.Series(target_times).dt.year.to_numpy()
     unique_years = np.unique(sample_years)
 
     for year in unique_years:
@@ -603,20 +648,29 @@ def build_windows_and_save_by_year(df, seq_len, out_dir, pair, tf,
             y_mag_chunk = np.stack([tp_arr[chunk_targets], sl_arr[chunk_targets]], axis=1)
             timestamps_chunk = ts_arr[chunk_targets]
 
-            save_shards(X_chunk, y_dir_chunk, y_mag_chunk, out_dir, pair, tf,
-                        year_split=str(year), timestamps=timestamps_chunk,
-                        chunk_suffix=chunk_suffix)
+            save_shards(
+                X_chunk,
+                y_dir_chunk,
+                y_mag_chunk,
+                out_dir,
+                pair,
+                tf,
+                year_split=str(year),
+                timestamps=timestamps_chunk,
+                chunk_suffix=chunk_suffix,
+            )
 
             del X_chunk, y_dir_chunk, y_mag_chunk, timestamps_chunk
 
 
 # ─── Load Forex Datasets from YAML ────────────────────────────────────────
 
+
 def load_forex_datasets(yaml_path):
     if not os.path.exists(yaml_path):
         raise FileNotFoundError(f"YAML config not found: {yaml_path}")
 
-    with open(yaml_path, 'r') as f:
+    with open(yaml_path, 'r', encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
     datasets = []
@@ -635,6 +689,7 @@ def load_forex_datasets(yaml_path):
 
 
 # ─── Full Pipeline with Resumption and Symbol Resolution ─────────────────
+
 
 def run_download_pipeline(
     dataset_defs: List[Dict],
@@ -688,7 +743,10 @@ def run_download_pipeline(
                 print(f" [RESUME] {pair} @ {tf}min already complete for all datasets. Skipping download.")
                 continue
 
-            print(f"\n [MT5Pipeline] Processing {pair} @ {tf}min (lookback={TIMEFRAME_LOOKBACK.get(tf, 168)}) for datasets: {missing_datasets}")
+            print(
+                f"\n [MT5Pipeline] Processing {pair} @ {tf}min "
+                f"(lookback={TIMEFRAME_LOOKBACK.get(tf, 168)}) for datasets: {missing_datasets}"
+            )
 
             if tf == 1:
                 current_max_samples = 2_000_000
@@ -716,7 +774,7 @@ def run_download_pipeline(
                     out_dir=dataset_out_dir,
                     pair=pair,
                     tf=tf,
-                    max_samples=current_max_samples
+                    max_samples=current_max_samples,
                 )
 
     finally:
@@ -726,6 +784,7 @@ def run_download_pipeline(
 
 
 # ─── CLI ────────────────────────────────────────────────────────────────────
+
 
 def main():
     parser = argparse.ArgumentParser(description="LemGendary MT5 Data Pipeline (Final - Resilient)")
@@ -744,12 +803,14 @@ def main():
     if args.pairs is not None:
         print(" [MT5Pipeline] Override mode: using CLI pairs/timeframes/start_date")
         tf_list = args.timeframes if args.timeframes is not None else [1, 5, 15, 60, 240, 1440]
-        dataset_defs = [{
-            "name": "CustomOverride",
-            "pairs": args.pairs,
-            "timeframes": tf_list,
-            "start_date": args.start_date,
-        }]
+        dataset_defs = [
+            {
+                "name": "CustomOverride",
+                "pairs": args.pairs,
+                "timeframes": tf_list,
+                "start_date": args.start_date,
+            }
+        ]
     else:
         print(f" [MT5Pipeline] Loading forex datasets from: {args.config}")
         dataset_defs = load_forex_datasets(args.config)

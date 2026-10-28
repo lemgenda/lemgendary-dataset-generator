@@ -68,6 +68,8 @@ def _discover_source_images(source_path: Path) -> list[Path]:
 
 def _init_synthetic_registry(db_path: Path) -> None:
     """Initialize manifold_registry.db schema for synthetic manifold."""
+    from core.registry import initialize_registry
+    initialize_registry(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -267,6 +269,14 @@ def synthesize_manifold(
             conn.execute(
                 """
                 INSERT OR REPLACE INTO samples (
+                    name, source, task, split, img_format, img_size_bytes, target_size_bytes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (r["name"], r["source"], r["task"], r["split"], r["img_format"], r["img_size"], r["target_size"]),
+            )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO registry (
                     name, source, task, split, img_format, img_size_bytes, target_size_bytes
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,

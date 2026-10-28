@@ -316,8 +316,8 @@ def resolve_manifold_context(
                     with open(yaml_path, "r", encoding="utf-8") as yf:
                         yinfo = yaml.safe_load(yf) or {}
                         total_samples = int(yinfo.get("count", 0))
-                except (yaml.YAMLError, OSError, ValueError):
-                    pass
+                except (yaml.YAMLError, OSError, ValueError) as exc:
+                    logger.debug("Could not read count from dataset_info.yaml: %s", exc)
         sources = {
             "MetaTrader 5 Terminal Native Cache (2019-2026)": {
                 "train": int(total_samples * 0.88) if total_samples > 0 else 0,
@@ -346,8 +346,8 @@ def resolve_manifold_context(
                 with open(output_root / "dataset_info.yaml", "r", encoding="utf-8") as yf:
                     yinfo = yaml.safe_load(yf) or {}
                     total_samples = int(yinfo.get("count", 0))
-            except (yaml.YAMLError, OSError, ValueError):
-                pass
+            except (yaml.YAMLError, OSError, ValueError) as exc:
+                logger.debug("Could not read count from dataset_info.yaml: %s", exc)
         prov = unified_entry.get("provenance_sources", ["LemGendary AI Documentation Hub"])
         for p in prov:
             sources[format_source(p)] = {
@@ -374,11 +374,11 @@ def resolve_manifold_context(
 
     if total_samples == 0 and (output_root / "dataset_info.yaml").exists():
         try:
-            with open(output_root / "dataset_info.yaml", "r", encoding="utf-8") as f:
+            with open(output_root / "dataset_info.yaml", "r", encoding="utf-8") as yf:
                 yinfo = yaml.safe_load(yf) or {}
                 total_samples = int(yinfo.get("count", 0))
-        except (yaml.YAMLError, OSError, ValueError):
-            pass
+        except (yaml.YAMLError, OSError, ValueError) as exc:
+            logger.debug("Could not read count from dataset_info.yaml: %s", exc)
 
     # If sources is empty or only contains the self-referential compiled manifold name
     has_only_self = bool(sources and all("manifold" in k.lower() or k == manifold_name for k in sources.keys()))

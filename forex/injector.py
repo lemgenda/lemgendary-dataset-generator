@@ -95,12 +95,18 @@ import argparse
 
 
 def main():
+    default_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverse"
+    if not default_dir.exists():
+        legacy_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"
+        if legacy_dir.exists():
+            default_dir = legacy_dir
+
     parser = argparse.ArgumentParser(description="Embed column descriptions into Forex Parquet files.")
     parser.add_argument(
         "--dir",
         type=Path,
-        default=Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge",
-        help="Path to LemGendizedForexUniverseLarge directory",
+        default=default_dir,
+        help="Path to LemGendizedForexUniverse directory",
     )
     args = parser.parse_args()
     base_dir = args.dir.resolve()

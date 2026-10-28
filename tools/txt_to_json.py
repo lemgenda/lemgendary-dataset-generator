@@ -35,7 +35,7 @@ def parse_retinaface_lines(lines: list):
 
 def convert_labels():
     # Base configuration based on your paths
-    base_dir = Path(r"C:\Development\python\model-training\LemGendaryDatasets")
+    base_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
 
     models = {
         "LemGendizedNimaAesthetic": "nima",

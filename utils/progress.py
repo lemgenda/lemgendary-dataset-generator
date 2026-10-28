@@ -24,7 +24,7 @@ STANDARD_BAR_FORMAT = "{desc} - {percentage:5.1f}% [{n_fmt}/{total_fmt}, {rate_f
 def supports_unicode() -> bool:
     """Detect whether standard output safely supports unicode block characters."""
     try:
-        encoding = getattr(sys.stdout, "encoding", "") or ""
+        encoding = str(getattr(sys.stdout, "encoding", "") or "")
         if "utf" in encoding.lower():
             return True
         # Check PYTHONIOENCODING or modern Windows Terminal

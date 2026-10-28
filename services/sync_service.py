@@ -56,3 +56,26 @@ class SyncService:
         except Exception as exc:
             console.print(f"[bold red]Sync pull failed:[/bold red] {exc}")
             return 1
+
+    @staticmethod
+    def push_metadata(
+        model: str | None = None,
+        all_datasets: bool = False,
+        url: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        """Push Kaggle dataset metadata without re-uploading file archives."""
+        from tools import sync_kaggle_metadata
+
+        try:
+            return sync_kaggle_metadata.sync_metadata(
+                repo_id=url,
+                metadata_dir=model,
+                all_datasets=all_datasets,
+                dry_run=dry_run,
+            )
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        except Exception as exc:
+            console.print(f"[bold red]Sync metadata failed:[/bold red] {exc}")
+            return 1

@@ -295,9 +295,9 @@ class TestMDSWriter(unittest.TestCase):
     """Test MDSWriter lifecycle, Windows relative path routing, and idempotency."""
 
     def test_mds_writer_lifecycle_and_idempotency(self) -> None:
-        try:
-            import streaming  # noqa: F401
-        except ImportError:
+        import importlib.util
+
+        if importlib.util.find_spec("streaming") is None:
             self.skipTest("mosaicml-streaming not installed")
 
         from formats.mds import MDSWriter

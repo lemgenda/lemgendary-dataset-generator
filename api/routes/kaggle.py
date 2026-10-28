@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,7 @@ from api.routes.datasets import _resolve_output_root
 from core.cli_args import venv_python
 import yaml
 
+logger = logging.getLogger("lemgendary.api.routes.kaggle")
 router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
 
 
@@ -81,7 +83,8 @@ async def list_registry_kaggle_datasets() -> List[KaggleDatasetRegistryItem]:
             meta = ydata.get("_registry_metadata", {})
             prefix = meta.get("name_prefix", "LemGendized")
             suffix = meta.get("name_suffix", "")
-    except Exception:
+    except (OSError, yaml.YAMLError) as exc:
+        logger.warning("Could not parse %s for Kaggle registry listing: %s", unified_yaml, exc)
         return items
 
     for k, v in datasets_meta.items():
@@ -104,8 +107,8 @@ async def list_registry_kaggle_datasets() -> List[KaggleDatasetRegistryItem]:
                     with open(info_file, "r", encoding="utf-8") as inf:
                         m = yaml.safe_load(inf) or {}
                         sample_count = m.get("count") or m.get("total_samples") or 0
-                except Exception:
-                    pass
+                except (OSError, yaml.YAMLError) as exc:
+                    logger.debug("Could not read dataset_info.yaml for %s: %s", local_path, exc)
 
         items.append(
             KaggleDatasetRegistryItem(
@@ -232,15 +235,10 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
 @router.post("/sync", response_model=JobResponse)
 async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
     sync_script = "tools/manifold_sync.py" if (Path(__file__).resolve().parent.parent.parent / "tools" / "manifold_sync.py").exists() else "manifold_sync.py"
-    cmd = [venv_python(), "-u", sync_script]
+    action = "get" if req.pull and not req.push else "sync"
+    cmd = [venv_python(), "-u", sync_script, "--action", action]
     if req.manifold:
-        cmd.extend(["--manifold", req.manifold])
-    if req.push:
-        cmd.append("--push")
-    if req.pull:
-        cmd.append("--pull")
-    if req.force:
-        cmd.append("--force")
+        cmd.extend(["--model", req.manifold])
 
     job = job_manager.create_job(
         job_type=JobType.SYNC,
@@ -320,8 +318,8 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         repo_id = f"lemtreursi/{manifold_dir.name.lower()}"
 
     clean_id = _clean_kaggle_ref(repo_id)
-    slug_lower = (clean_id.split("/")[-1] if "/" in clean_id else clean_id).lower()
-    if slug_lower.endswith("large") or "manifoldlarge" in slug_lower or "large" in slug_lower.split("_") or "large" in slug_lower.split("-"):
+    from core.common_sync import is_kaggle_large_manifold
+    if is_kaggle_large_manifold(clean_id):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=f"Refusing to update metadata for legacy *large manifold: {clean_id}")
 

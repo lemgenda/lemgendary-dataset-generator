@@ -103,12 +103,18 @@ def _select_manifolds(manifolds):
         return None
 
 
-def _prompt_reduction_params():
+def _prompt_reduction_params(max_gb_override=None, suffix_override=None):
     try:
-        raw_gb = input("Target max size in GB [Default: 190.0]: ").strip()
-        max_gb = float(raw_gb) if raw_gb else 190.0
-        raw_suffix = input("New suffix [Default: Reduced]: ").strip()
-        suffix = raw_suffix if raw_suffix else "Reduced"
+        if max_gb_override is not None:
+            max_gb = float(max_gb_override)
+        else:
+            raw_gb = input("Target max size in GB [Default: 190.0]: ").strip()
+            max_gb = float(raw_gb) if raw_gb else 190.0
+        if suffix_override is not None:
+            suffix = str(suffix_override)
+        else:
+            raw_suffix = input("New suffix [Default: Reduced]: ").strip()
+            suffix = raw_suffix if raw_suffix else "Reduced"
         return max_gb, suffix
     except ValueError:
         print("[ERROR] Invalid input.")
@@ -118,7 +124,7 @@ def _prompt_reduction_params():
         return None, None
 
 
-def reduce_dataset():
+def reduce_dataset(max_gb_override=None, suffix_override=None):
     print("\n[SCANNING] Locating existing manifolds in LemGendaryDatasets...")
     # ─── Phase 0: eligibility filter relaxed to support both legacy and modern names ───
     manifolds = [
@@ -169,7 +175,7 @@ def reduce_dataset():
             continue
 
         # --- Vision / quality manifold flow (unchanged) ---
-        max_gb, suffix = _prompt_reduction_params()
+        max_gb, suffix = _prompt_reduction_params(max_gb_override=max_gb_override, suffix_override=suffix_override)
         if max_gb is None:
             return
 
@@ -467,4 +473,10 @@ def purge_ghost_manifolds():
 
 
 if __name__ == '__main__':
-    reduce_dataset()
+    import argparse
+    parser = argparse.ArgumentParser(description="Interactive manifold downsampling and scale reduction")
+    parser.add_argument("--reduce", action="store_true", help="Run dataset reduction flow")
+    parser.add_argument("--max_gb", "--max-gb", type=float, default=None, help="Target max size in GB")
+    parser.add_argument("--suffix", default=None, help="Suffix for reduced manifold")
+    args = parser.parse_args()
+    reduce_dataset(max_gb_override=args.max_gb, suffix_override=args.suffix)

@@ -81,7 +81,7 @@ def _has_manifold_data(path: Path) -> bool:
         with os.scandir(path) as it:
             for entry in it:
                 name = entry.name
-                if name.endswith((".parquet", ".tar", ".mds", ".bin")):
+                if name.endswith((".parquet", ".tar", ".data", ".mds", ".bin", ".jsonl")):
                     return True
                 if entry.is_dir():
                     subdirs.add(entry.path)
@@ -93,8 +93,8 @@ def _has_manifold_data(path: Path) -> bool:
                     with os.scandir(sub) as sit:
                         if any(True for _ in sit):
                             return True
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("Could not scan container directory %s: %s", sub, exc)
             elif bname in ("images", "targets", "masks"):
                 for split in ("train", "val", "test"):
                     sp = os.path.join(sub, split)
@@ -104,8 +104,8 @@ def _has_manifold_data(path: Path) -> bool:
                                 for sf in sit:
                                     if sf.is_file():
                                         return True
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            logger.debug("Could not scan split directory %s: %s", sp, exc)
     except OSError as exc:
         logger.debug("Error checking manifold data in %s: %s", path, exc)
     return False
@@ -396,8 +396,8 @@ def _create_modernized_batch(
                     logger.debug("Transcode failure for %s: %s", s_p, exc)
                     try:
                         shutil.copy2(s_p, d_p)
-                    except Exception:
-                        pass
+                    except OSError as copy_exc:
+                        logger.debug("Fallback copy2 failed for %s -> %s: %s", s_p, d_p, copy_exc)
                     return False
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -460,24 +460,14 @@ def _kaggle_reupload(item: dict, dry_run: bool = False) -> tuple[bool, str]:
     if dry_run:
         return True, f"[DRY-RUN] Would upload {item['target_name']} -> {new_ref}"
 
-    python_exe = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
-    cmd = [
-        python_exe, str(MANIFOLD_SYNC),
-        "--action", "sync",
-        "--model", item["target_name"],
-        "--url", clean_ref,
-    ]
     try:
-        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
-        result = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=False, text=True, check=False,
-            creationflags=cflags,
-        )
-        if result.returncode == 0:
+        from services.sync_service import SyncService
+        rc = SyncService.push(model=item["target_name"], url=clean_ref)
+        if rc == 0:
             return True, f"Uploaded to {new_ref}"
-        return False, f"manifold_sync exited {result.returncode}"
+        return False, f"SyncService.push exited {rc}"
     except Exception as e:
-        return False, f"subprocess error: {e}"
+        return False, f"sync error: {e}"
 
 
 # ─── Registry Update ────────────────────────────────────────────────────────

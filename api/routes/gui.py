@@ -76,8 +76,8 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                 for sub in os.scandir(c_dir):
                     if sub.is_dir():
                         dirs_to_check.append(Path(sub.path))
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Could not scan subdirectories of %s: %s", c_dir, exc)
 
             for check_d in dirs_to_check:
                 try:
@@ -99,8 +99,8 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                             file_count += 1
                             try:
                                 total_size += entry.stat().st_size
-                            except OSError:
-                                pass
+                            except OSError as stat_exc:
+                                logger.debug("Could not stat container file %s: %s", entry.path, stat_exc)
                 except OSError as exc:
                     logger.debug("Failed scanning container folder %s: %s", check_d, exc)
 
@@ -117,10 +117,10 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
 
                 try:
                     total_size += entry.stat().st_size
-                except OSError:
-                    pass
-    except OSError:
-        pass
+                except OSError as stat_exc:
+                    logger.debug("Could not stat root file %s: %s", entry.path, stat_exc)
+    except OSError as exc:
+        logger.debug("Failed scanning root manifold path %s: %s", manifold_path, exc)
 
     # 3. Check split directories for directory-based manifolds (e.g. YOLO images/train, images/val)
     if shards_count == 0:
@@ -130,8 +130,8 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                 split_dirs = [s for s in os.scandir(images_dir) if s.is_dir()]
                 if split_dirs:
                     shards_count = len(split_dirs)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Failed scanning images directory %s: %s", images_dir, exc)
 
     # 4. Only scan loose image directories (images, targets, masks, labels) if no shards found or few files
     if shards_count == 0 or file_count < 10:
@@ -163,8 +163,8 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                         file_count += 1
                         try:
                             total_size += (Path(root_d) / fname).stat().st_size
-                        except OSError:
-                            pass
+                        except OSError as stat_exc:
+                            logger.debug("Could not stat file %s in %s: %s", fname, root_d, stat_exc)
             except OSError as scan_exc:
                 logger.debug("Failed scanning %s: %s", directory, scan_exc)
 
@@ -324,8 +324,8 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 with open(info_file, "r", encoding="utf-8") as f:
                     meta = yaml.safe_load(f) or {}
                     raw_sources = meta.get("original_sources") or []
-            except Exception:
-                pass
+            except (OSError, yaml.YAMLError) as exc:
+                logger.debug("Failed reading original_sources from %s: %s", info_file, exc)
 
         if not raw_sources:
             raw_sources = reg_info.get("provenance_sources") or []

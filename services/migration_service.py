@@ -117,3 +117,50 @@ class MigrationService:
         except Exception as exc:
             console.print(f"[bold red]Manifold modernization error:[/bold red] {exc}")
             return 1
+
+    @staticmethod
+    def reduce_manifolds(
+        max_gb: float | None = None,
+        suffix: str | None = None,
+    ) -> int:
+        """Launch interactive manifold downsampling and scale reduction."""
+        from tools import manifold_reduce
+
+        try:
+            manifold_reduce.reduce_dataset(max_gb_override=max_gb, suffix_override=suffix)
+            return 0
+        except Exception as exc:
+            console.print(f"[bold red]Manifold reduction error:[/bold red] {exc}")
+            return 1
+
+    @staticmethod
+    def run_modernization_queue(
+        dataset: str | None = None,
+        workers: int | None = None,
+        push_kaggle: bool = False,
+        dry_run: bool = False,
+        force: bool = False,
+    ) -> int:
+        """Execute the batch modernization queue conversion in-process."""
+        from tools import modernization_queue
+
+        try:
+            datasets_root = (Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets").resolve()
+            registry_yaml = Path(__file__).resolve().parent.parent / "unified_data.yaml"
+            if not datasets_root.exists():
+                console.print(f"[red]LemGendaryDatasets directory not found at {datasets_root}[/red]")
+                return 1
+            items = modernization_queue.load_queue_manifest(datasets_root, registry_yaml)
+            filter_keys = [k.strip() for k in dataset.split(",") if k.strip()] if dataset else None
+            return modernization_queue.run_queue(
+                items=items,
+                priority_keys=["mirnet_exposure", "upn_v2"],
+                filter_keys=filter_keys,
+                push_kaggle=push_kaggle,
+                workers=workers,
+                dry_run=dry_run,
+                force=force,
+            )
+        except Exception as exc:
+            console.print(f"[bold red]Modernization queue error:[/bold red] {exc}")
+            return 1

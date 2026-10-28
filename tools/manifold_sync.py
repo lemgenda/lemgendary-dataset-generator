@@ -25,42 +25,52 @@ if yaml_file.exists():
     if META.get("output_folder_name"):
         OUT_PARENT = Path(META["output_folder_name"]).resolve()
 
-def setup_auth(custom_user=None, custom_token=None, default_user=None):
-    """Setup Kaggle authentication using environment variables."""
-    # 1. Custom provided
-    if custom_user and custom_token:
-        os.environ["KAGGLE_USERNAME"] = custom_user
-        os.environ["KAGGLE_API_TOKEN"] = custom_token
-        os.environ["KAGGLE_KEY"] = custom_token
-        return True
-    
-    # 2. Check existing env
-    if "KAGGLE_API_TOKEN" in os.environ:
-        if default_user and "KAGGLE_USERNAME" not in os.environ:
-            os.environ["KAGGLE_USERNAME"] = default_user
-        return True
-    if "KAGGLE_USERNAME" in os.environ and "KAGGLE_KEY" in os.environ:
-        return True
-        
-    # 3. Fallback to .kaggle_token and default user
-    token_file = ROOT / ".kaggle_token" if (ROOT / ".kaggle_token").exists() else Path(".kaggle_token")
-    if token_file.exists():
-        token = token_file.read_text().strip()
-        if token:
-            os.environ["KAGGLE_API_TOKEN"] = token
-            if default_user and "KAGGLE_USERNAME" not in os.environ:
-                os.environ["KAGGLE_USERNAME"] = default_user
-            print(f"[AUTH] Using credentials from .kaggle_token (user: '{os.environ.get('KAGGLE_USERNAME', default_user)}')")
-            return True
-            
-    print("[ERROR] Kaggle authentication missing. Provide via arguments or ensure .kaggle_token exists.")
-    return False
+def setup_auth(
+    custom_user: str | None = None,
+    custom_token: str | None = None,
+    default_user: str | None = None,
+) -> bool:
+    """Setup Kaggle authentication delegating to core.common_sync SSOT."""
+    from core.common_sync import setup_kaggle_auth
+    return setup_kaggle_auth(
+        default_user=default_user or "lemtreursi",
+        custom_user=custom_user,
+        custom_token=custom_token,
+    )
 
-def get_kaggle_ref(manifold_id):
+
+def resolve_manifold_folder(manifold_id: str) -> str:
+    """Resolve a dataset registry key, slug, or folder name to the canonical folder name."""
+    if not manifold_id:
+        return ""
+    target = manifold_id.strip()
+    if (OUT_PARENT / target).exists():
+        return target
+    prefix = META.get("name_prefix", "LemGendized")
+    suffix = META.get("name_suffix", "")
+    for k, v in DATASETS_META.items():
+        slug = v.get("name", "")
+        mod_folder = v.get("modernized_folder") or f"{prefix}{slug}{suffix}"
+        compiled = f"{prefix}{slug}{suffix}"
+        candidates = {k.lower(), slug.lower(), mod_folder.lower(), compiled.lower()}
+        if target.lower() in candidates:
+            if (OUT_PARENT / mod_folder).exists():
+                return mod_folder
+            if (OUT_PARENT / compiled).exists():
+                return compiled
+            return mod_folder
+    return target
+
+def resolve_kaggle_ref(manifold_id: str) -> str | None:
+    """Public alias of get_kaggle_ref used by metadata sync callers."""
+    return get_kaggle_ref(manifold_id)
+
+
+def get_kaggle_ref(manifold_id: str | None) -> str | None:
     """Retrieve kaggle ref from yaml with multi-variant matching."""
     if not manifold_id:
         return None
-    target_clean = str(manifold_id).strip()
+    target_clean = manifold_id.strip()
     norm_target = target_clean.lower().replace("_", "").replace("-", "").replace("lemgendized", "").replace("large", "")
     prefix = META.get("name_prefix", "LemGendized")
     suffix = META.get("name_suffix", "")
@@ -91,23 +101,28 @@ def get_kaggle_ref(manifold_id):
 
     return None
 
-def action_sync(manifold_name, repo_id, no_wait=False):
+def action_sync(manifold_name, repo_id=None, no_wait=False):
     """Zip and Upload a manifold to Kaggle with byte-metered progress and status monitoring."""
-    src_dir = OUT_PARENT / manifold_name
+    resolved_folder = resolve_manifold_folder(manifold_name)
+    src_dir = OUT_PARENT / resolved_folder
     if not src_dir.exists():
-        print(f"[ERROR] Local manifold '{manifold_name}' not found at {src_dir}")
+        print(f"[ERROR] Local manifold '{manifold_name}' (resolved: '{resolved_folder}') not found at {src_dir}")
         return
 
-    clean_repo_id = repo_id.replace("kaggle://", "")
+    resolved_repo = repo_id or get_kaggle_ref(manifold_name) or get_kaggle_ref(resolved_folder)
+    if not resolved_repo:
+        resolved_repo = f"lemtreursi/{resolved_folder.lower().replace('_', '')}"
+
+    clean_repo_id = resolved_repo.replace("kaggle://", "")
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     setup_auth(default_user=owner)
 
     from core.common_sync import cleanup_temp_archives, perform_dataset_upload
 
     # Pre-cleanup any dangling staging directories (preserves recent archives for resumption)
-    cleanup_temp_archives(manifold_name=manifold_name, base_dir=OUT_PARENT, force=False)
+    cleanup_temp_archives(manifold_name=resolved_folder, base_dir=OUT_PARENT, force=False)
 
-    print(f"\n[SYNC] Preparing to upload '{manifold_name}' to Kaggle ({clean_repo_id})")
+    print(f"\n[SYNC] Preparing to upload '{resolved_folder}' to Kaggle ({clean_repo_id})")
     success = perform_dataset_upload(
         src_path=src_dir,
         clean_repo_id=clean_repo_id,
@@ -183,16 +198,24 @@ def action_get(repo_id, output_name=None):
 def main():
     parser = argparse.ArgumentParser(description="LemGendary Manifold Sync Manager")
     parser.add_argument("--action", choices=["sync", "get"], help="Action to perform")
-    parser.add_argument("--model", type=str, help="Local manifold name or YAML key")
+    parser.add_argument("--model", "--manifold", dest="model", type=str, help="Local manifold name or YAML key")
     parser.add_argument("--url", type=str, help="Kaggle Dataset URL or ID (e.g., user/dataset)")
     parser.add_argument("--user", type=str, help="Custom Kaggle Username")
     parser.add_argument("--token", type=str, help="Custom Kaggle API Token")
     parser.add_argument("--no-wait", action="store_true", help="Skip monitoring Kaggle server-side extraction status")
+    parser.add_argument("--push", action="store_true", help="Alias for --action sync")
+    parser.add_argument("--pull", action="store_true", help="Alias for --action get")
+    parser.add_argument("--force", action="store_true", help="Force sync operation")
     
     args = parser.parse_args()
     
     # Interactive menu if no action provided
     action = args.action
+    if not action:
+        if args.push:
+            action = "sync"
+        elif args.pull:
+            action = "get"
     if not action:
         print("\n=== LemGendary Sync Manager ===")
         print("1. [SYNC] Zip & Upload local manifold to Kaggle")

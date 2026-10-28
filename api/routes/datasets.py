@@ -1,5 +1,6 @@
 import logging
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, status
@@ -13,15 +14,20 @@ router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
 def _resolve_output_root() -> Path:
     config_file = Path("unified_data.yaml")
+    if not config_file.exists():
+        config_file = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
     if config_file.exists():
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
                 folder = data.get("_registry_metadata", {}).get("output_folder_name", "../LemGendaryDatasets")
-                return Path(folder).resolve()
+                p = Path(folder)
+                if not p.is_absolute():
+                    p = (config_file.parent / p).resolve()
+                return p
         except Exception as exc:
             logger.debug("Could not parse output_folder_name from %s: %s", config_file, exc)
-    return Path("../LemGendaryDatasets").resolve()
+    return (Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets").resolve()
 
 
 @router.get("", response_model=DatasetListResponse)
@@ -47,28 +53,53 @@ async def list_datasets() -> DatasetListResponse:
                 with open(info_file, "r", encoding="utf-8") as f:
                     meta = yaml.safe_load(f) or {}
                     task = meta.get("task", task)
-                    sample_count = meta.get("total_samples", 0)
+                    sample_count = int(meta.get("total_samples", 0) or 0)
             except Exception as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
-        if (entry / "mds").exists():
-            formats.append("mds")
-        if (entry / "litdata").exists():
-            formats.append("litdata")
-        if (entry / "wds").exists():
-            formats.append("wds")
-        if any(entry.glob("*.jsonl")):
+        size_bytes = 0
+        has_parquet = False
+        has_jsonl = False
+
+        try:
+            for item in os.scandir(entry):
+                if item.is_file():
+                    fname = item.name.lower()
+                    if fname.endswith(".parquet"):
+                        has_parquet = True
+                    elif fname.endswith(".jsonl"):
+                        has_jsonl = True
+                    try:
+                        size_bytes += item.stat().st_size
+                    except OSError as stat_exc:
+                        logger.debug("Failed stat on %s: %s", item.path, stat_exc)
+                elif item.is_dir():
+                    dname = item.name
+                    if dname == "mds":
+                        formats.append("mds")
+                    elif dname == "litdata":
+                        formats.append("litdata")
+                    elif dname in ("wds", "shards"):
+                        if "wds" not in formats:
+                            formats.append("wds")
+        except OSError as exc:
+            logger.debug("Failed scanning manifold directory %s: %s", entry, exc)
+
+        if has_parquet:
+            formats.append("parquet")
+        if has_jsonl:
             formats.append("jsonl")
 
-
-        # Basic size approximation
-        size_bytes = 0
-        try:
-            for item in entry.glob("*"):
-                if item.is_file():
-                    size_bytes += item.stat().st_size
-        except OSError as exc:
-            logger.debug("Failed computing file sizes in %s: %s", entry, exc)
+        if sample_count == 0:
+            db_file = entry / "manifold_registry.db"
+            try:
+                if db_file.exists() and db_file.stat().st_size < 50_000_000:
+                    with sqlite3.connect(db_file, timeout=0.5) as conn:
+                        row = conn.execute("SELECT MAX(rowid) FROM registry").fetchone()
+                        if row and row[0]:
+                            sample_count = int(row[0])
+            except Exception as exc:
+                logger.debug("Failed reading registry DB %s: %s", db_file, exc)
 
         datasets.append(
             DatasetInfoResponse(

@@ -126,54 +126,14 @@ def main():
             sys.exit(1)
 
     elif args.action == "metadata":
-        import yaml
-        if args.all_datasets:
-            # Update metadata for all datasets defined in unified_data.yaml
-            yd_path = Path(__file__).parent.parent / "unified_data.yaml"
-            if not yd_path.exists():
-                print("[ERROR] unified_data.yaml not found.")
-                sys.exit(1)
-            with open(yd_path, "r", encoding="utf-8") as yf:
-                ydata = yaml.safe_load(yf) or {}
-            prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
-            suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
-            all_ok = True
-            for ds_key, ds_entry in ydata.get("datasets", {}).items():
-                ref = ds_entry.get("kaggle_ref", "").replace("kaggle://", "").strip()
-                if not ref:
-                    continue
-                if is_kaggle_large_manifold(ref):
-                    print(f"[SKIP] Refusing to touch legacy *large manifold: {ref}")
-                    continue
-                mod_folder = ds_entry.get("modernized_folder") or f"{prefix}{ds_entry.get('name', '')}{suffix}"
-                # Try resolving metadata file from LemGendaryDatasets or output_dir arg
-                base_dir = Path(args.output_dir).resolve() if args.output_dir else Path("../LemGendaryDatasets").resolve()
-                meta_candidate = base_dir / mod_folder / "dataset-metadata.json"
-                if not meta_candidate.exists():
-                    print(f"[SKIP] No dataset-metadata.json found for {ds_key} at {meta_candidate}")
-                    continue
-                print(f"[META] Updating Kaggle metadata for {ref} ({ds_key})...")
-                ok = push_kaggle_dataset_metadata(ref, meta_candidate)
-                if ok:
-                    print(f"[OK] Metadata updated for {ref}")
-                else:
-                    print(f"[FAILED] Metadata update failed for {ref}")
-                    all_ok = False
-            if not all_ok:
-                sys.exit(1)
-        else:
-            # Update metadata for single dataset
-            if is_kaggle_large_manifold(clean_repo_id):
-                print(f"[ERROR] Refusing to touch legacy *large manifold: {clean_repo_id}")
-                sys.exit(1)
-            if not args.output_dir:
-                parser.error("--output_dir (path to manifold directory with dataset-metadata.json) is required for metadata action.")
-            meta_path = Path(args.output_dir).resolve()
-            print(f"[META] Updating Kaggle metadata for {clean_repo_id}...")
-            success = push_kaggle_dataset_metadata(clean_repo_id, meta_path)
-            if not success:
-                sys.exit(1)
-            print(f"[OK] Metadata successfully updated for {clean_repo_id}")
+        from tools.sync_kaggle_metadata import sync_metadata
+        code = sync_metadata(
+            repo_id=None if args.all_datasets else clean_repo_id,
+            metadata_dir=args.output_dir or None,
+            all_datasets=args.all_datasets,
+        )
+        if code != 0:
+            sys.exit(code)
 
 
 if __name__ == "__main__":

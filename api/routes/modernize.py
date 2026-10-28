@@ -50,7 +50,7 @@ class ManifoldReduceRequest(BaseModel):
 
 
 @router.get("/queue", response_model=List[QueueItemResponse])
-def get_modernization_queue() -> List[QueueItemResponse]:
+async def get_modernization_queue() -> List[QueueItemResponse]:
     """Scan and retrieve real-time modernization status queue across all manifolds."""
     root = Path("../LemGendaryDatasets").resolve()
     unified_yaml = Path("unified_data.yaml").resolve()
@@ -155,17 +155,16 @@ async def run_reduce(req: ManifoldReduceRequest) -> JobResponse:
 
 
 @router.post("/regenerate-manifolds")
-def regenerate_manifolds_documentation() -> Dict[str, Any]:
+async def regenerate_manifolds_documentation() -> Dict[str, Any]:
     """Regenerate authoritative manifolds.md matrix from on-disk status and registries."""
-    import subprocess
-    cmd = [venv_python(), "tools/regenerate_manifolds_md.py"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
+    from services.doc_service import DocService
+    code = DocService.rebuild_manifolds_md(check_only=False)
+    if code != 0:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to regenerate manifolds.md: {proc.stderr}",
+            detail="Failed to regenerate manifolds.md",
         )
     return {
         "status": "success",
-        "message": proc.stdout.strip(),
+        "message": "Regenerated manifolds.md successfully.",
     }

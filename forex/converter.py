@@ -261,11 +261,17 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
 
 
 def main():
+    default_base = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverse"
+    if not default_base.exists():
+        legacy_base = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"
+        if legacy_base.exists():
+            default_base = legacy_base
+
     parser = argparse.ArgumentParser(description="LemGendary Forex Manifold Parquet Conversion Engine")
     parser.add_argument(
         "--base_dir",
-        default=r"c:\Development\python\model-training\LemGendaryDatasets\LemGendizedForexUniverseLarge",
-        help="Path to LemGendizedForexUniverseLarge directory"
+        default=str(default_base),
+        help="Path to LemGendizedForexUniverse directory"
     )
     parser.add_argument("--year", type=int, default=None, help="Specific year to convert (2019..2026)")
     parser.add_argument("--all", action="store_true", help="Convert all years 2019..2026 sequentially")

@@ -1,11 +1,9 @@
 """
 LemGendary Dataset Compiler - Unified CLI.
 
-Phase 1.5 of the 2026 modernization roadmap, extended through Phase 5.
+Phase 1.5 of the 2026 modernization roadmap, extended through Phase 8.
 
-Thin Typer shell over the existing entry points. Every command either
-delegates to a current script (`manifold_compile.py`, `modernize_manifold.py`,
-etc.) or points the user at the phase that will implement it.
+Thin Typer shell over the service layer and existing entry points.
 
 Usage:
     python cli.py --help
@@ -56,7 +54,7 @@ console = Console()
 # Sub-apps
 server_app = typer.Typer(help="Control the local FastAPI + WebSocket API sidecar server.")
 env_app = typer.Typer(help="Delegate code/infra operations to lem-env (Environment Manager).")
-sync_app = typer.Typer(help="Kaggle dataset sync (push / pull).")
+sync_app = typer.Typer(help="Kaggle dataset sync (push / pull / metadata).")
 docs_app = typer.Typer(help="Documentation regeneration.")
 config_app = typer.Typer(help="Configuration inspection and validation.")
 format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")
@@ -105,7 +103,7 @@ def _stream_job_logs(job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = D
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 def _run(cmd: list[str]) -> int:
-    """Run a subprocess, print the command, and return its exit code."""
+    """Run an external CLI command, print the command, and return its exit code."""
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
     try:
         result = subprocess.run(cmd, check=False, cwd=str(Path(__file__).resolve().parent))
@@ -113,13 +111,6 @@ def _run(cmd: list[str]) -> int:
     except FileNotFoundError as e:
         console.print(f"[red]Command not found:[/red] {e}")
         return 127
-
-
-def _stub(phase: int, description: str) -> None:
-    """Print a phase pointer and exit non-zero."""
-    console.print(f"[yellow]Not yet implemented.[/yellow] {description}")
-    console.print(f"[dim]Scheduled for Phase {phase} of the modernization roadmap.[/dim]")
-    raise typer.Exit(code=1)
 
 
 def _resolve_manifold_path(model: str) -> Path | None:
@@ -138,7 +129,10 @@ def _resolve_manifold_path(model: str) -> Path | None:
     prefix = meta.get("name_prefix", "LemGendized")
     suffix = meta.get("name_suffix", "")
     out = Path(meta.get("output_folder_name", "../LemGendaryDatasets"))
-    return out / f"{prefix}{name}{suffix}"
+    if not out.is_absolute():
+        out = (Path(__file__).resolve().parent / out).resolve()
+    mod_folder = entry.get("modernized_folder") or f"{prefix}{name}{suffix}"
+    return out / mod_folder
 
 
 def _resolve_target(model: str | None, manifold: str | None) -> Path | None:
@@ -170,14 +164,13 @@ def compile(
     no_vetting: bool = typer.Option(False, "--no-vetting", help="Disable NIMA quality gate"),
     no_labeling: bool = typer.Option(False, "--no-labeling", help="Disable YOLO auto-labeling"),
     no_hash: bool = typer.Option(False, "--no-hash", help="Disable deduplication hash"),
-    image_format: str | None = typer.Option(None, "--image-format",
-                                            help="webp | jpeg | png | keep"),
+    image_format: str | None = typer.Option(None, "--image-format", help="webp | jpeg | png | keep"),
     image_quality: int | None = typer.Option(None, "--image-quality"),
     target_quality: int | None = typer.Option(None, "--target-quality"),
-    mask_format: str | None = typer.Option(None, "--mask-format",
-                                           help="webp-lossless | png"),
-    also_format: str | None = typer.Option(None, "--also-format",
-                                           help="Comma-separated container formats (mds,litdata,...)"),
+    mask_format: str | None = typer.Option(None, "--mask-format", help="webp-lossless | png"),
+    also_format: str | None = typer.Option(
+        None, "--also-format", help="Comma-separated container formats (mds,litdata,...)"
+    ),
     force_duplicate: bool = typer.Option(False, "--force-duplicate"),
     accept_space_loss: bool = typer.Option(False, "--accept-space-loss"),
     label_strategy: str | None = typer.Option(None, "--label-strategy"),
@@ -188,7 +181,7 @@ def compile(
     ),
     no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
 ) -> None:
-    """Compile a manifold from raw sources (delegates to manifold_compile.py or API)."""
+    """Compile a manifold from raw sources (delegates to CompilerService or API)."""
     if not no_server and _is_server_available():
         token = get_or_create_token()
         payload = {
@@ -261,16 +254,9 @@ def compile(
 def reduce(
     max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
 ) -> None:
-    """Create a downsampled manifold variant (delegates to manifold_reduce.py)."""
-    tools_script = Path(__file__).resolve().parent / "tools" / "manifold_reduce.py"
-    reduce_script = "tools/manifold_reduce.py" if tools_script.exists() else "manifold_reduce.py"
-    cmd = [venv_python(), reduce_script, "--reduce"]
-    if max_gb is not None:
-        cmd += ["--max_gb", str(max_gb)]
-    raise typer.Exit(code=_run(cmd))
-
-
-
+    """Create a downsampled manifold variant (delegates to MigrationService.reduce_manifolds)."""
+    code = MigrationService.reduce_manifolds(max_gb=max_gb)
+    raise typer.Exit(code=code)
 
 
 # ─── env sub-app ────────────────────────────────────────────────────────────
@@ -340,31 +326,14 @@ def sync_pull(
 def sync_metadata(
     model: str | None = typer.Option(None, "--model", "-m", help="Specific dataset or manifold key"),
     all_datasets: bool = typer.Option(False, "--all", "-a", help="Update metadata for all registered datasets"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview metadata push without mutating Kaggle"),
 ) -> None:
     """Push Kaggle dataset metadata without re-uploading file archives."""
     if not model and not all_datasets:
         console.print("[red]Error: specify either --model <key> or --all[/red]")
         raise typer.Exit(code=1)
 
-    cmd = [venv_python(), "sources/kaggle.py", "--action", "metadata"]
-    if all_datasets:
-        cmd.extend([
-            "--repo_id",
-            "lemtreursi/placeholder",
-            "--all-datasets",
-            "--output_dir",
-            str(Path("..") / "LemGendaryDatasets"),
-        ])
-    else:
-        assert model is not None, "Model key must be provided when --all is not set"
-        cmd.extend([
-            "--repo_id",
-            f"lemtreursi/{model.lower()}",
-            "--output_dir",
-            str(Path("..") / "LemGendaryDatasets" / model),
-        ])
-
-    code = subprocess.call(cmd)
+    code = SyncService.push_metadata(model=model, all_datasets=all_datasets, dry_run=dry_run)
     raise typer.Exit(code=code)
 
 
@@ -395,7 +364,8 @@ app.add_typer(docs_app, name="docs")
 @config_app.command("validate")
 def config_validate() -> None:
     """Validate unified_data.yaml against the Pydantic schema."""
-    raise typer.Exit(code=_run([venv_python(), "core/config_schema.py"]))
+    from core.config_schema import _cli_validate
+    raise typer.Exit(code=_cli_validate())
 
 
 @config_app.command("show")
@@ -493,10 +463,12 @@ def format_write(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
     manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
     to: str = typer.Option(..., "--to", help="Comma-separated container formats (mds,litdata,webdataset,parquet)"),
-    force_duplicate: bool = typer.Option(False, "--force-duplicate",
-                                         help="Proceed despite WARN-tier hardlink fraction"),
-    accept_space_loss: bool = typer.Option(False, "--accept-space-loss",
-                                           help="Proceed despite BLOCK-tier hardlink fraction"),
+    force_duplicate: bool = typer.Option(
+        False, "--force-duplicate", help="Proceed despite WARN-tier hardlink fraction"
+    ),
+    accept_space_loss: bool = typer.Option(
+        False, "--accept-space-loss", help="Proceed despite BLOCK-tier hardlink fraction"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Write additional container formats for an existing manifold."""
@@ -520,8 +492,9 @@ def format_migrate(
     to: str = typer.Option(..., "--to", help="Comma-separated container formats"),
     force_duplicate: bool = typer.Option(False, "--force-duplicate"),
     accept_space_loss: bool = typer.Option(False, "--accept-space-loss"),
-    purge_source: bool = typer.Option(False, "--purge-source",
-                                      help="Remove the directory layout after migration"),
+    purge_source: bool = typer.Option(
+        False, "--purge-source", help="Remove the directory layout after migration"
+    ),
     verify: bool = typer.Option(False, "--verify"),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
@@ -573,7 +546,6 @@ def presets_list() -> None:
 app.add_typer(presets_app, name="presets")
 
 
-
 # ─── audit (Phase 2) ────────────────────────────────────────────────────────
 @app.command()
 def audit(
@@ -599,9 +571,11 @@ def audit(
 def label(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
     manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
-    strategy: str = typer.Option("blip_caption", "--strategy",
-                                 help="blip_caption | clip_zeroshot | yolo_detection | "
-                                      "parsenet_segmentation | nima_quality"),
+    strategy: str = typer.Option(
+        "blip_caption",
+        "--strategy",
+        help="blip_caption | clip_zeroshot | yolo_detection | parsenet_segmentation | nima_quality",
+    ),
     device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
     sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -625,8 +599,9 @@ def label(
 def prompt(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
     manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
-    template: str = typer.Option("diffusers-v1", "--template",
-                                 help="diffusers-v1 | sd-v1 | flux-v1 | minimal"),
+    template: str = typer.Option(
+        "diffusers-v1", "--template", help="diffusers-v1 | sd-v1 | flux-v1 | minimal"
+    ),
     device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
     sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -651,8 +626,7 @@ def prompt(
 def mask(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
     manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
-    strategy: str = typer.Option("parsenet", "--strategy",
-                                 help="parsenet | sam | modnet"),
+    strategy: str = typer.Option("parsenet", "--strategy", help="parsenet | sam | modnet"),
     device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
     sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -677,8 +651,9 @@ def mask(
 def degrade(
     source: str = typer.Option(..., "--source", "-s", help="Source clean dataset directory or manifold name"),
     output: str = typer.Option(..., "--output", "-o", help="Target synthetic manifold name"),
-    profile: str = typer.Option("motion-blur+iso-noise", "--profile", "-p",
-                                help="Degradation profile expression or preset alias"),
+    profile: str = typer.Option(
+        "motion-blur+iso-noise", "--profile", "-p", help="Degradation profile expression or preset alias"
+    ),
     intensity: str = typer.Option("medium", "--intensity", help="low | medium | high"),
     pairs: int | None = typer.Option(None, "--pairs", help="Max sample pairs to synthesize"),
     val_split: float = typer.Option(0.12, "--val-split", help="Validation split ratio"),
@@ -771,9 +746,13 @@ def server_start(
             )
             console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
         else:
-            console.print(f"[yellow]Server process launched (PID {proc.pid}), still initializing at http://{host}:{port}...[/yellow]")
+            console.print(
+                f"[yellow]Server process launched (PID {proc.pid}), still initializing at http://{host}:{port}...[/yellow]"
+            )
     else:
-        console.print(f"[bold green]Starting LemGendary Dataset Compiler API server on http://{host}:{port}...[/bold green]")
+        console.print(
+            f"[bold green]Starting LemGendary Dataset Compiler API server on http://{host}:{port}...[/bold green]"
+        )
         console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
         from api.server import run_server
         run_server(host=host, port=port, reload=reload)
@@ -859,9 +838,10 @@ def forex_convert(
 ) -> None:
     """Convert raw .npy Forex manifolds into unified Apache Parquet files."""
     from forex.converter import convert_year
-    base_manifold = (
-        Path(r"c:\Development\python\model-training\LemGendaryDatasets\LemGendizedForexUniverseLarge").resolve()
-    )
+    datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
+    base_manifold = (datasets_root / "LemGendizedForexUniverse").resolve()
+    if not base_manifold.exists() and (datasets_root / "LemGendizedForexUniverseLarge").exists():
+        base_manifold = (datasets_root / "LemGendizedForexUniverseLarge").resolve()
     if not base_manifold.exists():
         console.print(f"[red]Base manifold directory does not exist: {base_manifold}[/red]")
         raise typer.Exit(code=1)
@@ -893,8 +873,8 @@ app.add_typer(forex_app, name="forex")
 def modernize_queue() -> None:
     """Display modernization queue status and pending conversions."""
     from tools.modernization_queue import load_queue_manifest
-    datasets_root = Path("..") / "LemGendaryDatasets"
-    registry_yaml = Path("unified_data.yaml")
+    datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
+    registry_yaml = Path(__file__).resolve().parent / "unified_data.yaml"
     items = load_queue_manifest(datasets_root.resolve(), registry_yaml.resolve())
 
     table = Table(title="LemGendary Dataset Modernization Queue")
@@ -906,20 +886,20 @@ def modernize_queue() -> None:
 
     for item in items:
         if item.is_containerized:
-            status, reason = "CONTAINERIZED", f"{item.container_bytes / (1024**3):.1f} GB ready"
+            status_label, reason = "CONTAINERIZED", f"{item.container_bytes / (1024**3):.1f} GB ready"
         elif item.zip_path:
-            status, reason = "PENDING STREAM", item.zip_path.name
+            status_label, reason = "PENDING STREAM", item.zip_path.name
         elif item.has_loose_files:
-            status, reason = "PENDING PACK", "Loose images"
+            status_label, reason = "PENDING PACK", "Loose images"
         elif item.legacy_dir:
-            status, reason = "PENDING LEGACY", item.legacy_dir.name
+            status_label, reason = "PENDING LEGACY", item.legacy_dir.name
         else:
-            status, reason = "MISSING SOURCE", "-"
+            status_label, reason = "MISSING SOURCE", "-"
         table.add_row(
             item.key,
             item.modernized_folder,
             item.canonical_format,
-            status,
+            status_label,
             reason,
         )
     console.print(table)
@@ -934,35 +914,31 @@ def modernize_run(
     force: bool = typer.Option(False, "--force", help="Force re-conversion"),
 ) -> None:
     """Run batch modernization queue conversion."""
-    cmd = [venv_python(), "tools/modernization_queue.py"]
-    if dataset:
-        cmd.extend(["--datasets", dataset])
-    if workers:
-        cmd.extend(["--workers", str(workers)])
-    if push_kaggle:
-        cmd.append("--push-kaggle")
-    if dry_run:
-        cmd.append("--dry-run")
-    if force:
-        cmd.append("--force")
-
-    code = subprocess.call(cmd)
+    code = MigrationService.run_modernization_queue(
+        dataset=dataset,
+        workers=workers,
+        push_kaggle=push_kaggle,
+        dry_run=dry_run,
+        force=force,
+    )
     raise typer.Exit(code=code)
 
 
 @modernize_app.command("reduce")
-def modernize_reduce() -> None:
+def modernize_reduce(
+    max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
+) -> None:
     """Launch interactive manifold downsampling and scale reduction."""
-    cmd = [venv_python(), "tools/manifold_reduce.py"]
-    code = subprocess.call(cmd)
+    code = MigrationService.reduce_manifolds(max_gb=max_gb)
     raise typer.Exit(code=code)
 
 
 @modernize_app.command("regen")
-def modernize_regen() -> None:
+def modernize_regen(
+    check: bool = typer.Option(False, "--check", help="Dry-run: print summary only"),
+) -> None:
     """Regenerate manifolds.md registry index."""
-    cmd = [venv_python(), "tools/regenerate_manifolds_md.py"]
-    code = subprocess.call(cmd)
+    code = DocService.rebuild_manifolds_md(check_only=check)
     raise typer.Exit(code=code)
 
 
@@ -972,4 +948,3 @@ app.add_typer(modernize_app, name="modernize")
 # ─── Entry point ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app()
-

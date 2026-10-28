@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def process_shards():
-    base_dir = Path(r"C:\Development\python\model-training\LemGendaryDatasets")
+    base_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
 
     models = [
         "LemGendizedNimaAesthetic",

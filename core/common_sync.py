@@ -89,13 +89,24 @@ class DatasetVersionInfo(TypedDict):
     versions: dict[int, str]
 
 
-def setup_kaggle_auth(default_user="lemtreursi"):
-    """Ensure Kaggle credentials from environment or .kaggle_token are initialized."""
+def setup_kaggle_auth(
+    default_user: str | None = "lemtreursi",
+    custom_user: str | None = None,
+    custom_token: str | None = None,
+) -> bool:
+    """Ensure Kaggle credentials are initialized (explicit args > environment > .kaggle_token).
+
+    Returns True when an API token or username/key pair is available afterwards.
+    """
+    if custom_token:
+        os.environ["KAGGLE_API_TOKEN"] = custom_token
+    if custom_user:
+        os.environ["KAGGLE_USERNAME"] = custom_user
     _root = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
     token_file = _root / ".kaggle_token"
     if not token_file.exists():
         token_file = Path(__file__).parent / ".kaggle_token"
-    if token_file.exists():
+    if not custom_token and token_file.exists():
         token = token_file.read_text().strip()
         if token:
             os.environ["KAGGLE_API_TOKEN"] = token
@@ -139,6 +150,13 @@ def setup_kaggle_auth(default_user="lemtreursi"):
     except Exception as exc:
         logger.debug("KaggleApi warning flag suppression skipped: %s", exc)
 
+    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
+    return bool(
+        os.environ.get("KAGGLE_API_TOKEN")
+        or os.environ.get("KAGGLE_KEY")
+        or kaggle_json.exists()
+    )
+
 
 def robust_staging_cleanup(staging_dir: Path, target_zip: Path | None = None, max_retries: int = 5) -> bool:
     """Robustly purge staging archive and directory on Windows with GC and retry backoff."""
@@ -180,9 +198,11 @@ def cleanup_temp_archives(manifold_name=None, base_dir=None, force=False):
     dirs_to_check = []
     if base_dir:
         dirs_to_check.append(Path(base_dir))
-    dirs_to_check.append(Path(r"c:\Development\python\model-training\LemGendaryDatasets"))
+    dirs_to_check.append(Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets")
     dirs_to_check.append(Path.cwd())
-    dirs_to_check.append(Path(os.environ.get("TEMP", r"C:\Users\lemtr\AppData\Local\Temp")))
+    temp_env = os.environ.get("TEMP") or os.environ.get("TMP")
+    if temp_env:
+        dirs_to_check.append(Path(temp_env))
 
     cleaned_count = 0
     cleaned_bytes = 0
@@ -563,8 +583,8 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
         try:
             meta_content = json.loads(meta_src.read_text(encoding="utf-8"))
             dataset_title = meta_content.get("title", src_path.name)
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.debug("Could not read dataset title from %s: %s", meta_src, exc)
 
     # Ensure the Kaggle dataset exists before uploading (prevents 403 on metadata update)
     if not ensure_kaggle_dataset_exists(clean_repo_id, title=dataset_title):
@@ -1079,8 +1099,8 @@ def perform_dataset_download(
                                     if (m_folder and m_folder.lower() in target_dir.name.lower()) or (k_ref and slug.lower() in k_ref.lower()):
                                         is_webdataset_target = True
                                         break
-                    except Exception:
-                        pass
+                    except (OSError, yaml.YAMLError) as exc:
+                        logger.debug("Could not read unified_data.yaml during download inspection: %s", exc)
                     if (has_loose_images or is_webdataset_target) and not has_tar_shards:
                         use_streaming_webdataset = True
         except Exception as check_exc:

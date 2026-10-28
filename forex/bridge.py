@@ -74,3 +74,25 @@ def copy_rates_range(symbol: str, timeframe: int, start: Any, end: Any) -> Any:
 
 def copy_rates_from_pos(symbol: str, timeframe: int, pos: int, count: int) -> Any:
     return _mt5.copy_rates_from_pos(symbol, timeframe, pos, count) if _mt5 is not None else None
+
+
+def get_timeframe_const(attr_name: str) -> int:
+    """Resolve an MT5 timeframe constant by name (e.g. 'TIMEFRAME_M1')."""
+    if _mt5 is None:
+        raise RuntimeError("[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5")
+    val = getattr(_mt5, attr_name, None)
+    if val is None:
+        raise AttributeError(f"[MT5] Timeframe constant '{attr_name}' not found on MetaTrader5")
+    return int(val)
+
+
+def call(method_name: str, *args: Any, **kwargs: Any) -> Any:
+    """Invoke a method on the MetaTrader5 module dynamically through the SSOT bridge."""
+    if _mt5 is None:
+        raise RuntimeError(
+            "[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5"
+        )
+    func = getattr(_mt5, method_name, None)
+    if func is None:
+        raise AttributeError(f"[MT5] Method '{method_name}' not found on MetaTrader5")
+    return func(*args, **kwargs)
