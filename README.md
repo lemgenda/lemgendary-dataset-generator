@@ -36,6 +36,7 @@
 - **Single Source of Truth Kaggle Authentication (`core/common_sync.py`, `tools/manifold_sync.py`, `tools/sync_kaggle_metadata.py`)** — Unified credential discovery and authentication routing strictly through `core.common_sync.setup_kaggle_auth` with explicit user and token overrides.
 - **High-Velocity Manifold Scanning (`api/routes/datasets.py`)** — Optimized `_scan_manifold` route handler to bypass recursive directory walks across loose files, reading metadata directly from top-level `dataset_info.yaml` and SQLite registries.
 - **Synthetic Registry DB Synchronization (`tools/generate_degrade.py`)** — Enhanced degradation synthesis to populate both `registry` and `samples` tables in `manifold_registry.db` for automated sample discovery.
+- **FastAPI Kaggle Route & Schema Validation Hardening (`api/routes/kaggle.py`, `core/config_schema.py`)** — Fixed route logger scope, standardized Typer `_cli_validate()` schema invocation, and aligned mock targets in `tests/test_api_and_services.py` with 66/66 test suites passing cleanly.
 - **Zero Diagnostic Suppressions & Zero Emojis** — Validated 100% adherence to workspace rules: zero `# type: ignore`, zero `# noqa`, zero `# pylint: disable`, and zero emojis across all code and documentation.
 
 ### v16.9.18 — AI Helper Provenance Bijective Alignment (48 Docs), Version Harmonization (v16.9.27-STABLE) & Disjoint Validation Split Hardening
