@@ -68,7 +68,7 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     shards_count = 0
 
     # 1. First inspect container directories (shards, mds, wds, litdata) and their split subdirectories
-    for container_name in ("shards", "mds", "wds", "litdata"):
+    for container_name in ("shards", "mds", "wds", "litdata", "data"):
         c_dir = manifold_path / container_name
         if c_dir.exists() and c_dir.is_dir():
             dirs_to_check = [c_dir]
@@ -181,6 +181,45 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     return result
 
 
+
+
+def _extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
+    """Parse JSONL datasets and return exact sample count per SSOT provenance source."""
+    from collections import Counter
+    import json
+
+    counts: Counter[str] = Counter()
+    jsonl_files = list(manifold_dir.glob("*.jsonl")) + list(manifold_dir.glob("data/*.jsonl"))
+    for jf in jsonl_files:
+        try:
+            with open(jf, "r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    item = json.loads(line)
+                    doc = str(item.get("source_doc") or "")
+                    if "ECOSYSTEM_ARCHITECTURE" in doc or "LEMGENDARY_CURRENT_STATE" in doc or "VERSIONING_POLICY" in doc or "GUI_CONTROL_REGISTRY" in doc:
+                        counts["Ecosystem Architecture and Current State Manifest"] += 1
+                    elif "GENERAL_AI_TRAINING_KNOWLEDGE" in doc:
+                        counts["General AI Training Knowledge Reference"] += 1
+                    elif "AI_HELPER_TROUBLESHOOTING" in doc or "GLOSSARY" in doc:
+                        counts["Canonical Glossary and AI Helper Troubleshooting Knowledge Base"] += 1
+                    elif "MANUAL_AI_STUDIO_GUI" in doc or "PAPER_AI_STUDIO_GUI" in doc or "MANUAL_CLI" in doc or "MANUAL_API" in doc or "MANUALS_HUB" in doc:
+                        counts["Master Operations Manuals (GUI, CLI, API)"] += 1
+                    elif "PAPER_DATASET_COMPILER" in doc or "PAPER_ENV_MANAGER" in doc:
+                        counts["Dataset Compiler and Environment Manager Whitepapers"] += 1
+                    elif "PAPER_TRAINING_SUITE" in doc or "PAPER_TRAINING_PATHOLOGY" in doc:
+                        counts["Training Suite and Training Pathology Documentation"] += 1
+                    elif any(m in doc for m in ("NIMA", "NAFNET", "MPRNET", "MIRNET", "FFANET", "YOLO", "FOREX", "DEGRADATION", "RESTORATION", "ULTRAZOOM", "FACE_SUITE", "HYBRID", "CODEFORMER", "FILM_RESTORER", "NSFW_CLASSIFIER", "PARSENET", "RETINAFACE", "UPN_V2", "DETECTION")):
+                        counts["Model-Family Architecture Whitepapers"] += 1
+                    elif "PAPER_FOUNDATION_MODELS_MASTER" in doc or "MANUALS_HUB" in doc:
+                        counts["LemGendary AI Documentation Hub"] += 1
+                    else:
+                        counts["Curated AI LemGend instruction and validation examples"] += 1
+        except Exception as exc:
+            logger.debug("Failed extracting provenance from %s: %s", jf, exc)
+    return dict(counts)
+
 @router.get("/state", response_model=GuiStateResponse)
 async def get_gui_state() -> GuiStateResponse:
     """Aggregated sidecar status snapshot for LemGendary AI Studio Desktop GUI hydration."""
@@ -288,10 +327,11 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
         formats, counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
-        has_jsonl = any(entry.glob("*.jsonl"))
+        jsonl_files = list(entry.glob("*.jsonl")) + list(entry.glob("data/*.jsonl"))
+        has_jsonl = bool(jsonl_files)
         if sample_count == 0:
             if has_jsonl:
-                for jf in entry.glob("*.jsonl"):
+                for jf in jsonl_files:
                     try:
                         with open(jf, "r", encoding="utf-8") as jf_in:
                             sample_count += sum(1 for line in jf_in if line.strip())
@@ -339,6 +379,7 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 ref_lookup[r_name.lower()] = r_val
                 ref_lookup[r_val.lower()] = r_val
 
+        actual_provenance_counts = _extract_jsonl_provenance_counts(entry) if has_jsonl else {}
         n_sources = max(len(raw_sources), 1)
         base_count = sample_count // n_sources if sample_count > 0 else None
 
@@ -357,9 +398,10 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             elif any(k in s_lower for k in ("documentation", "manual", "manifest", "whitepaper", "glossary", "guide")):
                 s_type = "DOCUMENTATION"
 
-
             this_count: int | None = None
-            if sample_count > 0 and base_count is not None:
+            if actual_provenance_counts:
+                this_count = actual_provenance_counts.get(s_name, 0)
+            elif sample_count > 0 and base_count is not None:
                 if s_idx == n_sources - 1:
                     this_count = sample_count - (base_count * (n_sources - 1))
                 else:
