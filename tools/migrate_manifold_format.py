@@ -31,7 +31,7 @@ if str(_ROOT) not in sys.path:
 
 from audit.hardlinks import audit_hardlinks
 from formats.base import make_writer, parse_also_format
-from formats.directory import DirectorySampleSource
+from formats.directory import DirectorySampleSource, purge_loose_layout
 
 
 def _load_index(root: Path) -> list[dict[str, Any]]:
@@ -134,11 +134,7 @@ def migrate_manifold(
             print("[SKIP] --purge-source ignored without --accept-space-loss")
         else:
             print("[PURGE] Removing source directory layout (images/, labels/, targets/, masks/)")
-            for sub in ("images", "labels", "targets", "masks"):
-                p = root / sub
-                if p.exists():
-                    import shutil
-                    shutil.rmtree(p)
+            purge_loose_layout(root)
 
     return 0
 

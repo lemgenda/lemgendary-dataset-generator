@@ -20,6 +20,22 @@
 
 ## Changelog
 
+### v16.9.24 - Custom-Compile Preset, Purge and Registry Safety
+
+- **Default Preset from `presets.yaml` (review D-02)**:
+  - `presets.yaml` now defines `default_preset: "quality-vision"`; `core.presets.get_default_preset_name()` reads it and fails if it names no defined preset.
+  - `POST /api/gui/custom-compile`: `preset` is now optional and defaults to that value (the old default `streaming-webdataset` did not exist). An unknown preset returns HTTP 422 listing the valid presets; no registry write, no job.
+- **Compile First, Purge After (review D-02)**:
+  - `--cleanup` no longer returns before compiling. `process_dataset` returns one `ManifoldOutcome` per manifold, and `core.compile_outcome.finalize_compile` sets the exit code.
+  - A run that compiled nothing (unknown model, zero samples) exits 1, so the job ends as `failed` instead of `completed`.
+  - With `--cleanup` (`purge_loose_images`), the loose layout (`images/`, `labels/`, `targets/`, `masks/`) is removed only after a successful compile and only for manifolds whose packed container was written in that run; otherwise the loose layout is the only copy and is kept. The container writer's exit code is now checked.
+  - `formats.directory.purge_loose_layout` is shared with `tools/migrate_manifold_format.py --purge-source`.
+- **Safe Registry Writes (review D-03)**:
+  - New `core.unified_registry.add_dataset_entry`: existing `unified_data.yaml` text (comments, folding, line endings) is kept byte for byte; only the new entry is serialized and inserted at the end of `datasets:`.
+  - An existing key returns HTTP 409; an entry that fails the compiler schema (`UnifiedData`) returns HTTP 422; nothing is written in either case.
+  - The write is atomic (temp file in the same folder, `fsync`, `os.replace`). If it fails, the route returns HTTP 500 and no job is created. The registry path no longer depends on the working directory.
+- **Tests (`tests/test_custom_compile.py`)**: 17 tests on temp copies of `presets.yaml` and `unified_data.yaml`: default preset, unknown preset (422), comments kept, duplicate key (409), invalid entry (422), failed write (no job), purge ordering, and a failed compile ending as a `failed` job.
+
 ### v16.9.23 - Browser Origin Guard & Closed CORS Allow-List
 
 - **Origin Guard Middleware (`api.security`)**:

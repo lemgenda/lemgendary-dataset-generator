@@ -51,6 +51,7 @@ from core.compiler_core import (
     remove_empty_dirs,
 )
 from core.doc_generator import generate_dataset_docs
+from core.compile_outcome import ManifoldOutcome, finalize_compile
 
 
 # 2026: Task tuples passed to batch_worker. Each item is
@@ -139,7 +140,12 @@ def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
 args: argparse.Namespace | None = None
 # ────────────────────────────────────────────────────────────────────────────
 
-def process_dataset(parsed_args: argparse.Namespace | None = None):
+def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[ManifoldOutcome]:
+    """Compile every requested manifold and report what each one produced.
+
+    ``--cleanup`` is not handled here: the loose-image purge runs in
+    ``finalize_compile`` only after a successful compile.
+    """
     global args
     if parsed_args is not None:
         args = parsed_args
@@ -154,11 +160,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
             os._exit(1)
         signal.signal(signal.SIGINT, signal_handler)
 
-    if args.cleanup:
-        print("[JANITOR] Cleanup requested. Purging temporary files...")
-        # Add cleanup logic here if needed in the future
-        print("[JANITOR] Cleanup complete.")
-        return
+    outcomes: list[ManifoldOutcome] = []
 
     min_gb = META.get("global_constraints", {}).get("min_size_gb", 0.1)
     max_gb = args.max_gb if args.max_gb is not None else META.get("global_constraints", {}).get("max_size_gb", 50.0)
@@ -320,6 +322,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
                 print(f" -> [WARNING] Documentation engine skipped: {e}")
 
             print(f"[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n")
+            outcomes.append(ManifoldOutcome(model_key, output_root, samples=0, sample_based=False))
             continue
 
         # ─── NON‑FOREX MANIFOLDS ──────────────────────────────────────────────
@@ -737,6 +740,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
 
         if not all_tasks:
             print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
+            outcomes.append(ManifoldOutcome(model_key, output_root, samples=len(existing_names)))
             continue
 
         print(f"[MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
@@ -915,6 +919,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
 
         generate_dataset_docs(output_root, final_index, pascal_name)
 
+        containers_written: tuple[str, ...] = ()
         if getattr(args, "also_format", None):
             try:
                 from formats.base import parse_also_format
@@ -922,12 +927,16 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
                 extra_formats = parse_also_format(args.also_format)
                 if extra_formats:
                     print(f"[CONTAINER] Writing additional container format(s): {', '.join(extra_formats)}...")
-                    write_containers(
+                    container_rc = write_containers(
                         root=output_root,
                         formats=extra_formats,
                         force_duplicate=getattr(args, "force_duplicate", False),
                         accept_space_loss=getattr(args, "accept_space_loss", False),
                     )
+                    if container_rc == 0:
+                        containers_written = tuple(f for f in extra_formats if f != "directory")
+                    else:
+                        print(f"[ERROR] Container writer exited with code {container_rc}; loose layout kept.")
             except Exception as e:
                 print(f"[ERROR] Failed writing additional container format: {e}")
 
@@ -950,8 +959,13 @@ def process_dataset(parsed_args: argparse.Namespace | None = None):
 
         print(f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for {pascal_name}.")
         executor.shutdown(wait=True)
+        outcomes.append(ManifoldOutcome(model_key, output_root, samples=len(final_index),
+                                        containers_written=containers_written))
+
+    return outcomes
 
 # ---------------- GENERATORS ----------------
 
 if __name__ == '__main__':
-    process_dataset()
+    compile_args = parse_compile_args()
+    sys.exit(finalize_compile(process_dataset(compile_args), purge_loose=compile_args.cleanup))

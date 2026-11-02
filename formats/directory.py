@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -28,6 +29,25 @@ logger = logging.getLogger(__name__)
 
 _VALID_SPLITS = ("train", "val", "test")
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+
+# Top-level folders that make up the loose (uncontainerized) directory layout.
+LOOSE_LAYOUT_DIRS = ("images", "labels", "targets", "masks")
+
+
+def purge_loose_layout(root: Path) -> list[Path]:
+    """Remove the loose directory layout under ``root`` and return what was removed.
+
+    Callers must only purge after the samples were written to a packed
+    container; the directory layout is otherwise the only copy.
+    """
+    removed: list[Path] = []
+    for sub in LOOSE_LAYOUT_DIRS:
+        path = Path(root) / sub
+        if path.exists():
+            shutil.rmtree(path)
+            removed.append(path)
+    logger.info("Purged loose layout under %s: %s", root, [p.name for p in removed])
+    return removed
 
 
 class DirectoryWriter:

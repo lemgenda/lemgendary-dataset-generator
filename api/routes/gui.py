@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 
 from api.auth import verify_token
 from api.jobs import job_manager
@@ -34,7 +35,7 @@ from api.models import (
 from api.routes.datasets import _resolve_output_root
 from api.routes.health import _START_TIME, get_hardware_info
 from core.cli_args import __version__, venv_python
-from core import presets
+from core import presets, unified_registry
 
 logger = logging.getLogger("lemgendary.api.routes.gui")
 router = APIRouter(prefix="/gui", tags=["Desktop GUI"])
@@ -575,17 +576,65 @@ async def quick_compile(
     return job
 
 
+def _resolve_custom_preset(requested: str | None) -> str:
+    """Return a preset name that exists in presets.yaml (the single source of truth).
+
+    An omitted preset resolves to presets.yaml `default_preset`; an unknown
+    preset is rejected with 422 and the list of valid names.
+    """
+    try:
+        available = sorted(presets.list_presets())
+        name = requested if requested else presets.get_default_preset_name()
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("Compiler presets are unusable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Compiler presets are unusable: {exc}",
+        ) from exc
+    if name not in available:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown compiler preset '{name}'. Valid presets: {', '.join(available)}",
+        )
+    return name
+
+
+def _persist_custom_manifold(model_key: str, entry: dict[str, Any]) -> None:
+    """Add the custom manifold to unified_data.yaml or raise the matching HTTP error."""
+    try:
+        unified_registry.add_dataset_entry(model_key, entry)
+    except unified_registry.RegistryEntryExistsError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Custom manifold '{model_key}' fails the registry schema: {exc}",
+        ) from exc
+    except (OSError, unified_registry.RegistryWriteError) as exc:
+        logger.error("Failed persisting custom manifold '%s'; job not started: %s", model_key, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not write unified_data.yaml; job not started: {exc}",
+        ) from exc
+
+
 @router.post("/custom-compile", response_model=JobResponse)
 async def custom_compile(
     req: CustomCompileRequest,
 ) -> JobResponse:
-    """Compile a new custom dataset manifold from a list of multi-source repositories."""
+    """Compile a new custom dataset manifold from a list of multi-source repositories.
+
+    The preset is validated and the registry entry is written (atomically,
+    never overwriting an existing key) before any job is created; if either
+    step fails, no job is started.
+    """
     name = req.custom_name.strip()
     if not name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Custom dataset name cannot be empty.",
         )
+    preset_name = _resolve_custom_preset(req.preset)
 
     pascal_name = "".join(w.capitalize() for w in re.split(r"[^a-zA-Z0-9]", name) if w)
     if not pascal_name:
@@ -616,37 +665,22 @@ async def custom_compile(
         else:
             cleaned_refs.append(src)
 
-    # Persist into unified_data.yaml SSOT
-    unified_yaml = Path("unified_data.yaml")
-    if not unified_yaml.exists():
-        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-
-    if unified_yaml.exists():
-        try:
-            with open(unified_yaml, "r", encoding="utf-8") as f:
-                ydata = yaml.safe_load(f) or {}
-            if "datasets" not in ydata:
-                ydata["datasets"] = {}
-
-            ydata["datasets"][model_key] = {
-                "name": pascal_name,
-                "title": f"LemGendized {pascal_name}",
-                "canonical_format": req.canonical_format,
-                "task": req.task,
-                "modernized_folder": modernized_folder,
-                "refs": [{"ref": r} for r in cleaned_refs],
-                "container": {"primary": req.canonical_format},
-            }
-            with open(unified_yaml, "w", encoding="utf-8") as f:
-                yaml.dump(ydata, f, default_flow_style=False, sort_keys=False)
-        except Exception as exc:
-            logger.error("Failed persisting custom manifold definition: %s", exc)
+    entry = {
+        "name": pascal_name,
+        "title": f"LemGendized {pascal_name}",
+        "canonical_format": req.canonical_format,
+        "task": req.task,
+        "modernized_folder": modernized_folder,
+        "refs": [{"ref": r} for r in cleaned_refs],
+        "container": {"primary": req.canonical_format},
+    }
+    _persist_custom_manifold(model_key, entry)
 
     cmd = [
         venv_python(),
         "core/manifold_compile.py",
         "--model", model_key,
-        "--preset", req.preset,
+        "--preset", preset_name,
     ]
     if req.purge_loose_images:
         cmd.append("--cleanup")
@@ -658,7 +692,7 @@ async def custom_compile(
             "custom_name": req.custom_name,
             "model_key": model_key,
             "pascal_name": pascal_name,
-            "preset": req.preset,
+            "preset": preset_name,
             "canonical_format": req.canonical_format,
             "shard_size": req.shard_size,
             "sources": cleaned_refs,

@@ -4,6 +4,9 @@
 
 version: "1.0"
 
+# Preset used when an API request omits `preset` (must name a key below).
+default_preset: "quality-vision"
+
 presets:
   quality-vision:
     name: "quality-vision"

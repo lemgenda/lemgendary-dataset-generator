@@ -266,10 +266,16 @@ class KaggleUploadRequest(BaseModel):
 class CustomCompileRequest(BaseModel):
     custom_name: str = Field(..., description="Unique dataset manifold name (e.g. CustomFaceEnhance)")
     task: str = Field("vision", description="Task type (restoration, segmentation, detection, quality, vision)")
-    preset: str = Field("streaming-webdataset", description="Compiler preset ID")
+    preset: str | None = Field(
+        None,
+        description="Compiler preset ID from presets.yaml; omitted means presets.yaml `default_preset`",
+    )
     canonical_format: str = Field("webdataset", description="Target container format")
     shard_size: int = Field(5000, description="Samples per shard container")
     sources: List[str] = Field(default_factory=list, description="List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)")
-    purge_loose_images: bool = Field(True, description="Purge loose uncompressed images after compiling")
+    purge_loose_images: bool = Field(
+        True,
+        description="After a successful compile, purge loose images of manifolds packed into a container",
+    )
 
 

@@ -42,19 +42,8 @@ class CompilerPreset(BaseModel):
         return self.model_dump()
 
 
-def load_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset]:
-    """Load and parse compiler presets from YAML file.
-
-    Args:
-        config_path: Optional custom path to presets.yaml. Defaults to DEFAULT_PRESETS_FILE.
-
-    Returns:
-        Dictionary mapping preset identifiers to CompilerPreset models.
-
-    Raises:
-        FileNotFoundError: If the presets configuration file does not exist.
-        ValueError: If the file format or schema validation fails.
-    """
+def _read_presets_document(config_path: Path | None = None) -> tuple[Path, dict[str, Any]]:
+    """Read presets.yaml and return its path and raw root mapping."""
     target_path = config_path or DEFAULT_PRESETS_FILE
     if not target_path.exists():
         _log.error("Presets configuration file not found: %s", target_path)
@@ -70,7 +59,23 @@ def load_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset
     if not isinstance(raw_data, dict) or "presets" not in raw_data:
         _log.error("Missing 'presets' root key in %s", target_path)
         raise ValueError(f"Presets file {target_path} must contain a 'presets' root key")
+    return target_path, raw_data
 
+
+def load_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset]:
+    """Load and parse compiler presets from YAML file.
+
+    Args:
+        config_path: Optional custom path to presets.yaml. Defaults to DEFAULT_PRESETS_FILE.
+
+    Returns:
+        Dictionary mapping preset identifiers to CompilerPreset models.
+
+    Raises:
+        FileNotFoundError: If the presets configuration file does not exist.
+        ValueError: If the file format or schema validation fails.
+    """
+    target_path, raw_data = _read_presets_document(config_path)
     loaded: Dict[str, CompilerPreset] = {}
     presets_dict = raw_data["presets"]
     if not isinstance(presets_dict, dict):
@@ -109,6 +114,28 @@ def get_preset(name: str, config_path: Optional[Path] = None) -> CompilerPreset:
         available = ", ".join(sorted(all_presets.keys()))
         raise KeyError(f"Unknown compiler preset '{name}'. Available presets: {available}")
     return all_presets[name]
+
+
+def get_default_preset_name(config_path: Path | None = None) -> str:
+    """Return the preset named by the top-level `default_preset` key of presets.yaml.
+
+    presets.yaml is the single source of truth for the default, so API request
+    models never hardcode a preset name that can drift out of the inventory.
+
+    Raises:
+        ValueError: If `default_preset` is missing or does not name a defined preset.
+    """
+    target_path, raw_data = _read_presets_document(config_path)
+    default_name = raw_data.get("default_preset")
+    if not isinstance(default_name, str) or not default_name:
+        raise ValueError(f"Presets file {target_path} must define a non-empty 'default_preset' key")
+    available = load_presets(config_path)
+    if default_name not in available:
+        raise ValueError(
+            f"default_preset '{default_name}' in {target_path} is not a defined preset. "
+            f"Available presets: {', '.join(sorted(available))}"
+        )
+    return default_name
 
 
 def list_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset]:

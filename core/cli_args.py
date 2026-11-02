@@ -60,7 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reduce", action="store_true",
                         help="Start in Reduce mode")
     parser.add_argument("--cleanup", action="store_true",
-                        help="Start in Cleanup mode")
+                        help="After a successful compile, purge the loose directory layout "
+                             "(images/labels/targets/masks) of manifolds that were packed into a container")
     parser.add_argument("--finalize", action="store_true",
                         help="Sharding + README only — skip re-processing")
 
