@@ -14,7 +14,8 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 logger = logging.getLogger("lemgendary.api.auth")
 
 _TOKEN_FILE = Path(".lgd_server/token")
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+API_KEY_HEADER = "X-API-Key"
+_api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
 _bearer_security = HTTPBearer(auto_error=False)
 
 

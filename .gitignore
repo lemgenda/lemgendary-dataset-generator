@@ -14,6 +14,7 @@ LemGendizedDatasets/
 .kaggle_token
 .kaggle/
 .mt5_credentials
+.GOOGLE_DRIVE_JSON
 
 # Python & Environment
 .cache/

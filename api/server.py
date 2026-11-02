@@ -27,6 +27,12 @@ from api.routes.kaggle import router as kaggle_router
 from api.routes.modernize import router as modernize_router
 from api.routes.sources import router as sources_router
 from api.routes.llm import router as llm_router
+from api.security import (
+    ALLOWED_HEADERS,
+    ALLOWED_METHODS,
+    ALLOWED_ORIGINS,
+    origin_guard_middleware,
+)
 from core.cli_args import __version__
 
 logger = logging.getLogger("lemgendary.api.server")
@@ -79,11 +85,13 @@ def create_app() -> FastAPI:
 
     app_instance.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=list(ALLOWED_ORIGINS),
+        allow_credentials=False,
+        allow_methods=list(ALLOWED_METHODS),
+        allow_headers=list(ALLOWED_HEADERS),
     )
+    # Added last, so it runs first: refuses foreign origins before CORS or routing.
+    app_instance.add_middleware(origin_guard_middleware)
 
     # Public diagnostic and inspection routers
     app_instance.include_router(health_router, prefix="/api")

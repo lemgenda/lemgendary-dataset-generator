@@ -20,6 +20,18 @@
 
 ## Changelog
 
+### v16.9.23 - Browser Origin Guard & Closed CORS Allow-List
+
+- **Origin Guard Middleware (`api.security`)**:
+  - New `origin_guard_middleware` refuses (HTTP 403) any request whose `Origin` is not an AI Studio GUI origin (`tauri://localhost`, `http://tauri.localhost`, `https://tauri.localhost`, `http://localhost:1420`, `http://127.0.0.1:1420`).
+  - Browser requests using `POST`, `PUT`, `PATCH` or `DELETE` must send `X-LemGendary-Client: ai-studio-gui`; the custom header forces a CORS preflight and blocks cross-site form posts.
+  - WebSocket handshakes from foreign origins are refused. Requests without `Origin` (CLI, scripts, tests) are unaffected.
+- **Closed CORS Policy (`api.server`)**:
+  - Replaced `allow_origins=["*"]` with credentials by the allow-list above, explicit methods, explicit headers (`Content-Type`, `Authorization`, `X-API-Key`, `X-LemGendary-Client`) and `allow_credentials=False`. Addresses the CORS half of review finding D-01; the API token check (`api.auth`, now exporting `API_KEY_HEADER`) keeps working behind the guard. The server still binds `127.0.0.1` by default.
+- **Secret Files**: `.GOOGLE_DRIVE_JSON` added to `.gitignore` next to the existing token entries.
+- **Test Dependencies**: added `pytest==9.2.0` and `httpx2==2.16.0` (required by the FastAPI test client) to `requirements.txt`.
+- **Tests (`tests/test_security.py`)**: 18 tests covering allowed and foreign origins, write header rules, CORS preflight, WebSocket handshakes, the real app wiring and the token check behind the guard.
+
 ### v16.9.22 - JSONL Manifold Scanning & Canonical Provenance Counting
 
 - **Subdirectory JSONL Scanning & Container Detection (pi.routes.gui)**:
