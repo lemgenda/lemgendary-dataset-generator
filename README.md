@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.19-STABLE` |
+| **Version** | `v16.9.21-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,18 @@
 ---
 
 ## Changelog
+
+### v16.9.21 - Generic LLM Dataset Compiler & Multi-Source Knowledge Ingestion Engine
+
+- **Generic Instruction LLM Architecture & Multi-Source Loader Pipeline (`tools.llm_helper`)**:
+  - Implemented generic knowledge synthesizer and multi-source loader pipeline ingesting Markdown, Plain Text, JSON/JSONL, YAML, CSV, and Web URLs with SHA-256 provenance lineage tracing and hash verification.
+  - Eliminated legacy handcrafted dictionary generators (`tools/ai_helper` and `tools/llm_helper/packs`), migrating all instruction dataset compilations (`test_llm`, `ai_helper_lemgend`) purely to declarative declarations in `unified_data.yaml` and repository knowledge bases (`MD-Papers`).
+- **REST API & CLI In-Process Test Dispatches**:
+  - Added REST endpoint `POST /api/llm/test-suite` running in-process dataset unit tests matching custom file patterns.
+  - Added CLI test dispatch commands `python cli.py test [--pattern test_*.py]` and `python cli.py test-all`.
+  - Added REST endpoints `POST /api/llm/compile` and `POST /api/llm/validate` for instruction manifold compilation and QualityValidator invariant enforcement.
+- **Bijective Documentation Synchronization**:
+  - Synchronized `PAPER_DATASET_COMPILER.md` and companion publication `dataset-compiler.html` with Section 9 "Generic LLM Dataset Compiler Architecture & Multi-Source Knowledge Ingestion".
 
 ### v16.9.20 — AI Helper Dataset Production Expansion (525 Records, 48-Whitepaper Coverage, SOTA Features & Diagnostic Intake)
 

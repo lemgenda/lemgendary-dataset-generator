@@ -132,9 +132,12 @@ def generate_readme_md(
             total_train_all = ctx.total_samples - total_val_all
 
         manifest_rows: list[str] = []
-        if ctx.task == "ai_helper":
-            manifest_rows.append(f"| **data/ai_helper_train.jsonl** | {total_train_all:,} | - |")
-            manifest_rows.append(f"| **data/ai_helper_val.jsonl** | - | {total_val_all:,} |")
+        is_llm = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+        if is_llm:
+            train_file_rel = ctx.unified_entry.get("train_file", f"data/{ctx.slug}_train.jsonl")
+            val_file_rel = ctx.unified_entry.get("val_file", f"data/{ctx.slug}_val.jsonl")
+            manifest_rows.append(f"| **{train_file_rel}** | {total_train_all:,} | - |")
+            manifest_rows.append(f"| **{val_file_rel}** | - | {total_val_all:,} |")
         else:
             manifest_rows.append(f"| **images** | {total_train_all:,} | {total_val_all:,} |")
             if (target_dir / "targets").exists() or ctx.task in ["restoration", "super-resolution"]:

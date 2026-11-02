@@ -66,15 +66,22 @@ def generate_index_json(
     # 3. Task-specific index reconstruction
     constructed_index: list[dict[str, Any]] = []
 
-    if ctx.task == "ai_helper":
+    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+    if is_llm_task:
         # Build index from JSONL instruction datasets
-        train_file = target_dir / "data" / "ai_helper_train.jsonl"
-        val_file = target_dir / "data" / "ai_helper_val.jsonl"
+        train_file_rel = ctx.unified_entry.get("train_file")
+        val_file_rel = ctx.unified_entry.get("val_file")
+        train_file = (target_dir / train_file_rel) if train_file_rel else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
+        val_file = (target_dir / val_file_rel) if val_file_rel else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
+        if not train_file.exists():
+            train_file = target_dir / "data" / "ai_helper_train.jsonl"
+            val_file = target_dir / "data" / "ai_helper_val.jsonl"
         if not train_file.exists():
             train_file = target_dir / "ai_helper_train.jsonl"
             val_file = target_dir / "ai_helper_val.jsonl"
         idx_counter = 0
 
+        prefix = "AIHelper" if ctx.task == "ai_helper" else ctx.slug.title().replace("_", "")
         for split, filepath in [("train", train_file), ("val", val_file)]:
             if filepath.exists():
                 with open(filepath, "r", encoding="utf-8") as f:
@@ -91,9 +98,9 @@ def generate_index_json(
 
                         constructed_index.append({
                             "id": idx_counter,
-                            "name": f"AIHelper_{split}_{line_num:06d}",
+                            "name": f"{prefix}_{split}_{line_num:06d}",
                             "source": "LemGendary-AI-Documentation",
-                            "task": "ai_helper",
+                            "task": ctx.task,
                             "split": split,
                             "hash": h,
                             "nima_score": 1.0,

@@ -91,7 +91,8 @@ def introspect_root_resources(
 
         if is_dir:
             dir_name_lower = name.lower()
-            if dir_name_lower == "data" and ctx.task == "ai_helper":
+            is_llm = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+            if dir_name_lower == "data" and is_llm:
                 for sub_f in sorted(p.iterdir()):
                     if sub_f.is_file() and sub_f.name.endswith(".jsonl"):
                         sub_rel = f"data/{sub_f.name}"
@@ -153,12 +154,12 @@ def introspect_root_resources(
                 shard_year = name.replace("ForexUniverse", "").replace(".parquet", "")
                 desc = f"Annual OHLCV and feature tensor shard ({shard_year}) with 14 engineered technical indicators and causal direction targets (Zstandard compressed)."
                 schema = {"fields": FOREX_COLUMN_FIELDS}
-            elif fn_lower == "ai_helper_train.jsonl":
+            elif fn_lower.endswith(".jsonl"):
                 line_cnt = sum(1 for _ in p.open(encoding="utf-8")) if p.exists() else 0
-                desc = f"Fine-tuning prompt-completion instructions training corpus ({line_cnt:,} instruction pairs)."
-            elif fn_lower == "ai_helper_val.jsonl":
-                line_cnt = sum(1 for _ in p.open(encoding="utf-8")) if p.exists() else 0
-                desc = f"Evaluation validation prompt-completion instructions benchmark split ({line_cnt:,} evaluation pairs)."
+                if "train" in fn_lower:
+                    desc = f"Fine-tuning prompt-completion instructions training corpus ({line_cnt:,} instruction pairs)."
+                else:
+                    desc = f"Evaluation validation prompt-completion instructions benchmark split ({line_cnt:,} evaluation pairs)."
             else:
                 desc = f"{name} data asset."
 

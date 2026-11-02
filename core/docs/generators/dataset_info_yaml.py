@@ -57,7 +57,7 @@ def generate_dataset_info_yaml(
     if not canonical_format:
         if ctx.task == "forex":
             canonical_format = "parquet"
-        elif ctx.task == "ai_helper":
+        elif ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper"):
             canonical_format = "jsonl"
         elif (target_dir / "mds").exists():
             canonical_format = "mds"
@@ -109,9 +109,15 @@ def generate_dataset_info_yaml(
         info_payload["format"] = "parquet"
         info_payload["compression"] = "zstd"
 
-    if ctx.task == "ai_helper":
-        train_file = target_dir / "data" / "ai_helper_train.jsonl"
-        val_file = target_dir / "data" / "ai_helper_val.jsonl"
+    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+    if is_llm_task:
+        train_file_rel = ctx.unified_entry.get("train_file")
+        val_file_rel = ctx.unified_entry.get("val_file")
+        train_file = (target_dir / train_file_rel) if train_file_rel else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
+        val_file = (target_dir / val_file_rel) if val_file_rel else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
+        if not train_file.exists():
+            train_file = target_dir / "data" / "ai_helper_train.jsonl"
+            val_file = target_dir / "data" / "ai_helper_val.jsonl"
         if not train_file.exists():
             train_file = target_dir / "ai_helper_train.jsonl"
             val_file = target_dir / "ai_helper_val.jsonl"

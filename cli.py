@@ -61,6 +61,7 @@ format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDatas
 presets_app = typer.Typer(help="Inspect and manage canonical compiler preset profiles.")
 forex_app = typer.Typer(help="Forex universe and Parquet conversion operations.")
 modernize_app = typer.Typer(help="Dataset modernization queue, transcode, and scale reduction.")
+llm_app = typer.Typer(help="LLM instruction dataset compilation and quality invariant validation.")
 
 
 def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
@@ -942,9 +943,110 @@ def modernize_regen(
     raise typer.Exit(code=code)
 
 
+
+# ??? LLM Dataset Sub-Commands ????????????????????????????????????????????????
+@llm_app.command("compile")
+def llm_compile(
+    dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset key declared in unified_data.yaml (e.g. test_llm)"),
+    no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
+) -> None:
+    """Compile an LLM instruction manifold using BaseLLMCompiler and unified_data.yaml."""
+    if not no_server and _is_server_available():
+        token = get_or_create_token()
+        payload = {"dataset_key": dataset, "async_mode": True}
+        try:
+            resp = requests.post(
+                f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/llm/compile",
+                json=payload,
+                headers={"X-API-Key": token},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                job_id = data.get("job_id")
+                console.print(f"[green]Enqueued LLM compile job {job_id} on sidecar daemon.[/green]")
+                if job_id:
+                    code = _stream_job_logs(job_id)
+                    raise typer.Exit(code=code)
+                raise typer.Exit(0)
+            console.print(f"[yellow]API returned {resp.status_code}. Executing in-process...[/yellow]")
+        except requests.RequestException as e:
+            console.print(f"[yellow]Could not route to API ({e}). Executing in-process...[/yellow]")
+
+    from tools.llm_helper.base_compiler import BaseLLMCompiler
+    try:
+        compiler = BaseLLMCompiler()
+        console.print(f"[bold cyan]Compiling LLM manifold '{dataset}'...[/bold cyan]")
+        res = compiler.compile_manifold(dataset)
+        console.print(f"[bold green]Successfully compiled {dataset}:[/bold green]")
+        console.print(f"  Total records: {res.get('total_records')}")
+        console.print(f"  Train shard:   {res.get('train_path')} ({res.get('train_count')} samples)")
+        console.print(f"  Val shard:     {res.get('val_path')} ({res.get('val_count')} samples)")
+        return
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[bold red]LLM compilation error:[/bold red] {exc}")
+        raise typer.Exit(1)
+
+
+@llm_app.command("validate")
+def llm_validate(
+    file_path: Path = typer.Option(..., "--file", "-f", help="Path to .jsonl dataset file to validate"),
+) -> None:
+    """Run QualityValidator on an LLM dataset JSONL file for 4 quality invariants."""
+    from tools.llm_helper.quality_validator import QualityValidator
+    if not file_path.exists():
+        console.print(f"[bold red]File not found:[/bold red] {file_path}")
+        raise typer.Exit(1)
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            records = [json.loads(line) for line in f if line.strip()]
+        console.print(f"[cyan]Loaded {len(records)} records from {file_path.name}. Running QualityValidator...[/cyan]")
+        validator = QualityValidator()
+        is_valid, issues = validator.validate_corpus(records)
+        if is_valid:
+            console.print(f"[bold green][PASS] Quality verification passed cleanly with 0 critical errors across {len(records)} records.[/bold green]")
+            return
+        else:
+            errors = [iss for iss in issues if iss.severity == "ERROR"]
+            warnings = [iss for iss in issues if iss.severity == "WARNING"]
+            console.print(f"[bold red][FAIL] Validation failed with {len(errors)} errors and {len(warnings)} warnings.[/bold red]")
+            for iss in errors[:10]:
+                console.print(f"  - [{iss.invariant}] ({iss.record_id}): {iss.message}")
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        console.print(f"[bold red]Validation error:[/bold red] {exc}")
+        raise typer.Exit(1)
+
+
 app.add_typer(modernize_app, name="modernize")
+app.add_typer(llm_app, name="llm")
 
 
 # ─── Entry point ────────────────────────────────────────────────────────────
+
+@app.command("test")
+def test_datasets(
+    pattern: str = typer.Option("test_*.py", "--pattern", "-p", help="Test file pattern to execute"),
+) -> None:
+    """Run full test suite for the Dataset Compiler Suite in-process using unittest."""
+    import unittest
+    project_root = Path(__file__).resolve().parent
+    tests_dir = project_root / "tests"
+    console.print(f"[bold cyan]Running LemGendary Dataset Compiler tests in {tests_dir}...[/bold cyan]")
+    loader = unittest.TestLoader()
+    suite = loader.discover(str(tests_dir), pattern=pattern)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        console.print(f"[bold red][FAIL] Tests failed ({len(result.failures)} failures, {len(result.errors)} errors)[/bold red]")
+        raise typer.Exit(1)
+    console.print(f"[bold green][PASS] All {result.testsRun} tests passed successfully![/bold green]")
+
+
 if __name__ == "__main__":
     app()

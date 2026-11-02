@@ -94,6 +94,51 @@ class ContainerPolicy(BaseModel):
     preserve_hardlinks: bool = True
 
 
+class KnowledgeSourceConfig(BaseModel):
+    """Declarative specification of an offline or online knowledge source."""
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["markdown_dir", "markdown_file", "yaml_file", "json_file", "text_file", "csv_file", "remote_url"]
+    path: str | None = None
+    glob: str | None = None
+    url: str | None = None
+    url_prefix: str | None = None
+    tag: str | None = None
+    cache_ttl_hours: int = 168
+
+
+class ChunkingConfig(BaseModel):
+    """Declarative chunking parameters for knowledge processing."""
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: Literal["recursive", "semantic", "exact"] = "recursive"
+    chunk_size: int = 1200
+    chunk_overlap: int = 200
+
+
+class QualityInvariantsConfig(BaseModel):
+    """Quality gate and compliance configuration."""
+    model_config = ConfigDict(extra="forbid")
+
+    zero_emojis: bool = True
+    enforce_epistemic_tags: bool = True
+    intake_protocol_stages: int = 3
+    max_duplicate_threshold: float = 0.0
+
+
+class LLMPipelineConfig(BaseModel):
+    """Declarative configuration for LLM dataset synthesis and knowledge extraction."""
+    model_config = ConfigDict(extra="forbid")
+
+    system_prompt: str
+    schema_format: str = "chatml_turn3"
+    target_samples: int = 525
+    generator_module: str | None = None
+    knowledge_sources: list[KnowledgeSourceConfig] = Field(default_factory=list)
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
+    quality_invariants: QualityInvariantsConfig = Field(default_factory=QualityInvariantsConfig)
+
+
 # ─── Dataset entry ──────────────────────────────────────────────────────────
 class DatasetEntry(BaseModel):
     """A single manifold definition inside `datasets:`."""
@@ -167,7 +212,9 @@ class DatasetEntry(BaseModel):
     train_file: str | None = None
     val_file: str | None = None
     split_strategy: str | None = None
+    stratify_by: str | None = None
     validation_requirements: list[str] = Field(default_factory=list)
+    llm_pipeline: LLMPipelineConfig | None = None
 
 
 

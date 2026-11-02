@@ -14,7 +14,7 @@ datasets:
   nima_aesthetic:
     name: NimaAesthetic
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaesthetic
-    val_split: 0.10
+    val_split: 0.1
     refs:
     - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
     - ref: kaggle://generalhawking/koniq-10k-dataset
@@ -939,18 +939,19 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ai_helper_lemgend:
     name: AIHelperLemGend
-    dataset_type: ai_helper
+    dataset_type: llm
     category: Technical Documentation & AI Assistant Training
     modernized_folder: LemGendizedAIHelperLemGend
     canonical_format: jsonl
     title: LemGendized AI Helper Assistant
     subtitle: AI Assistant for Dataset Engineering, Training, and Safe Troubleshooting
-    description: >
-      Supervised instruction corpus for AI LemGend, the user-facing assistant
-      for LemGendary AI. Teaches documentation-grounded technical question
-      answering, GUI/CLI/API guidance, dataset quality and compilation,
-      model selection, training diagnostics, evaluation, safe recovery,
-      terminology disambiguation, and uncertainty-aware responses.
+    description: 'Supervised instruction corpus for AI LemGend, the user-facing assistant
+      for LemGendary AI. Teaches documentation-grounded technical question answering,
+      GUI/CLI/API guidance, dataset quality and compilation, model selection, training
+      diagnostics, evaluation, safe recovery, terminology disambiguation, and uncertainty-aware
+      responses.
+
+      '
     keywords:
     - computer-science
     - deep-learning
@@ -987,17 +988,18 @@ datasets:
       primary: jsonl
     train_file: data/ai_helper_train.jsonl
     val_file: data/ai_helper_val.jsonl
-    split_strategy: predefined
-    val_split: 0.0
-    collection_methodology: >
-      Curated supervised instruction examples derived from reviewed documentation
-      and general AI/ML engineering principles. Each example is designed around
-      a user task, diagnostic decision, terminology distinction, or documentation
-      authority rule. Records use one JSON object per line with messages in
-      system/user/assistant order. Keep source provenance in a companion audit
-      manifest if the active compiler schema does not permit additional fields.
-      Validate factual support, JSONL schema, duplicate and semantic leakage,
-      source-version compatibility, and held-out task performance before training.
+    split_strategy: stratified
+    val_split: 0.2
+    collection_methodology: 'Curated supervised instruction examples derived from
+      reviewed documentation and general AI/ML engineering principles. Each example
+      is designed around a user task, diagnostic decision, terminology distinction,
+      or documentation authority rule. Records use one JSON object per line with messages
+      in system/user/assistant order. Keep source provenance in a companion audit
+      manifest if the active compiler schema does not permit additional fields. Validate
+      factual support, JSONL schema, duplicate and semantic leakage, source-version
+      compatibility, and held-out task performance before training.
+
+      '
     validation_requirements:
     - valid_jsonl
     - trainer_schema_compatibility
@@ -1014,3 +1016,41 @@ datasets:
       geospatial: Global Digital Documentation and AI Engineering
     author: Lem Treursic
     author_bio: Creator of LemGendary AI and the AI LemGend assistant
+    stratify_by: category
+    llm_pipeline:
+      system_prompt: 'You are the authoritative LemGendary AI Studio Assistant. You
+        possess deep, precise technical knowledge of the LemGendary AI ecosystem,
+        its 23 neural architectures, the proprietary Dataset Compiler, the Training
+        Suite with its Sawtooth Governor, and sidecar REST APIs. Authority Hierarchy:
+        Code Manifests (unified_models_v2.yaml) > Master Manuals > Architectural Whitepapers
+        > Educational Guides. Strictly differentiate general deep learning concepts
+        from native Studio-supported features. Follow the 3-Stage Diagnostic Intake
+        Protocol: Stage 1 Initial Triage (safe checks), Stage 2 Targeted Diagnosis
+        (telemetry verification), and Stage 3 Bounded Remediation with epistemic tags
+        [CONFIRMED], [PROBABLE], or [ILLUSTRATIVE]. Do not use ungrounded absolute
+        guarantees; provide mathematically bounded engineering answers. Do not use
+        emojis.'
+      schema_format: chatml_turn3
+      target_samples: 1150
+      generator_module: tools.llm_helper.knowledge_synthesizer
+      knowledge_sources:
+      - type: markdown_dir
+        path: lemgendary-docs/MD-Papers
+        glob: '*.md'
+        url_prefix: https://lemgenda.github.io/ai-training-whitepapers/papers/
+      - type: yaml_file
+        path: lemgendary-training-suite/unified_models_v2.yaml
+        url: https://lemgenda.github.io/ai-training-whitepapers/index.html
+      - type: remote_url
+        url: https://lemgenda.github.io/ai-training-whitepapers/index.html
+        tag: documentation_hub
+        cache_ttl_hours: 168
+      chunking:
+        strategy: recursive
+        chunk_size: 1200
+        chunk_overlap: 200
+      quality_invariants:
+        zero_emojis: true
+        enforce_epistemic_tags: true
+        intake_protocol_stages: 3
+        max_duplicate_threshold: 0.0
