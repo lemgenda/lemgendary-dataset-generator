@@ -17,8 +17,9 @@ from collections import Counter
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 dataset_dir = str(BASE_DIR / "LemGendaryDatasets" / "LemGendizedAIHelperLemGend")
-train_path = os.path.join(dataset_dir, "ai_helper_train.jsonl")
-val_path = os.path.join(dataset_dir, "ai_helper_val.jsonl")
+data_subdir = os.path.join(dataset_dir, "data")
+train_path = os.path.join(data_subdir, "ai_helper_train.jsonl")
+val_path = os.path.join(data_subdir, "ai_helper_val.jsonl")
 info_path = os.path.join(dataset_dir, "dataset_info.yaml")
 meta_path = os.path.join(dataset_dir, "dataset-metadata.json")
 index_path = os.path.join(dataset_dir, "index.json")
@@ -197,8 +198,8 @@ if table_pattern.search(readme_text):
 manifest_table_lines = [
     "| File | Partition | Samples | Format |",
     "| :--- | :--- | :--- | :--- |",
-    f"| **`ai_helper_train.jsonl`** | Train | {train_count} | JSONL (OpenAI / ChatML message schema) |",
-    f"| **`ai_helper_val.jsonl`** | Val | {val_count} | JSONL (OpenAI / ChatML message schema) |",
+    f"| **`data/ai_helper_train.jsonl`** | Train | {train_count} | JSONL (OpenAI / ChatML message schema) |",
+    f"| **`data/ai_helper_val.jsonl`** | Val | {val_count} | JSONL (OpenAI / ChatML message schema) |",
 ]
 manifest_table = "\n".join(manifest_table_lines)
 manifest_pattern = re.compile(

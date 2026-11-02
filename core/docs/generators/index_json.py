@@ -68,8 +68,11 @@ def generate_index_json(
 
     if ctx.task == "ai_helper":
         # Build index from JSONL instruction datasets
-        train_file = target_dir / "ai_helper_train.jsonl"
-        val_file = target_dir / "ai_helper_val.jsonl"
+        train_file = target_dir / "data" / "ai_helper_train.jsonl"
+        val_file = target_dir / "data" / "ai_helper_val.jsonl"
+        if not train_file.exists():
+            train_file = target_dir / "ai_helper_train.jsonl"
+            val_file = target_dir / "ai_helper_val.jsonl"
         idx_counter = 0
 
         for split, filepath in [("train", train_file), ("val", val_file)]:

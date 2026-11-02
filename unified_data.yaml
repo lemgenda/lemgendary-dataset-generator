@@ -985,8 +985,8 @@ datasets:
       tag: training_suite
     container:
       primary: jsonl
-    train_file: ai_helper_train.jsonl
-    val_file: ai_helper_val.jsonl
+    train_file: data/ai_helper_train.jsonl
+    val_file: data/ai_helper_val.jsonl
     split_strategy: predefined
     val_split: 0.0
     collection_methodology: >

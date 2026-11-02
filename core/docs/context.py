@@ -326,8 +326,11 @@ def resolve_manifold_context(
             }
         }
     elif task == "ai_helper":
-        train_file = output_root / "ai_helper_train.jsonl"
-        val_file = output_root / "ai_helper_val.jsonl"
+        train_file = output_root / "data" / "ai_helper_train.jsonl"
+        val_file = output_root / "data" / "ai_helper_val.jsonl"
+        if not train_file.exists():
+            train_file = output_root / "ai_helper_train.jsonl"
+            val_file = output_root / "ai_helper_val.jsonl"
         tr_cnt = 0
         vl_cnt = 0
         if train_file.exists():

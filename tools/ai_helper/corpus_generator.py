@@ -979,41 +979,114 @@ def generate_balanced_corpus() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any
             category_buckets[cat] = []
         category_buckets[cat].append(item)
 
-    # 32 Authoritative, semantically disjoint validation examples
-    # (12 dedicated val_ benchmark inquiries + 20 domain-stratified generalization probes)
+    # 105 Authoritative, semantically disjoint validation examples (20% of 525)
+    # Stratified across all functional categories, model families, and operational domains
     val_ids = {
-        "val_api_kaggle_push_single_model",
+        "api_custom_compile",
+        "api_job_cancel",
         "api_quick_compile",
-        "val_cli_unit_test_all_command",
+        "arch_codeformer_quantization_loss",
+        "arch_codeformer_w_parameter_tuning",
+        "arch_detection_task_aligned_assigner_math",
+        "arch_ecosystem_cross_platform_paths",
+        "arch_ecosystem_heartbeat_watchdog",
+        "arch_gui_react_state_management",
+        "arch_hybrid_face_parsing_parsenet",
+        "arch_restoration_suite_lpips_vgg_metric",
+        "arch_restoration_suite_ultrazoom_scale_invariance",
+        "architecture_codeformer_face_restoration",
+        "architecture_diffusion_euler_ancestral",
+        "architecture_llm_swiglu_gated_feedforward",
+        "architecture_nafnet_deblur_ladder",
+        "cli_env_validate",
+        "cli_model_export",
         "cli_training_launch",
-        "val_cross_doc_curriculum_checkpoint_resume",
-        "val_format_parquet_compression_algorithms",
-        "format_parquet_rowgroup_locality",
-        "format_zarr_multidimensional_tensors",
+        "cloud_sync_four_model_variations",
+        "cloud_sync_gdrive_unconfigured_remediation",
+        "compiler_parquet_compression_ratio",
+        "contrastive_training_vs_inference_checkpoint",
+        "cross_doc_pipeline_operation_036",
+        "cross_doc_pipeline_operation_037",
+        "cross_doc_pipeline_operation_043",
+        "cross_doc_pipeline_operation_058",
+        "cross_doc_pipeline_operation_068",
+        "cross_doc_pipeline_operation_072",
+        "cross_doc_pipeline_operation_079",
+        "cross_doc_pipeline_operation_080",
+        "cross_doc_pipeline_operation_083",
+        "cross_doc_pipeline_operation_095",
+        "cross_doc_pipeline_operation_102",
+        "cross_doc_pipeline_operation_117",
+        "cross_doc_pipeline_operation_118",
+        "cross_doc_pipeline_operation_119",
+        "cross_doc_pipeline_operation_122",
+        "decision_restoration_suite",
+        "degradation_engine_chromatic_aberration",
+        "degradation_engine_defocus_blur_disc",
+        "env_manager_deterministic_pipeline",
+        "env_manager_windowless_dispatch",
         "envmanager_requirements_mirroring",
         "envmanager_sibling_surgery_bootstrap",
+        "fid_dimension_pool3_index",
+        "format_parquet_rowgroup_locality",
+        "format_zarr_multidimensional_tensors",
+        "foundation_master_latent_diffusion_schedulers",
+        "foundation_master_model_card_invariants",
+        "foundation_master_vlm_vision_encoder_freeze",
+        "gui_drift_table_badges",
         "gui_dual_websocket_telemetry",
-        "nima_intra_epoch_vram_sentinel",
-        "val_gui_training_orchestration_toolbar",
+        "gui_radix_progress_and_roll_up",
         "gui_training_start",
         "gui_training_stop",
-        "val_architecture_multitask_restorer_moe",
-        "val_architecture_yolov8n_anchor_free",
-        "val_format_zarr_vs_hdf5_concurrency",
-        "decision_restoration_suite",
-        "val_safetensors_header_deserialization",
-        "weights_safetensors_mmap_advantages",
-        "contrastive_training_vs_inference_checkpoint",
+        "manuals_hub_api_error_code_taxonomy",
+        "multiturn_clarification_oom_triage",
+        "negative_multinode_ddp_cluster",
+        "nima_intra_epoch_vram_sentinel",
+        "pathology_micro_batch_rank_starvation",
+        "pipeline_hybrid_film_restorer",
+        "pipeline_hybrid_multitask",
+        "pipeline_hybrid_upn_v2",
+        "pipeline_mprnet",
+        "registry_gui_dataset_compiler_controls",
+        "registry_gui_model_selection_dropdown",
+        "registry_gui_theme_toggle",
+        "soup_distributed_weight_broadcast",
+        "soup_greedy_order_heuristics",
         "terminology_authority_hierarchy_ssot",
         "terminology_epistemic_tags_significance",
-        "val_troubleshoot_dataloader_worker_affinity",
-        "val_troubleshoot_loss_plateau_governor",
+        "terminology_sota_ladder_vs_epochs",
+        "triage_auto_diagnostic_session_053",
+        "triage_auto_diagnostic_session_054",
+        "triage_auto_diagnostic_session_058",
+        "triage_auto_diagnostic_session_064",
+        "triage_auto_diagnostic_session_072",
+        "triage_auto_diagnostic_session_080",
+        "triage_fid_sub_batch_vram_tuning",
+        "triage_loss_nan_explosion_gradient_clipping",
+        "triage_moe_expert_capacity_factor_drop",
+        "triage_ntfs_atomic_swap_sharing_violation",
+        "triage_spot_checkpoint_manifest_json_sync",
         "troubleshoot_corrupted_webdataset_shard",
+        "troubleshoot_cuda_ipc_shared_memory_oom",
         "troubleshoot_cuda_oom_sawtooth",
         "troubleshoot_infinite_plateau_loop",
         "troubleshoot_websocket_disconnection",
+        "troubleshoot_windows_ntfs_atomic_lock",
+        "unsupported_boundary_legacy_mobilenet_backbones",
+        "unsupported_boundary_multi_node_slurm",
+        "val_api_kaggle_push_single_model",
+        "val_architecture_multitask_restorer_moe",
+        "val_architecture_yolov8n_anchor_free",
+        "val_cli_unit_test_all_command",
+        "val_cross_doc_curriculum_checkpoint_resume",
+        "val_format_parquet_compression_algorithms",
+        "val_format_zarr_vs_hdf5_concurrency",
+        "val_gui_training_orchestration_toolbar",
+        "val_safetensors_header_deserialization",
+        "val_troubleshoot_dataloader_worker_affinity",
+        "val_troubleshoot_loss_plateau_governor",
         "val_unsupported_dynamic_batch_without_sentinel",
-        "negative_multinode_ddp_cluster",
+        "weights_safetensors_mmap_advantages",
     }
 
     train_set: List[Dict[str, Any]] = []
@@ -1033,10 +1106,10 @@ def generate_balanced_corpus() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any
     train_set.sort(key=lambda x: x["id"])
     val_set.sort(key=lambda x: x["id"])
 
-    # Assert exact partitions
-    if len(val_set) != 32 or len(train_set) != 125:
+    # Assert exact partitions (80/20 train/val split = 420 train, 105 val)
+    if len(val_set) != 105 or len(train_set) != 420:
         raise ValueError(
-            f"Split partition count failure: train={len(train_set)} (expected 125), val={len(val_set)} (expected 32)"
+            f"Split partition count failure: train={len(train_set)} (expected 420), val={len(val_set)} (expected 105)"
         )
 
     return train_set, val_set
@@ -1052,10 +1125,11 @@ def synthesize_corpus() -> None:
 
     # 2. Write out jsonl files
     out_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "LemGendaryDatasets", "LemGendizedAIHelperLemGend"))
-    os.makedirs(out_dir, exist_ok=True)
+    data_out_dir = os.path.join(out_dir, "data")
+    os.makedirs(data_out_dir, exist_ok=True)
 
-    train_path = os.path.join(out_dir, "ai_helper_train.jsonl")
-    val_path = os.path.join(out_dir, "ai_helper_val.jsonl")
+    train_path = os.path.join(data_out_dir, "ai_helper_train.jsonl")
+    val_path = os.path.join(data_out_dir, "ai_helper_val.jsonl")
 
     with open(train_path, "w", encoding="utf-8") as f:
         for ex in train_set:
@@ -1104,28 +1178,7 @@ def synthesize_corpus() -> None:
     subprocess.run([sys.executable, enrich_script], check=True)
     subprocess.run([sys.executable, compile_script], check=True)
 
-    # 6. Mirror enriched corpus to LemGendaryModels/ai_helper_lemgend/ and data/
-    model_dir = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "..",
-            "..",
-            "LemGendaryModels",
-            "ai_helper_lemgend",
-        )
-    )
-    model_data_dir = os.path.join(model_dir, "data")
-    os.makedirs(model_data_dir, exist_ok=True)
-    import shutil
-
-    shutil.copy2(train_path, os.path.join(model_dir, "ai_helper_train.jsonl"))
-    shutil.copy2(val_path, os.path.join(model_dir, "ai_helper_val.jsonl"))
-    shutil.copy2(train_path, os.path.join(model_data_dir, "ai_helper_train.jsonl"))
-    shutil.copy2(val_path, os.path.join(model_data_dir, "ai_helper_val.jsonl"))
-    print(f"Mirrored enriched corpus shards to {model_dir} and {model_data_dir}")
-
-    # 8. Print breakdown
+    # 6. Print breakdown
     print(f"Synthesized AI Helper Corpus successfully:")
     print(f"  Total examples: {len(all_items)}")
     print(f"  Train shard:    {len(train_set)} -> {train_path}")

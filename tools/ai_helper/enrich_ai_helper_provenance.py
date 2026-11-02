@@ -18,12 +18,13 @@ from typing import Any, Dict
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DATASET_DIR = str(BASE_DIR / "LemGendaryDatasets" / "LemGendizedAIHelperLemGend")
-TRAIN_PATH = os.path.join(DATASET_DIR, "ai_helper_train.jsonl")
-VAL_PATH = os.path.join(DATASET_DIR, "ai_helper_val.jsonl")
+DATA_SUBDIR = os.path.join(DATASET_DIR, "data")
+TRAIN_PATH = os.path.join(DATA_SUBDIR, "ai_helper_train.jsonl")
+VAL_PATH = os.path.join(DATA_SUBDIR, "ai_helper_val.jsonl")
 DOCS_MANIFEST_PATH = str(BASE_DIR / "lemgendary-docs" / "manifest" / "documents.json")
 PAPERS_DIR = str(BASE_DIR / "lemgendary-docs" / "papers")
 
-DOC_VERSION = "v16.9.27-STABLE"
+DOC_VERSION = "v16.9.59-STABLE"
 BASE_URL = "https://lemgenda.github.io/ai-training-whitepapers/papers/"
 
 # Complete 48-publication mapping from Markdown source file to published HTML filename
@@ -114,6 +115,40 @@ def resolve_record_doc_id(record_id: str, category: str) -> str:
     if record_id == "pipeline_nima_authenticity": return "PAPER_NIMA_AUTHENTICITY.md"
     if record_id == "pipeline_classification_nsfw": return "PAPER_LEMGENDARY_NSFW_CLASSIFIER.md"
     if record_id == "pipeline_forex_predictor": return "PAPER_FOREX_PREDICTOR.md"
+
+    # New modular packs explicit ID mappings
+    if record_id.startswith("arch_ecosystem_"): return "ECOSYSTEM_ARCHITECTURE.md"
+    if record_id.startswith("registry_gui_"): return "GUI_CONTROL_REGISTRY.md"
+    if record_id.startswith("manuals_hub_"): return "MANUALS_HUB.md"
+    if record_id.startswith("arch_gui_"): return "PAPER_AI_STUDIO_GUI.md"
+    if record_id.startswith("degradation_engine_"): return "PAPER_DEGRADATION_ENGINE.md"
+    if record_id.startswith("foundation_master_"): return "PAPER_FOUNDATION_MODELS_MASTER.md"
+    if record_id.startswith("arch_detection_"): return "PAPER_LEMGENDARY_DETECTION_CLASSIFICATION.md"
+    if record_id.startswith("arch_hybrid_"): return "PAPER_LEMGENDARY_HYBRID.md"
+    if record_id.startswith("arch_restoration_suite_"): return "PAPER_LEMGENDARY_RESTORATION_SUITE.md"
+
+    if record_id.startswith("soup_"): return "PAPER_TRAINING_SUITE.md"
+    if record_id.startswith("fid_"): return "PAPER_TRAINING_SUITE.md"
+    if record_id.startswith("cloud_sync_"): return "PAPER_TRAINING_SUITE.md"
+    if record_id.startswith("triage_"): return "AI_HELPER_TROUBLESHOOTING_KNOWLEDGE.md"
+    if record_id.startswith("cross_pipeline_"): return "ECOSYSTEM_ARCHITECTURE.md"
+    if record_id.startswith("manual_ops_gui_"): return "MANUAL_AI_STUDIO_GUI.md"
+    if record_id.startswith("manual_ops_cli_"): return "MANUAL_CLI.md"
+    if record_id.startswith("manual_ops_api_"): return "MANUAL_API.md"
+
+    # Specific sub-architectures
+    if "retinaface" in record_id or "arch_retinaface" in record_id: return "PAPER_LEMGENDARY_RETINAFACE.md"
+    if "parsenet" in record_id or "arch_parsenet" in record_id: return "PAPER_LEMGENDARY_PARSENET.md"
+    if "ultrazoom" in record_id or "arch_ultrazoom" in record_id: return "PAPER_LEMGENDARY_ULTRAZOOM.md"
+    if "ffanet" in record_id or "arch_ffanet" in record_id: return "PAPER_LEMGENDARY_FFANET.md"
+    if "mirnet" in record_id or "arch_mirnet" in record_id: return "PAPER_LEMGENDARY_MIRNET.md"
+    if "nsfw" in record_id or "arch_nsfw" in record_id: return "PAPER_LEMGENDARY_NSFW_CLASSIFIER.md"
+
+    if "arch_nima_efficientnet" in record_id: return "PAPER_NIMA_EFFICIENTNET.md"
+    if "arch_nima_mobile" in record_id: return "PAPER_NIMA_MOBILE.md"
+    if "arch_nima_pro" in record_id: return "PAPER_NIMA_PRO.md"
+    if "arch_nima_loss" in record_id or "arch_nima_technical" in record_id: return "PAPER_NIMA_TECHNICAL.md"
+    if "arch_nima_ava" in record_id or "arch_nima_authenticity" in record_id: return "PAPER_NIMA_AUTHENTICITY.md"
 
     # 2. Specific architecture records
     if "architecture_nafnet" in record_id: return "PAPER_LEMGENDARY_NAFNET.md"

@@ -133,8 +133,8 @@ def generate_readme_md(
 
         manifest_rows: list[str] = []
         if ctx.task == "ai_helper":
-            manifest_rows.append(f"| **ai_helper_train.jsonl** | {total_train_all:,} | - |")
-            manifest_rows.append(f"| **ai_helper_val.jsonl** | - | {total_val_all:,} |")
+            manifest_rows.append(f"| **data/ai_helper_train.jsonl** | {total_train_all:,} | - |")
+            manifest_rows.append(f"| **data/ai_helper_val.jsonl** | - | {total_val_all:,} |")
         else:
             manifest_rows.append(f"| **images** | {total_train_all:,} | {total_val_all:,} |")
             if (target_dir / "targets").exists() or ctx.task in ["restoration", "super-resolution"]:

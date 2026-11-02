@@ -91,7 +91,19 @@ def introspect_root_resources(
 
         if is_dir:
             dir_name_lower = name.lower()
-            if dir_name_lower in ["shards", "webdataset"]:
+            if dir_name_lower == "data" and ctx.task == "ai_helper":
+                for sub_f in sorted(p.iterdir()):
+                    if sub_f.is_file() and sub_f.name.endswith(".jsonl"):
+                        sub_rel = f"data/{sub_f.name}"
+                        sub_cnt = sum(1 for _ in sub_f.open(encoding="utf-8")) if sub_f.exists() else 0
+                        if "train" in sub_f.name:
+                            sub_desc = f"Fine-tuning prompt-completion instructions training corpus ({sub_cnt:,} instruction pairs)."
+                        else:
+                            sub_desc = f"Evaluation validation prompt-completion instructions benchmark split ({sub_cnt:,} evaluation pairs)."
+                        resources.append({"path": sub_rel, "description": sub_desc})
+                        seen_paths.add(sub_rel)
+                continue
+            elif dir_name_lower in ["shards", "webdataset"]:
                 tar_count = sum(1 for _ in p.glob("*.tar"))
                 total_mb = sum(f.stat().st_size for f in p.glob("*.tar")) / (1024 * 1024)
                 if tar_count > 0:

@@ -20,6 +20,17 @@
 
 ## Changelog
 
+### v16.9.20 — AI Helper Dataset Production Expansion (525 Records, 48-Whitepaper Coverage, SOTA Features & Diagnostic Intake)
+
+- **AI Helper Production Expansion (525 Records, 80/20 Stratified Split)** — Expanded the authoritative instruction corpus from 157 records to 525 records (420 train / 105 val) housed strictly in `LemGendaryDatasets/LemGendizedAIHelperLemGend/data/` (`ai_helper_train.jsonl` and `ai_helper_val.jsonl`):
+  - **Single Source of Truth Dataset Architecture** — Consolidated dataset corpus into `LemGendizedAIHelperLemGend/data/` and purged redundant corpus duplicates from `LemGendaryModels/ai_helper_lemgend/`, decoupling model vaults from dataset storage.
+  - **48-Whitepaper Universal Coverage** — Added comprehensive coverage for all 9 previously unrepresented architectural whitepapers (`ECOSYSTEM_ARCHITECTURE.md`, `GUI_CONTROL_REGISTRY.md`, `MANUALS_HUB.md`, `PAPER_AI_STUDIO_GUI.md`, `PAPER_DEGRADATION_ENGINE.md`, `PAPER_FOUNDATION_MODELS_MASTER.md`, `PAPER_LEMGENDARY_DETECTION_CLASSIFICATION.md`, `PAPER_LEMGENDARY_HYBRID.md`, `PAPER_LEMGENDARY_RESTORATION_SUITE.md`).
+  - **Pareto Model Soup Integration** — Full technical coverage for CLI (`python cli.py soup`), FastAPI REST API (`POST /api/models/{key}/soup`), and Desktop GUI client (`blendModelSoup()`).
+  - **Inception-2048 FID Calibration & Exact Formulations** — Recalibrated realistic [0.5, 15.0] FID scale, sub-batch VRAM safeguards, and mathematical Frechet distance formulations.
+  - **Dual Kaggle Secrets Resolution** — Ingested guidance for `GOOGLE_DRIVE` (API Key) and `GOOGLE_DRIVE_JSON` (Service Account JSON) credentials, resolving `[GDRIVE_UNCONFIGURED]` alerts.
+  - **50+ Multi-Turn Diagnostic Triage Sessions** — Deep-dive troubleshooting following the 3-Stage Diagnostic Intake Protocol (Stage 1 Initial Triage, Stage 2 Targeted Diagnosis, Stage 3 Bounded Remediation) with epistemic tags (`[CONFIRMED]`, `[PROBABLE]`, `[ILLUSTRATIVE]`).
+- **Provenance & Metadata Bijective Synchronization** — Updated `doc_version` baseline to `v16.9.59-STABLE`, mapped 100% of canonical URLs to published HTML pages, and recompiled `dataset_info.yaml`, `index.json`, `README.md`, and `dataset-metadata.json`.
+
 ### v16.9.19 — Senior Developer Suite Audit, 7 S.O.L.I.D. In-Process Services, PEP 562 Lazy Loading & Zero-Suppression Hardening
 
 - **7 In-Process S.O.L.I.D. Services (`services/`)** — Decomposed all disparate CLI tool scripts and workflows into 7 dedicated, typed service abstractions with single responsibilities:

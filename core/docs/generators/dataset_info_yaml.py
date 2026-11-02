@@ -110,8 +110,11 @@ def generate_dataset_info_yaml(
         info_payload["compression"] = "zstd"
 
     if ctx.task == "ai_helper":
-        train_file = target_dir / "ai_helper_train.jsonl"
-        val_file = target_dir / "ai_helper_val.jsonl"
+        train_file = target_dir / "data" / "ai_helper_train.jsonl"
+        val_file = target_dir / "data" / "ai_helper_val.jsonl"
+        if not train_file.exists():
+            train_file = target_dir / "ai_helper_train.jsonl"
+            val_file = target_dir / "ai_helper_val.jsonl"
         tr_cnt = sum(1 for _ in train_file.open(encoding="utf-8")) if train_file.exists() else 0
         vl_cnt = sum(1 for _ in val_file.open(encoding="utf-8")) if val_file.exists() else 0
         info_payload["train_samples"] = tr_cnt

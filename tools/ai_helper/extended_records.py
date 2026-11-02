@@ -604,3 +604,36 @@ EXTENDED_RECORDS: List[Dict[str, str]] = [
         "assistant": "The AI Studio Desktop GUI follows a separate intentional versioning track [CONFIRMED]:\n\n1. GUI Track (v2.x.y): Version 2.0.0 represents the second-generation Tauri v2 native desktop release, superseding legacy web/Electron prototypes.\n\n2. API Consumer Role: The GUI client acts as a consumer of v16.x.y sidecar APIs via frozen OpenAPI 3.1 contracts (openapi.json).\n\n3. Design Invariant: Cross-document version differences between tracks are deliberate and governed by VERSIONING_POLICY.md. Version discrepancies between v2.x.y and v16.x.y do not indicate incompatibility [CONFIRMED].",
     },
 ]
+
+
+# Modular extension packs (368 high-fidelity records covering all 48 documentation papers,
+# Pareto Model Soup, FID Inception-2048 calibration, Dual Kaggle Secrets, and 50+ triage scenarios).
+try:
+    from .packs.pack1_unrepresented_docs import PACK1_RECORDS
+    from .packs.pack2_recent_sota_features import PACK2_RECORDS
+    from .packs.pack3_multiturn_triage import PACK3_RECORDS
+    from .packs.pack4_cross_doc_and_eval import PACK4_RECORDS
+except (ImportError, ValueError):
+    import importlib.util
+    import os
+
+    def _load_pack(pack_name: str) -> List[Dict[str, str]]:
+        pack_path = os.path.join(os.path.dirname(__file__), "packs", f"{pack_name}.py")
+        spec = importlib.util.spec_from_file_location(pack_name, pack_path)
+        if spec is None or spec.loader is None:
+            return []
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        prefix = pack_name.split("_")[0].upper()
+        attr = f"{prefix}_RECORDS"
+        return getattr(mod, attr, [])
+
+    PACK1_RECORDS = _load_pack("pack1_unrepresented_docs")
+    PACK2_RECORDS = _load_pack("pack2_recent_sota_features")
+    PACK3_RECORDS = _load_pack("pack3_multiturn_triage")
+    PACK4_RECORDS = _load_pack("pack4_cross_doc_and_eval")
+
+EXTENDED_RECORDS.extend(PACK1_RECORDS)
+EXTENDED_RECORDS.extend(PACK2_RECORDS)
+EXTENDED_RECORDS.extend(PACK3_RECORDS)
+EXTENDED_RECORDS.extend(PACK4_RECORDS)
