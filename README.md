@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.26-STABLE` |
+| **Version** | `v16.9.27-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,18 @@
 ---
 
 ## Changelog
+
+### v16.9.27 - LLM Validate Stays Inside the Dataset Root, OpenAPI Contract Regenerated
+
+- **`POST /api/llm/validate` Only Opens Files Inside the Dataset Root (review D-01, path part)**:
+  - `file_path` is now preferably relative to the dataset root (for example `ai_helper_lemgend/data/ai_helper_lemgend_train.jsonl`). Absolute paths are still accepted when they lie inside the root.
+  - The path is fully resolved (`..` collapsed, symlinks followed) before the check. A path outside the root returns HTTP 403, even when the file does not exist; a missing file inside the root returns HTTP 404.
+  - The root comes from the same `output_folder_name` lookup the datasets, GUI and Kaggle routes already use.
+  - Only file, encoding and JSON errors become HTTP 400; other errors are no longer caught.
+- **`openapi.json` Regenerated From the Live App**:
+  - New `tools/export_openapi.py` writes it deterministically (app key order, 2-space indent, LF, trailing newline); `--check` exits 1 on drift.
+  - Operations grow from 25 to 38 (adds the Kaggle, modernize, LLM and custom-compile routes). `info.version` is now the version the API serves.
+  - New `tests/test_openapi_contract.py` fails when the file drifts from the app or misses a served operation. It skips with a reason when the app cannot be imported.
 
 ### v16.9.26 - Modernize Honours Scope and Dry Run, Reduce Works Through the API
 

@@ -6,13 +6,15 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from api.jobs import job_manager
-from api.models import JobResponse, JobType
+from api.models import JobType
+from api.routes.datasets import _resolve_output_root
 from core.cli_args import venv_python
 from tools.llm_helper.base_compiler import BaseLLMCompiler
 from tools.llm_helper.quality_validator import QualityValidator
@@ -25,14 +27,21 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 class LLMCompileRequest(BaseModel):
     """Request payload for compiling an LLM instruction dataset."""
     dataset_key: str = Field(..., description="Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)")
-    target_samples: Optional[int] = Field(None, description="Override target sample count")
+    target_samples: int | None = Field(None, description="Override target sample count")
     async_mode: bool = Field(False, description="Run compilation as a background worker job")
 
 
 class LLMValidationRequest(BaseModel):
     """Request payload for validating an LLM dataset JSONL file."""
-    file_path: Optional[str] = Field(None, description="Path to .jsonl file on disk")
-    records: Optional[List[dict[str, Any]]] = Field(None, description="Inline list of records to validate")
+    file_path: str | None = Field(
+        None,
+        description=(
+            "Path to a .jsonl file inside the dataset root, preferably relative to it "
+            "(e.g. ai_helper_lemgend/data/ai_helper_lemgend_train.jsonl). Absolute paths "
+            "are accepted only when they resolve inside the dataset root."
+        ),
+    )
+    records: list[dict[str, Any]] | None = Field(None, description="Inline list of records to validate")
 
 
 @router.post("/compile")
@@ -73,21 +82,46 @@ async def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
     }
 
 
+def resolve_corpus_path(raw_path: str) -> Path:
+    """Resolve ``raw_path`` to a file that lies inside the dataset root.
+
+    Relative paths are taken relative to the dataset root. The path is fully
+    resolved (``..`` collapsed, symlinks followed) before the containment check,
+    so traversal and symlinks pointing outside the root are refused.
+
+    Raises:
+        HTTPException: 403 when the path resolves outside the dataset root,
+            404 when it is inside the root but is not an existing file.
+    """
+    root = _resolve_output_root().resolve()
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        logger.warning("Refused LLM validate path outside the dataset root: %s", raw_path)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Path is outside the dataset root and cannot be validated: {raw_path}",
+        )
+    if not resolved.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {raw_path}")
+    return resolved
+
+
 @router.post("/validate")
 def validate_llm_corpus(req: LLMValidationRequest) -> dict[str, Any]:
-    """Run QualityValidator on an LLM dataset file or inline records."""
+    """Run QualityValidator on an LLM dataset file inside the dataset root or on inline records."""
     records: list[dict[str, Any]] = []
 
     if req.records is not None:
         records = req.records
     elif req.file_path is not None:
-        p = Path(req.file_path)
-        if not p.exists():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {req.file_path}")
+        corpus_path = resolve_corpus_path(req.file_path)
         try:
-            with open(p, "r", encoding="utf-8") as f:
+            with open(corpus_path, "r", encoding="utf-8") as f:
                 records = [json.loads(line) for line in f if line.strip()]
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to parse JSONL file: {exc}") from exc
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Must provide either file_path or records")
