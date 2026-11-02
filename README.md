@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.21-STABLE` |
+| **Version** | `v16.9.26-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,21 @@
 ---
 
 ## Changelog
+
+### v16.9.26 - Modernize Honours Scope and Dry Run, Reduce Works Through the API
+
+- **Modernize Run Honours `dataset`, `dry_run`, `force` (review D-05)**:
+  - `ModernizeRunRequest` now accepts the GUI's `dataset`, `dry_run` and `force` (optional additions). `dataset` is merged with `datasets` and passed once as a comma-joined `--datasets` value; the old route repeated the flag and argparse kept only the last one.
+  - A dry run never converts, deletes, writes or uploads. It prints the per-dataset plan, including what a real run would delete.
+  - Scoping prefers an exact key, name or folder match, so `alpha` no longer also runs `alpha_v2`. A dataset that matches nothing exits 1 instead of running nothing silently.
+  - `purge_loose` now defaults to `false` and keeps every source (zip, legacy folder, loose images). `true` deletes them after a successful conversion.
+  - API and CLI share `tools.modernization_queue.build_queue_args` and `main(argv)`. `modernize run` gains `--purge-source`.
+- **Reduce Works Through the API (review D-06)**:
+  - `tools/manifold_reduce.py` gains `--dataset`, `--fraction`, `--yes` and `--dry-run`, plus `main(argv)` with a real exit code. With `--yes` it never calls `input()` and requires `--dataset`.
+  - `POST /api/modernize/reduce` accepts the GUI's `manifold` (alias of `dataset_key`) and a fractional `scale` (`0.25` keeps 25 %; a value above 1 is a factor, `2` keeps half). It always runs non-interactively and rejects a missing manifold with HTTP 400. Optional `max_gb`, `suffix` and `dry_run` were added. `--model` and `--scale`, which the tool never accepted, are no longer sent.
+  - `reduce` and `modernize reduce` share one command with the same options. Without `--yes` they still prompt.
+- **CLI `modernize` Reachable (review D-09)**: the suffix-retirement command was shadowed by the `modernize` sub-app. It is now `modernize manifolds`.
+- 21 tests in `tests/test_modernize_reduce.py`, all using temp folders. They cover: dry run leaves the filesystem unchanged, scope, force, route commands, no `input()`, and CLI reachability. 6 reduce-tool tests need pandas, torch and webdataset.
 
 ### v16.9.25 - LLM Compile Jobs Start, CLI Waits Are Bounded, Validate Reports
 
@@ -601,13 +616,14 @@ python cli.py mask --model parsenet --strategy sam
 
 # Reduce
 python cli.py reduce --max-gb 10
+python cli.py reduce --dataset LemGendizedFoo --fraction 0.25 --yes   # no prompts
 
 # Modernize (retire `Large` suffix)
-python cli.py modernize --dry-run
-python cli.py modernize --all --yes
-python cli.py modernize --datasets nima_technical,nima_aesthetic
-python cli.py modernize --image-format webp --also-format webdataset
-python cli.py modernize --skip-kaggle      # rename locally, no re-upload
+python cli.py modernize manifolds --dry-run
+python cli.py modernize manifolds --all --yes
+python cli.py modernize manifolds --datasets nima_technical,nima_aesthetic
+python cli.py modernize manifolds --image-format webp --also-format webdataset
+python cli.py modernize manifolds --skip-kaggle      # rename locally, no re-upload
 
 # Kaggle sync
 python cli.py sync push --model nima_aesthetic

@@ -252,15 +252,6 @@ def compile(
     raise typer.Exit(code=code)
 
 
-@app.command()
-def reduce(
-    max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
-) -> None:
-    """Create a downsampled manifold variant (delegates to MigrationService.reduce_manifolds)."""
-    code = MigrationService.reduce_manifolds(max_gb=max_gb)
-    raise typer.Exit(code=code)
-
-
 # ─── env sub-app ────────────────────────────────────────────────────────────
 @env_app.command("validate")
 def env_validate() -> None:
@@ -423,9 +414,11 @@ def transcode(
     raise typer.Exit(code=code)
 
 
-# ─── modernize (Phase 1.6 / Modernization) ──────────────────────────────────
-@app.command()
-def modernize(
+# ─── modernize manifolds (Phase 1.6 / Modernization) ────────────────────────
+# Registered on the `modernize` sub-app: a top-level `modernize` command would be
+# shadowed by the sub-app of the same name and never be reachable.
+@modernize_app.command("manifolds")
+def modernize_manifolds(
     all_: bool = typer.Option(False, "--all", help="Select all eligible manifolds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation gate"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do not modify anything"),
@@ -914,25 +907,39 @@ def modernize_run(
     push_kaggle: bool = typer.Option(False, "--push-kaggle", help="Push to Kaggle after conversion"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without executing conversions"),
     force: bool = typer.Option(False, "--force", help="Force re-conversion"),
+    purge_source: bool = typer.Option(
+        False, "--purge-source", help="Delete zip, legacy folder and loose images after a successful conversion"
+    ),
 ) -> None:
-    """Run batch modernization queue conversion."""
+    """Run batch modernization queue conversion (same service as POST /api/modernize/run)."""
     code = MigrationService.run_modernization_queue(
         dataset=dataset,
         workers=workers,
         push_kaggle=push_kaggle,
         dry_run=dry_run,
         force=force,
+        purge_source=purge_source,
     )
     raise typer.Exit(code=code)
 
 
 @modernize_app.command("reduce")
 def modernize_reduce(
+    dataset: str | None = typer.Option(None, "--dataset", "-d", help="Manifold folder name to reduce"),
+    fraction: float | None = typer.Option(None, "--fraction", help="Share of samples to keep, in (0, 1]"),
     max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
+    suffix: str | None = typer.Option(None, "--suffix", help="Suffix for the reduced manifold (default: Reduced)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Do not prompt; requires --dataset"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report the plan only; write nothing"),
 ) -> None:
-    """Launch interactive manifold downsampling and scale reduction."""
-    code = MigrationService.reduce_manifolds(max_gb=max_gb)
+    """Create a downsampled manifold variant (interactive unless --yes)."""
+    code = MigrationService.reduce_manifolds(
+        max_gb=max_gb, suffix=suffix, dataset=dataset, fraction=fraction, yes=yes, dry_run=dry_run
+    )
     raise typer.Exit(code=code)
+
+
+app.command("reduce")(modernize_reduce)
 
 
 @modernize_app.command("regen")

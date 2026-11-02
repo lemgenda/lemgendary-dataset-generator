@@ -871,6 +871,111 @@ def push_manifold_to_kaggle(
     return True
 
 
+def select_queue_items(base_queue: list[ManifoldQueueItem], filter_keys: list[str]) -> list[ManifoldQueueItem]:
+    """Select the queue items named by ``filter_keys``, preserving queue order.
+
+    Each key may be a 1-based queue index, an exact dataset key / name /
+    modernized folder, or (only when nothing matches exactly) a key substring.
+    Exact matches win so that a scoped run never spills onto sibling datasets
+    whose keys merely contain the requested key.
+    """
+    selected: list[ManifoldQueueItem] = []
+    for k in filter_keys:
+        if k.isdigit():
+            idx = int(k)
+            if 1 <= idx <= len(base_queue):
+                selected.append(base_queue[idx - 1])
+            else:
+                print(f"[WARN] Index #{idx} out of range (1..{len(base_queue)}).")
+            continue
+        norm_k = k.lower().replace("-", "_")
+        exact = [
+            it for it in base_queue
+            if norm_k in (it.key.lower(), it.name.lower(), it.modernized_folder.lower())
+        ]
+        if exact:
+            selected.extend(exact)
+            continue
+        partial = [it for it in base_queue if norm_k in it.key.lower()]
+        if not partial:
+            print(f"[WARN] No manifold matches '{k}'.")
+        selected.extend(partial)
+    return [it for it in base_queue if it in selected]
+
+
+def describe_planned_actions(
+    it: ManifoldQueueItem,
+    push_kaggle: bool,
+    delete_zip: bool,
+    delete_legacy_dir: bool,
+    purge_loose: bool,
+    force: bool,
+) -> list[str]:
+    """Describe, without touching the filesystem, what a real run would do to ``it``."""
+    if it.is_containerized and not force:
+        actions = ["already containerized; no conversion"]
+    elif it.is_containerized and not (it.zip_path or it.has_loose_files or it.legacy_dir):
+        actions = ["force requested but no source remains; existing shards kept"]
+    else:
+        prefix = "force re-convert" if it.is_containerized else "convert"
+        if it.zip_path:
+            actions = [f"{prefix} from zip {it.zip_path.name} to {it.canonical_format}"]
+            if delete_zip:
+                actions.append(f"would delete zip {it.zip_path.name}")
+            if delete_legacy_dir and it.legacy_dir:
+                actions.append(f"would delete legacy folder {it.legacy_dir.name}")
+        elif it.has_mds and it.canonical_format.lower() in ("webdataset", "directory"):
+            actions = [f"{prefix} legacy MDS shards to WebDataset", "would delete legacy MDS folder"]
+        elif it.has_loose_files:
+            actions = [f"{prefix} loose files to {it.canonical_format}"]
+            if purge_loose:
+                actions.append("would delete loose image folders")
+        elif it.legacy_dir:
+            actions = [f"{prefix} legacy folder {it.legacy_dir.name} to {it.canonical_format}"]
+            if delete_legacy_dir:
+                actions.append(f"would delete legacy folder {it.legacy_dir.name}")
+        else:
+            actions = ["no source found; would skip"]
+    if push_kaggle:
+        actions.append("would push a new Kaggle version")
+    return actions
+
+
+def build_queue_args(
+    datasets: list[str] | None = None,
+    workers: int | None = None,
+    mds_shard_mb: int | None = None,
+    purge_source: bool = False,
+    push_kaggle: bool = False,
+    dry_run: bool = False,
+    force: bool = False,
+) -> list[str]:
+    """Build the argument list for :func:`main`, shared by the API route and the CLI.
+
+    ``purge_source`` False keeps every source (zip, legacy folder, loose files);
+    True deletes them after a successful conversion.
+    """
+    args: list[str] = []
+    if workers:
+        args.extend(["--workers", str(workers)])
+    if mds_shard_mb:
+        args.extend(["--mds-shard-mb", str(mds_shard_mb)])
+    if purge_source:
+        args.append("--purge-loose")
+    else:
+        args.extend(["--keep-zip", "--keep-legacy-dir"])
+    if push_kaggle:
+        args.append("--push-kaggle")
+    if force:
+        args.append("--force")
+    if dry_run:
+        args.append("--dry-run")
+    keys = [k.strip() for k in (datasets or []) if k and k.strip()]
+    if keys:
+        args.extend(["--datasets", ",".join(keys)])
+    return args
+
+
 def run_queue(
     items: list[ManifoldQueueItem],
     priority_keys: list[str] | None = None,
@@ -908,21 +1013,11 @@ def run_queue(
 
     base_queue = sorted(items, key=sort_key)
 
-    # Filter if specified (supports manifold key, name substring, or 1-based numeric index)
     if filter_keys:
-        selected_items: list[ManifoldQueueItem] = []
-        for k in filter_keys:
-            if k.isdigit():
-                idx = int(k)
-                if 1 <= idx <= len(base_queue):
-                    selected_items.append(base_queue[idx - 1])
-                else:
-                    print(f"[WARN] Index #{idx} out of range (1..{len(base_queue)}).")
-            else:
-                norm_k = k.lower().replace("-", "_")
-                matched = [it for it in base_queue if it.key.lower() == norm_k or it.name.lower() == norm_k or norm_k in it.key.lower()]
-                selected_items.extend(matched)
-        queue = [it for it in base_queue if it in selected_items]
+        queue = select_queue_items(base_queue, filter_keys)
+        if not queue:
+            print(f"[ERROR] No manifolds matched the requested dataset(s): {', '.join(filter_keys)}. Nothing to do.")
+            return 1
     else:
         queue = base_queue
 
@@ -961,6 +1056,16 @@ def run_queue(
     print("=" * 90 + "\n")
 
     if dry_run:
+        for idx, it in enumerate(queue, 1):
+            for line in describe_planned_actions(
+                it,
+                push_kaggle=push_kaggle,
+                delete_zip=delete_zip,
+                delete_legacy_dir=delete_legacy_dir,
+                purge_loose=purge_loose,
+                force=force,
+            ):
+                print(f"[DRY-RUN] #{idx} {it.key}: {line}")
         print("[DRY-RUN] Execution simulation complete. Zero changes written.")
         return 0
 
@@ -1016,7 +1121,7 @@ def run_queue(
     return 0 if failure_count == 0 else 1
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="LemGendary Dataset Modernization and Kaggle Publication Queue")
     parser.add_argument("--list", action="store_true", help="Print modernization queue status table and exit")
     parser.add_argument("--dry-run", action="store_true", help="Preview plan without executing conversions or uploads")
@@ -1031,7 +1136,7 @@ def main() -> int:
     parser.add_argument("--keep-legacy-dir", action="store_true", help="Keep legacy Large directories (do not delete)")
     parser.add_argument("--purge-loose", action="store_true", help="Delete loose images/targets directories after packaging")
     parser.add_argument("--force", action="store_true", help="Force re-conversion even if containerized shards already exist")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     datasets_root = (_ROOT.parent / "LemGendaryDatasets").resolve()
     registry_yaml = _ROOT / "unified_data.yaml"
@@ -1052,6 +1157,9 @@ def main() -> int:
             filter_keys=filter_keys,
             dry_run=True,
         )
+
+    if args.dry_run:
+        print("[DRY-RUN] Planning only: nothing will be converted, deleted, written or uploaded.")
 
     return run_queue(
         items=items,

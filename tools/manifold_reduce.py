@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import random
 import shutil
 import sys
@@ -103,7 +104,15 @@ def _select_manifolds(manifolds):
         return None
 
 
-def _prompt_reduction_params(max_gb_override=None, suffix_override=None):
+DEFAULT_MAX_GB = 190.0
+DEFAULT_SUFFIX = "Reduced"
+
+
+def _prompt_reduction_params(max_gb_override=None, suffix_override=None, interactive=True):
+    if not interactive:
+        max_gb = float(max_gb_override) if max_gb_override is not None else DEFAULT_MAX_GB
+        suffix = str(suffix_override) if suffix_override is not None else DEFAULT_SUFFIX
+        return max_gb, suffix
     try:
         if max_gb_override is not None:
             max_gb = float(max_gb_override)
@@ -124,7 +133,47 @@ def _prompt_reduction_params(max_gb_override=None, suffix_override=None):
         return None, None
 
 
-def reduce_dataset(max_gb_override=None, suffix_override=None):
+def _find_manifold(manifolds, dataset):
+    """Return the manifold folder named ``dataset`` (exact, case-insensitive; legacy suffix tolerated)."""
+    wanted = dataset.strip().lower()
+    old_suffix = str(CONFIG.get("name_suffix", "Large")).lower()
+    for m in manifolds:
+        name = m.name.lower()
+        if name == wanted or (old_suffix and name == f"{wanted}{old_suffix}"):
+            return m
+    return None
+
+
+def _sample_count(total, fraction):
+    """Number of samples kept from ``total`` for a sampling ``fraction`` (None keeps all)."""
+    if fraction is None or total == 0:
+        return total
+    return max(1, math.ceil(total * fraction))
+
+
+def reduce_dataset(
+    max_gb_override=None,
+    suffix_override=None,
+    dataset=None,
+    fraction=None,
+    assume_yes=False,
+    dry_run=False,
+):
+    """Create reduced manifold variant(s).
+
+    Interactive by default. ``assume_yes`` runs without any prompt (API/jobs) and
+    then requires ``dataset``. ``fraction`` in (0, 1] keeps that share of samples
+    (vision) or of the most recent years (forex). ``dry_run`` writes nothing.
+    Returns a process exit code (0 on success).
+    """
+    if fraction is not None and not 0 < fraction <= 1:
+        print(f"[ERROR] --fraction must be in (0, 1], got {fraction}.")
+        return 1
+    interactive = not assume_yes
+    if not interactive and not dataset:
+        print("[ERROR] Non-interactive reduction requires --dataset.")
+        return 1
+
     print("\n[SCANNING] Locating existing manifolds in LemGendaryDatasets...")
     # ─── Phase 0: eligibility filter relaxed to support both legacy and modern names ───
     manifolds = [
@@ -135,8 +184,27 @@ def reduce_dataset(max_gb_override=None, suffix_override=None):
     ]
     if not manifolds:
         print("[ERROR] No valid manifolds found to reduce.")
-        return
+        return 1
 
+    if dataset:
+        match = _find_manifold(manifolds, dataset)
+        if match is None:
+            print(f"[ERROR] Manifold '{dataset}' not found or has no loose data to reduce.")
+            return 1
+        targets = [match]
+    else:
+        targets = _choose_manifolds_interactively(manifolds)
+        if not targets:
+            return 1
+
+    for source_root in targets:
+        code = _reduce_one(source_root, max_gb_override, suffix_override, fraction, interactive, dry_run)
+        if code != 0:
+            return code
+    return 0
+
+
+def _choose_manifolds_interactively(manifolds):
     for i, m in enumerate(manifolds):
         # Status display: mark if a KaggleReady / Reduced sibling already exists
         has_reduced = any(
@@ -150,166 +218,179 @@ def reduce_dataset(max_gb_override=None, suffix_override=None):
 
     target_indices = _select_manifolds(manifolds)
     if not target_indices:
-        return
+        return []
+    return [manifolds[idx] for idx in target_indices]
 
-    for idx in target_indices:
-        source_root = manifolds[idx]
 
-        old_suffix = str(CONFIG.get("name_suffix", "Large"))
-        # ─── Phase 0: guard against empty suffix (post-modernization state) ───
-        if old_suffix and source_root.name.endswith(old_suffix):
-            base_name = source_root.name[:-len(old_suffix)]
-        else:
-            base_name = source_root.name
+def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interactive, dry_run):
+    """Reduce a single manifold. Returns an exit code."""
+    old_suffix = str(CONFIG.get("name_suffix", "Large"))
+    # ─── Phase 0: guard against empty suffix (post-modernization state) ───
+    if old_suffix and source_root.name.endswith(old_suffix):
+        base_name = source_root.name[:-len(old_suffix)]
+    else:
+        base_name = source_root.name
 
-        dataset_type = "quality"
-        info = {}
-        info_path = source_root / "dataset_info.yaml"
-        if info_path.exists():
-            with open(info_path, 'r') as f:
-                info = yaml.safe_load(f) or {}
-                dataset_type = info.get("dataset_type", "quality")
+    dataset_type = "quality"
+    info = {}
+    info_path = source_root / "dataset_info.yaml"
+    if info_path.exists():
+        with open(info_path, 'r') as f:
+            info = yaml.safe_load(f) or {}
+            dataset_type = info.get("dataset_type", "quality")
 
-        if dataset_type == "forex":
-            _reduce_forex_dataset(source_root, base_name, info)
+    if dataset_type == "forex":
+        return _reduce_forex_dataset(
+            source_root, base_name, info,
+            interactive=interactive, fraction=fraction,
+            suffix_override=suffix_override, dry_run=dry_run,
+        )
+
+    # --- Vision / quality manifold flow ---
+    max_gb, suffix = _prompt_reduction_params(
+        max_gb_override=max_gb_override, suffix_override=suffix_override, interactive=interactive
+    )
+    if max_gb is None:
+        return 1
+
+    target_name = f"{base_name}{suffix}"
+    target_root = OUT_PARENT / target_name
+    share = f", {fraction:.0%} sampling" if fraction is not None else ""
+
+    if dry_run:
+        print(f"\n[DRY-RUN] Would reduce {source_root.name} -> {target_name} ({max_gb} GB cap{share}). Nothing written.")
+        return 0
+
+    print(f"\n[REDUCING] {source_root.name} -> {target_name} ({max_gb} GB cap{share})...")
+
+    for d in ["images", "labels", "targets", "masks"]:
+        for s in ["train", "val"]:
+            (target_root / d / s).mkdir(parents=True, exist_ok=True)
+
+    new_index = []
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+    primary_dir_name = "images" if (source_root / "images").exists() else "targets"
+    train_dir = source_root / primary_dir_name / "train"
+    val_dir = source_root / primary_dir_name / "val"
+    train_count = sum(1 for _ in train_dir.iterdir() if _.is_file()) if train_dir.exists() else 0
+    val_count = sum(1 for _ in val_dir.iterdir() if _.is_file()) if val_dir.exists() else 0
+    total_count = train_count + val_count
+    train_prob = train_count / total_count if total_count > 0 else 1.0
+
+    for split in ["train", "val"]:
+        img_dir = source_root / "images" / split
+        lbl_dir = source_root / "labels" / split
+        tgt_dir = source_root / "targets" / split
+        mask_dir = source_root / "masks" / split
+        primary_split_dir = source_root / primary_dir_name / split
+
+        if not primary_split_dir.exists():
             continue
 
-        # --- Vision / quality manifold flow (unchanged) ---
-        max_gb, suffix = _prompt_reduction_params(max_gb_override=max_gb_override, suffix_override=suffix_override)
-        if max_gb is None:
-            return
+        all_imgs = [p for p in primary_split_dir.iterdir() if p.suffix.lower() in valid_exts]
 
-        target_name = f"{base_name}{suffix}"
-        target_root = OUT_PARENT / target_name
+        if not all_imgs:
+            continue
 
-        print(f"\n[REDUCING] {source_root.name} -> {target_name} ({max_gb} GB)...")
-
-        for d in ["images", "labels", "targets", "masks"]:
-            for s in ["train", "val"]:
-                (target_root / d / s).mkdir(parents=True, exist_ok=True)
-
-        new_index = []
-        valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-
-        primary_dir_name = "images" if (source_root / "images").exists() else "targets"
-        train_dir = source_root / primary_dir_name / "train"
-        val_dir = source_root / primary_dir_name / "val"
-        train_count = sum(1 for _ in train_dir.iterdir() if _.is_file()) if train_dir.exists() else 0
-        val_count = sum(1 for _ in val_dir.iterdir() if _.is_file()) if val_dir.exists() else 0
-        total_count = train_count + val_count
-        train_prob = train_count / total_count if total_count > 0 else 1.0
-
-        for split in ["train", "val"]:
-            img_dir = source_root / "images" / split
-            lbl_dir = source_root / "labels" / split
-            tgt_dir = source_root / "targets" / split
-            mask_dir = source_root / "masks" / split
-            primary_split_dir = source_root / primary_dir_name / split
-
-            if not primary_split_dir.exists():
-                continue
-
-            all_imgs = [p for p in primary_split_dir.iterdir() if p.suffix.lower() in valid_exts]
-
-            if not all_imgs:
-                continue
-
-            from collections import defaultdict
-            images_by_slug = defaultdict(list)
-            for img in all_imgs:
-                try:
-                    slug = img.name.split('_')[1]
-                except IndexError:
-                    slug = "unknown"
-                images_by_slug[slug].append(img)
-
-            for slug in images_by_slug:
-                random.shuffle(images_by_slug[slug])
-
-            sampled_imgs = []
-            lists = list(images_by_slug.values())
-            while lists:
-                lists = [lst for lst in lists if lst]
-                if not lists:
-                    break
-                for lst in lists:
-                    if lst:
-                        sampled_imgs.append(lst.pop())
-
-            split_limit_bytes = max_gb * (1024 ** 3) * (train_prob if split == "train" else (1 - train_prob))
-            current_bytes = 0
-
+        from collections import defaultdict
+        images_by_slug = defaultdict(list)
+        for img in all_imgs:
             try:
-                with tqdm(total=split_limit_bytes, desc=f"Copying {split}", unit='B', unit_scale=True, unit_divisor=1024) as pbar:
-                    for img_path in sampled_imgs:
-                        if current_bytes >= split_limit_bytes:
+                slug = img.name.split('_')[1]
+            except IndexError:
+                slug = "unknown"
+            images_by_slug[slug].append(img)
+
+        for slug in images_by_slug:
+            random.shuffle(images_by_slug[slug])
+
+        sampled_imgs = []
+        lists = list(images_by_slug.values())
+        while lists:
+            lists = [lst for lst in lists if lst]
+            if not lists:
+                break
+            for lst in lists:
+                if lst:
+                    sampled_imgs.append(lst.pop())
+        sampled_imgs = sampled_imgs[:_sample_count(len(sampled_imgs), fraction)]
+
+        split_limit_bytes = max_gb * (1024 ** 3) * (train_prob if split == "train" else (1 - train_prob))
+        current_bytes = 0
+
+        try:
+            with tqdm(total=split_limit_bytes, desc=f"Copying {split}", unit='B', unit_scale=True, unit_divisor=1024) as pbar:
+                for img_path in sampled_imgs:
+                    if current_bytes >= split_limit_bytes:
+                        break
+
+                    dest_primary = target_root / primary_dir_name / split / img_path.name
+                    shutil.copy2(img_path, dest_primary)
+                    file_size = dest_primary.stat().st_size
+
+                    lbl_path = lbl_dir / (img_path.stem + ".txt")
+                    if lbl_path.exists():
+                        dest_lbl = target_root / "labels" / split / lbl_path.name
+                        shutil.copy2(lbl_path, dest_lbl)
+                        file_size += dest_lbl.stat().st_size
+
+                    if primary_dir_name == "images":
+                        tgt_path = tgt_dir / img_path.name
+                        if tgt_path.exists():
+                            dest_tgt = target_root / "targets" / split / tgt_path.name
+                            shutil.copy2(tgt_path, dest_tgt)
+                            file_size += dest_tgt.stat().st_size
+                    else:
+                        img_path_alt = img_dir / img_path.name
+                        if img_path_alt.exists():
+                            dest_img = target_root / "images" / split / img_path_alt.name
+                            shutil.copy2(img_path_alt, dest_img)
+                            file_size += dest_img.stat().st_size
+
+                    mask_path = mask_dir / img_path.name
+                    if not mask_path.exists():
+                        mask_path = mask_dir / (img_path.stem + ".png")
+                    if mask_path.exists():
+                        dest_mask = target_root / "masks" / split / mask_path.name
+                        shutil.copy2(mask_path, dest_mask)
+                        file_size += dest_mask.stat().st_size
+
+                    current_bytes += file_size
+                    pbar.update(file_size)
+                    try:
+                        slug = img_path.name.split('_')[1]
+                    except (IndexError, AttributeError):
+                        slug = "unknown"
+
+                    task_type = "quality"
+                    for k, v in DATASETS_META.items():
+                        if v["name"] in source_root.name:
+                            task_type = v.get("task", "quality")
                             break
 
-                        dest_primary = target_root / primary_dir_name / split / img_path.name
-                        shutil.copy2(img_path, dest_primary)
-                        file_size = dest_primary.stat().st_size
+                    new_index.append({
+                        "name": img_path.stem,
+                        "split": split,
+                        "source": slug,
+                        "task": task_type
+                    })
+        except KeyboardInterrupt:
+            print("\n[ABORTED] Reduction cancelled by user.")
+            return 1
 
-                        lbl_path = lbl_dir / (img_path.stem + ".txt")
-                        if lbl_path.exists():
-                            dest_lbl = target_root / "labels" / split / lbl_path.name
-                            shutil.copy2(lbl_path, dest_lbl)
-                            file_size += dest_lbl.stat().st_size
+    import json
+    with open(target_root / "index.json", "w", encoding="utf-8") as f:
+        json.dump(new_index, f, indent=2)
 
-                        if primary_dir_name == "images":
-                            tgt_path = tgt_dir / img_path.name
-                            if tgt_path.exists():
-                                dest_tgt = target_root / "targets" / split / tgt_path.name
-                                shutil.copy2(tgt_path, dest_tgt)
-                                file_size += dest_tgt.stat().st_size
-                        else:
-                            img_path_alt = img_dir / img_path.name
-                            if img_path_alt.exists():
-                                dest_img = target_root / "images" / split / img_path_alt.name
-                                shutil.copy2(img_path_alt, dest_img)
-                                file_size += dest_img.stat().st_size
-
-                        mask_path = mask_dir / img_path.name
-                        if not mask_path.exists():
-                            mask_path = mask_dir / (img_path.stem + ".png")
-                        if mask_path.exists():
-                            dest_mask = target_root / "masks" / split / mask_path.name
-                            shutil.copy2(mask_path, dest_mask)
-                            file_size += dest_mask.stat().st_size
-
-                        current_bytes += file_size
-                        pbar.update(file_size)
-                        try:
-                            slug = img_path.name.split('_')[1]
-                        except (IndexError, AttributeError):
-                            slug = "unknown"
-
-                        task_type = "quality"
-                        for k, v in DATASETS_META.items():
-                            if v["name"] in source_root.name:
-                                task_type = v.get("task", "quality")
-                                break
-
-                        new_index.append({
-                            "name": img_path.stem,
-                            "split": split,
-                            "source": slug,
-                            "task": task_type
-                        })
-            except KeyboardInterrupt:
-                print("\n[ABORTED] Reduction cancelled by user.")
-                return
-
-        import json
-        with open(target_root / "index.json", "w", encoding="utf-8") as f:
-            json.dump(new_index, f, indent=2)
-
-        remove_empty_dirs(target_root)
-        generate_dataset_docs(target_root, new_index, target_name)
-        print("[INFO] Run `lemtrain notebooks generate --all` to regenerate notebooks for reduced datasets.")
-        print(f"\n[SUCCESS] Reduced manifold created at {target_root.name}")
+    remove_empty_dirs(target_root)
+    generate_dataset_docs(target_root, new_index, target_name)
+    print("[INFO] Run `lemtrain notebooks generate --all` to regenerate notebooks for reduced datasets.")
+    print(f"\n[SUCCESS] Reduced manifold created at {target_root.name}")
+    return 0
 
 
-def _reduce_forex_dataset(source_root, base_name, info):
+def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fraction=None, suffix_override=None, dry_run=False):
     import numpy as np
 
     print(f"\n--- Forex Reduction: {source_root.name} ---")
@@ -342,58 +423,76 @@ def _reduce_forex_dataset(source_root, base_name, info):
 
     if not avail_pairs or not avail_tfs or not avail_years:
         print(f"[ERROR] No compiled forex data found under {forex_src} (missing pairs, timeframes, or year folders).")
-        return
+        return 1
 
-    # Ask user for year range to keep.
-    print(f"\nAvailable years: {avail_years}")
-    default_start = avail_years[0]
-    default_end = avail_years[-1]
-    try:
-        start_raw = input(f"Enter start year [Default: {default_start}]: ").strip()
-        start_year = int(start_raw) if start_raw else default_start
-        end_raw = input(f"Enter end year [Default: {default_end}]: ").strip()
-        end_year = int(end_raw) if end_raw else default_end
-    except ValueError:
+    # Non-interactive default keeps every year (or the most recent share of them).
+    default_years = avail_years[-_sample_count(len(avail_years), fraction):]
+    default_start = default_years[0]
+    default_end = default_years[-1]
+    if interactive:
+        # Ask user for year range to keep.
+        print(f"\nAvailable years: {avail_years}")
+        try:
+            start_raw = input(f"Enter start year [Default: {default_start}]: ").strip()
+            start_year = int(start_raw) if start_raw else default_start
+            end_raw = input(f"Enter end year [Default: {default_end}]: ").strip()
+            end_year = int(end_raw) if end_raw else default_end
+        except ValueError:
+            start_year, end_year = default_start, default_end
+        except KeyboardInterrupt:
+            print("\n[ABORTED] Operation cancelled by user.")
+            return 1
+    else:
         start_year, end_year = default_start, default_end
-    except KeyboardInterrupt:
-        print("\n[ABORTED] Operation cancelled by user.")
-        return
 
     if start_year > end_year:
         print("[ERROR] Start year must be <= end year.")
-        return
+        return 1
 
     # Filter years that actually exist within the range.
     kept_years = [y for y in avail_years if start_year <= y <= end_year]
     if not kept_years:
         print("[ERROR] No years in the specified range exist in the source.")
-        return
+        return 1
 
-    # Timeframe multiselect (unchanged)
     tf_labels = [str(tf) for tf in avail_tfs]
-    try:
-        kept_tf_strs = _prompt_multiselect("Select timeframes to include:", tf_labels)
-    except KeyboardInterrupt:
-        print("\n[ABORTED] Operation cancelled by user.")
-        return
+    if interactive:
+        try:
+            kept_tf_strs = _prompt_multiselect("Select timeframes to include:", tf_labels)
+        except KeyboardInterrupt:
+            print("\n[ABORTED] Operation cancelled by user.")
+            return 1
+    else:
+        kept_tf_strs = tf_labels
     kept_tfs = set(int(x) for x in kept_tf_strs)
 
     # All pairs are kept (unchanged)
     kept_pairs = set(avail_pairs)
 
     # Output suffix
-    try:
-        raw_suffix = input("\nNew suffix [Default: Reduced]: ").strip()
-        suffix = raw_suffix if raw_suffix else "Reduced"
-    except KeyboardInterrupt:
-        print("\n[ABORTED] Operation cancelled by user.")
-        return
+    if suffix_override is not None:
+        suffix = str(suffix_override)
+    elif interactive:
+        try:
+            raw_suffix = input("\nNew suffix [Default: Reduced]: ").strip()
+            suffix = raw_suffix if raw_suffix else DEFAULT_SUFFIX
+        except KeyboardInterrupt:
+            print("\n[ABORTED] Operation cancelled by user.")
+            return 1
+    else:
+        suffix = DEFAULT_SUFFIX
 
     target_name = f"{base_name}{suffix}"
     target_root = OUT_PARENT / target_name
 
+    plan = f"  Years: {kept_years[0]} – {kept_years[-1]}  |  Timeframes: {sorted(kept_tfs)}  |  Pairs: all ({len(kept_pairs)})"
+    if dry_run:
+        print(f"\n[DRY-RUN] Would reduce forex {source_root.name} -> {target_name}. Nothing written.")
+        print(plan)
+        return 0
+
     print(f"\n[FOREX REDUCING] {source_root.name} -> {target_name}")
-    print(f"  Years: {kept_years[0]} – {kept_years[-1]}  |  Timeframes: {sorted(kept_tfs)}  |  Pairs: all ({len(kept_pairs)})")
+    print(plan)
 
     forex_dst = target_root / "forex"
     actual_copied_pairs = set()
@@ -446,6 +545,7 @@ def _reduce_forex_dataset(source_root, base_name, info):
             shutil.copy2(src_file, dst_file)
 
     print(f"\n[SUCCESS] Reduced Forex manifold created at {target_root.name}")
+    return 0
 
 
 def purge_ghost_manifolds():
@@ -472,11 +572,28 @@ def purge_ghost_manifolds():
         print("  [OK] No ghost manifolds detected.")
 
 
-if __name__ == '__main__':
+def main(argv=None):
+    """Command-line entry point; returns an exit code."""
     import argparse
-    parser = argparse.ArgumentParser(description="Interactive manifold downsampling and scale reduction")
-    parser.add_argument("--reduce", action="store_true", help="Run dataset reduction flow")
+
+    parser = argparse.ArgumentParser(description="Manifold downsampling and scale reduction")
+    parser.add_argument("--reduce", action="store_true", help="Run dataset reduction flow (default action)")
+    parser.add_argument("--dataset", default=None, help="Manifold folder name to reduce (required with --yes)")
+    parser.add_argument("--fraction", type=float, default=None, help="Share of samples to keep, in (0, 1]")
     parser.add_argument("--max_gb", "--max-gb", type=float, default=None, help="Target max size in GB")
     parser.add_argument("--suffix", default=None, help="Suffix for reduced manifold")
-    args = parser.parse_args()
-    reduce_dataset(max_gb_override=args.max_gb, suffix_override=args.suffix)
+    parser.add_argument("--yes", "-y", action="store_true", help="Non-interactive: never prompt, use defaults")
+    parser.add_argument("--dry-run", action="store_true", help="Report the plan only; write nothing")
+    args = parser.parse_args(argv)
+    return reduce_dataset(
+        max_gb_override=args.max_gb,
+        suffix_override=args.suffix,
+        dataset=args.dataset,
+        fraction=args.fraction,
+        assume_yes=args.yes,
+        dry_run=args.dry_run,
+    )
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -312,10 +312,17 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_run.called)
 
     def test_migration_service_reduce_and_queue_dispatch(self) -> None:
-        with patch("tools.manifold_reduce.reduce_dataset") as mock_red:
+        with patch("tools.manifold_reduce.reduce_dataset", return_value=0) as mock_red:
             ret = MigrationService.reduce_manifolds(max_gb=50.0, suffix="Reduced")
             self.assertEqual(ret, 0)
-            mock_red.assert_called_once_with(max_gb_override=50.0, suffix_override="Reduced")
+            mock_red.assert_called_once_with(
+                max_gb_override=50.0,
+                suffix_override="Reduced",
+                dataset=None,
+                fraction=None,
+                assume_yes=False,
+                dry_run=False,
+            )
 
     def test_degrade_service_dispatch(self) -> None:
         with patch("tools.generate_degrade.synthesize_manifold", return_value=0) as mock_deg:
