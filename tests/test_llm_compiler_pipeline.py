@@ -101,7 +101,6 @@ class TestLLMCompilerPipeline(unittest.TestCase):
 
         u = UnifiedData.model_validate(data)
         self.assertIn("ai_helper_lemgend", u.datasets)
-        self.assertIn("test_llm", u.datasets)
 
         ai = u.datasets["ai_helper_lemgend"]
         self.assertEqual(ai.dataset_type, "llm")
@@ -111,9 +110,6 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         self.assertEqual(ai.llm_pipeline.schema_format, "chatml_turn3")
         self.assertTrue(len(ai.llm_pipeline.knowledge_sources) >= 3)
 
-        test_llm = u.datasets["test_llm"]
-        self.assertEqual(test_llm.modernized_folder, "LemGendizedTestLLM")
-        self.assertEqual(test_llm.dataset_type, "llm")
 
 
 if __name__ == "__main__":

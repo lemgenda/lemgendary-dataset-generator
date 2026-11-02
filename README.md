@@ -22,6 +22,8 @@
 
 ### v16.9.21 - Generic LLM Dataset Compiler & Multi-Source Knowledge Ingestion Engine
 
+- **Compiler Invariant & Schema Audit (`tests/test_llm_compiler_pipeline.py`)**:
+  - Synchronized unit test assertions to reflect pure canonical `ai_helper_lemgend` instruction manifold compiler definitions and schema assertions.
 - **Generic Instruction LLM Architecture & Multi-Source Loader Pipeline (`tools.llm_helper`)**:
   - Implemented generic knowledge synthesizer and multi-source loader pipeline ingesting Markdown, Plain Text, JSON/JSONL, YAML, CSV, and Web URLs with SHA-256 provenance lineage tracing and hash verification.
   - Eliminated legacy handcrafted dictionary generators (`tools/ai_helper` and `tools/llm_helper/packs`), migrating all instruction dataset compilations (`test_llm`, `ai_helper_lemgend`) purely to declarative declarations in `unified_data.yaml` and repository knowledge bases (`MD-Papers`).
