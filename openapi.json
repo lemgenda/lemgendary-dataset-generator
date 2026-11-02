@@ -2007,7 +2007,8 @@
           "mask",
           "audit",
           "sync",
-          "custom"
+          "custom",
+          "llm"
         ],
         "title": "JobType"
       },

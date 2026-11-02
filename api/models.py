@@ -27,6 +27,7 @@ class JobType(str, Enum):
     AUDIT = "audit"
     SYNC = "sync"
     CUSTOM = "custom"
+    LLM = "llm"
 
 
 class CompileJobRequest(BaseModel):

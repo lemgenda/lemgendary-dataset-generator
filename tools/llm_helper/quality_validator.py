@@ -7,18 +7,21 @@ Intake Protocols with epistemic tagging, and duplicate ID detection.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 EMOJI_PATTERN = re.compile(r"[\U00010000-\U0010ffff]", flags=re.UNICODE)
 EPISTEMIC_TAG_PATTERN = re.compile(r"\[(CONFIRMED|PROBABLE|ILLUSTRATIVE)\]")
 
 
+@dataclass(frozen=True)
 class ValidationIssue:
-    def __init__(self, record_id: str, field: str, issue: str, severity: str = "ERROR") -> None:
-        self.record_id = record_id
-        self.field = field
-        self.issue = issue
-        self.severity = severity
+    """One invariant violation: the record, the offending field, and what is wrong."""
+
+    record_id: str
+    field: str
+    issue: str
+    severity: str = "ERROR"
 
     def __repr__(self) -> str:
         return f"[{self.severity}] {self.record_id} ({self.field}): {self.issue}"

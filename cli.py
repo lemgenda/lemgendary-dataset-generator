@@ -38,6 +38,7 @@ from services import (
     MigrationService,
     SyncService,
 )
+from services.job_watch import JobNotFoundError, JobStatusError, TERMINAL_STATES, wait_for_job
 
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 8100
@@ -945,10 +946,66 @@ def modernize_regen(
 
 
 # ??? LLM Dataset Sub-Commands ????????????????????????????????????????????????
+DEFAULT_JOB_TIMEOUT_S = 3600.0
+JOB_POLL_INTERVAL_S = 2.0
+
+
+def _fetch_job_status(job_id: str, token: str) -> dict:
+    """Read one job's status from the sidecar, mapping failures to JobStatusError."""
+    url = f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/{job_id}"
+    try:
+        resp = requests.get(url, headers={"X-API-Key": token}, timeout=5)
+    except requests.RequestException as exc:
+        raise JobStatusError(str(exc)) from exc
+    if resp.status_code == 404:
+        raise JobNotFoundError(job_id)
+    if resp.status_code != 200:
+        raise JobStatusError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise JobStatusError(f"Invalid JSON in job status: {exc}") from exc
+
+
+def _print_job_log_tail(job_id: str, token: str, lines: int = 200) -> None:
+    """Show the end of the job log so failures are visible without the GUI."""
+    url = f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/{job_id}/logs"
+    try:
+        resp = requests.get(url, params={"tail": lines}, headers={"X-API-Key": token}, timeout=5)
+    except requests.RequestException as exc:
+        console.print(f"[yellow]Could not fetch job log: {exc}[/yellow]")
+        return
+    if resp.status_code != 200:
+        console.print(f"[yellow]Could not fetch job log: HTTP {resp.status_code}[/yellow]")
+        return
+    console.print(resp.json().get("logs", ""), markup=False, highlight=False)
+
+
+def _wait_for_sidecar_job(job_id: str, token: str, timeout_s: float) -> int:
+    """Poll a sidecar job to a terminal state (or timeout) and return the CLI exit code."""
+    result = wait_for_job(
+        lambda: _fetch_job_status(job_id, token),
+        timeout_s=timeout_s,
+        poll_interval_s=JOB_POLL_INTERVAL_S,
+        on_state=lambda state: console.print(f"[dim]Job {job_id}: {state}[/dim]"),
+    )
+    if result.state in TERMINAL_STATES:
+        _print_job_log_tail(job_id, token)
+    if result.exit_code == 0:
+        console.print(f"[bold green]Job {job_id} completed.[/bold green]")
+    else:
+        console.print(f"[bold red]Job {job_id} {result.state}:[/bold red] {result.detail}")
+    return result.exit_code
+
+
 @llm_app.command("compile")
 def llm_compile(
     dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset key declared in unified_data.yaml (e.g. test_llm)"),
     no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
+    timeout: float = typer.Option(
+        DEFAULT_JOB_TIMEOUT_S, "--timeout", min=1.0,
+        help="Seconds to wait for the sidecar job before giving up (exit 1)",
+    ),
 ) -> None:
     """Compile an LLM instruction manifold using BaseLLMCompiler and unified_data.yaml."""
     if not no_server and _is_server_available():
@@ -964,11 +1021,11 @@ def llm_compile(
             if resp.status_code == 200:
                 data = resp.json()
                 job_id = data.get("job_id")
+                if not job_id:
+                    console.print(f"[bold red]Sidecar accepted the request but returned no job id:[/bold red] {data}")
+                    raise typer.Exit(1)
                 console.print(f"[green]Enqueued LLM compile job {job_id} on sidecar daemon.[/green]")
-                if job_id:
-                    code = _stream_job_logs(job_id)
-                    raise typer.Exit(code=code)
-                raise typer.Exit(0)
+                raise typer.Exit(code=_wait_for_sidecar_job(job_id, token, timeout))
             console.print(f"[yellow]API returned {resp.status_code}. Executing in-process...[/yellow]")
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Executing in-process...[/yellow]")
@@ -987,6 +1044,7 @@ def llm_compile(
         raise
     except Exception as exc:
         console.print(f"[bold red]LLM compilation error:[/bold red] {exc}")
+        console.print_exception()
         raise typer.Exit(1)
 
 
@@ -1003,24 +1061,28 @@ def llm_validate(
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             records = [json.loads(line) for line in f if line.strip()]
-        console.print(f"[cyan]Loaded {len(records)} records from {file_path.name}. Running QualityValidator...[/cyan]")
-        validator = QualityValidator()
-        is_valid, issues = validator.validate_corpus(records)
-        if is_valid:
-            console.print(f"[bold green][PASS] Quality verification passed cleanly with 0 critical errors across {len(records)} records.[/bold green]")
-            return
-        else:
-            errors = [iss for iss in issues if iss.severity == "ERROR"]
-            warnings = [iss for iss in issues if iss.severity == "WARNING"]
-            console.print(f"[bold red][FAIL] Validation failed with {len(errors)} errors and {len(warnings)} warnings.[/bold red]")
-            for iss in errors[:10]:
-                console.print(f"  - [{iss.invariant}] ({iss.record_id}): {iss.message}")
-            raise typer.Exit(1)
-    except typer.Exit:
-        raise
-    except Exception as exc:
-        console.print(f"[bold red]Validation error:[/bold red] {exc}")
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]Could not read {file_path}:[/bold red] {exc}")
         raise typer.Exit(1)
+
+    console.print(f"[cyan]Loaded {len(records)} records from {file_path.name}. Running QualityValidator...[/cyan]")
+    is_valid, issues = QualityValidator().validate_corpus(records)
+    errors = [iss for iss in issues if iss.severity == "ERROR"]
+    warnings = [iss for iss in issues if iss.severity == "WARNING"]
+    if is_valid:
+        console.print(
+            f"[bold green][PASS] Quality verification passed with 0 errors "
+            f"and {len(warnings)} warnings across {len(records)} records.[/bold green]"
+        )
+        return
+
+    console.print(f"[bold red][FAIL] Validation failed with {len(errors)} errors and {len(warnings)} warnings.[/bold red]")
+    shown = 20
+    for iss in (errors + warnings)[:shown]:
+        console.print(f"  - {iss.severity} [{iss.field}] ({iss.record_id}): {iss.issue}", markup=False, highlight=False)
+    if len(issues) > shown:
+        console.print(f"  ... and {len(issues) - shown} more issues.")
+    raise typer.Exit(1)
 
 
 app.add_typer(modernize_app, name="modernize")

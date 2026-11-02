@@ -20,6 +20,20 @@
 
 ## Changelog
 
+### v16.9.25 - LLM Compile Jobs Start, CLI Waits Are Bounded, Validate Reports
+
+- **Async LLM Compile Jobs Start (review D-04)**:
+  - `POST /api/llm/compile` is now `async`, so `async_mode: true` passes the server's running event loop to the job runner. The old sync route raised `RuntimeError` (no running loop), swallowed it, and left the job `pending` forever.
+  - The job is created as the new `JobType.LLM` (`"llm"`, added to `openapi.json`) and runs `venv_python()`. Its state moves `running` → `completed` or `failed` with the exit code.
+  - The synchronous path runs the compiler in a worker thread (no event-loop blocking) and logs failures with traceback before returning HTTP 400. The in-process CLI compile also prints the traceback, so it lands in the job log.
+- **Bounded CLI Wait (review D-04)**:
+  - `lem llm compile` polls `GET /api/jobs/{id}` through the new `services.job_watch.wait_for_job` instead of waiting on the WebSocket for `[PROCESS_TERMINATED]`. It stops on `completed`, `failed`, `cancelled` or `interrupted` and prints the log tail.
+  - New `--timeout` option (default 3600 s). Timeout, an unknown job, or an unknown state exits 1; a failed job exits with its exit code (or 1).
+- **`llm validate` Failure Report (review D-10)**:
+  - The failure path read `iss.invariant` / `iss.message`, which do not exist, and crashed into a generic "Validation error". It now prints severity, `field`, record id and `issue` for up to 20 issues and exits 1.
+  - `ValidationIssue` is a frozen dataclass, so wrong attribute names are caught by type checkers. Unreadable or invalid JSONL exits 1 with a clear message.
+- 16 tests in `tests/test_llm_jobs.py` (job completes / fails through a real `JobManager` with a stub command, sync route errors, polling outcomes, CLI exit codes, validate report).
+
 ### v16.9.24 - Custom-Compile Preset, Purge and Registry Safety
 
 - **Default Preset from `presets.yaml` (review D-02)**:

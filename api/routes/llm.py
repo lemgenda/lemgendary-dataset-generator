@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
-import sys
 from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from api.jobs import job_manager
 from api.models import JobResponse, JobType
+from core.cli_args import venv_python
 from tools.llm_helper.base_compiler import BaseLLMCompiler
 from tools.llm_helper.quality_validator import QualityValidator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
@@ -32,20 +36,21 @@ class LLMValidationRequest(BaseModel):
 
 
 @router.post("/compile")
-def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
-    """Compile an LLM instruction manifold using BaseLLMCompiler and unified_data.yaml."""
+async def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
+    """Compile an LLM instruction manifold using BaseLLMCompiler and unified_data.yaml.
+
+    The route is ``async`` so the job runner receives the server's running
+    event loop (its log broadcasts are scheduled on it). The synchronous
+    compile path runs in a worker thread so it never blocks that loop.
+    """
     if req.async_mode:
-        cmd = [sys.executable, "cli.py", "llm", "compile", "--dataset", req.dataset_key, "--no-server"]
+        cmd = [venv_python(), "cli.py", "llm", "compile", "--dataset", req.dataset_key, "--no-server"]
         job = job_manager.create_job(
-            job_type=JobType.COMPILE,
+            job_type=JobType.LLM,
             command=cmd,
             parameters={"dataset_key": req.dataset_key, "target_samples": req.target_samples},
         )
-        try:
-            loop = asyncio.get_running_loop()
-            job_manager.start_job(job.id, loop)
-        except RuntimeError:
-            pass
+        job_manager.start_job(job.id, asyncio.get_running_loop())
         return {
             "status": "enqueued",
             "job_id": job.id,
@@ -54,18 +59,18 @@ def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
         }
 
     try:
-        compiler = BaseLLMCompiler()
-        result = compiler.compile_manifold(req.dataset_key)
-        return {
-            "status": "success",
-            "dataset_key": req.dataset_key,
-            "details": result,
-        }
+        result = await run_in_threadpool(BaseLLMCompiler().compile_manifold, req.dataset_key)
     except Exception as exc:
+        logger.exception("LLM manifold compile failed for %s", req.dataset_key)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to compile LLM manifold: {exc}",
         ) from exc
+    return {
+        "status": "success",
+        "dataset_key": req.dataset_key,
+        "details": result,
+    }
 
 
 @router.post("/validate")
