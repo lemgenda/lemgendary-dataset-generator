@@ -59,6 +59,19 @@ class AuditResult:
     details: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class NimaCheck:
+    """One sample's input to ``VisionAuditor.passes_nima``."""
+
+    task: str
+    slug: str
+    is_authenticity: bool
+    score: float
+    probs: list[float]
+    threshold: float
+    idx: int
+
+
 class VisionAuditor:
     """Per-worker auditor instance.
 
@@ -260,16 +273,7 @@ class VisionAuditor:
         return AuditResult(valid=True)
 
     # ── NIMA quality gate ───────────────────────────────────────────────────
-    def passes_nima(
-        self,
-        task: str,
-        slug: str,
-        is_authenticity: bool,
-        nima_score: float,
-        nima_probs: list[float],
-        current_threshold: float,
-        idx: int,
-    ) -> bool:
+    def passes_nima(self, check: NimaCheck) -> bool:
         """Apply the NIMA quality gate.
 
         Retains the pre-Phase-2 semantics:
@@ -280,11 +284,14 @@ class VisionAuditor:
             an authenticity dataset (where distribution shape matters more
             than scalar score).
         """
+        task, slug, idx = check.task, check.slug, check.idx
+        is_authenticity = check.is_authenticity
+        nima_score, current_threshold = check.score, check.threshold
         # Strict ground truth: quality manifolds outside LAION must carry a
         # real human rating; the default fallback (all mass on bin 1) is
         # treated as "no rating available."
         if (
-            nima_probs[0] == 1.0
+            check.probs[0] == 1.0
             and task in ("quality", "diffusion")
             and not is_authenticity
         ):

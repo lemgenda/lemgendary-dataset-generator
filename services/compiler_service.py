@@ -8,6 +8,7 @@ programmatically, bridging CLI options, presets, and the core coordinator.
 from __future__ import annotations
 
 import logging
+from typing import Any, Literal, TypedDict, Unpack
 
 from rich.console import Console
 
@@ -19,76 +20,86 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+class CompileOptions(TypedDict, total=False):
+    """Keyword options of ``CompilerService.run_compile`` (all optional)."""
+
+    model: str | None
+    preset: str | None
+    max_gb: float | None
+    suffix: str | None
+    workers: int | None
+    no_vetting: bool
+    no_labeling: bool
+    no_hash: bool
+    image_format: str | None
+    image_quality: int | None
+    target_quality: int | None
+    mask_format: str | None
+    also_format: str | None
+    force_duplicate: bool
+    accept_space_loss: bool
+    label_strategy: str | None
+    prompt_strategy: str | None
+    mask_strategy: str | None
+    shard_ext: str | None
+
+
+# How each option becomes compile CLI arguments, in CLI order:
+#   "text"   -> ``flag value`` when the value is truthy
+#   "number" -> ``flag str(value)`` when the value is not None
+#   "switch" -> ``flag`` when the value is truthy
+_FlagKind = Literal["text", "number", "switch"]
+_CLI_FLAGS: tuple[tuple[str, str, _FlagKind], ...] = (
+    ("model", "--model", "text"),
+    ("preset", "--preset", "text"),
+    ("max_gb", "--max_gb", "number"),
+    ("suffix", "--suffix", "text"),
+    ("workers", "--workers", "number"),
+    ("no_vetting", "--no-vetting", "switch"),
+    ("no_labeling", "--no-labeling", "switch"),
+    ("no_hash", "--no-hash", "switch"),
+    ("image_format", "--image-format", "text"),
+    ("image_quality", "--image-quality", "number"),
+    ("target_quality", "--target-quality", "number"),
+    ("mask_format", "--mask-format", "text"),
+    ("also_format", "--also-format", "text"),
+    ("shard_ext", "--shard-ext", "text"),
+    ("force_duplicate", "--force-duplicate", "switch"),
+    ("accept_space_loss", "--accept-space-loss", "switch"),
+    ("label_strategy", "--label-strategy", "text"),
+    ("prompt_strategy", "--prompt-strategy", "text"),
+    ("mask_strategy", "--mask-strategy", "text"),
+)
+_KNOWN_OPTIONS = frozenset(name for name, _flag, _kind in _CLI_FLAGS)
+
+
+def build_compile_args(options: CompileOptions) -> list[str]:
+    """Translate ``run_compile`` options into ``parse_compile_args`` arguments."""
+    values: dict[str, Any] = dict(options)
+    unknown = set(values) - _KNOWN_OPTIONS
+    if unknown:
+        raise TypeError(f"Unknown compile option(s): {', '.join(sorted(unknown))}")
+
+    args_list: list[str] = []
+    for name, flag, kind in _CLI_FLAGS:
+        value = values.get(name)
+        if kind == "number":
+            if value is not None:
+                args_list.extend([flag, str(value)])
+        elif value:
+            args_list.extend([flag] if kind == "switch" else [flag, str(value)])
+    return args_list
+
+
 class CompilerService:
     """Encapsulates dataset compilation orchestration."""
 
     @staticmethod
-    def run_compile(
-        model: str | None = None,
-        preset: str | None = None,
-        max_gb: float | None = None,
-        suffix: str | None = None,
-        workers: int | None = None,
-        no_vetting: bool = False,
-        no_labeling: bool = False,
-        no_hash: bool = False,
-        image_format: str | None = None,
-        image_quality: int | None = None,
-        target_quality: int | None = None,
-        mask_format: str | None = None,
-        also_format: str | None = None,
-        force_duplicate: bool = False,
-        accept_space_loss: bool = False,
-        label_strategy: str | None = None,
-        prompt_strategy: str | None = None,
-        mask_strategy: str | None = None,
-        shard_ext: str | None = None,
-    ) -> int:
+    def run_compile(**options: Unpack[CompileOptions]) -> int:
         """Run a compile in-process with the given CLI options; returns the exit code."""
         manifold_compile = load_manifold_compile()
 
-        # Build list of CLI arguments for parse_compile_args
-        args_list: list[str] = []
-        if model:
-            args_list.extend(["--model", model])
-        if preset:
-            args_list.extend(["--preset", preset])
-        if max_gb is not None:
-            args_list.extend(["--max_gb", str(max_gb)])
-        if suffix:
-            args_list.extend(["--suffix", suffix])
-        if workers is not None:
-            args_list.extend(["--workers", str(workers)])
-        if no_vetting:
-            args_list.append("--no-vetting")
-        if no_labeling:
-            args_list.append("--no-labeling")
-        if no_hash:
-            args_list.append("--no-hash")
-        if image_format:
-            args_list.extend(["--image-format", image_format])
-        if image_quality is not None:
-            args_list.extend(["--image-quality", str(image_quality)])
-        if target_quality is not None:
-            args_list.extend(["--target-quality", str(target_quality)])
-        if mask_format:
-            args_list.extend(["--mask-format", mask_format])
-        if also_format:
-            args_list.extend(["--also-format", also_format])
-        if shard_ext:
-            args_list.extend(["--shard-ext", shard_ext])
-        if force_duplicate:
-            args_list.append("--force-duplicate")
-        if accept_space_loss:
-            args_list.append("--accept-space-loss")
-        if label_strategy:
-            args_list.extend(["--label-strategy", label_strategy])
-        if prompt_strategy:
-            args_list.extend(["--prompt-strategy", prompt_strategy])
-        if mask_strategy:
-            args_list.extend(["--mask-strategy", mask_strategy])
-
-        parsed = manifold_compile.parse_compile_args(args_list)
+        parsed = manifold_compile.parse_compile_args(build_compile_args(options))
         try:
             manifold_compile.process_dataset(parsed)
             return 0

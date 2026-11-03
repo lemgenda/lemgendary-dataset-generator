@@ -5,9 +5,10 @@ Public facade of the compile-time pipeline. The implementation lives in:
   - core.compiler_config   CONFIG, unified_data.yaml metadata, CLI state
   - core.compiler_worker   worker bootstrap (init_worker), task routing,
                            per-process model state and image writes
-  - core.sample_processor  per-sample processing (process_image /
-                           process_diffusion) and batch dispatch
-                           (batch_worker / process_parquet_shard)
+  - core.sample_jobs       ImageJob / ShardJob task payloads
+  - core.sample_processor  per-image processing (process_image)
+  - core.sample_diffusion  text-image processing (process_diffusion)
+  - core.sample_batch      batch dispatch (batch_worker / process_parquet_shard)
   - core.sample_targets, core.sample_scoring, core.sample_annotations
                            target lookup, NIMA scores, annotation parsing
 
@@ -72,12 +73,16 @@ from core.compiler_config import (
 from core.compiler_worker import detect_task, get_labeler, init_worker
 from core.config_schema import ImageFormatPolicy
 from core.registry import ensure_registry_schema, initialize_registry
-from core.sample_processor import (
-    batch_worker,
-    process_diffusion,
-    process_image,
-    process_parquet_shard,
+from core.sample_batch import batch_worker, process_parquet_shard
+from core.sample_diffusion import process_diffusion
+from core.sample_jobs import (
+    ExistingSamples,
+    ImageJob,
+    SampleKey,
+    ShardJob,
+    SourceContext,
 )
+from core.sample_processor import process_image
 from degrade import (
     CompositeProfile,
     DegradationProfile,
@@ -137,10 +142,12 @@ __all__ = [
     "GenerationResult", "LabelGenerator", "PromptGenerator", "MaskGenerator",
     # Degradation Engine (Phase 6)
     "DegradationProfile", "CompositeProfile", "DynamicDegrader", "composite", "parse_profile",
-    # Core API (core.compiler_worker / core.sample_processor)
+    # Core API (core.compiler_worker / core.sample_*)
     "detect_task", "get_labeler",
     "init_worker", "batch_worker",
     "process_image", "process_diffusion", "process_parquet_shard",
+    # Task payloads (core.sample_jobs)
+    "ImageJob", "ShardJob", "SampleKey", "SourceContext", "ExistingSamples",
 ]
 
 

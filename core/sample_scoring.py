@@ -1,5 +1,7 @@
 """NIMA quality scores for a sample: ground-truth votes first, then the QualitySentry model.
 
+``dedup_hashes`` computes the exact and perceptual dedup hashes of a sample.
+
 The score is a 1-10 mean opinion score plus a 10-bin probability vector.
 Known datasets (AVA, AADB, LAION, TID2013) supply their own ground truth;
 authenticity manifolds encode real/fake as the two extreme bins.
@@ -10,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from core.compiler_config import CONFIG
 from core.compiler_worker import GT_CACHE, WORKER
 from utils.math import get_gaussian_probs
 
@@ -130,7 +133,23 @@ def authenticity_score(img_path: Path, current: NimaScore) -> NimaScore:
 
 def model_score(img: Any, current: NimaScore) -> NimaScore:
     """Score with the loaded QualitySentry, or keep ``current`` when none is loaded."""
-    if not WORKER.sentry:
+    if not WORKER.models.sentry:
         return current
-    score, probs = WORKER.sentry.score(img, return_probs=True)
+    score, probs = WORKER.models.sentry.score(img, return_probs=True)
     return NimaScore(score, probs)
+
+
+def dedup_hashes(hash_target: Any, img: Any) -> tuple[Any, str | None]:
+    """Exact hash (when dedup is on) and perceptual hash (when perceptual dedup is on)."""
+    h = (
+        WORKER.audit.exact_hasher.hash(hash_target)
+        if (CONFIG["enable_dedup"] and WORKER.audit.exact_hasher)
+        else None
+    )
+    ph: str | None = None
+    if (CONFIG.get("enable_perceptual_dedup") and WORKER.audit.perceptual_hasher
+            and img is not None):
+        p_hashes = WORKER.audit.perceptual_hasher.hash(img)
+        if p_hashes is not None:
+            ph = f"{p_hashes[0]}:{p_hashes[1]}"
+    return h, ph

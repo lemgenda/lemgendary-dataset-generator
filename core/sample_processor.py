@@ -1,26 +1,25 @@
-"""Per-sample processors run inside the compiler's worker pool.
+"""The per-image processor run inside the compiler's worker pool.
 
-``process_image`` turns one source image (a path, raw bytes or a Parquet
+``process_image`` turns one ``ImageJob`` (a path, raw bytes or a Parquet
 ``{"bytes": ...}`` cell) into the manifold's image, target and label files
-and returns its registry record. ``process_diffusion`` does the same for
-text-image samples. ``batch_worker`` runs a list of such calls in one task.
+and returns its registry record. Diffusion samples are handled by
+``core.sample_diffusion``; Parquet shards and task batches by
+``core.sample_batch``.
 """
 
 import io
 import logging
-import random
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-import pandas as pd
 from PIL import Image
 
+from audit.vision_audit import NimaCheck
 from core.compiler_config import CONFIG, get_args
 from core.compiler_worker import WORKER, get_labeler, link_or_copy, torch, write_image
-from core.error_types import PARQUET_READ_ERRORS, SAMPLE_PROCESSING_ERRORS
+from core.error_types import SAMPLE_PROCESSING_ERRORS
 from core.sample_annotations import (
     Annotation,
     AnnotationSource,
@@ -29,15 +28,17 @@ from core.sample_annotations import (
     parse_annotations,
     write_label_file,
 )
+from core.sample_jobs import ImageJob
 from core.sample_scoring import (
     NimaScore,
     ScoreSource,
     authenticity_score,
+    dedup_hashes,
     ground_truth_score,
     model_score,
 )
 from core.sample_targets import resolve_target
-from utils.image import ensure_srgb, is_black_image
+from utils.image import ensure_srgb
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +49,37 @@ _IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".npy")
 class _ImageSample:
     """One input image and the output paths derived from it."""
 
-    slug: str
-    task: str
-    split: str
-    output_root: Path
-    name: str
+    job: ImageJob
     img_path: Path
     is_virtual: bool
     img_data: bytes = b""
     img: Any = None
     dims: tuple[int, int] = (0, 0)
+
+    @property
+    def slug(self) -> str:
+        """The cleaned source slug."""
+        return self.job.key.slug
+
+    @property
+    def task(self) -> str:
+        """The manifold's task."""
+        return self.job.context.task
+
+    @property
+    def split(self) -> str:
+        """``train`` or ``val``."""
+        return self.job.split
+
+    @property
+    def output_root(self) -> Path:
+        """The manifold folder."""
+        return Path(self.job.context.output_root)
+
+    @property
+    def name(self) -> str:
+        """The sample's registry and file name."""
+        return self.job.key.name
 
     @property
     def ext(self) -> str:
@@ -110,43 +132,29 @@ def _load_pixels(sample: _ImageSample) -> Any:
     return ensure_srgb(Image.fromarray(data))
 
 
-def _passes_nima_gate(sample: _ImageSample, prefix: str, idx: int, nima: NimaScore) -> bool:
+def _passes_nima_gate(sample: _ImageSample, nima: NimaScore) -> bool:
     """Apply the auditor's NIMA threshold (5.5 for diffusion, CONFIG otherwise)."""
-    if WORKER.auditor is None:
+    if WORKER.audit.auditor is None:
         return True
-    is_authenticity = "authentic" in prefix.lower()
+    is_authenticity = "authentic" in sample.job.key.prefix.lower()
     threshold = 5.5 if sample.task == "diffusion" else CONFIG["nima_threshold"]
-    return WORKER.auditor.passes_nima(
-        sample.task, sample.slug, is_authenticity, nima.score, nima.probs, threshold, idx,
-    )
+    return WORKER.audit.auditor.passes_nima(NimaCheck(
+        sample.task, sample.slug, is_authenticity, nima.score, nima.probs, threshold,
+        sample.job.key.idx,
+    ))
 
 
-def _score_sample(sample: _ImageSample, prefix: str, fmt: str, ann_data: Any) -> NimaScore:
+def _score_sample(sample: _ImageSample) -> NimaScore:
     """Resolve the sample's NIMA score from ground truth, path keywords or the model."""
-    nima = ground_truth_score(ScoreSource(sample.slug, fmt, ann_data, sample.img_path))
-    is_authenticity = "authentic" in prefix.lower()
+    job = sample.job
+    nima = ground_truth_score(ScoreSource(sample.slug, job.context.fmt, job.ann_data,
+                                          sample.img_path))
+    is_authenticity = "authentic" in job.key.prefix.lower()
     if is_authenticity:
         nima = authenticity_score(sample.img_path, nima)
     if nima.probs[0] == 1.0 and sample.task in ["quality", "diffusion"] and not is_authenticity:
         nima = model_score(sample.img, nima)
     return nima
-
-
-def _hashes(sample: _ImageSample) -> tuple[Any, str | None]:
-    """Exact hash (when dedup is on) and perceptual hash (when perceptual dedup is on)."""
-    hash_target = sample.img_data if sample.is_virtual else sample.img_path
-    h = (
-        WORKER.exact_hasher.hash(hash_target)
-        if (CONFIG["enable_dedup"] and WORKER.exact_hasher)
-        else None
-    )
-    ph: str | None = None
-    if (CONFIG.get("enable_perceptual_dedup") and WORKER.perceptual_hasher
-            and sample.img is not None):
-        p_hashes = WORKER.perceptual_hasher.hash(sample.img)
-        if p_hashes is not None:
-            ph = f"{p_hashes[0]}:{p_hashes[1]}"
-    return h, ph
 
 
 @dataclass
@@ -170,8 +178,9 @@ def _write_restoration_target(sample: _ImageSample, target: _Target, out_img: Pa
     elif target.clean_only:
         write_image(loaded_img=sample.img, source_bytes=sample.img_data,
                     source_path=sample.img_path, out_path=out_tgt, kind="image")
-    elif sample.task == "segmentation" and WORKER.mask_gen is not None and sample.img is not None:
-        mask_result = WORKER.mask_gen.generate(
+    elif (sample.task == "segmentation" and WORKER.generators.mask_gen is not None
+          and sample.img is not None):
+        mask_result = WORKER.generators.mask_gen.generate(
             sample.img, context={"task": sample.task, "slug": sample.slug}
         )
         if mask_result.value is not None:
@@ -210,10 +219,10 @@ def _write_outputs(sample: _ImageSample, target: _Target) -> Path:
 
 def _auto_label(sample: _ImageSample) -> list[Annotation]:
     """Label the image with the Phase 5 generator, or the task's AutoLabeler without one."""
-    if WORKER.label_gen is None:
+    if WORKER.generators.label_gen is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         return cast("list[Annotation]", get_labeler(sample.task, device).predict(sample.img))
-    gen_result = WORKER.label_gen.generate(
+    gen_result = WORKER.generators.label_gen.generate(
         sample.img,
         context={"task": sample.task, "slug": sample.slug, "path": str(sample.img_path)},
     )
@@ -243,57 +252,58 @@ def _file_size(path: Path) -> int:
     return 0
 
 
-def _process_image(
-    img_input, prefix, slug, idx, task, fmt, ann_data, split,
-    output_root_str, skip_labeling,
-):
-    """Body of ``process_image``; exceptions propagate to the caller's handler."""
-    opened = _open_sample(img_input, slug, idx)
+def _prepare_sample(job: ImageJob) -> _ImageSample | None:
+    """Open the job's input; None when a bytes cell is empty."""
+    opened = _open_sample(job.img_input, job.key.slug, job.key.idx)
     if opened is None:
         return None
     img_path, img_data, img = opened
-    sample = _ImageSample(slug=slug, task=task, split=split,
-                          output_root=Path(output_root_str), name=f"{prefix}_{slug}_{idx:09d}",
-                          img_path=img_path, is_virtual=isinstance(img_input, (bytes, dict)),
-                          img_data=img_data, img=img)
+    return _ImageSample(job=job, img_path=img_path,
+                        is_virtual=isinstance(job.img_input, (bytes, dict)),
+                        img_data=img_data, img=img)
 
-    if WORKER.physical_index and sample.name.lower() in WORKER.physical_index:
-        return sample.skip_record()
 
-    target_img, target_path = resolve_target(task, ann_data, img_path, sample.is_virtual)
-
-    if (task in ["quality", "diffusion"] and not get_args().no_vetting) or not skip_labeling:
+def _vet_pixels(sample: _ImageSample) -> bool:
+    """Decode the pixels when vetting or labeling needs them; False when the audit rejects."""
+    skip_labeling = sample.job.context.skip_labeling
+    if (sample.task in ["quality", "diffusion"] and not get_args().no_vetting) or not skip_labeling:
         sample.img = _load_pixels(sample)
         sample.dims = sample.img.size
-        if WORKER.auditor is not None and not WORKER.auditor.audit_image(
-                sample.img, task, slug).valid:
-            return None
+        if WORKER.audit.auditor is not None and not WORKER.audit.auditor.audit_image(
+                sample.img, sample.task, sample.slug).valid:
+            return False
+    return True
 
-    nima = _score_sample(sample, prefix, fmt, ann_data)
-    if not _passes_nima_gate(sample, prefix, idx, nima):
-        return None
 
-    h, ph = _hashes(sample)
-    clean_only = ("parsenet" in slug.lower() or "codeformer" in slug.lower()) \
-        and task == "restoration"
+def _write_sample_files(sample: _ImageSample, target_img: Any, target_path: str | None) -> Path:
+    """Write the image and its target (clean-only restoration pairs reuse the input)."""
+    slug = sample.slug.lower()
+    clean_only = ("parsenet" in slug or "codeformer" in slug) and sample.task == "restoration"
     if clean_only and not target_path and not sample.is_virtual:
-        target_path = str(img_path)
-    out_img_path = _write_outputs(sample, _Target(target_img, target_path, clean_only))
+        target_path = str(sample.img_path)
+    return _write_outputs(sample, _Target(target_img, target_path, clean_only))
 
+
+def _label_and_record(sample: _ImageSample, nima: NimaScore, hashes: tuple[Any, str | None],
+                      out_img_path: Path) -> dict[str, Any]:
+    """Write the label file and return the sample's registry record."""
+    job = sample.job
+    task = sample.task
+    skip_labeling = job.context.skip_labeling
     annotations, is_autolabeled = _annotate(
         sample,
-        AnnotationSource(fmt, ann_data, prefix, task, *sample.dims),
+        AnnotationSource(job.context.fmt, job.ann_data, job.key.prefix, task, *sample.dims),
         skip_labeling,
     )
 
-    label_file_path = sample.output_root / "labels" / split / f"{sample.name}.txt"
+    label_file_path = sample.output_root / "labels" / sample.split / f"{sample.name}.txt"
     if not skip_labeling or annotations or task in ["quality", "classification"]:
-        content = LabelContent(task, nima.probs, annotations, ann_data, img_path)
+        content = LabelContent(task, nima.probs, annotations, job.ann_data, sample.img_path)
         write_label_file(label_file_path, label_lines(content, *sample.dims))
 
     return {
-        "name": sample.name, "source": slug, "task": task, "split": split,
-        "hash": h, "perceptual_hash": ph,
+        "name": sample.name, "source": sample.slug, "task": task, "split": sample.split,
+        "hash": hashes[0], "perceptual_hash": hashes[1],
         "nima_score": round(nima.score, 3), "is_autolabeled": is_autolabeled,
         "has_segmentation": any(a_["type"] == "segmentation" for a_ in annotations),
         "has_pose": any(a_["type"] == "pose" for a_ in annotations),
@@ -304,186 +314,35 @@ def _process_image(
     }
 
 
-def process_image(
-    img_input, prefix, slug, idx, task, fmt, ann_data, split,
-    output_root_str, skip_labeling=False,
-):
+def _process_image(job: ImageJob) -> dict[str, Any] | None:
+    """Body of ``process_image``; exceptions propagate to the caller's handler."""
+    sample = _prepare_sample(job)
+    if sample is None:
+        return None
+
+    if WORKER.physical_index and sample.name.lower() in WORKER.physical_index:
+        return sample.skip_record()
+
+    target_img, target_path = resolve_target(sample.task, job.ann_data, sample.img_path,
+                                             sample.is_virtual)
+    if not _vet_pixels(sample):
+        return None
+
+    nima = _score_sample(sample)
+    if not _passes_nima_gate(sample, nima):
+        return None
+
+    hashes = dedup_hashes(sample.img_data if sample.is_virtual else sample.img_path, sample.img)
+    out_img_path = _write_sample_files(sample, target_img, target_path)
+    return _label_and_record(sample, nima, hashes, out_img_path)
+
+
+def process_image(job: ImageJob) -> dict[str, Any] | None:
     """Worker function for parallel processing."""
     try:
-        return _process_image(img_input, prefix, slug, idx, task, fmt, ann_data, split,
-                              output_root_str, skip_labeling)
+        return _process_image(job)
     except SAMPLE_PROCESSING_ERRORS as e:
-        failed = img_input if isinstance(img_input, (str, Path)) else f"virtual_{slug}_{idx:09d}"
+        failed = (job.img_input if isinstance(job.img_input, (str, Path))
+                  else f"virtual_{job.key.slug}_{job.key.idx:09d}")
         logger.error("Failed processing %s: %s", failed, e)
         return None
-
-
-# ─── Diffusion samples ──────────────────────────────────────────────────────
-def _open_diffusion_image(img_path: Any) -> tuple[Any, bool] | None:
-    """Return ``(image, is_virtual)`` for a path or bytes input; None when unusable."""
-    if isinstance(img_path, (bytes, dict)):
-        raw = img_path["bytes"] if isinstance(img_path, dict) and "bytes" in img_path else img_path
-        if not isinstance(raw, bytes):
-            return None
-        return Image.open(io.BytesIO(raw)), True
-    path = Path(img_path) if isinstance(img_path, str) else img_path
-    if not path.exists():
-        return None
-    return Image.open(path), False
-
-
-def _caption(img: Any, img_path: Any, is_virtual: bool) -> str:
-    """Use the sidecar ``.txt`` caption when present, else the captioner's."""
-    if not WORKER.captioner:
-        return "a high quality image"
-    caption_file = (
-        Path(img_path).parent / (Path(img_path).stem + ".txt")
-        if not is_virtual and isinstance(img_path, (str, Path))
-        else None
-    )
-    if caption_file and caption_file.exists():
-        return caption_file.read_text().strip()
-    return WORKER.captioner.generate(img)
-
-
-def _style(img: Any) -> tuple[str, Any]:
-    """CLIP style tag and the float32 latent blob, when the CLIP manifold is loaded."""
-    if not WORKER.clip_manifold:
-        return "standard", None
-    style_tag = WORKER.clip_manifold.tag_style(img)
-    clip_latent = WORKER.clip_manifold.extract_features(img).cpu().numpy().flatten().tolist()
-    if not clip_latent:
-        return style_tag, None
-    return style_tag, sqlite3.Binary(np.array(clip_latent).astype(np.float32).tobytes())
-
-
-def _encode_diffusion_image(img: Any) -> bytes:
-    """Encode with the Phase 3 transcoder, or as JPEG quality 95 without one."""
-    if WORKER.transcoder is not None and WORKER.transcoder.enabled:
-        img_bytes, _fmt = WORKER.transcoder.encode(img, kind="image")
-        return img_bytes
-    buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=95)
-    return buffer.getvalue()
-
-
-def _process_diffusion(img_path, prefix, slug, idx, split):
-    """Body of ``process_diffusion``; exceptions propagate to the caller's handler."""
-    opened = _open_diffusion_image(img_path)
-    if opened is None:
-        return None
-    img, is_virtual = opened
-    img = ensure_srgb(img)
-    if is_black_image(img, CONFIG["black_threshold"]):
-        return None
-
-    nima_score: Any = 10.0
-    if WORKER.sentry:
-        nima_score = WORKER.sentry.score(img)
-        if nima_score < CONFIG["nima_threshold"]:
-            return None
-
-    size = int(CONFIG.get("diffusion_size", 512))
-    img = img.resize((size, size), Image.Resampling.LANCZOS)
-    caption = _caption(img, img_path, is_virtual)
-    style_tag, latent_blob = _style(img)
-
-    h = (
-        WORKER.exact_hasher.hash(img)
-        if (CONFIG["enable_dedup"] and WORKER.exact_hasher)
-        else None
-    )
-    ph: str | None = None
-    if CONFIG.get("enable_perceptual_dedup") and WORKER.perceptual_hasher:
-        p_hashes = WORKER.perceptual_hasher.hash(img)
-        if p_hashes is not None:
-            ph = f"{p_hashes[0]}:{p_hashes[1]}"
-
-    img_bytes = _encode_diffusion_image(img)
-    nima_val = (
-        float(nima_score[0]) if isinstance(nima_score, (tuple, list)) else float(nima_score)
-    )
-    return {
-        "name": f"{prefix}_{idx:09d}", "source": slug, "task": "diffusion", "split": split,
-        "hash": h, "perceptual_hash": ph,
-        "nima_score": round(nima_val, 3),
-        "caption": caption, "style_tag": style_tag, "clip_latent": latent_blob,
-        "img_bytes": img_bytes, "size": len(img_bytes),
-    }
-
-
-def process_diffusion(img_path, prefix, slug, idx, split):
-    """Text-image processor for Diffusion manifolds."""
-    try:
-        return _process_diffusion(img_path, prefix, slug, idx, split)
-    except SAMPLE_PROCESSING_ERRORS as e:
-        safe_path = "virtual_bytes" if isinstance(img_path, (bytes, dict)) else img_path
-        logger.error("Failed processing diffusion sample %s: %s", safe_path, e)
-        return None
-
-
-# ─── Batch worker ───────────────────────────────────────────────────────────
-def _status_record(name: str, source: str, task: str, status: str) -> dict[str, Any]:
-    """Registry record for a row that produced no sample (dropped, skipped or failed)."""
-    return {"name": name, "source": source, "task": task, "split": "skipped",
-            "hash": status, "nima_score": 1.0, "size": 0}
-
-
-def process_parquet_shard(
-    pq_path, prefix, c_slug, start_idx, task, fmt,
-    output_root_str, skip_lbl, train_prob, existing_names,
-    existing_on_disk, keep_prob, num_rows,
-):
-    """Process an entire Parquet shard as one worker task."""
-    try:
-        df = pd.read_parquet(pq_path)
-    except PARQUET_READ_ERRORS as e:
-        logger.warning("Skipping corrupted virtual parquet shard %s: %s", pq_path, e)
-        return [{"hash": "skipped"}] * num_rows
-
-    results = []
-    for offset, row in enumerate(df.itertuples()):
-        current_idx = start_idx + offset
-        name = f"{prefix}_{c_slug}_{current_idx:09d}"
-
-        if keep_prob < 1.0 and random.random() > keep_prob:
-            results.append(_status_record(name, c_slug, task, "dropped"))
-            continue
-        if name in existing_names or name.lower() in existing_on_disk:
-            results.append(_status_record(name, c_slug, task, "skipped"))
-            continue
-        img_bytes = getattr(row, "image", getattr(row, "pixel_values", None))
-        if img_bytes is None:
-            results.append(_status_record(name, c_slug, task, "skipped"))
-            continue
-
-        split = "train" if random.random() < train_prob else "val"
-        if task == "diffusion":
-            res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split)
-        else:
-            row_dict = {k: getattr(row, k) for k in df.columns}
-            res = process_image(img_bytes, prefix, c_slug, current_idx, task, fmt,
-                                row_dict, split, output_root_str, skip_lbl)
-        results.append(res or _status_record(name, c_slug, task, "failed"))
-    return results
-
-
-def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
-    """Execute a list of (func, *args) in one worker call to amortize IPC."""
-    results: list[Any] = []
-    for task_func, *task_args in tasks:
-        try:
-            res = task_func(*task_args)
-            if task_func.__name__ == "process_parquet_shard":
-                results.extend(res)
-            else:
-                results.append(res)
-        except SAMPLE_PROCESSING_ERRORS as exc:
-            logger.warning(
-                "Worker task failed: %s with args %s: %s",
-                getattr(task_func, "__name__", str(task_func)),
-                task_args,
-                exc,
-            )
-            results.append(None)
-    return results

@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.49-STABLE` |
+| **Version** | `v16.9.50-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,30 @@
 ---
 
 ## Changelog
+
+### v16.9.50 - `core/manifold_compile.py` Split; Compile Task Payload Objects
+
+- **`manifold_compile` Split** (1267 lines to 248):
+  `core/manifold_compile.py` keeps the entry point and the per-manifold flow.
+  The steps moved to `compile_setup`, `compile_forex`, `compile_registry`,
+  `compile_sources`, `compile_tasks`, `compile_passes` and
+  `compile_notebooks`. Every public name is still importable from
+  `core.manifold_compile` and `core.compiler_core`.
+- **Task Payload Objects**: `process_image` and `process_parquet_shard` take
+  one `ImageJob` / `ShardJob` (`core/sample_jobs.py`) instead of 10 and 13
+  positional arguments, and the worker task protocol passes these objects
+  instead of index-addressed tuples. Diffusion and batch code moved to
+  `sample_diffusion` and `sample_batch`; import those names from
+  `core.compiler_core`. `WorkerState` groups its fields into `models`,
+  `audit` and `generators`.
+- **Smaller Signatures**: `VisionAuditor.passes_nima` takes a `NimaCheck`.
+  `CompilerService.run_compile` takes typed keyword options, translated by a
+  flag table. The `too-many-*` findings in these files went from 23 to 0.
+- **Verified**: an old-vs-new compile over 8 fixture manifolds (restoration,
+  YOLO, COCO, a pooled 640-image run, NSFW balancing, segmentation,
+  diffusion shards, resume and WebDataset output) gave byte-identical output
+  trees and registries. The unused virtual-parquet sample count is no longer
+  computed.
 
 ### v16.9.49 - Modernization Queue and Manifold Modernizer Split
 

@@ -43,19 +43,40 @@ ImageKind = Literal["image", "target", "mask"]
 
 
 @dataclass
-class WorkerState:
-    """Models, audit primitives and caches that init_worker loads once per process."""
+class WorkerModels:
+    """The torch-backed model wrappers a worker loads for vetting and labeling."""
 
     sentry: Any = None
     captioner: Any = None
     clip_manifold: Any = None
     labelers: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AuditTools:
+    """The Phase 2 auditor and hashers and the Phase 3 transcoder."""
+
     auditor: VisionAuditor | None = None
     exact_hasher: ExactHasher | None = None
     perceptual_hasher: PerceptualHasher | None = None
     transcoder: ImageTranscoder | None = None
+
+
+@dataclass
+class Generators:
+    """The Phase 5 label and mask generators."""
+
     label_gen: LabelGenerator | None = None
     mask_gen: MaskGenerator | None = None
+
+
+@dataclass
+class WorkerState:
+    """Models, audit primitives and caches that init_worker loads once per process."""
+
+    models: WorkerModels = field(default_factory=WorkerModels)
+    audit: AuditTools = field(default_factory=AuditTools)
+    generators: Generators = field(default_factory=Generators)
     dped_cache: set[str] = field(default_factory=set)
     physical_index: set[str] = field(default_factory=set)
 
@@ -144,16 +165,16 @@ def _configure_process() -> str:
 
 def _load_audit_primitives(a: argparse.Namespace) -> None:
     """Build the Phase 2 auditor and hashers and the Phase 3 transcoder."""
-    WORKER.auditor = VisionAuditor(CONFIG)
-    WORKER.exact_hasher = ExactHasher(no_hash=a.no_hash)
-    WORKER.perceptual_hasher = PerceptualHasher(no_hash=a.no_hash)
+    WORKER.audit.auditor = VisionAuditor(CONFIG)
+    WORKER.audit.exact_hasher = ExactHasher(no_hash=a.no_hash)
+    WORKER.audit.perceptual_hasher = PerceptualHasher(no_hash=a.no_hash)
     policy = ImageFormatPolicy(
         format=CONFIG.get("image_format", "webp"),
         quality=int(CONFIG.get("image_quality", 92)),
         target_quality=int(CONFIG.get("target_quality", 95)),
         mask_format=CONFIG.get("mask_format", "webp-lossless"),
     )
-    WORKER.transcoder = ImageTranscoder(policy)
+    WORKER.audit.transcoder = ImageTranscoder(policy)
 
 
 def _load_generation_labeler(label_strategy: str | None, mission: str, device: str) -> Any:
@@ -182,7 +203,7 @@ def _load_quality_sentry(a: argparse.Namespace, mission: str, device: str) -> No
     if not os.path.exists(model_path):
         return
     try:
-        WORKER.sentry = load_model_module("quality_scorer").QualitySentry(
+        WORKER.models.sentry = load_model_module("quality_scorer").QualitySentry(
             model_path, model_name=model_type, device=device
         )
     except MODEL_LOAD_ERRORS as exc:
@@ -193,14 +214,14 @@ def _load_vision_models(config: dict[str, Any], mission: str, device: str) -> No
     """Load the diffusion captioner and the CLIP style manifold when the run needs them."""
     if mission == "diffusion":
         try:
-            WORKER.captioner = load_model_module("diffusion").CaptionSentry(device=device)
+            WORKER.models.captioner = load_model_module("diffusion").CaptionSentry(device=device)
         except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CaptionSentry: %s", exc)
 
     # Style manifold (CLIP) — loaded on CPU to conserve VRAM.
     if "clip" in str(config):
         try:
-            WORKER.clip_manifold = load_model_module("encoder").CLIPManifold(device="cpu")
+            WORKER.models.clip_manifold = load_model_module("encoder").CLIPManifold(device="cpu")
         except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CLIPManifold: %s", exc)
 
@@ -210,23 +231,23 @@ def _build_generators(label_strategy: str | None, mask_strategy: str | None,
     """Construct the Phase 5 label and mask generators after the model wrappers load."""
     if label_strategy:
         try:
-            WORKER.label_gen = LabelGenerator(
+            WORKER.generators.label_gen = LabelGenerator(
                 label_strategy,
-                captioner=WORKER.captioner,
-                clip=WORKER.clip_manifold,
+                captioner=WORKER.models.captioner,
+                clip=WORKER.models.clip_manifold,
                 labeler=labeler,
-                sentry=WORKER.sentry,
+                sentry=WORKER.models.sentry,
             )
         except MODEL_LOAD_ERRORS as e:
             logger.warning("LabelGenerator init failed: %s", e)
-            WORKER.label_gen = None
+            WORKER.generators.label_gen = None
 
     if mask_strategy:
         try:
-            WORKER.mask_gen = MaskGenerator(mask_strategy, labeler=labeler)
+            WORKER.generators.mask_gen = MaskGenerator(mask_strategy, labeler=labeler)
         except MODEL_LOAD_ERRORS as e:
             logger.warning("MaskGenerator init failed: %s", e)
-            WORKER.mask_gen = None
+            WORKER.generators.mask_gen = None
 
 
 def init_worker(
@@ -271,15 +292,15 @@ def init_worker(
 
 def get_labeler(task: str, device: str = "cuda"):
     """Singleton labeler per task type (detection / segmentation / face)."""
-    if task not in WORKER.labelers:
+    if task not in WORKER.models.labelers:
         if task == "face_detection":
             mode = "face_landmarks"
         else:
             mode = "segmentation" if "seg" in task else "detection"
-        WORKER.labelers[task] = load_model_module("detection").AutoLabeler(
+        WORKER.models.labelers[task] = load_model_module("detection").AutoLabeler(
             mode=mode, device=device
         )
-    return WORKER.labelers[task]
+    return WORKER.models.labelers[task]
 
 
 # ─── Phase 3 write helpers ──────────────────────────────────────────────────
@@ -316,7 +337,7 @@ def write_image(
     kind: ImageKind,
 ) -> Path:
     """Write a single image to disk, honoring the Phase 3 transcode policy."""
-    transcoder = WORKER.transcoder
+    transcoder = WORKER.audit.transcoder
     if transcoder is not None and transcoder.enabled:
         try:
             img = loaded_img

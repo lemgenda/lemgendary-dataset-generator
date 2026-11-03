@@ -1,188 +1,245 @@
 """Compile the datasets in unified_data.yaml into manifolds.
 
 Run as ``python -m core.manifold_compile``.
+
+This module is the entry point and the per-manifold orchestration; the
+steps live in:
+
+  - core.compile_setup      CLI parsing, pre-flight, worker pool
+  - core.compile_forex      forex (MT5) manifolds
+  - core.compile_registry   resumption scans, orphan adoption, registry inserts
+  - core.compile_sources    ref resolution, annotations, image scans, downloads
+  - core.compile_tasks      worker task planning and NSFW balancing
+  - core.compile_passes     PASS 1 extraction, style clustering, PASS 2 index
+  - core.compile_notebooks  training notebooks from the training suite, i.e.
+                            ``from training.notebooks import generate_training_notebook``
 """
 
 import argparse
-import hashlib
-import json
-import logging
-import os
-import pickle
-import random
-import re
-import shutil
-import signal
-import sqlite3
 import sys
-from concurrent.futures import (
-    FIRST_COMPLETED,
-    BrokenExecutor,
-    CancelledError,
-    ThreadPoolExecutor,
-    as_completed,
-    wait,
-)
-from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-import numpy as np
-import pandas as pd
-import requests
-import yaml
-from sklearn.cluster import MiniBatchKMeans
-from tqdm import tqdm
-from webdataset.writer import TarWriter as WdsTarWriter
-
-from core.cli_args import build_parser
+from core.compile_forex import compile_forex_manifold, is_forex
+from core.compile_notebooks import (
+    get_training_suite_notebook_generators,
+    write_manifold_notebooks,
+)
+from core.compile_outcome import ManifoldOutcome, finalize_compile
+from core.compile_passes import (
+    ExtractionRun,
+    cluster_styles,
+    run_extraction,
+    write_containers,
+    write_index,
+)
+from core.compile_registry import (
+    adopt_orphans,
+    load_existing_names,
+    open_registry,
+    scan_physical_index,
+)
+from core.compile_setup import (
+    CompileSettings,
+    install_interrupt_handler,
+    make_executor,
+    parse_compile_args,
+    prepare_compile,
+)
+from core.compile_sources import load_annotations, resolve_ref, scan_images
+from core.compile_tasks import (
+    CocoAnnData,
+    ManifoldContext,
+    MatlabAnnData,
+    ParquetAnnData,
+    TaskItem,
+    balance_nsfw,
+    image_tasks,
+    shard_tasks,
+)
 from core.compiler_core import (
-    CONFIG,
     DATASETS_META,
-    INPUT_ROOT,
-    META,
     OUT_PARENT,
-    batch_worker,
-    clean_slug,
-    detect_annotations,
+    ExistingSamples,
     detect_task,
-    download_image,
-    get_device_info,
-    init_worker,
-    initialize_registry,
-    parse_coco,
-    parse_matlab,
-    parse_parquet,
-    process_diffusion,
-    process_image,
-    process_parquet_shard,
     remove_empty_dirs,
 )
 from core.doc_generator import generate_dataset_docs
-from core.compile_outcome import ManifoldOutcome, finalize_compile
-from core import presets
-from core.error_types import DOC_GENERATION_ERRORS, PARQUET_READ_ERRORS
-from core.lazy_imports import (
-    load_forex_module,
-    load_model_module,
-    load_parquet,
-    load_training_notebooks,
-)
-from formats.base import parse_also_format
-from tools.migrate_manifold_format import migrate_manifold
 from runtime.environment import load_torch
 
 # torch is loaded after the runtime env vars are set (see runtime.environment).
 torch = load_torch()
 
-logger = logging.getLogger(__name__)
+__all__ = [
+    "CocoAnnData",
+    "MatlabAnnData",
+    "ParquetAnnData",
+    "TaskItem",
+    "parse_compile_args",
+    "process_dataset",
+]
 
+# Above this many tasks a CPU-only run drops labeling and vetting.
+_CPU_GUARD_TASKS = 50000
 
-# 2026: Task tuples passed to batch_worker. Each item is
-#     (callable, *heterogeneous_args)
-# Annotated as tuple[Any, ...] so downstream consumers accept the mix.
-TaskItem = tuple[Any, ...]
-
-# Positions inside a process_parquet_shard task tuple (callable at index 0,
-# then the process_parquet_shard positional arguments in order).
-_SHARD_KEEP_PROB_IDX = 12
-_SHARD_NUM_ROWS_IDX = 13
-
-
-def _count_one(t: TaskItem) -> int:
-    """Return the expected sample count for one task item.
-
-    Parquet shard tasks carry their row count at _SHARD_NUM_ROWS_IDX; every
-    other task produces exactly one output.
-    """
-    if t[0].__name__ == "process_parquet_shard":
-        return int(t[_SHARD_NUM_ROWS_IDX])
-    return 1
-
-
-def _get_count(task_list: list[TaskItem]) -> int:
-    return sum(_count_one(t) for t in task_list)
-
-# 2026: Type aliases for the three parser return shapes, used at cast sites.
-CocoAnnData = tuple[dict[int, dict[str, Any]], dict[int, list[dict[str, Any]]]]
-ParquetAnnData = tuple[Path, dict[str, Any], list[str]]
-MatlabAnnData = tuple[dict[str, Any], str]
+# Output sub-folders a fresh manifold gets, by task.
+_TASK_DIRS = {
+    "quality": "labels", "classification": "labels", "detection": "labels",
+    "pose": "labels", "yolo": "labels",
+    "segmentation": "masks",
+    "restoration": "targets", "super-resolution": "targets",
+}
 
 
 def _get_training_suite_notebook_generators():
     """Return the notebook generators from lemgendary-training-suite (Single Source of Truth).
 
-    Equivalent to ``from training.notebooks import generate_training_notebook,
-    generate_colab_training_notebook`` once the sibling checkout is on
-    ``sys.path``; the import goes through ``core.lazy_imports`` because the
-    training suite is an optional sibling repository.
+    The training suite owns notebook generation; this is equivalent to::
+
+        from training.notebooks import generate_training_notebook, generate_colab_training_notebook
+
+    with the sibling checkout put on ``sys.path`` first (see
+    ``core.compile_notebooks.get_training_suite_notebook_generators``).
     """
-    suite_dir = Path(__file__).resolve().parents[2] / "lemgendary-training-suite"
-    if suite_dir.exists() and str(suite_dir) not in sys.path:
-        sys.path.insert(0, str(suite_dir))
-    notebooks = load_training_notebooks()
-    return notebooks.generate_training_notebook, notebooks.generate_colab_training_notebook
+    return get_training_suite_notebook_generators()
 
 
+def _create_layout(output_root: Path, model_config: dict[str, Any], task: str) -> None:
+    """Create the images/ (and labels/, masks/ or targets/) split folders of a new manifold."""
+    if output_root.exists() or is_forex(model_config):
+        return
+    subdirs = ["images"]
+    if task in _TASK_DIRS:
+        subdirs.append(_TASK_DIRS[task])
+    for subdir in subdirs:
+        for s in ["train", "val"]:
+            (output_root / subdir / s).mkdir(parents=True, exist_ok=True)
 
-def _fast_scan(path, valid_exts):
-    for entry in os.scandir(path):
-        if entry.is_dir():
-            yield from _fast_scan(entry.path, valid_exts)
-        elif entry.is_file():
-            ext = entry.name[entry.name.rfind('.'):].lower()
-            if ext in valid_exts:
-                yield entry.path
+
+def _plan_tasks(ctx: ManifoldContext, affixes: tuple[str, str]) -> list[TaskItem]:
+    """Plan the worker tasks of every source ref; NSFW sources are ratio-balanced."""
+    sfw_tasks: list[TaskItem] = []
+    nsfw_tasks: list[TaskItem] = []
+    for ref_entry in cast("list[dict[str, Any]]", ctx.model_config.get("refs", [])):
+        src = resolve_ref(ref_entry, affixes)
+        if src is None:
+            continue
+        ann = load_annotations(src.dataset)
+        images, is_virtual = scan_images(src, ann)
+        if is_virtual:
+            tasks = shard_tasks(ctx, src, ann)
+        else:
+            tasks = image_tasks(ctx, src, ann, images)
+            print(f"   -> [{src.slug}] Discovered {len(images)} source tensors.")
+        (nsfw_tasks if src.tag == "nsfw" else sfw_tasks).extend(tasks)
+
+    nsfw_tasks = balance_nsfw(sfw_tasks, nsfw_tasks,
+                              float(ctx.model_config.get("nsfw_ratio", 0)))
+    return sfw_tasks + nsfw_tasks
 
 
-def _require_ann_path(ann_path: Path | None) -> Path:
-    """Narrow ann_path to non-None.
-
-    detect_annotations()'s contract is that a non-None format is always
-    paired with a non-None path. This helper converts that invariant into
-    a runtime check at the type-checker boundary, so parse_* callers can
-    accept a plain Path without any suppression.
-    """
-    if ann_path is None:
-        raise RuntimeError(
-            "Annotation format was detected but no path was returned. "
-            "This indicates a bug in converters.detect_annotations()."
+def _apply_cpu_guard(args: argparse.Namespace, task_count: int) -> None:
+    """Switch a huge CPU-only run to High-Speed Mode (no labeling, no vetting)."""
+    if torch.cuda.is_available() or task_count <= _CPU_GUARD_TASKS:
+        return
+    if not args.no_labeling or not args.no_vetting:
+        print(
+            f"[CPU-GUARD] Massive dataset ({task_count} items) on CPU. Auto-enabling"
+            " High-Speed Mode.",
+            flush=True,
         )
-    return ann_path
+        args.no_labeling = True
+        args.no_vetting = True
 
-# ─── ARGUMENT PARSER ─────────────────────────────────────────────────────────
-# 2026 Phase 1.5: Parser is the SSOT from cli_args.py. This module previously
-# declared its own parser that had to stay manually in sync with
-# compiler_core.py's. Both now share `build_parser()`.
 
-def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
-    """Parse compile CLI arguments cleanly without top-level module side-effects."""
-    parser = build_parser()
-    parsed = parser.parse_args(cmd_args)
+def _pass_one_label(args: argparse.Namespace, task: str) -> str:
+    """The PASS 1 progress-bar label."""
+    if not args.no_vetting and task in ["quality", "classification"]:
+        return "[PASS 1] Extraction & Vetting"
+    return "[PASS 1] Extraction & Processing"
 
-    if parsed.preset:
-        try:
-            preset_cfg = presets.get_preset(parsed.preset)
-            if parsed.image_format is None:
-                parsed.image_format = preset_cfg.image_format
-            if parsed.image_quality is None:
-                parsed.image_quality = preset_cfg.image_quality
-            if parsed.target_quality is None and preset_cfg.target_quality is not None:
-                parsed.target_quality = preset_cfg.target_quality
-            if parsed.mask_format is None and preset_cfg.mask_format is not None:
-                parsed.mask_format = preset_cfg.mask_format
-            if not preset_cfg.vetting_enabled and not parsed.no_vetting:
-                parsed.no_vetting = True
-            if not preset_cfg.labeling_enabled and not parsed.no_labeling:
-                parsed.no_labeling = True
-            if preset_cfg.containers and parsed.also_format is None:
-                parsed.also_format = ",".join(preset_cfg.containers)
-        except KeyError as exc:
-            print(f"[ERROR] Invalid preset: {exc}")
-            sys.exit(1)
-    return parsed
 
-# ────────────────────────────────────────────────────────────────────────────
+def _compile_samples(args: argparse.Namespace, settings: CompileSettings,
+                     ctx: ManifoldContext) -> ManifoldOutcome:
+    """Compile a sample-based manifold: plan, PASS 1, clustering, PASS 2, extras."""
+    pascal_name, output_root = ctx.pascal_name, ctx.output_root
+    db_path = output_root / "manifold_registry.db"
+    conn = open_registry(db_path, pascal_name)
+    ctx.existing.names.update(load_existing_names(conn, db_path, pascal_name))
+    ctx.existing.on_disk.update(scan_physical_index(output_root, pascal_name))
+    executor = make_executor(args, settings, ctx.existing.on_disk)
+    adopt_orphans(conn, ctx.existing.names, ctx.existing.on_disk, ctx.task)
+
+    affixes = (settings.prefix_str, settings.suffix_str)
+    all_tasks = _plan_tasks(ctx, affixes)
+    existing_count = len(ctx.existing.names)
+    if not all_tasks:
+        print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
+        return ManifoldOutcome(ctx.model_key, output_root, samples=existing_count)
+
+    print(f"[MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
+
+    compiled_bytes = 0
+    _apply_cpu_guard(args, len(all_tasks))
+    if not args.finalize:
+        run = ExtractionRun(conn, executor, settings.max_workers, settings.max_gb,
+                            args.no_hash, batch_size=100 if args.no_vetting else 50)
+        compiled_bytes = run_extraction(run, all_tasks, existing_count,
+                                        _pass_one_label(args, ctx.task))
+
+    conn.commit()
+
+    compiled_gb = compiled_bytes / (1024**3)
+    if compiled_gb < settings.min_gb:
+        print(
+            f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold"
+            f" constraint ({settings.min_gb:.2f}GB)."
+        )
+
+    outcome = _finish_manifold(args, ctx, conn, affixes)
+    executor.shutdown(wait=True)
+    return outcome
+
+
+def _finish_manifold(args: argparse.Namespace, ctx: ManifoldContext, conn: Any,
+                     affixes: tuple[str, str]) -> ManifoldOutcome:
+    """Cluster styles, write the index, docs, extra containers and notebooks."""
+    pascal_name, output_root = ctx.pascal_name, ctx.output_root
+    cluster_styles(conn)
+    final_index = write_index(conn, output_root, affixes)
+    remove_empty_dirs(output_root)
+    generate_dataset_docs(output_root, final_index, pascal_name)
+    containers_written = write_containers(args, output_root)
+    write_manifold_notebooks(ctx.model_key, pascal_name, output_root)
+
+    print(
+        f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for"
+        f" {pascal_name}."
+    )
+    return ManifoldOutcome(ctx.model_key, output_root, samples=len(final_index),
+                           containers_written=containers_written)
+
+
+def _compile_manifold(args: argparse.Namespace, settings: CompileSettings,
+                      model_key: str, model_config: dict[str, Any]) -> ManifoldOutcome:
+    """Compile one registry entry into its manifold folder."""
+    task = detect_task(model_key)
+    pascal_name = model_config.get("name", model_key.replace("_", ""))
+    full_name = f"{settings.prefix_str}{pascal_name}{settings.suffix_str}"
+    output_root = OUT_PARENT / full_name
+    _create_layout(output_root, model_config, task)
+
+    print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
+
+    # ─── FOREX MANIFOLD ────────────────────────────────────────────────────
+    if is_forex(model_config):
+        return compile_forex_manifold(model_key, model_config, output_root, full_name)
+
+    # ─── NON-FOREX MANIFOLDS ──────────────────────────────────────────────
+    ctx = ManifoldContext(model_key, model_config, task, pascal_name, output_root,
+                          ExistingSamples())
+    return _compile_samples(args, settings, ctx)
+
 
 def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[ManifoldOutcome]:
     """Compile every requested manifold and report what each one produced.
@@ -191,1076 +248,16 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     ``finalize_compile`` only after a successful compile.
     """
     args = parsed_args if parsed_args is not None else parse_compile_args()
-
-    # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
-    if os.name == 'nt':
-        def signal_handler(_sig, _frame):
-            print("\n[INTERRUPT] Emergency termination requested. Mission aborted.")
-            os._exit(1)
-        signal.signal(signal.SIGINT, signal_handler)
+    install_interrupt_handler()
+    settings = prepare_compile(args)
 
     outcomes: list[ManifoldOutcome] = []
-
-    min_gb = META.get("global_constraints", {}).get("min_size_gb", 0.1)
-    max_gb = (
-        args.max_gb
-        if args.max_gb is not None
-        else META.get("global_constraints", {}).get("max_size_gb", 50.0)
-    )
-    prefix_str = META.get("name_prefix", "")
-    suffix_str = args.suffix if args.suffix is not None else META.get("name_suffix", "")
-
-    shared_root = INPUT_ROOT
-    # Pre-load models globally once to prevent multiprocess race conditions on HF cache
-    print("[PRE-FLIGHT] Analyzing task requirements...")
-    diffusion = load_model_module("diffusion")
-    encoder = load_model_module("encoder")
-
-    # Analyze if any target models need AI augmentation
-    needs_captioning = False
-    needs_styling = False
-
-    for model_key in DATASETS_META:
-        if args.model and model_key != args.model:
-            continue
-        task = detect_task(model_key)
-        if task == "diffusion":
-            needs_captioning = True
-        if task == "diffusion" or model_key == "nima_aesthetic":
-            needs_styling = True
-
-    if needs_captioning and not args.no_vetting:
-        print("[PRE-FLIGHT] Caching CaptionSentry (BLIP)...")
-        tmp = diffusion.CaptionSentry(device="cpu")
-        del tmp
-
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    if needs_styling and not args.no_vetting:
-        if needs_captioning:
-            print("[PRE-FLIGHT] Caching CLIPManifold...")
-            _ = encoder.CLIPManifold(device="cpu")
-
-    print("[PRE-FLIGHT] Pre-flight analysis complete.")
-
-    # 2026 Resilience: Adaptive worker scaling (v5.1)
-    final_workers = args.workers if args.workers else CONFIG.get("num_workers", 4)
-
-    if not args.workers and final_workers > 8:
-        print(
-            "[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to"
-            " override."
-        )
-        final_workers = 8
-
-    # 2026 DPED Optimization: Pre-cache canon paths to avoid O(N) exists() calls
-    dped_canon_paths = set()
     for model_key, model_config in DATASETS_META.items():
         if args.model and model_key != args.model:
             continue
-        for ref_entry in cast("list[dict[str, Any]]", model_config.get("refs", [])):
-            if "dped" in ref_entry["ref"].lower():
-                slug = ref_entry["ref"].split("/")[-1].lower()
-                canon_roots = [
-                    shared_root / slug / "iphone2canon" / "train" / "canon",
-                    shared_root / slug / "iphone2canon" / "test" / "canon"
-                ]
-                for cr in canon_roots:
-                    if cr.exists():
-                        print(
-                            f"[DPED] Caching ground truth manifold for {slug} ({cr.parent.name})..."
-                        )
-                        for r, _, f_list in os.walk(cr):
-                            for f in f_list:
-                                dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
-
-    max_workers = max(1, final_workers)
-    print(f"[PRE-FLIGHT] Python: {sys.executable}")
-    print(f"[PRE-FLIGHT] Hardware: {get_device_info()} | Active Workers: {max_workers}", flush=True)
-
-    if max_workers > 4 and args.no_vetting and args.no_labeling:
-        print("[I/O-GEAR] WARNING: High worker count detected for I/O-bound task.")
-        print("   -> On mechanical HDDs, this will cause SEVERE thrashing (seeking contention).")
-        print("   -> If performance is < 10it/s, restart with --workers 2 or 4.")
-
-    ExecutorClass = ThreadPoolExecutor
-
-    for model_key, model_config in DATASETS_META.items():
-        if args.model and model_key != args.model:
-            continue
-        task = detect_task(model_key)
-
-        pascal_name = model_config.get("name", model_key.replace("_", ""))
-        prefix = pascal_name
-
-        output_root = OUT_PARENT / f"{prefix_str}{pascal_name}{suffix_str}"
-        output_root_str = str(output_root)
-        db_path = output_root / "manifold_registry.db"
-
-        if not output_root.exists():
-            if (
-                model_config.get("dataset_type") != "forex"
-                and model_config.get("acquisition_mode") != "mt5_terminal"
-            ):
-                for s in ["train", "val"]:
-                    (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
-                if task in ["quality", "classification", "detection", "pose", "yolo"]:
-                    for s in ["train", "val"]:
-                        (output_root / "labels" / s).mkdir(parents=True, exist_ok=True)
-                elif task == "segmentation":
-                    for s in ["train", "val"]:
-                        (output_root / "masks" / s).mkdir(parents=True, exist_ok=True)
-                elif task in ["restoration", "super-resolution"]:
-                    for s in ["train", "val"]:
-                        (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
-
-        print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
-
-        # ─── FOREX MANIFOLD ────────────────────────────────────────────────────
-        if (
-            model_config.get("dataset_type") == "forex"
-            or model_config.get("acquisition_mode") == "mt5_terminal"
-        ):
-            print(f"\n[FOREX MANIFOLD] Compiling Foundation Matrix: {output_root.name}...")
-            output_root.mkdir(parents=True, exist_ok=True)
-
-            for empty_dir in [
-                output_root / "images",
-                output_root / "labels",
-                output_root / "masks",
-                output_root / "targets",
-            ]:
-                if empty_dir.exists():
-                    shutil.rmtree(empty_dir)
-
-            pairs_list = model_config.get('pairs', [])
-            tfs_list = model_config.get('timeframe_rungs', [1, 5, 15, 60, 240, 1440])
-            start_date_str = model_config.get('start_date', '2019-01-01')
-            lookback_bars = model_config.get('lookback_bars', 168)
-
-            full_name = prefix_str + pascal_name + suffix_str
-
-            print(
-                f" -> Engaging MT5 Auto-Acquisition Bridge for {len(pairs_list)} symbols across"
-                f" {len(tfs_list)} timeframes..."
-            )
-            try:
-                dataset_defs = [{
-                    "name": full_name,
-                    "pairs": pairs_list,
-                    "timeframes": tfs_list,
-                    "start_date": start_date_str
-                }]
-
-                load_forex_module("pipeline").run_download_pipeline(
-                    dataset_defs=dataset_defs,
-                    out_dir=str(output_root.parent),
-                    login=None, password=None, server=None
-                )
-            except Exception:
-                logger.exception("Temporal compilation of %s dropped", full_name)
-                raise
-
-            try:
-                gen_train_nb, gen_colab_nb = _get_training_suite_notebook_generators()
-                target_model = "forex_predictor" if model_key == "forex_universe" else model_key
-                gen_train_nb(
-                    pascal_name,
-                    target_model,
-                    str(output_root / f"{target_model}_kaggle_training.ipynb"),
-                )
-                gen_colab_nb(
-                    pascal_name,
-                    target_model,
-                    str(output_root / f"{target_model}_colab_training.ipynb"),
-                )
-            except (ImportError, OSError, ValueError) as e:
-                logger.warning("Forex notebook generation skipped: %s", e)
-
-            category_str = model_config.get('category', 'Forex & Financial Time-Series')
-            yaml_info = {
-                'name': pascal_name,
-                'dataset_type': 'forex',
-                'category': category_str,
-                'pairs': pairs_list,
-                'timeframe_rungs': tfs_list,
-                'start_date': start_date_str,
-                'lookback_bars': lookback_bars,
-                'last_processed': datetime.now().isoformat()
-            }
-            with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
-                yaml.dump(yaml_info, f, default_flow_style=False, explicit_start=True)
-
-            try:
-                generate_dataset_docs(
-                    output_root, final_index=None, pascal_name=pascal_name, overrides=yaml_info
-                )
-            except DOC_GENERATION_ERRORS as e:
-                logger.warning("Documentation engine skipped for %s: %s", pascal_name, e)
-
-            print(
-                "[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n"
-            )
-            outcomes.append(ManifoldOutcome(model_key, output_root, samples=0, sample_based=False))
-            continue
-
-        # ─── NON‑FOREX MANIFOLDS ──────────────────────────────────────────────
-        seen_hashes = set()
-
-        # 2026 Phase 1.3: Registry lives inside the manifold folder.
-        _root = (
-            Path(__file__).resolve().parent.parent
-            if Path(__file__).parent.name == "core"
-            else Path(__file__).resolve().parent
-        )
-        legacy_path = _root / ".cache" / f"registry_{pascal_name}.db"
-        conn = initialize_registry(db_path, migrate_from=legacy_path)
-
-        existing_names = set()
-        if db_path.exists():
-            print(f"[RESUMPTION] Scanning {pascal_name} registry for existing entries...")
-            try:
-                rows = conn.execute("SELECT name FROM registry").fetchall()
-                existing_names = {r[0] for r in rows}
-                if existing_names:
-                    print(
-                        f"[OK] Found {len(existing_names)} existing samples. Resuming from"
-                        " checkpoint."
-                    )
-            except sqlite3.Error as e:
-                logger.warning("Resumption scan of %s failed: %s", db_path, e)
-
-        # 2026 Resilience: High-Speed Physical Scan (SOTA v6.2)
-        existing_on_disk = set()
-        img_dir = output_root / "images"
-        if img_dir.exists():
-            print(
-                f"[RESUMPTION] Surgical scan of {pascal_name} manifold for physical consistency..."
-            )
-            count = 0
-            _buf = []
-            for split in ["train", "val"]:
-                split_path = img_dir / split
-                if not split_path.exists():
-                    continue
-                try:
-                    with os.scandir(str(split_path)) as it:
-                        for entry in it:
-                            if entry.is_file():
-                                fname = entry.name
-                                dot_idx = fname.find('.')
-                                _buf.append(
-                                    fname[:dot_idx].lower() if dot_idx != -1 else fname.lower()
-                                )
-                                count += 1
-                                if count % 5000 == 0:
-                                    print(f"   -> Indexed {count // 1000}k samples...", flush=True)
-                                    existing_on_disk.update(_buf)
-                                    _buf = []
-                except OSError as exc:
-                    print(f"[WARNING] Directory indexing interrupted: {exc}")
-            existing_on_disk.update(_buf)
-            _buf = None
-
-            print(
-                f"[OK] Physical discovery complete: {len(existing_on_disk)} samples verified on"
-                " disk."
-            )
-
-        if args.no_vetting and args.no_labeling:
-            init_worker(CONFIG, dped_canon_paths, existing_on_disk)
-            executor_ctx = ExecutorClass(max_workers=max_workers)
-        else:
-            executor_ctx = ExecutorClass(
-                max_workers=max_workers,
-                initializer=init_worker,
-                initargs=(CONFIG, dped_canon_paths, existing_on_disk),
-            )
-
-        executor = executor_ctx
-
-        # 2026 Orphan Rescue
-        lower_registry = {n.lower() for n in existing_names}
-        orphans = [k for k in existing_on_disk if k not in lower_registry]
-        lower_registry = None
-
-        if orphans:
-            print(f"[REPAIR] Found {len(orphans)} orphans on disk. Commencing batch adoption...")
-            orphan_chunk_size = 100000
-            total_adopted = 0
-            for i in range(0, len(orphans), orphan_chunk_size):
-                chunk = orphans[i:i + orphan_chunk_size]
-                orphan_entries = []
-                for o_key in chunk:
-                    parts = o_key.split("_")
-                    o_source = "_".join(parts[1:-1]) if len(parts) >= 3 else "unknown"
-                    o_split = "train"
-                    orphan_entries.append((
-                        o_key, o_source, task, o_split, "adopted", 1.0, None, None, None, None
-                    ))
-
-                conn.executemany(
-                    """
-                    INSERT OR IGNORE INTO registry (
-                        name, source, task, split, hash,
-                        nima_score, caption, style_tag, clip_latent, img_bytes
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    orphan_entries,
-                )
-                conn.commit()
-                total_adopted += len(orphan_entries)
-                print(
-                    f"   -> Adopted {total_adopted // 1000}k / {len(orphans) // 1000}k orphans...",
-                    flush=True,
-                )
-
-            print(f"[OK] [REPAIR] {total_adopted} orphans successfully merged into registry.")
-            existing_names.update(orphans)
-            orphans = None
-
-        sfw_tasks: list[TaskItem] = []
-        nsfw_tasks: list[TaskItem] = []
-
-        for ref_entry in cast("list[dict[str, Any]]", model_config.get("refs", [])):
-            ref = ref_entry["ref"]
-            tag = ref_entry.get("tag", "sfw")
-            task_tag = None
-            m_name = ""
-            if ref.startswith("manifold://"):
-                m_name = ref.replace("manifold://", "")
-
-                current_suffix = "" if m_name.endswith("MultiTask") else suffix_str
-                m_path = OUT_PARENT / f"{prefix_str}{m_name}{current_suffix}"
-
-                if m_path.exists():
-                    dataset = m_path / "images"
-                    if not dataset.exists():
-                        dataset = m_path / "targets"
-                    if not dataset.exists():
-                        dataset = m_path / "masks"
-
-                    slug = f"compiled_{m_name}"
-                    mapping = {
-                        "NafNetDebluring": "deblur",
-                        "NafNetDenoising": "denoise",
-                        "MprNetDeraining": "derain",
-                        "FfaNetIndoor": "dehaze_indoor",
-                        "FfaNetOutdoor": "dehaze_outdoor",
-                        "MirNetLowLight": "lowlight",
-                        "MirNetExposure": "exposure",
-                        "UltraZoom": "superres",
-                        "FilmRestorer": "vintage",
-                        "CodeFormer": "face_restorer",
-                        "ParseNet": "face_parser"
-                    }
-                    task_tag = mapping.get(m_name)
-                    print(
-                        f"[RECIRCULATION] Using compiled manifold: {m_name} | Task Tag: {task_tag}"
-                    )
-                else:
-                    print(f"[SKIP] Manifold {m_name} not found at {m_path}")
-                    continue
-            else:
-                slug = (
-                    ref.replace('hf://', '')
-                    .replace('gh://', '')
-                    .replace('kaggle://', '')
-                    .split('/')[-1]
-                )
-                if ":" in slug:
-                    repo_slug = slug.split(":")[0]
-                    target_slug = (
-                        slug.split(":")[-1]
-                        .replace(".tgz", "")
-                        .replace(".tar.gz", "")
-                        .replace(".zip", "")
-                    )
-                    dataset = shared_root / repo_slug / target_slug
-                    slug = target_slug
-                else:
-                    dataset = shared_root / slug
-
-            if task_tag:
-                c_slug = f"{task_tag}_compiled_{m_name}"
-            else:
-                c_slug = clean_slug(slug)
-            if not dataset.is_dir():
-                dataset = shared_root / slug.lower()
-                if not dataset.is_dir():
-                    try:
-                        matches = [
-                            d
-                            for d in shared_root.iterdir()
-                            if d.is_dir() and slug.lower() in d.name.lower()
-                        ]
-                        if matches:
-                            dataset = matches[0]
-                            print(f"[DISCOVERY] Mapping {ref} -> {dataset.name}")
-                    except OSError as exc:
-                        logger.warning(
-                            "Discovery scan for %s in %s failed: %s", slug, shared_root, exc
-                        )
-
-            if not dataset.is_dir():
-                print(f"[SKIP] Source {ref} not found in {shared_root}")
-                continue
-
-            fmt, ann_path = detect_annotations(dataset)
-            ann_data: Any = None
-            ann_data_list = []
-            if fmt == "coco":
-                ann_data = parse_coco(_require_ann_path(ann_path))
-            elif fmt == "parquet":
-                ann_paths = list(dataset.rglob("*.parquet"))
-                ann_data_list = []
-                for ap in ann_paths:
-                    try:
-                        ann_data_list.append(parse_parquet(ap))
-                    except PARQUET_READ_ERRORS as e:
-                        logger.warning("Failed to parse %s: %s", ap, e)
-                ann_data = ann_data_list[0] if ann_data_list else None
-            elif fmt == "matlab":
-                ann_data = parse_matlab(_require_ann_path(ann_path))
-            elif fmt in ["xml", "yolo"]:
-                ann_data = _require_ann_path(ann_path)
-
-            valid_exts = {
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".webp",
-                ".safetensors",
-                ".tiff",
-                ".tif",
-                ".bmp",
-                ".npy",
-            }
-            images = list(_fast_scan(str(dataset), valid_exts))
-
-            is_virtual = False
-            if not images and fmt == "parquet" and ann_data_list:
-                for pq_path, _, cols in ann_data_list:
-                    if "image" in cols or "pixel_values" in cols:
-                        is_virtual = True
-                        print(
-                            f"[VIRTUAL] {slug} identified as Sharded Parquet dataset"
-                            f" ({len(ann_data_list)} shards)."
-                        )
-                        break
-
-            is_lazy = False
-            if not images and not is_virtual and fmt == "parquet" and ann_data_list:
-                for pq_path, _, cols in ann_data_list:
-                    if "url" in cols:
-                        is_lazy = True
-                        print(
-                            f"[LAZY] {slug} identified as URL-based manifest. Commencing background"
-                            " retrieval..."
-                        )
-                        break
-
-            if is_lazy:
-                dl_dir = dataset / "downloads"
-                dl_dir.mkdir(exist_ok=True)
-
-                to_download = []
-                for pq_path, mapping, cols in ann_data_list:
-                    url_col = mapping.get("url", "url")
-                    key_col = mapping.get("key", "key")
-                    if url_col in cols:
-                        try:
-                            df = pd.read_parquet(pq_path)
-                        except PARQUET_READ_ERRORS as e:
-                            logger.warning(
-                                "Skipping corrupted lazy parquet shard %s: %s", pq_path, e
-                            )
-                            continue
-                        for row in df.itertuples():
-                            url = getattr(row, url_col)
-                            key = str(getattr(row, key_col, hashlib.md5(url.encode()).hexdigest()))
-                            ext = ".jpg"
-                            dest = dl_dir / f"{key}{ext}"
-                            if not dest.exists():
-                                to_download.append((url, str(dest)))
-
-                if to_download:
-                    print(
-                        f"[RETRIEVAL] Downloading {len(to_download)} missing images for {slug}..."
-                    )
-                    with requests.Session() as session:
-                        with ThreadPoolExecutor(max_workers=16) as dl_executor:
-                            dl_tasks = [
-                                dl_executor.submit(download_image, url, dest, session)
-                                for url, dest in to_download
-                            ]
-                            for _ in tqdm(
-                                as_completed(dl_tasks),
-                                total=len(dl_tasks),
-                                desc="   -> Downloading",
-                                leave=False,
-                            ):
-                                pass
-
-                images = list(_fast_scan(str(dl_dir), valid_exts))
-
-            # PRE-COMPUTE ANNOTATION LOOKUPS TO AVOID O(N^2) BOTTLENECKS
-            # Explicit types here are essential: without them, the dicts infer
-            # as dict[str, Unknown] and downstream .get() lookups lose their
-            # key/value types, causing false positives on every consumer.
-            coco_file_to_id: dict[str, int] = {}
-            parquet_map: dict[str, Any] = {}
-            matlab_map: dict[str, list[dict[str, Any]]] = {}
-
-            if fmt == "coco" and ann_data:
-                images_meta, anns_meta = cast(CocoAnnData, ann_data)
-                for k, v in images_meta.items():
-                    coco_file_to_id[v["file_name"]] = k
-            elif fmt == "parquet" and ann_data and not is_virtual:
-                pq_path, mapping, cols = cast(ParquetAnnData, ann_data)
-                try:
-                    df = pd.read_parquet(str(pq_path))
-                except PARQUET_READ_ERRORS as e:
-                    logger.warning("Skipping corrupted parquet %s: %s", pq_path, e)
-                    df = pd.DataFrame()
-                file_col = mapping.get("file_name", "file_name")
-                if (
-                    file_col in df.columns
-                    and len(df) > 0
-                    and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str))
-                ):
-                    for fname, group in df.groupby(file_col):
-                        parquet_map[str(fname)] = group
-            elif fmt == "matlab" and ann_data:
-                data, key = cast(MatlabAnnData, ann_data)
-                if key in data:
-                    for entry in data[key]:
-                        if not isinstance(entry, dict):
-                            logger.debug("Skipping non-mapping matlab entry: %r", entry)
-                            continue
-                        fname = entry.get("image_name", entry.get("name"))
-                        if fname:
-                            matlab_map.setdefault(fname, []).append(entry)
-
-            if not is_virtual:
-                sample_count = len(images)
-            else:
-                try:
-                    sample_count = sum(
-                        pd.read_parquet(d[0], columns=[]).shape[0] for d in ann_data_list
-                    )
-                except PARQUET_READ_ERRORS as exc:
-                    logger.warning("Could not count parquet samples: %s", exc)
-                    sample_count = 0
-
-            model_val_split = model_config.get("val_split", None)
-            if model_val_split is not None:
-                train_prob = 1.0 - float(model_val_split)
-            elif task == "diffusion" or "image_to_text" in model_key:
-                train_prob = 1.0
-            else:
-                train_prob = CONFIG["train_split"]
-
-            if is_virtual:
-                global_idx = 0
-                skip_lbl = not model_config.get("labeling", True)
-
-                for pq_path, mapping, cols in ann_data_list:
-                    try:
-                        num_rows = load_parquet().read_metadata(str(pq_path)).num_rows
-                    except (ImportError, *PARQUET_READ_ERRORS) as meta_exc:
-                        logger.debug(
-                            "pyarrow metadata read failed for %s (%s); counting rows via pandas",
-                            pq_path,
-                            meta_exc,
-                        )
-                        try:
-                            num_rows = pd.read_parquet(pq_path, columns=[]).shape[0]
-                        except PARQUET_READ_ERRORS as e:
-                            logger.warning(
-                                "Skipping corrupted virtual parquet shard %s: %s", pq_path, e
-                            )
-                            continue
-
-                    if num_rows == 0:
-                        continue
-
-                    task_item: TaskItem = (
-                        process_parquet_shard,
-                        pq_path,
-                        prefix,
-                        c_slug,
-                        global_idx,
-                        task,
-                        fmt,
-                        output_root_str,
-                        skip_lbl,
-                        train_prob,
-                        existing_names,
-                        existing_on_disk,
-                        1.0,
-                        num_rows,
-                    )
-
-                    if tag == "nsfw":
-                        nsfw_tasks.append(task_item)
-                    else:
-                        sfw_tasks.append(task_item)
-
-                    global_idx += num_rows
-
-            else:
-                skip_lbl = not model_config.get("labeling", True)
-
-                val_real_count = 0
-                val_fake_count = 0
-
-                for i, img_path_str in enumerate(images):
-                    name = f"{prefix}_{c_slug}_{i:09d}"
-
-                    if name in existing_names or name.lower() in existing_on_disk:
-                        continue
-
-                    img_path = Path(img_path_str)
-
-                    if task == "restoration":
-                        p_low = img_path_str.lower()
-                        m_low = model_key.lower()
-                        if "deraining" not in m_low and "multitask" not in m_low:
-                            if any(k in p_low for k in ["rain", "droplet"]):
-                                continue
-                        if "denoising" in m_low:
-                            if any(k in p_low for k in ["blur", "haze", "lowlight", "exposure"]):
-                                continue
-                        if "debluring" in m_low:
-                            if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]):
-                                continue
-
-                    split = "train" if random.random() < train_prob else "val"
-
-                    if model_key == "codeformer" and "realvsfakefaces" in prefix.lower():
-                        if "real" in img_path.parent.name.lower():
-                            if val_real_count < 1000:
-                                split = "val"
-                                val_real_count += 1
-                            else:
-                                split = "train"
-                        elif "fake" in img_path.parent.name.lower():
-                            if val_fake_count < 1000:
-                                split = "val"
-                                val_fake_count += 1
-                            else:
-                                split = "train"
-
-                    specific_ann_data: Any = None
-                    if fmt == "coco" and ann_data:
-                        images_meta, anns_meta = cast(CocoAnnData, ann_data)
-                        img_id = coco_file_to_id.get(img_path.name)
-                        if img_id is not None:
-                            specific_ann_data = anns_meta.get(img_id, [])
-                    elif fmt == "parquet" and ann_data:
-                        pq_path, mapping, cols = cast(ParquetAnnData, ann_data)
-                        df_subset = parquet_map.get(img_path.name)
-                        if df_subset is not None and not df_subset.empty:
-                            specific_ann_data = (df_subset, mapping)
-                    elif fmt == "matlab" and ann_data:
-                        specific_ann_data = matlab_map.get(img_path.name, [])
-                    elif fmt == "safetensors" and ann_data:
-                        specific_ann_data = ann_data
-                    elif fmt in ["xml", "yolo", "npz"] and ann_data and ann_path:
-                        ext = ".xml" if fmt == "xml" else (".txt" if fmt == "yolo" else ".npz")
-                        ann_file = ann_path / f"{img_path.stem}{ext}"
-                        if ann_file.exists():
-                            specific_ann_data = str(ann_file)
-
-                    if task == "diffusion":
-                        task_item: TaskItem = (
-                            process_diffusion,
-                            img_path,
-                            prefix,
-                            c_slug,
-                            i,
-                            split,
-                        )
-                    else:
-                        task_item: TaskItem = (
-                            process_image,
-                            img_path,
-                            prefix,
-                            c_slug,
-                            i,
-                            task,
-                            fmt,
-                            specific_ann_data,
-                            split,
-                            output_root_str,
-                            skip_lbl,
-                        )
-
-                    if tag == "nsfw":
-                        nsfw_tasks.append(task_item)
-                    else:
-                        sfw_tasks.append(task_item)
-
-                print(f"   -> [{slug}] Discovered {sample_count} source tensors.")
-
-        # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
-        target_nsfw_ratio = float(model_config.get("nsfw_ratio", 0))
-
-        sfw_count = _get_count(sfw_tasks)
-        nsfw_count = _get_count(nsfw_tasks)
-
-        if target_nsfw_ratio > 0 and nsfw_count > 0:
-            max_nsfw = int(sfw_count * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
-            if nsfw_count > max_nsfw:
-                print(
-                    f"[BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio * 100}% cap."
-                    f" Capping at {max_nsfw} samples."
-                )
-                nsfw_keep_prob = max_nsfw / nsfw_count
-
-                new_nsfw_tasks: list[TaskItem] = []
-                for item in nsfw_tasks:
-                    if item[0].__name__ == "process_parquet_shard":
-                        new_item = list(item)
-                        new_item[_SHARD_KEEP_PROB_IDX] = nsfw_keep_prob
-                        new_item[_SHARD_NUM_ROWS_IDX] = int(
-                            item[_SHARD_NUM_ROWS_IDX] * nsfw_keep_prob
-                        )
-                        new_nsfw_tasks.append(tuple(new_item))
-                    else:
-                        if random.random() <= nsfw_keep_prob:
-                            new_nsfw_tasks.append(item)
-                nsfw_tasks = new_nsfw_tasks
-
-        all_tasks: list[TaskItem] = sfw_tasks + nsfw_tasks
-
-        if not all_tasks:
-            print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
-            outcomes.append(ManifoldOutcome(model_key, output_root, samples=len(existing_names)))
-            continue
-
-        print(f"[MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
-
-        compiled_bytes = 0
-        processed_count = len(existing_names)
-        if not torch.cuda.is_available() and len(all_tasks) > 50000:
-            if not args.no_labeling or not args.no_vetting:
-                print(
-                    f"[CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling"
-                    " High-Speed Mode.",
-                    flush=True,
-                )
-                args.no_labeling = True
-                args.no_vetting = True
-
-        desc_label = (
-            "[PASS 1] Extraction & Vetting"
-            if not args.no_vetting and task in ["quality", "classification"]
-            else "[PASS 1] Extraction & Processing"
-        )
-
-        if not args.finalize:
-            batch_size = 100 if args.no_vetting else 50
-            task_batches = [
-                all_tasks[i : i + batch_size] for i in range(0, len(all_tasks), batch_size)
-            ]
-
-            pbar = None
-            total_items_to_process = sum(_count_one(t) for t in all_tasks)
-            with tqdm(
-                total=total_items_to_process + len(existing_names),
-                initial=len(existing_names),
-                desc=desc_label,
-                smoothing=0.1,
-            ) as pbar:
-                # --- 2026 Resilience: SAFE-START WARMUP (SOTA v6.3) ---
-                warmup_limit = min(500, len(all_tasks))
-                if warmup_limit > 0:
-                    print(
-                        f"[SAFE-START] Warming up manifold (Serial Pass: {warmup_limit} samples)..."
-                    )
-                    for i in range(warmup_limit):
-                        task_args = all_tasks[i]
-                        res = task_args[0](*task_args[1:])
-                        pbar.update(1)
-                        if res:
-                            if not isinstance(res, list):
-                                res = [res]
-                            batch_entries = []
-                            for r in res:
-                                if r:
-                                    batch_entries.append((
-                                        r["name"], r["source"], r["task"], r["split"], r["hash"],
-                                        r["nima_score"], r.get("caption"), r.get("style_tag"),
-                                        r.get("clip_latent"), r.get("img_bytes")
-                                    ))
-                            if batch_entries:
-                                conn.executemany(
-                                    """
-                                    INSERT OR IGNORE INTO registry (
-                                        name, source, task, split, hash,
-                                        nima_score, caption, style_tag, clip_latent, img_bytes
-                                    )
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                    batch_entries,
-                                )
-                        if i % 100 == 99:
-                            conn.commit()
-                    print("[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
-
-                remaining_tasks = all_tasks[warmup_limit:]
-                task_batches = [
-                    remaining_tasks[i : i + batch_size]
-                    for i in range(0, len(remaining_tasks), batch_size)
-                ]
-
-                futures = set()
-                batch_iter = iter(task_batches)
-
-                num_initial = min(max_workers * 4, len(task_batches))
-                for _ in range(num_initial):
-                    try:
-                        batch = next(batch_iter)
-                        futures.add(executor.submit(batch_worker, batch))
-                    except StopIteration:
-                        break
-
-                try:
-                    while futures:
-                        done, futures = wait(futures, return_when=FIRST_COMPLETED)
-                        batch_entries = []
-                        for future in done:
-                            try:
-                                batch_results = future.result()
-                                pbar.update(len(batch_results))
-                                for res in batch_results:
-                                    if res:
-                                        if (
-                                            CONFIG["enable_dedup"]
-                                            and not args.no_hash
-                                            and res["hash"] in seen_hashes
-                                        ):
-                                            continue
-                                        if res["hash"]:
-                                            seen_hashes.add(res["hash"])
-                                        compiled_bytes += res.get("size", 0)
-                                        batch_entries.append(
-                                            (
-                                                res["name"],
-                                                res["source"],
-                                                res["task"],
-                                                res["split"],
-                                                res["hash"],
-                                                res["nima_score"],
-                                                res.get("caption"),
-                                                res.get("style_tag"),
-                                                res.get("clip_latent"),
-                                                res.get("img_bytes"),
-                                            )
-                                        )
-                                        processed_count += 1
-                                        if (compiled_bytes / (1024**3)) >= max_gb:
-                                            for f in futures:
-                                                f.cancel()
-                                            futures.clear()
-                                            break
-                            except (BrokenExecutor, CancelledError, pickle.PicklingError) as e:
-                                logger.error("Worker batch failed: %s", e)
-
-                        if batch_entries:
-                            conn.executemany(
-                                """
-                                INSERT OR IGNORE INTO registry (
-                                    name, source, task, split, hash,
-                                    nima_score, caption, style_tag, clip_latent, img_bytes
-                                )
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                                batch_entries,
-                            )
-                            conn.commit()
-
-                        for _ in range(len(done)):
-                            try:
-                                batch = next(batch_iter)
-                                futures.add(executor.submit(batch_worker, batch))
-                            except StopIteration:
-                                break
-                except KeyboardInterrupt:
-                    os._exit(1)
-
-        conn.commit()
-
-        compiled_gb = compiled_bytes / (1024**3)
-        if compiled_gb < min_gb:
-            print(
-                f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold"
-                f" constraint ({min_gb:.2f}GB)."
-            )
-
-        # STEP 2: Style Clustering
-        print("[STYLING] Commencing Style Clustering on all extracted latents...")
-        cursor = conn.execute("SELECT id, clip_latent FROM registry WHERE clip_latent IS NOT NULL")
-        ids, latents = [], []
-        for row in cursor:
-            _lat = np.frombuffer(row[1], dtype=np.float32)
-            if len(_lat) > 0:
-                ids.append(row[0])
-                latents.append(_lat)
-
-        if latents and len(latents) > 0 and len(latents[0]) > 0:
-            latent_matrix = np.stack(latents)
-            n_clusters = int(CONFIG.get("n_style_clusters", 16))
-            kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(latent_matrix)
-            labels_list = [int(x) for x in kmeans.labels_]
-            for i, cid in tqdm(
-                zip(ids, labels_list), total=len(ids), desc="[STYLING] Updating Clusters"
-            ):
-                conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (cid, i))
-            conn.commit()
-        else:
-            print("[STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
-
-        # PASS 2: Balanced Interleaving & Sharding per Dataset
-        print("[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
-
-        shard_dir = None
-        has_diffusion = (
-            conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone()
-            is not None
-        )
-        if has_diffusion:
-            shard_dir = output_root / "shards"
-            shard_dir.mkdir(parents=True, exist_ok=True)
-
-        unique_sources = [
-            r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()
-        ]
-
-        final_index = []
-        for source in unique_sources:
-            cursor = conn.execute(
-                "SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,)
-            )
-            rows = cursor.fetchall()
-
-            if has_diffusion and shard_dir is not None:
-                shard_name = f"{prefix_str}{source}{suffix_str}.tar"
-                print(f"[SHARD] Writing {shard_name}...")
-                sink = WdsTarWriter(str(shard_dir / shard_name))
-            else:
-                sink = None
-
-            for row in rows:
-                res = {
-                    "id": row[0],
-                    "name": row[1],
-                    "source": row[2],
-                    "task": row[3],
-                    "split": row[4],
-                    "hash": row[5],
-                    "nima_score": row[6],
-                    "caption": row[7],
-                    "style_tag": row[8],
-                    "cluster_id": row[11],
-                }
-
-                if res["task"] == "diffusion" and row[10] and sink:
-                    sink.write(
-                        {
-                            "__key__": res["name"],
-                            "jpg": row[10],
-                            "txt": res["caption"],
-                            "json": json.dumps(
-                                {
-                                    "style": res["style_tag"],
-                                    "cluster": res["cluster_id"],
-                                    "source": res["source"],
-                                }
-                            ),
-                        }
-                    )
-                final_index.append(res)
-
-            if sink:
-                sink.close()
-
-        random.seed(42)
-        random.shuffle(final_index)
-        with open(output_root / "index.json", "w", encoding="utf-8") as f:
-            json.dump(final_index, f, indent=2)
-
-        remove_empty_dirs(output_root)
-
-        generate_dataset_docs(output_root, final_index, pascal_name)
-
-        containers_written: tuple[str, ...] = ()
-        if getattr(args, "also_format", None):
-            try:
-                extra_formats = parse_also_format(args.also_format)
-                if extra_formats:
-                    print(
-                        "[CONTAINER] Writing additional container format(s):"
-                        f" {', '.join(extra_formats)}..."
-                    )
-                    container_rc = migrate_manifold(
-                        root=output_root,
-                        formats=extra_formats,
-                        force_duplicate=getattr(args, "force_duplicate", False),
-                        accept_space_loss=getattr(args, "accept_space_loss", False),
-                    )
-                    if container_rc == 0:
-                        containers_written = tuple(f for f in extra_formats if f != "directory")
-                    else:
-                        print(
-                            f"[ERROR] Container writer exited with code {container_rc}; loose"
-                            " layout kept."
-                        )
-            except (ImportError, OSError, ValueError) as e:
-                logger.error("Failed writing additional container format: %s", e)
-
-        try:
-            gen_nb, gen_colab_nb = _get_training_suite_notebook_generators()
-
-            resolved_model = model_key
-            if not resolved_model:
-                clean_name = (
-                    pascal_name.replace("LemGendized", "")
-                    .replace("KaggleReady", "")
-                    .replace("Large", "")
-                    .replace("Mini", "")
-                )
-                resolved_model = re.sub(r'(?<!^)(?=[A-Z])', '_', clean_name).lower()
-
-            if "naf_net" in resolved_model:
-                resolved_model = resolved_model.replace("naf_net", "nafnet")
-            if "upn_v_2" in resolved_model:
-                resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
-
-            gen_nb(
-                pascal_name, resolved_model, output_root / f"{resolved_model}_kaggle_training.ipynb"
-            )
-            gen_colab_nb(
-                pascal_name, resolved_model, output_root / f"{resolved_model}_colab_training.ipynb"
-            )
-        except (ImportError, OSError, ValueError) as e:
-            logger.error("Could not generate training notebooks for %s: %s", pascal_name, e)
-
-        print(
-            f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for"
-            f" {pascal_name}."
-        )
-        executor.shutdown(wait=True)
-        outcomes.append(ManifoldOutcome(model_key, output_root, samples=len(final_index),
-                                        containers_written=containers_written))
-
+        outcomes.append(_compile_manifold(args, settings, model_key, model_config))
     return outcomes
 
-# ---------------- GENERATORS ----------------
 
 if __name__ == '__main__':
     compile_args = parse_compile_args()
