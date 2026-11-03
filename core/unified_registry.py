@@ -34,6 +34,20 @@ _WRITE_LOCK = threading.Lock()
 _ENTRY_INDENT = "  "
 
 
+class _IndentedSequenceDumper(yaml.SafeDumper):
+    """Safe dumper that indents block sequences under their key.
+
+    PyYAML writes ``key:`` followed by ``- item`` at the key's own indent;
+    the registry (and yamllint's default ``indentation`` rule) indents list
+    items one level below the key, so new entries match existing ones.
+    """
+
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
+        """Never emit indentless sequences."""
+        del indentless
+        super().increase_indent(flow, False)
+
+
 class RegistryEntryExistsError(ValueError):
     """Raised when a dataset key is already defined in the registry."""
 
@@ -64,12 +78,14 @@ def _find_datasets_block_end(lines: list[str]) -> int:
     return insert_at
 
 
-def _render_entry(key: str, entry: dict[str, Any], newline: str) -> list[str]:
+def render_entry(key: str, entry: dict[str, Any], newline: str) -> list[str]:
     """Serialize one dataset entry indented for the ``datasets:`` block."""
-    body = yaml.safe_dump(
-        {key: entry}, default_flow_style=False, sort_keys=False, allow_unicode=True
+    body = yaml.dump(
+        {key: entry}, Dumper=_IndentedSequenceDumper,
+        default_flow_style=False, sort_keys=False, allow_unicode=True,
     )
-    return [f"{_ENTRY_INDENT}{line}{newline}" for line in body.splitlines()]
+    # Blank lines (inside multi-line scalars) stay empty: no trailing spaces.
+    return [f"{_ENTRY_INDENT}{line}{newline}" if line else newline for line in body.splitlines()]
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -122,7 +138,7 @@ def add_dataset_entry(key: str, entry: dict[str, Any], path: Path | None = None)
             lines[-1] += newline
         insert_at = _find_datasets_block_end(lines)
         new_text = "".join(
-            lines[:insert_at] + _render_entry(key, entry, newline) + lines[insert_at:]
+            lines[:insert_at] + render_entry(key, entry, newline) + lines[insert_at:]
         )
 
         if yaml.safe_load(new_text) != merged:

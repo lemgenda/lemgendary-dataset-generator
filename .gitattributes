@@ -1,0 +1,3 @@
+# yamllint expects LF; keep YAML LF on every checkout (core.autocrlf).
+*.yaml text eol=lf
+*.yml text eol=lf

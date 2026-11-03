@@ -210,6 +210,15 @@ class TestRegistryWrite(_TempRegistryCase):
         with self.assertRaises(unified_registry.RegistryEntryExistsError):
             unified_registry.add_dataset_entry(existing_key, {"name": "X"})
 
+    def test_new_entry_indents_lists_and_keeps_blank_lines_empty(self) -> None:
+        """A rendered entry indents list items under their key and has no trailing spaces."""
+        entry = {"name": "X", "keywords": ["a", "b"], "description": "one\n\ntwo"}
+        lines = unified_registry.render_entry("x_key", entry, "\n")
+        self.assertIn("    keywords:\n", lines)
+        self.assertIn("      - a\n", lines)
+        self.assertFalse([line for line in lines if line.rstrip("\n") != line.rstrip()])
+        self.assertEqual(yaml.safe_load("".join(lines)), {"x_key": entry})
+
 
 class TestFinalizeCompile(unittest.TestCase):
     """finalize_compile exit codes and loose-layout purging."""

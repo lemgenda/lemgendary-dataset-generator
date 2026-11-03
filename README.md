@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.62-STABLE` |
+| **Version** | `v16.9.63-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,19 @@
 ---
 
 ## Changelog
+
+### v16.9.63 - Registry YAML Passes yamllint
+
+- `core/unified_registry.py`: new entries are rendered with an indented
+  sequence dumper (list items one level below their key, as yamllint's
+  `indentation` rule expects), and blank lines inside multi-line scalars no
+  longer get trailing spaces. `render_entry` is public and tested.
+- `unified_data.yaml`: every entry re-rendered with that dumper (87
+  indentation findings); the loaded data is unchanged.
+- `presets.yaml`: four descriptions over 120 characters are wrapped (same
+  string values).
+- New `.gitattributes` keeps `*.yaml` / `*.yml` LF on checkout, so
+  `core.autocrlf` no longer gives yamllint `new-lines` errors.
 
 ### v16.9.62 - Hub Script Passes PSScriptAnalyzer
 
