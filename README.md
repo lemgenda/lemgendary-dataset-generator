@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.50-STABLE` |
+| **Version** | `v16.9.51-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,19 @@
 ---
 
 ## Changelog
+
+### v16.9.51 - Pylint `too-many-*` Checks Re-enabled
+
+- **No Disabled Checks in `.pylintrc`**: the `disable=` list (the eight
+  `too-many-*` checks) is gone. After the module splits in v16.9.40 to
+  v16.9.50, the full repository reports 0 `too-many-*` findings, down from
+  309 at v16.9.38, and 1 `duplicate-code` finding, down from 33. The one
+  left is `QueueItemResponse` (the API schema) mirroring the
+  `ManifoldRegistryEntry` dataclass field for field.
+- **Reduce Route Test Fixed**: `test_command_is_accepted_by_tool_parser`
+  passes `cmd[3:]` to `manifold_reduce.main`. It used to pass `cmd[2:]`,
+  which still contained the `tools.manifold_reduce` module name. The test
+  runs only when torch is installed.
 
 ### v16.9.50 - `core/manifold_compile.py` Split; Compile Task Payload Objects
 

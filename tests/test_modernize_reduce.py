@@ -225,7 +225,7 @@ class TestReduceRoute(unittest.TestCase):
         )
         with patch.object(manifold_reduce, "reduce_dataset", return_value=0) as reduce_fn, \
                 patch("builtins.input", side_effect=AssertionError("input() called")):
-            self.assertEqual(manifold_reduce.main(cmd[2:]), 0)
+            self.assertEqual(manifold_reduce.main(cmd[3:]), 0)
         kwargs = reduce_fn.call_args.kwargs
         self.assertEqual(kwargs["dataset"], "LemGendizedAlpha")
         self.assertTrue(kwargs["assume_yes"])
