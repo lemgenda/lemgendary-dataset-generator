@@ -836,3 +836,70 @@ Ranked by priority:
 - **markdownlint:** not available; the check was manual.
 - **pyright:** could not be installed because the scratch path exceeded the
   Windows long-path limit.
+
+## Remediation Status
+
+Status of the Medium and Low findings on branch `fix/review-remediation`
+as of v16.9.56 (step L10). Each finding was re-checked against the code
+after the module splits of v16.9.36 to v16.9.51. The Critical and High
+findings (D-01 to D-07) were fixed in v16.9.23 to v16.9.27.
+
+| Finding | Status | Where |
+| --- | --- | --- |
+| D-08 preset/shard_ext dropped | Fixed | `3c5b577` (v16.9.55) |
+| D-09 `modernize` unreachable | Fixed | `af686ae` (v16.9.26) |
+| D-10 `llm validate` crash | Fixed | `1f51f09` (v16.9.25) |
+| D-11 CWD-relative paths | Fixed | `3c5b577` (v16.9.55) |
+| D-12 registry `task` ignored | Partly fixed | `3c5b577` (v16.9.55) |
+| D-13 `archive_manager` fallback | Fixed | `7054808` (v16.9.33), `3c5b577` |
+| D-14 `git clone` exit code | Fixed | `4843416` (v16.9.29) |
+| D-15 Kaggle probe always true | Fixed | `3c5b577` (v16.9.55) |
+| D-16 unknown job status exits 0 | Fixed | `3c5b577` (v16.9.55) |
+| D-17 job manager leaks and race | Fixed | `3c5b577` (v16.9.55) |
+| D-18 stale stats cache | Fixed | `3c5b577` (v16.9.55) |
+| D-19 import side effects | Fixed | `3c5b577` (v16.9.55) |
+| D-20 other defects | Fixed | see below |
+
+Notes:
+
+- **D-08**: the API builds the compile argv from the same option table as
+  the CLI. Unset encoding options stay unset, so presets apply.
+- **D-11**: `core/paths.py` anchors the registry, raw sets, `config.json`,
+  output root and server state on the project root.
+- **D-12**: `detect_task` now uses `task_override`, then `task`, then the
+  name heuristic (logged). Deferred: no registry entry sets `task` yet, so
+  `retinaface_mobilenet` (pose), `nima_authenticity` (quality),
+  `forex_universe` and `ai_helper_lemgend` (detection) are still classified
+  by name. Which task each should have is an owner decision; the four task
+  maps (`detect_task`, `MANIFOLD_TASK_MAP`, the training suite's map, the
+  compile layout table) are merged in step L7.
+- **D-13**: the Python fallback went in v16.9.33; the hub's
+  `archive_manager.py` fallback and script-path call went in v16.9.55.
+- **D-15**: the owner handle is one constant in `core/kaggle_identity.py`.
+  The Markdown templates in `core/docs/templates.py` still spell it in
+  their Kaggle URLs (document text, not configuration).
+- **D-20**: `ValueError` returning 500 is fixed in `3c5b577`; the remedy
+  text in `71000b4` (v16.9.31); the mojibake comment in `3c5b577`; the
+  hard-coded 7-Zip paths in `1c78df7` (v16.9.45, environment variables plus
+  `shutil.which`); the unused `index`, redefined `pbar` and B023 closure no
+  longer exist (ruff reports 0 since `da9871c`).
+
+Also closed in step L10:
+
+- Seven compiler bugs found during the module splits, with regression tests
+  (`b420c96`, v16.9.52).
+- Ruff 259 to 0 (`da9871c`, v16.9.53) and pylint 0 findings with no
+  disabled checks (`135aedd`, v16.9.54).
+
+Left for step L7 (cross-repository duplication):
+
+- Port 8100, defined in this repo (`api/server.py`, `commands/common.py`),
+  the GUI, the Environment Manager and the training suite.
+- Project inventories and the shell-out to `lem-env`
+  (`commands/env.py`, `api/routes/env.py`) instead of the Environment
+  Manager API.
+- Model and dataset lists: the GUI fallback presets and datasets, and the
+  training suite's per-model dataset map (`training/server/routes/gui.py`).
+- Pipeline steps and task maps shared with the training suite, including
+  the `training.notebooks` import in `core/compile_notebooks.py`.
+- The Kaggle owner handle, also used by the other repositories.
