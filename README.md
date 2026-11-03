@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.48-STABLE` |
+| **Version** | `v16.9.49-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,25 @@
 ---
 
 ## Changelog
+
+### v16.9.49 - Modernization Queue and Manifold Modernizer Split
+
+- **Modernization Split**: `tools/modernization_queue.py` (1348 lines to
+  214) and `tools/modernize_manifold.py` (837 lines to 160) are now thin
+  facades over the new `tools/modernize/` package: `queue_items`,
+  `queue_options`, `loose_convert`, `mds_transcode`, `kaggle_push` and
+  `queue_runner` for the queue engine, and `manifold_scan`,
+  `manifold_select`, `manifold_build`, `manifold_publish` and `manifold_run`
+  for the modernizer. Public names and CLIs are unchanged, and run options
+  are option dataclasses that still accept the old keyword calls.
+- **Shard Naming Fix**: the loose-to-WebDataset packer no longer names
+  shards after the image extension (`shard-00001..webp`). All shards are
+  `.data` again, and the tar contents are unchanged.
+- **Shared Helpers**: the modernize route and `MigrationService` reuse
+  `queue_status_labels`, `api.jobs.submit_job` and `utils.container_stream`.
+  The `too-many-*` findings in these files went from 49 to 0, and
+  duplicate-code findings involving them from 14 to 1.
+- `tests/test_modernize_reduce.py` patches `tools.modernize.queue_runner`.
 
 ### v16.9.48 - LLM Helper and Tool Script Complexity Cleanup
 

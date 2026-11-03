@@ -28,6 +28,7 @@ from api.routes.modernize import (
 )
 from services.migration_service import MigrationService
 from tools import modernization_queue
+from tools.modernize import queue_runner
 
 # tools.manifold_reduce imports core.compiler_core, which needs the heavy compile stack.
 HAS_REDUCE_DEPS = all(
@@ -84,8 +85,8 @@ class TestModernizationQueueSafety(unittest.TestCase):
     def test_dry_run_changes_nothing_even_with_destructive_flags(self) -> None:
         """Dry run with destructive flags converts, pushes and changes nothing."""
         before = _snapshot(self.root)
-        with patch.object(modernization_queue, "_convert_item") as convert, \
-                patch.object(modernization_queue, "push_manifold_to_kaggle") as push:
+        with patch.object(queue_runner, "_convert_item") as convert, \
+                patch.object(queue_runner, "push_manifold_to_kaggle") as push:
             code = modernization_queue.run_queue(
                 items=self._items(),
                 push_kaggle=True,
@@ -116,14 +117,14 @@ class TestModernizationQueueSafety(unittest.TestCase):
 
     def test_dataset_scope_prefers_exact_match(self) -> None:
         """A dataset filter runs only the exactly matching item."""
-        with patch.object(modernization_queue, "_convert_item", return_value=True) as convert:
+        with patch.object(queue_runner, "_convert_item", return_value=True) as convert:
             code = modernization_queue.run_queue(items=self._items(), filter_keys=["alpha"])
         self.assertEqual(code, 0)
         self.assertEqual([c.kwargs["it"].key for c in convert.call_args_list], ["alpha"])
 
     def test_unknown_dataset_runs_nothing_and_fails(self) -> None:
         """An unknown dataset key runs nothing and returns 1."""
-        with patch.object(modernization_queue, "_convert_item") as convert:
+        with patch.object(queue_runner, "_convert_item") as convert:
             code = modernization_queue.run_queue(items=self._items(), filter_keys=["nope"])
         self.assertEqual(code, 1)
         convert.assert_not_called()
@@ -133,7 +134,7 @@ class TestModernizationQueueSafety(unittest.TestCase):
         items = self._items()
         alpha = next(it for it in items if it.key == "alpha")
         alpha.is_containerized = True
-        with patch.object(modernization_queue, "_convert_item", return_value=True) as convert:
+        with patch.object(queue_runner, "_convert_item", return_value=True) as convert:
             modernization_queue.run_queue(items=items, filter_keys=["alpha"], force=False)
             convert.assert_not_called()
             modernization_queue.run_queue(items=items, filter_keys=["alpha"], force=True)

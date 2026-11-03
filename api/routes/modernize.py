@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -10,11 +9,16 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.jobs import job_manager
+from api.jobs import job_manager, submit_job
 from api.models import JobResponse, JobType
 from core.cli_args import venv_python
 from services.doc_service import DocService
 from tools.modernization_queue import build_queue_args, load_queue_manifest
+from tools.modernize.queue_items import (
+    API_LABEL_STYLE,
+    ManifoldQueueItem,
+    queue_status_labels,
+)
 
 logger = logging.getLogger("lemgendary.api.routes.modernize")
 router = APIRouter(prefix="/modernize", tags=["Modernization Hub"])
@@ -145,72 +149,41 @@ async def get_modernization_queue() -> list[QueueItemResponse]:
         unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
 
     items = load_queue_manifest(root, unified_yaml) if unified_yaml.exists() else []
-    results: list[QueueItemResponse] = []
+    return [_queue_item_response(it) for it in items]
 
-    for it in items:
-        size_gb = round(it.container_bytes / (1024**3), 2)
-        if it.is_containerized:
-            status_str = f"CONTAINERIZED ({size_gb:.1f} GB)"
-            src_str = "Shards ready"
-        elif it.zip_path:
-            zip_gb = round(it.zip_path.stat().st_size / (1024**3), 2)
-            status_str = "PENDING STREAM"
-            src_str = f"ZIP ({zip_gb:.1f} GB)"
-        elif it.has_loose_files:
-            status_str = "PENDING PACK"
-            src_str = "Loose WebP/Images"
-        elif it.legacy_dir:
-            status_str = "PENDING LEGACY"
-            src_str = f"{it.legacy_dir.name}/"
-        else:
-            status_str = "MISSING SOURCE"
-            src_str = "None"
 
-        results.append(
-            QueueItemResponse(
-                key=it.key,
-                name=it.name,
-                canonical_format=it.canonical_format,
-                modernized_folder=it.modernized_folder,
-                kaggle_ref=it.kaggle_ref,
-                title=it.title,
-                subtitle=it.subtitle,
-                is_containerized=it.is_containerized,
-                has_loose_files=it.has_loose_files,
-                container_bytes=it.container_bytes,
-                container_gb=size_gb,
-                status_label=status_str,
-                source_label=src_str,
-            )
-        )
-
-    return results
+def _queue_item_response(it: ManifoldQueueItem) -> QueueItemResponse:
+    """Map a scanned queue item to its API representation."""
+    status_str, src_str = queue_status_labels(it, API_LABEL_STYLE)
+    return QueueItemResponse(
+        key=it.key,
+        name=it.name,
+        canonical_format=it.canonical_format,
+        modernized_folder=it.modernized_folder,
+        kaggle_ref=it.kaggle_ref,
+        title=it.title,
+        subtitle=it.subtitle,
+        is_containerized=it.is_containerized,
+        has_loose_files=it.has_loose_files,
+        container_bytes=it.container_bytes,
+        container_gb=round(it.container_bytes / (1024**3), 2),
+        status_label=status_str,
+        source_label=src_str,
+    )
 
 
 @router.post("/run", response_model=JobResponse)
 async def run_modernization(req: ModernizeRunRequest) -> JobResponse:
     """Launch asynchronous modernization queue execution."""
-    job = job_manager.create_job(
-        job_type=JobType.MODERNIZE,
-        command=build_modernize_command(req),
-        parameters=req.model_dump(),
+    return submit_job(
+        job_manager, JobType.MODERNIZE, build_modernize_command(req), req.model_dump()
     )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
 
 
 @router.post("/reduce", response_model=JobResponse)
 async def run_reduce(req: ManifoldReduceRequest) -> JobResponse:
     """Launch asynchronous, non-interactive manifold scale reduction."""
-    job = job_manager.create_job(
-        job_type=JobType.REDUCE,
-        command=build_reduce_command(req),
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    return submit_job(job_manager, JobType.REDUCE, build_reduce_command(req), req.model_dump())
 
 
 @router.post("/regenerate-manifolds")
