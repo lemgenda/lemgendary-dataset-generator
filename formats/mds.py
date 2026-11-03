@@ -35,6 +35,18 @@ _COLUMNS: dict[str, str] = {
     "metadata": "json",
 }
 
+# Column schema for shards packaged straight from a loose images/targets
+# directory or zip (tools/modernization_queue, tools/stream_zip_to_container).
+LOOSE_MDS_COLUMNS: dict[str, str] = {
+    "image": "jpeg",
+    "target": "jpeg",
+    "mask": "jpeg",
+    "label": "str",
+    "task": "str",
+    "split": "str",
+    "name": "str",
+}
+
 
 class MDSWriter(Writer):
     """MosaicML Streaming writer with Zstd compression."""

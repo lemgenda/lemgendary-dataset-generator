@@ -52,8 +52,6 @@ from core.doc_generator import generate_dataset_docs
 from core.compile_outcome import ManifoldOutcome, finalize_compile
 from core.error_types import DOC_GENERATION_ERRORS, PARQUET_READ_ERRORS
 
-PHYSICAL_INDEX = set()
-
 logger = logging.getLogger(__name__)
 
 
@@ -160,7 +158,6 @@ def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
             sys.exit(1)
     return parsed
 
-args: argparse.Namespace | None = None
 # ────────────────────────────────────────────────────────────────────────────
 
 def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[ManifoldOutcome]:
@@ -169,11 +166,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     ``--cleanup`` is not handled here: the loose-image purge runs in
     ``finalize_compile`` only after a successful compile.
     """
-    global args
-    if parsed_args is not None:
-        args = parsed_args
-    elif args is None:
-        args = parse_compile_args()
+    args = parsed_args if parsed_args is not None else parse_compile_args()
 
     # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
     if os.name == 'nt':
@@ -403,8 +396,6 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             existing_on_disk.update(_buf)
             _buf = None
 
-            global PHYSICAL_INDEX
-            PHYSICAL_INDEX = existing_on_disk
             print(f"[OK] Physical discovery complete: {len(existing_on_disk)} samples verified on disk.")
 
         if args.no_vetting and args.no_labeling:
@@ -422,10 +413,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
         if orphans:
             print(f"[REPAIR] Found {len(orphans)} orphans on disk. Commencing batch adoption...")
-            CHUNK_SIZE = 100000
+            orphan_chunk_size = 100000
             total_adopted = 0
-            for i in range(0, len(orphans), CHUNK_SIZE):
-                chunk = orphans[i:i + CHUNK_SIZE]
+            for i in range(0, len(orphans), orphan_chunk_size):
+                chunk = orphans[i:i + orphan_chunk_size]
                 orphan_entries = []
                 for o_key in chunk:
                     parts = o_key.split("_")
@@ -784,8 +775,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
 
         if not args.finalize:
-            BATCH_SIZE = 100 if args.no_vetting else 50
-            task_batches = [all_tasks[i:i + BATCH_SIZE] for i in range(0, len(all_tasks), BATCH_SIZE)]
+            batch_size = 100 if args.no_vetting else 50
+            task_batches = [all_tasks[i:i + batch_size] for i in range(0, len(all_tasks), batch_size)]
 
             pbar = None
             total_items_to_process = sum(_count_one(t) for t in all_tasks)
@@ -819,7 +810,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     print("[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
 
                 remaining_tasks = all_tasks[warmup_limit:]
-                task_batches = [remaining_tasks[i:i + BATCH_SIZE] for i in range(0, len(remaining_tasks), BATCH_SIZE)]
+                task_batches = [remaining_tasks[i:i + batch_size] for i in range(0, len(remaining_tasks), batch_size)]
 
                 futures = set()
                 batch_iter = iter(task_batches)
@@ -894,9 +885,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 latents.append(_lat)
 
         if latents and len(latents) > 0 and len(latents[0]) > 0:
-            X = np.stack(latents)
+            latent_matrix = np.stack(latents)
             n_clusters = int(CONFIG.get("n_style_clusters", 16))
-            kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(X)
+            kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(latent_matrix)
             labels_list = [int(x) for x in kmeans.labels_]
             for i, cid in tqdm(zip(ids, labels_list), total=len(ids), desc="[STYLING] Updating Clusters"):
                 conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (cid, i))

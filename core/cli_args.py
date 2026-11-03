@@ -18,6 +18,7 @@ Downstream convention:
 from __future__ import annotations
 
 import argparse
+import functools
 import multiprocessing
 import shutil
 import sys
@@ -117,9 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 # ─── lem-env discovery ──────────────────────────────────────────────────────
-_LEM_ENV_CACHE: str | None = None
-
-
+@functools.cache
 def resolve_lem_env() -> str:
     """Locate the `lem-env` executable. Raises FileNotFoundError if absent.
 
@@ -130,13 +129,8 @@ def resolve_lem_env() -> str:
       3. `../lemgendary-env-manager/.venv/Scripts/lem-env` — rare shebang case.
       4. `../lemgendary-env-manager/.venv/bin/lem-env` — POSIX venv.
     """
-    global _LEM_ENV_CACHE
-    if _LEM_ENV_CACHE is not None:
-        return _LEM_ENV_CACHE
-
     found = shutil.which("lem-env")
     if found:
-        _LEM_ENV_CACHE = found
         return found
 
     here = Path(__file__).parent.resolve()
@@ -149,8 +143,7 @@ def resolve_lem_env() -> str:
     ]
     for candidate in candidates:
         if candidate.exists():
-            _LEM_ENV_CACHE = str(candidate)
-            return _LEM_ENV_CACHE
+            return str(candidate)
 
     raise FileNotFoundError(
         "lem-env executable not found. Install the LemGendary Environment "

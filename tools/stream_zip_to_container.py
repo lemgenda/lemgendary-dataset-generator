@@ -23,6 +23,7 @@ import zipfile
 
 from PIL import Image
 import yaml
+from formats.mds import LOOSE_MDS_COLUMNS
 from utils.progress import create_progress_bar
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -367,15 +368,6 @@ def stream_zip_to_mds(
     print(f"[STREAM-MDS] Parallel WebP transcoding: {'ENABLED' if transcode_webp else 'DISABLED'} ({workers} workers).")
     print(f"[STREAM-MDS] MDS shard size: {mds_shard_size_bytes / (1024**2):.0f} MB")
 
-    _COLUMNS: dict[str, str] = {
-        "image": "jpeg",
-        "target": "jpeg",
-        "mask": "jpeg",
-        "label": "str",
-        "task": "str",
-        "split": "str",
-        "name": "str",
-    }
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
@@ -386,7 +378,7 @@ def stream_zip_to_mds(
             count = _extract_metadata_files(zf, metadata_members, target_dir)
             print(f"[STREAM-MDS] Extracted {count} metadata files.")
 
-            MDSWriterCls = getattr(_streaming, "MDSWriter")
+            mds_writer_cls = getattr(_streaming, "MDSWriter")
 
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 if has_images_dir:
@@ -403,9 +395,9 @@ def stream_zip_to_mds(
                         split_mds_dir.mkdir(parents=True, exist_ok=True)
                         print(f"[STREAM-MDS] Split '{split}': {total_samples} images -> MDS shards.")
 
-                        writer = MDSWriterCls(
+                        writer = mds_writer_cls(
                             out=mds_out_str,
-                            columns=_COLUMNS,
+                            columns=LOOSE_MDS_COLUMNS,
                             compression="zstd",
                             size_limit=mds_shard_size_bytes,
                             hashes=[],
@@ -465,9 +457,9 @@ def stream_zip_to_mds(
                         split_mds_dir.mkdir(parents=True, exist_ok=True)
                         print(f"[STREAM-MDS] Split '{split}': {total_samples} targets -> MDS shards.")
 
-                        writer = MDSWriterCls(
+                        writer = mds_writer_cls(
                             out=mds_out_str,
-                            columns=_COLUMNS,
+                            columns=LOOSE_MDS_COLUMNS,
                             compression="zstd",
                             size_limit=mds_shard_size_bytes,
                             hashes=[],

@@ -22,15 +22,13 @@ effect beyond the first invocation.
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-_BOOTSTRAPPED = False
-
 
 # Fallback values mirror lem-gendary-env-manager/requirements/runtime_env.yaml.
 # When the YAML is present, its values take precedence and this dict is
@@ -175,12 +173,9 @@ def _apply_torch_patches() -> None:
         setattr(cuda, "_check_cubins", lambda *a, **k: None)
 
 
+@functools.cache
 def bootstrap_runtime() -> None:
-    """Apply all runtime environment mutations. Safe to call repeatedly."""
-    global _BOOTSTRAPPED
-    if _BOOTSTRAPPED:
-        return
-
+    """Apply all runtime environment mutations once; later calls are no-ops."""
     yaml_path = _find_runtime_env_yaml()
     if yaml_path is not None:
         env_vars = _load_env_from_yaml(yaml_path)
@@ -203,8 +198,6 @@ def bootstrap_runtime() -> None:
 
     _apply_stdio_reconfigure()
     _apply_torch_patches()
-
-    _BOOTSTRAPPED = True
 
 
 def get_device_info() -> str:

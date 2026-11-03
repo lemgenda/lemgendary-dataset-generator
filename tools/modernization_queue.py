@@ -33,6 +33,7 @@ _ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == 
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from formats.mds import LOOSE_MDS_COLUMNS
 from core.common_sync import (
     get_dataset_version_info,
     push_kaggle_dataset_metadata,
@@ -415,16 +416,7 @@ def convert_loose_directory_to_mds(
 
     print(f"[CONVERT-MDS] Packaging loose directory {source_dir.name} into MDS shards ({workers} workers)...")
 
-    MDSWriterCls = getattr(_streaming, "MDSWriter")
-    _COLUMNS: dict[str, str] = {
-        "image": "jpeg",
-        "target": "jpeg",
-        "mask": "jpeg",
-        "label": "str",
-        "task": "str",
-        "split": "str",
-        "name": "str",
-    }
+    mds_writer_cls = getattr(_streaming, "MDSWriter")
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for split in target_splits:
@@ -459,9 +451,9 @@ def convert_loose_directory_to_mds(
             if split_mds_dir.exists():
                 shutil.rmtree(split_mds_dir)
             split_mds_dir.mkdir(parents=True, exist_ok=True)
-            writer = MDSWriterCls(
+            writer = mds_writer_cls(
                 out=mds_out_str,
-                columns=_COLUMNS,
+                columns=LOOSE_MDS_COLUMNS,
                 compression="zstd",
                 size_limit=mds_shard_size_bytes,
                 hashes=[],

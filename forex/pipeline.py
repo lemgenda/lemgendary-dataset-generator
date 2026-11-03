@@ -529,7 +529,7 @@ def year_chunk_complete(out_dir, year, pair, tf, chunk_suffix=None):
 
 
 def save_shards(
-    X,
+    features,
     y_dir,
     y_mag,
     out_dir,
@@ -545,12 +545,12 @@ def save_shards(
     suffix = f"_chunk{chunk_suffix}" if chunk_suffix is not None else ""
     parquet_path = os.path.join(shard_dir, f"shard{suffix}.parquet")
 
-    num_samples = len(X)
-    seq_len = X.shape[1] if len(X.shape) > 1 else 168
-    n_features = X.shape[2] if len(X.shape) > 2 else 14
+    num_samples = len(features)
+    seq_len = features.shape[1] if len(features.shape) > 1 else 168
+    n_features = features.shape[2] if len(features.shape) > 2 else 14
     ts_arr = timestamps if timestamps is not None else np.zeros(num_samples, dtype=np.int64)
 
-    x_bytes = [sample.tobytes() for sample in X]
+    x_bytes = [sample.tobytes() for sample in features]
     table = pa.Table.from_arrays(
         [
             pa.array([pair] * num_samples, type=pa.string()),
@@ -651,16 +651,16 @@ def build_windows_and_save_by_year(
                 print(f" [RESUME] Skipping existing chunk {year}-{c} for {pair}@{tf}")
                 continue
 
-            X_chunk = np.empty((chunk_num, seq_len, len(available)), dtype=np.float32)
+            features_chunk = np.empty((chunk_num, seq_len, len(available)), dtype=np.float32)
             for out_i, idx in enumerate(chunk_indices):
-                X_chunk[out_i] = feat_arr[idx : idx + seq_len]
+                features_chunk[out_i] = feat_arr[idx : idx + seq_len]
 
             y_dir_chunk = dir_arr[chunk_targets]
             y_mag_chunk = np.stack([tp_arr[chunk_targets], sl_arr[chunk_targets]], axis=1)
             timestamps_chunk = ts_arr[chunk_targets]
 
             save_shards(
-                X_chunk,
+                features_chunk,
                 y_dir_chunk,
                 y_mag_chunk,
                 out_dir,
@@ -671,7 +671,7 @@ def build_windows_and_save_by_year(
                 chunk_suffix=chunk_suffix,
             )
 
-            del X_chunk, y_dir_chunk, y_mag_chunk, timestamps_chunk
+            del features_chunk, y_dir_chunk, y_mag_chunk, timestamps_chunk
 
 
 # ─── Load Forex Datasets from YAML ────────────────────────────────────────

@@ -16,11 +16,9 @@ disable=
     too-many-instance-attributes,
     too-many-nested-blocks,
     missing-docstring,
-    invalid-name,
     line-too-long,
     wrong-import-order,
     wrong-import-position,
-    global-statement,
     import-outside-toplevel
 
 [REPORTS]

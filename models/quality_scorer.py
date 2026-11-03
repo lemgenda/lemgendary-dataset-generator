@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torchvision import transforms
-from .nima import NIMA_Model
+from .nima import NimaModel
 
 class QualitySentry:
     """
@@ -12,7 +12,7 @@ class QualitySentry:
 
         # Technical NIMA uses EfficientNetV2-S, Aesthetic uses MobileNetV3-Small
         backbone = "mobilenet_v2" if "aesthetic" in model_name else "efficientnet_v2_s"
-        self.model = NIMA_Model(backbone=backbone).to(self.device)
+        self.model = NimaModel(backbone=backbone).to(self.device)
 
         # Load SOTA Weights
         checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)

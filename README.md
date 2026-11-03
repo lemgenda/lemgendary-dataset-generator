@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.29-STABLE` |
+| **Version** | `v16.9.30-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,20 @@
 ---
 
 ## Changelog
+
+### v16.9.30 - Module Globals Replaced by State Objects, `invalid-name` and `global-statement` Re-Enabled
+
+- **`.pylintrc` Disables Two Fewer Checks**: `invalid-name` (14 findings) and `global-statement` (10 findings) are enabled again and every finding was fixed in code.
+- **No More `global` Statements**:
+  - `core/compiler_core.py` keeps its per-process models, audit primitives and caches in one `_WorkerState` object, and the CLI Namespace in a `_CliState` object, instead of 13 module globals.
+  - `core/cli_args.resolve_lem_env` and `runtime/environment.bootstrap_runtime` are memoised with `functools.cache` instead of a global cache flag.
+  - `core/manifold_compile.process_dataset` keeps its parsed arguments in a local variable.
+- **Bug Fixes**:
+  - On Linux with CUDA, `init_worker` computed the GPU index as `physical_index % gpu_count`, where `physical_index` is a set of file names, so it raised `TypeError`. Workers are now spread across GPUs by process id.
+  - `core/manifold_compile.py` assigned a module-level `PHYSICAL_INDEX` that nothing read. The dead global was removed; the on-disk index still reaches workers through `init_worker`.
+  - The unused `PROMPT_GEN` worker global was removed.
+- **Renames**: `NIMA_Model` is now `NimaModel`; `forex/bridge._mt5` is now `_MT5`; matrix variables named `X` are now `features`.
+- **Single Source of Truth**: the MDS column schema for loose-directory and zip packaging, previously copied in `tools/modernization_queue.py` and `tools/stream_zip_to_container.py`, is now `formats.mds.LOOSE_MDS_COLUMNS`.
 
 ### v16.9.29 - 30 Pylint Checks Re-Enabled, Their Findings Fixed at the Source
 

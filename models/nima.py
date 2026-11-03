@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torchvision import models
 
-class NIMA_Model(nn.Module):
+class NimaModel(nn.Module):
     """
     NIMA (Neural IMage Assessment) Model.
     Uses MobileNetV3-Small features and predicts a 10-class distribution of quality scores.

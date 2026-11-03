@@ -45,6 +45,7 @@ import random
 import shutil
 import sqlite3
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
@@ -170,7 +171,14 @@ VERSION: str = META.get("version", "4.2.0")
 # ─── CLI configuration (Phase 1.5: SSOT in cli_args.py) ─────────────────────
 # NOTE: Nothing here runs at import time. The entry point must call
 # configure() explicitly before any worker function is invoked.
-_args: argparse.Namespace | None = None
+@dataclass
+class _CliState:
+    """Holds the Namespace installed by configure() or set_args()."""
+
+    args: argparse.Namespace | None = None
+
+
+_CLI = _CliState()
 
 
 def configure(argv: list[str] | None = None) -> argparse.Namespace:
@@ -183,11 +191,10 @@ def configure(argv: list[str] | None = None) -> argparse.Namespace:
     Namespace and re-applies CLI overrides to CONFIG (idempotent for the
     same argv).
     """
-    global _args
     from core.cli_args import build_parser
-    _args = build_parser().parse_args(argv)
-    _apply_cli_overrides(_args)
-    return _args
+    _CLI.args = build_parser().parse_args(argv)
+    _apply_cli_overrides(_CLI.args)
+    return _CLI.args
 
 
 def set_args(ns: argparse.Namespace) -> None:
@@ -197,20 +204,19 @@ def set_args(ns: argparse.Namespace) -> None:
     child is not the parent's argv. The parent should pass
     `get_args()` as the 4th element of `initargs` to the Pool.
     """
-    global _args
-    _args = ns
+    _CLI.args = ns
 
 
 def get_args() -> argparse.Namespace:
     """Return the active Namespace, raising if the module isn't configured."""
-    if _args is None:
+    if _CLI.args is None:
         raise RuntimeError(
             "compiler_core has not been configured. Call "
             "compiler_core.configure() from your entry point before using "
             "worker functions, or pass args=... to init_worker() in spawned "
             "worker processes."
         )
-    return _args
+    return _CLI.args
 
 
 def _apply_cli_overrides(ns: argparse.Namespace) -> None:
@@ -309,24 +315,29 @@ from degrade import (
 )
 
 
-# ─── Globals ────────────────────────────────────────────────────────────────
-SENTRY = None
-LABELER = None
-CAPTIONER = None
-CLIP_MANIFOLD = None
-
+# ─── Per-process worker state ───────────────────────────────────────────────
 _GT_CACHE = GroundTruthCaches()
 
-AUDITOR: VisionAuditor | None = None
-EXACT_HASHER: ExactHasher | None = None
-PERCEPTUAL_HASHER: PerceptualHasher | None = None
 
-TRANSCODER: ImageTranscoder | None = None
+@dataclass
+class _WorkerState:
+    """Models, audit primitives and caches that init_worker loads once per process."""
 
-# Phase 5: generators instantiated once per worker in init_worker.
-LABEL_GEN: LabelGenerator | None = None
-PROMPT_GEN: PromptGenerator | None = None
-MASK_GEN: MaskGenerator | None = None
+    sentry: Any = None
+    captioner: Any = None
+    clip_manifold: Any = None
+    labelers: dict[str, Any] = field(default_factory=dict)
+    auditor: VisionAuditor | None = None
+    exact_hasher: ExactHasher | None = None
+    perceptual_hasher: PerceptualHasher | None = None
+    transcoder: ImageTranscoder | None = None
+    label_gen: LabelGenerator | None = None
+    mask_gen: MaskGenerator | None = None
+    dped_cache: set[str] = field(default_factory=set)
+    physical_index: set[str] = field(default_factory=set)
+
+
+_WORKER = _WorkerState()
 
 
 class _Annotation(TypedDict):
@@ -369,8 +380,6 @@ def detect_task(model_dir_name: str | None) -> str:
     return "detection"
 
 
-DPED_CACHE: set[str] = set()
-PHYSICAL_INDEX: set[str] = set()
 
 
 def _infer_label_strategy(task: str) -> str | None:
@@ -406,14 +415,10 @@ def init_worker(
         set_args(args)
     a = get_args()
 
-    global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX
-    global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER, TRANSCODER
-    global LABEL_GEN, MASK_GEN
-
     if dped_cache:
-        DPED_CACHE = dped_cache
+        _WORKER.dped_cache = dped_cache
     if physical_index:
-        PHYSICAL_INDEX = physical_index
+        _WORKER.physical_index = physical_index
 
     from models.quality_scorer import QualitySentry
     from models.diffusion import CaptionSentry
@@ -437,15 +442,13 @@ def init_worker(
         device = "cpu"
     else:
         gpu_count = torch.cuda.device_count()
-        if physical_index is not None and gpu_count > 0:
-            device = f"cuda:{physical_index % gpu_count}"
-        else:
-            device = "cuda:0"
+        # Spread worker processes across GPUs round-robin by process id.
+        device = f"cuda:{os.getpid() % gpu_count}" if gpu_count > 1 else "cuda:0"
 
     # Phase 2 audit primitives.
-    AUDITOR = VisionAuditor(CONFIG)
-    EXACT_HASHER = ExactHasher(no_hash=a.no_hash)
-    PERCEPTUAL_HASHER = PerceptualHasher(no_hash=a.no_hash)
+    _WORKER.auditor = VisionAuditor(CONFIG)
+    _WORKER.exact_hasher = ExactHasher(no_hash=a.no_hash)
+    _WORKER.perceptual_hasher = PerceptualHasher(no_hash=a.no_hash)
 
     # Phase 3 transcoder.
     policy = ImageFormatPolicy(
@@ -454,7 +457,7 @@ def init_worker(
         target_quality=int(CONFIG.get("target_quality", 95)),
         mask_format=CONFIG.get("mask_format", "webp-lossless"),
     )
-    TRANSCODER = ImageTranscoder(policy)
+    _WORKER.transcoder = ImageTranscoder(policy)
 
     mission = detect_task(a.model)
 
@@ -481,7 +484,7 @@ def init_worker(
         model_path = os.path.join(base_dir, "models", f"nima_{model_type}_best.pth")
         if os.path.exists(model_path):
             try:
-                SENTRY = QualitySentry(model_path, model_name=model_type, device=device)
+                _WORKER.sentry = QualitySentry(model_path, model_name=model_type, device=device)
             except MODEL_LOAD_ERRORS as exc:
                 logger.warning("Worker failed loading QualitySentry (%s): %s", model_path, exc)
 
@@ -492,52 +495,49 @@ def init_worker(
     # Diffusion captioning.
     if mission == "diffusion":
         try:
-            CAPTIONER = CaptionSentry(device=device)
+            _WORKER.captioner = CaptionSentry(device=device)
         except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CaptionSentry: %s", exc)
 
     # Style manifold (CLIP) — loaded on CPU to conserve VRAM.
     if "clip" in str(config):
         try:
-            CLIP_MANIFOLD = CLIPManifold(device="cpu")
+            _WORKER.clip_manifold = CLIPManifold(device="cpu")
         except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CLIPManifold: %s", exc)
 
     # Phase 5 generators (constructed after all model wrappers are loaded).
     if _label_strategy:
         try:
-            LABEL_GEN = LabelGenerator(
+            _WORKER.label_gen = LabelGenerator(
                 _label_strategy,
-                captioner=CAPTIONER,
-                clip=CLIP_MANIFOLD,
+                captioner=_WORKER.captioner,
+                clip=_WORKER.clip_manifold,
                 labeler=_gen_labeler,
-                sentry=SENTRY,
+                sentry=_WORKER.sentry,
             )
         except MODEL_LOAD_ERRORS as e:
             logger.warning("LabelGenerator init failed: %s", e)
-            LABEL_GEN = None
+            _WORKER.label_gen = None
 
     if _mask_strategy:
         try:
-            MASK_GEN = MaskGenerator(_mask_strategy, labeler=_gen_labeler)
+            _WORKER.mask_gen = MaskGenerator(_mask_strategy, labeler=_gen_labeler)
         except MODEL_LOAD_ERRORS as e:
             logger.warning("MaskGenerator init failed: %s", e)
-            MASK_GEN = None
+            _WORKER.mask_gen = None
 
 
 def get_labeler(task: str, device: str = "cuda"):
     """Singleton labeler per task type (detection / segmentation / face)."""
     from models.detection import AutoLabeler
-    global LABELER
-    if LABELER is None:
-        LABELER = {}
-    if task not in LABELER:
+    if task not in _WORKER.labelers:
         if task == "face_detection":
             mode = "face_landmarks"
         else:
             mode = "segmentation" if "seg" in task else "detection"
-        LABELER[task] = AutoLabeler(mode=mode, device=device)
-    return LABELER[task]
+        _WORKER.labelers[task] = AutoLabeler(mode=mode, device=device)
+    return _WORKER.labelers[task]
 
 
 # ─── Batch worker ───────────────────────────────────────────────────────────
@@ -615,18 +615,18 @@ def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
 
 # ─── Audit gate shims (Phase 2) ─────────────────────────────────────────────
 def _is_image_valid_for_dataset(img, task, slug) -> bool:
-    if AUDITOR is None:
+    if _WORKER.auditor is None:
         return True
-    return AUDITOR.audit_image(img, task, slug).valid
+    return _WORKER.auditor.audit_image(img, task, slug).valid
 
 
 def _passes_nima_filter(
     task, slug, is_authenticity, nima_score, nima_probs,
     current_threshold, idx,
 ) -> bool:
-    if AUDITOR is None:
+    if _WORKER.auditor is None:
         return True
-    return AUDITOR.passes_nima(
+    return _WORKER.auditor.passes_nima(
         task, slug, is_authenticity, nima_score,
         nima_probs, current_threshold, idx,
     )
@@ -642,7 +642,7 @@ def _write_image_phase3(
     kind: Literal["image", "target", "mask"],
 ) -> Path:
     """Write a single image to disk, honoring the Phase 3 transcode policy."""
-    if TRANSCODER is not None and TRANSCODER.enabled:
+    if _WORKER.transcoder is not None and _WORKER.transcoder.enabled:
         try:
             img = loaded_img
             if img is None:
@@ -652,8 +652,8 @@ def _write_image_phase3(
                     img = Image.open(source_path)
             img = ensure_srgb(img)
 
-            encoded, fmt = TRANSCODER.encode(img, kind=kind)
-            new_ext = TRANSCODER.extension_for(fmt)
+            encoded, fmt = _WORKER.transcoder.encode(img, kind=kind)
+            new_ext = _WORKER.transcoder.extension_for(fmt)
             final_path = out_path.with_suffix(new_ext)
             final_path.parent.mkdir(parents=True, exist_ok=True)
             with open(final_path, "wb") as f:
@@ -733,7 +733,7 @@ def process_image(
         tgt_dir = "masks" if task == "segmentation" else "targets"
         out_tgt_path = Path(output_root_str) / tgt_dir / split / f"{name}{ext}"
 
-        if PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX:
+        if _WORKER.physical_index and name.lower() in _WORKER.physical_index:
             return {"name": name, "source": slug, "task": task, "split": split,
                     "hash": "skipped", "nima_score": nima_score, "size": 0}
 
@@ -838,7 +838,7 @@ def process_image(
                     needle = f"/{device_name}/"
                     if needle in p_str.lower():
                         tgt_p_str = p_str.lower().replace(needle, "/canon/")
-                        if DPED_CACHE and tgt_p_str in DPED_CACHE:
+                        if _WORKER.dped_cache and tgt_p_str in _WORKER.dped_cache:
                             target_img_path = tgt_p_str
                         elif os.path.exists(tgt_p_str):
                             target_img_path = tgt_p_str
@@ -864,8 +864,8 @@ def process_image(
                 img = Image.open(io.BytesIO(img_data))
             img = ensure_srgb(img)
             w, hgt = img.size
-            if AUDITOR is not None:
-                audit = AUDITOR.audit_image(img, task, slug)
+            if _WORKER.auditor is not None:
+                audit = _WORKER.auditor.audit_image(img, task, slug)
                 if not audit.valid:
                     return None
 
@@ -937,8 +937,8 @@ def process_image(
                 nima_score = 10.0
 
         if nima_probs[0] == 1.0 and task in ["quality", "diffusion"] and not is_authenticity:
-            if SENTRY:
-                nima_score, nima_probs = SENTRY.score(img, return_probs=True)
+            if _WORKER.sentry:
+                nima_score, nima_probs = _WORKER.sentry.score(img, return_probs=True)
 
         current_threshold = 5.5 if task == "diffusion" else CONFIG["nima_threshold"]
         if not _passes_nima_filter(task, slug, is_authenticity, nima_score,
@@ -947,15 +947,15 @@ def process_image(
 
         # ── Hash + output writes ────────────────────────────────────────────
         hash_target = img_data if isinstance(img_input, (bytes, dict)) else img_path
-        h = EXACT_HASHER.hash(hash_target) if (CONFIG["enable_dedup"] and EXACT_HASHER) else None
+        h = _WORKER.exact_hasher.hash(hash_target) if (CONFIG["enable_dedup"] and _WORKER.exact_hasher) else None
 
         ph: str | None = None
-        if CONFIG.get("enable_perceptual_dedup") and PERCEPTUAL_HASHER and img is not None:
-            p_hashes = PERCEPTUAL_HASHER.hash(img)
+        if CONFIG.get("enable_perceptual_dedup") and _WORKER.perceptual_hasher and img is not None:
+            p_hashes = _WORKER.perceptual_hasher.hash(img)
             if p_hashes is not None:
                 ph = f"{p_hashes[0]}:{p_hashes[1]}"
 
-        is_already_on_disk = PHYSICAL_INDEX and name.lower() in PHYSICAL_INDEX
+        is_already_on_disk = _WORKER.physical_index and name.lower() in _WORKER.physical_index
         is_clean_only = ("parsenet" in slug.lower() or "codeformer" in slug.lower()) and task == "restoration"
         if is_clean_only and not target_img_path and isinstance(img_input, (str, Path)):
             target_img_path = str(img_path)
@@ -995,8 +995,8 @@ def process_image(
                         out_path=out_tgt_path,
                         kind="image",
                     )
-                elif task == "segmentation" and MASK_GEN is not None and img is not None:
-                    mask_result = MASK_GEN.generate(img, context={"task": task, "slug": slug})
+                elif task == "segmentation" and _WORKER.mask_gen is not None and img is not None:
+                    mask_result = _WORKER.mask_gen.generate(img, context={"task": task, "slug": slug})
                     if mask_result.value is not None:
                         out_tgt_path = _write_image_phase3(
                             loaded_img=mask_result.value,
@@ -1180,8 +1180,8 @@ def process_image(
                 and not a.no_labeling
                 and not skip_labeling
                 and img is not None):
-            if LABEL_GEN is not None:
-                gen_result = LABEL_GEN.generate(
+            if _WORKER.label_gen is not None:
+                gen_result = _WORKER.label_gen.generate(
                     img, context={"task": task, "slug": slug, "path": str(img_path)}
                 )
                 if gen_result.kind == "label" and isinstance(gen_result.value, dict):
@@ -1284,8 +1284,8 @@ def process_diffusion(img_path, prefix, slug, idx, split):
             return None
 
         nima_score: Any = 10.0
-        if SENTRY:
-            nima_score = SENTRY.score(img)
+        if _WORKER.sentry:
+            nima_score = _WORKER.sentry.score(img)
             if nima_score < CONFIG["nima_threshold"]:
                 return None
 
@@ -1293,7 +1293,7 @@ def process_diffusion(img_path, prefix, slug, idx, split):
         img = img.resize((size, size), Image.Resampling.LANCZOS)
 
         caption = "a high quality image"
-        if CAPTIONER:
+        if _WORKER.captioner:
             caption_file = (
                 Path(img_path).parent / (Path(img_path).stem + ".txt")
                 if not is_virtual and isinstance(img_path, (str, Path))
@@ -1302,25 +1302,25 @@ def process_diffusion(img_path, prefix, slug, idx, split):
             if caption_file and caption_file.exists():
                 caption = caption_file.read_text().strip()
             else:
-                caption = CAPTIONER.generate(img)
+                caption = _WORKER.captioner.generate(img)
 
         style_tag = "standard"
         clip_latent = None
-        if CLIP_MANIFOLD:
-            style_tag = CLIP_MANIFOLD.tag_style(img)
-            clip_latent = CLIP_MANIFOLD.extract_features(img).cpu().numpy().flatten().tolist()
+        if _WORKER.clip_manifold:
+            style_tag = _WORKER.clip_manifold.tag_style(img)
+            clip_latent = _WORKER.clip_manifold.extract_features(img).cpu().numpy().flatten().tolist()
 
-        h = EXACT_HASHER.hash(img) if (CONFIG["enable_dedup"] and EXACT_HASHER) else None
+        h = _WORKER.exact_hasher.hash(img) if (CONFIG["enable_dedup"] and _WORKER.exact_hasher) else None
         ph: str | None = None
-        if CONFIG.get("enable_perceptual_dedup") and PERCEPTUAL_HASHER:
-            p_hashes = PERCEPTUAL_HASHER.hash(img)
+        if CONFIG.get("enable_perceptual_dedup") and _WORKER.perceptual_hasher:
+            p_hashes = _WORKER.perceptual_hasher.hash(img)
             if p_hashes is not None:
                 ph = f"{p_hashes[0]}:{p_hashes[1]}"
 
         name = f"{prefix}_{idx:09d}"
 
-        if TRANSCODER is not None and TRANSCODER.enabled:
-            img_bytes, _fmt = TRANSCODER.encode(img, kind="image")
+        if _WORKER.transcoder is not None and _WORKER.transcoder.enabled:
+            img_bytes, _fmt = _WORKER.transcoder.encode(img, kind="image")
         else:
             buffer = io.BytesIO()
             img.save(buffer, format="JPEG", quality=95)

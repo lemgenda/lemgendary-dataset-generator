@@ -179,24 +179,24 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
                             shard_tasks.append((cf, ydf, ymf, tsf if tsf.exists() else None))
 
                 for x_f, yd_f, ym_f, ts_f in shard_tasks:
-                    X = np.load(str(x_f), mmap_mode="r")
+                    features = np.load(str(x_f), mmap_mode="r")
                     yd = np.load(str(yd_f), mmap_mode="r")
                     ym = np.load(str(ym_f), mmap_mode="r")
-                    ts = np.load(str(ts_f), mmap_mode="r") if ts_f else np.zeros(len(X), dtype=np.int64)
+                    ts = np.load(str(ts_f), mmap_mode="r") if ts_f else np.zeros(len(features), dtype=np.int64)
 
-                    num_samples = len(X)
+                    num_samples = len(features)
                     if num_samples == 0:
                         continue
 
-                    seq_len = X.shape[1] if len(X.shape) > 1 else expected_seq_len
-                    n_features = X.shape[2] if len(X.shape) > 2 else 14
+                    seq_len = features.shape[1] if len(features.shape) > 1 else expected_seq_len
+                    n_features = features.shape[2] if len(features.shape) > 2 else 14
 
                     # Stream in memory-safe sub-batches to bound RAM
                     for start_idx in range(0, num_samples, CHUNK_BATCH_SIZE):
                         end_idx = min(start_idx + CHUNK_BATCH_SIZE, num_samples)
                         sub_len = end_idx - start_idx
 
-                        sub_x = X[start_idx:end_idx]
+                        sub_x = features[start_idx:end_idx]
                         sub_yd = yd[start_idx:end_idx]
                         sub_ym = ym[start_idx:end_idx]
                         sub_ts = ts[start_idx:end_idx]
@@ -221,13 +221,13 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
 
                     # np.load(mmap_mode=...) arrays expose their backing
                     # mmap.mmap as the public ``.base``; close it explicitly.
-                    for arr_obj in [X, yd, ym, ts]:
+                    for arr_obj in [features, yd, ym, ts]:
                         if isinstance(arr_obj.base, mmap.mmap):
                             try:
                                 arr_obj.base.close()
                             except (BufferError, OSError, ValueError) as err:
                                 logger.debug("Failed closing mmap on array object: %s", err)
-                    del X, yd, ym, ts
+                    del features, yd, ym, ts
                     gc.collect()
 
         writer.close()
