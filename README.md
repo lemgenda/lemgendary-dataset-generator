@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.43-STABLE` |
+| **Version** | `v16.9.44-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,31 @@
 ---
 
 ## Changelog
+
+### v16.9.44 - `forex/pipeline.py` Split Into Focused Modules
+
+- **`forex/pipeline.py` Is Now a Facade** (911 lines to 81): every public
+  name stays importable from `forex.pipeline`.
+  - `pipeline_config.py` (constants), `mt5_session.py` (connect, symbol
+    resolution, `MT5Credentials`), `mt5_download.py` (range and chunked
+    fallback download), `indicators.py` and `labels.py` (labels,
+    normalisation).
+  - `sharding.py` (windowing, resumable shards, `ShardTarget`) and
+    `pipeline_runner.py` (YAML datasets, orchestration, CLI).
+  - `save_shards` and `build_windows_and_save_by_year` take `ShardLabels` /
+    `ShardTarget` objects, and `run_download_pipeline` takes optional
+    `credentials`; all callers are updated, and the old keyword login
+    arguments still work.
+- **One Shard Table Builder**: `forex/shard_table.py` builds the Parquet
+  shard table for both the pipeline and `forex/converter.py`. The converter
+  and injector share `schema.default_manifold_dir()`.
+- **Lazy `forex` Package**: package-level names load on first use (PEP 562),
+  so importing `forex.converter` no longer imports pandas. This removed the
+  three duplicate-code findings between `forex/__init__.py` and the shims.
+- **Converter and Injector Helpers**: `convert_year` and
+  `process_parquet_file` are split into small steps. Output matches the
+  previous version on synthetic data (153 checks). The `too-many-*` findings
+  in `forex/` went from 24 to 0.
 
 ### v16.9.43 - `core/common_sync.py` Split Into Sync Modules
 

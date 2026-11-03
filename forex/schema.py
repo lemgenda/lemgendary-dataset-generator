@@ -6,6 +6,8 @@ shared across Forex conversion and metadata injection pipelines.
 """
 
 import json
+from pathlib import Path
+
 import pyarrow as pa
 
 TIMEFRAME_LOOKBACK = {
@@ -91,3 +93,17 @@ PARQUET_SCHEMA = pa.schema(
         b"created_by": b"LemGendary MT5 Compiler Pipeline",
     },
 )
+
+
+def default_manifold_dir() -> Path:
+    """Default ``LemGendizedForexUniverse`` folder next to the workspace repos.
+
+    Falls back to the legacy ``LemGendizedForexUniverseLarge`` folder when only
+    that one exists.
+    """
+    datasets_root = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+    default_dir = datasets_root / "LemGendizedForexUniverse"
+    legacy_dir = datasets_root / "LemGendizedForexUniverseLarge"
+    if not default_dir.exists() and legacy_dir.exists():
+        return legacy_dir
+    return default_dir

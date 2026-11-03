@@ -13,9 +13,8 @@ incomplete view of the underlying MT5 binary.
 
 from __future__ import annotations
 
-from typing import Any
-
 import importlib
+from typing import Any
 
 try:
     _MT5: Any = importlib.import_module("MetaTrader5")

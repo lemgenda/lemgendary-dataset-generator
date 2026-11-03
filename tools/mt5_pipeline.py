@@ -5,27 +5,27 @@ Backwards-compatible shim module delegating to forex.pipeline.
 """
 
 from forex.pipeline import (
+    compute_indicators,
     connect_mt5,
     disconnect_mt5,
     download_bars,
-    resolve_symbol,
-    compute_indicators,
     generate_labels,
-    normalize_ohlcv,
-    run_download_pipeline,
     main,
+    normalize_ohlcv,
+    resolve_symbol,
+    run_download_pipeline,
 )
 
 __all__ = [
+    "compute_indicators",
     "connect_mt5",
     "disconnect_mt5",
     "download_bars",
-    "resolve_symbol",
-    "compute_indicators",
     "generate_labels",
-    "normalize_ohlcv",
-    "run_download_pipeline",
     "main",
+    "normalize_ohlcv",
+    "resolve_symbol",
+    "run_download_pipeline",
 ]
 
 if __name__ == "__main__":

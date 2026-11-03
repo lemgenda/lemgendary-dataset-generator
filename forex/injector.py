@@ -11,10 +11,57 @@ import argparse
 import sys
 import time
 from pathlib import Path
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA
+from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA, default_manifold_dir
+from .shard_table import open_shard_writer
+
+
+def _rewrite_with_schema(file_path: Path, temp_path: Path, batch_size: int):
+    """Copy ``file_path`` to ``temp_path`` under ``PARQUET_SCHEMA``; returns (written, expected)."""
+    pf = pq.ParquetFile(str(file_path))
+    total_expected_rows = pf.metadata.num_rows
+    writer = open_shard_writer(temp_path)
+
+    rows_written = 0
+    try:
+        for batch in pf.iter_batches(batch_size=batch_size):
+            # Bind batch to the new schema with column descriptions
+            tbl = pa.Table.from_batches([batch], schema=PARQUET_SCHEMA)
+            writer.write_table(tbl, row_group_size=5000)
+            rows_written += len(batch)
+            if rows_written % 500000 == 0 or rows_written == total_expected_rows:
+                pct = (rows_written / total_expected_rows) * 100
+                print(f"  -> Written {rows_written:,} / {total_expected_rows:,} rows ({pct:.1f}%)")
+    finally:
+        writer.close()
+        pf.close()
+    return rows_written, total_expected_rows
+
+
+def _check_rewritten(temp_path: Path, total_expected_rows: int) -> None:
+    """Assert the rewritten file keeps the row count and carries every column description."""
+    pf_check = pq.ParquetFile(str(temp_path))
+    assert pf_check.metadata.num_rows == total_expected_rows, "Check row count failed"
+    for col_name in COLUMN_DESCRIPTIONS:
+        field_meta = pf_check.schema_arrow.field(col_name).metadata
+        assert field_meta is not None and b"description" in field_meta, (
+            f"Missing description on {col_name}"
+        )
+    pf_check.close()
+
+
+def _replace_atomically(file_path: Path, temp_path: Path) -> None:
+    backup_path = file_path.with_suffix(".parquet.bak")
+    if backup_path.exists():
+        backup_path.unlink()
+
+    file_path.rename(backup_path)
+    temp_path.rename(file_path)
+    if backup_path.exists():
+        backup_path.unlink()
 
 
 def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
@@ -35,29 +82,7 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
     print(f"[EMBED] Processing {file_path.name} ({initial_size_mb:.2f} MB)...")
     print(f"{'=' * 75}")
 
-    pf = pq.ParquetFile(str(file_path))
-    total_expected_rows = pf.metadata.num_rows
-
-    writer = pq.ParquetWriter(
-        str(temp_path),
-        schema=PARQUET_SCHEMA,
-        compression="zstd",
-        compression_level=3
-    )
-
-    rows_written = 0
-    try:
-        for batch in pf.iter_batches(batch_size=batch_size):
-            # Bind batch to the new schema with column descriptions
-            tbl = pa.Table.from_batches([batch], schema=PARQUET_SCHEMA)
-            writer.write_table(tbl, row_group_size=5000)
-            rows_written += len(batch)
-            if rows_written % 500000 == 0 or rows_written == total_expected_rows:
-                pct = (rows_written / total_expected_rows) * 100
-                print(f"  -> Written {rows_written:,} / {total_expected_rows:,} rows ({pct:.1f}%)")
-    finally:
-        writer.close()
-        pf.close()
+    rows_written, total_expected_rows = _rewrite_with_schema(file_path, temp_path, batch_size)
 
     # Verify rows written match expected rows exactly
     if rows_written != total_expected_rows:
@@ -69,25 +94,8 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
             temp_path.unlink()
         return False
 
-    # Verify temp file schema and read sample
-    pf_check = pq.ParquetFile(str(temp_path))
-    assert pf_check.metadata.num_rows == total_expected_rows, "Check row count failed"
-    for col_name in COLUMN_DESCRIPTIONS:
-        field_meta = pf_check.schema_arrow.field(col_name).metadata
-        assert field_meta is not None and b"description" in field_meta, (
-            f"Missing description on {col_name}"
-        )
-    pf_check.close()
-
-    # Atomically replace original
-    backup_path = file_path.with_suffix(".parquet.bak")
-    if backup_path.exists():
-        backup_path.unlink()
-
-    file_path.rename(backup_path)
-    temp_path.rename(file_path)
-    if backup_path.exists():
-        backup_path.unlink()
+    _check_rewritten(temp_path, total_expected_rows)
+    _replace_atomically(file_path, temp_path)
 
     final_size_mb = file_path.stat().st_size / (1024 * 1024)
     elapsed = time.time() - t0
@@ -100,27 +108,13 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
 
 def main():
     """Embed column descriptions into the Forex Parquet files (CLI entry point)."""
-    default_dir = (
-        Path(__file__).resolve().parent.parent.parent
-        / "LemGendaryDatasets"
-        / "LemGendizedForexUniverse"
-    )
-    if not default_dir.exists():
-        legacy_dir = (
-            Path(__file__).resolve().parent.parent.parent
-            / "LemGendaryDatasets"
-            / "LemGendizedForexUniverseLarge"
-        )
-        if legacy_dir.exists():
-            default_dir = legacy_dir
-
     parser = argparse.ArgumentParser(
         description="Embed column descriptions into Forex Parquet files."
     )
     parser.add_argument(
         "--dir",
         type=Path,
-        default=default_dir,
+        default=default_manifold_dir(),
         help="Path to LemGendizedForexUniverse directory",
     )
     args = parser.parse_args()
