@@ -3,8 +3,7 @@
 > Industrial-standard manifold compiler for Vision, Restoration, and Time-Series
 > datasets.
 >
-> **Function reference and architecture details:** [Whitepaper
-> (PAPER_DATASET_COMPILER.md)](./lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md)
+> **Function reference and architecture details:** [Whitepaper][paper]
 > · [Documentation
 > Hub](https://lemgenda.github.io/ai-training-whitepapers/index.html)
 
@@ -14,15 +13,46 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.58-STABLE` |
-| **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
+| **Version** | `v16.9.59-STABLE` |
+| **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
-| **Documentation & Specification** | [PAPER_DATASET_COMPILER.md](../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md) |
+| **Documentation & Specification** | [PAPER_DATASET_COMPILER.md][paper] |
+
+[paper]: ../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md
 
 ---
 
 ## Changelog
+
+### v16.9.59 - Shared Ecosystem File for Port, Kaggle Owner and lem-env
+
+- **`core/ecosystem.py` (new)**: cached loader for the shared
+  `lemgendary-env-manager/ecosystem/ecosystem.json`. Lookup order:
+  `LEMGENDARY_ECOSYSTEM_FILE`, then
+  `<workspace_root>/lemgendary-env-manager/ecosystem/ecosystem.json` (root
+  from `LEMGENDARY_WORKSPACE_ROOT` or this repository's parent). A missing or
+  malformed file raises `EcosystemFileError` naming the expected path. Typed
+  accessors: `service_port("datasets")`, `bind_host()`, `kaggle_owner()`,
+  `docs_url()`, `project_dir(service)`.
+- **Sidecar port and host**: `api.server.run_server` and the CLI
+  (`commands.common.server_host` / `server_port` / `sidecar_url`,
+  `server start|status --host/--port` defaults) read the `dataset-compiler`
+  service and `bind_host` from the file; the literal `8100` is gone.
+- **Kaggle owner**: `core.kaggle_identity.default_owner()` reads
+  `identity.kaggle_owner`; `DEFAULT_KAGGLE_OWNER` is removed. README templates
+  take the owner as `ReadmeCommon.kaggle_owner` instead of a literal.
+  `setup_kaggle_auth` and `load_kaggle_credentials` default to it.
+- **`lem-env` discovery**: `core.cli_args.resolve_lem_env` looks in the
+  `env-manager` service's project folder from the file; notebook delegation
+  finds the training suite through the `training-suite` service the same way.
+- **Tests**: `tests/conftest.py` points `LEMGENDARY_ECOSYSTEM_FILE` at
+  `tests/fixtures/ecosystem.json`. `tests/test_ecosystem.py` covers lookup,
+  accessors, loud failures and consumers, plus a contract test that the
+  training suite's notebook generators are real callables (skipped when the
+  sibling checkout is absent).
+- **README**: four lines over 80 columns rewrapped (whitepaper link as a
+  reference link).
 
 ### v16.9.58 - Remove Arbitrary-Command Job Endpoint
 
@@ -458,7 +488,7 @@
 - `tests/test_llm_jobs.py` patches the sidecar probe, token and poll interval
   in `commands.llm` and `commands.common`, where they now live.
 
-### v16.9.37 - `core/compiler_core.py` Split Into Config, Worker and Sample Modules
+### v16.9.37 - `core/compiler_core.py` Split Into Three Modules
 
 - **`core/compiler_core.py` Is Now a Facade** (1392 lines to 158): it
   re-exports the same 71 names in `__all__`, so `core.manifold_compile`,

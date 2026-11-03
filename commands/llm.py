@@ -13,11 +13,10 @@ import typer
 from api.auth import get_or_create_token
 from commands.common import (
     DEFAULT_JOB_TIMEOUT_S,
-    DEFAULT_SERVER_HOST,
-    DEFAULT_SERVER_PORT,
     _is_server_available,
     _wait_for_sidecar_job,
     console,
+    sidecar_url,
 )
 from services.llm_service import LLM_COMPILE_ERRORS, compile_llm_manifold, summary_lines
 from tools.llm_helper.quality_validator import QualityValidator
@@ -47,7 +46,7 @@ def llm_compile(
         payload = {"dataset_key": dataset, "async_mode": True}
         try:
             resp = requests.post(
-                f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/llm/compile",
+                sidecar_url("/api/llm/compile"),
                 json=payload,
                 headers={"X-API-Key": token},
                 timeout=10,

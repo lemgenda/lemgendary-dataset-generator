@@ -13,11 +13,11 @@ import typer
 from rich.table import Table
 
 from commands.common import (
-    DEFAULT_SERVER_HOST,
-    DEFAULT_SERVER_PORT,
     _is_server_available,
     _spawn_detached,
     console,
+    server_host,
+    server_port,
 )
 from core import paths
 from core.cli_args import venv_python
@@ -32,14 +32,20 @@ server_app = typer.Typer(help="Control the local FastAPI + WebSocket API sidecar
 # ─── server sub-app (Phase 7) ───────────────────────────────────────────────
 @server_app.command("start")
 def server_start(
-    host: str = typer.Option(DEFAULT_SERVER_HOST, "--host", "-h", help="Bind host address"),
-    port: int = typer.Option(DEFAULT_SERVER_PORT, "--port", "-p", help="Bind port number"),
+    host: str | None = typer.Option(
+        None, "--host", "-h", help="Bind host address (default: bind_host in ecosystem.json)"
+    ),
+    port: int | None = typer.Option(
+        None, "--port", "-p", help="Bind port number (default: service port in ecosystem.json)"
+    ),
     background: bool = typer.Option(
         False, "--background", "-d", help="Run server in background daemon process"
     ),
     reload: bool = typer.Option(False, "--reload", help="Enable automatic code reloading"),
 ) -> None:
     """Start the local HTTP and WebSocket API sidecar server."""
+    host = host or server_host()
+    port = port or server_port()
     if _is_server_available(host, port):
         console.print(f"[yellow]Server is already running at http://{host}:{port}[/yellow]")
         return
@@ -113,10 +119,12 @@ def server_stop() -> None:
 
 @server_app.command("status")
 def server_status(
-    host: str = typer.Option(DEFAULT_SERVER_HOST, "--host", "-h"),
-    port: int = typer.Option(DEFAULT_SERVER_PORT, "--port", "-p"),
+    host: str | None = typer.Option(None, "--host", "-h"),
+    port: int | None = typer.Option(None, "--port", "-p"),
 ) -> None:
     """Check the health, uptime, and hardware sensors of the API server."""
+    host = host or server_host()
+    port = port or server_port()
     if not _is_server_available(host, port):
         console.print(
             "[yellow]LemGendary Dataset Compiler API server is not running on"

@@ -24,11 +24,12 @@ import shutil
 import sys
 from pathlib import Path
 
+from core import ecosystem
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.58"
+__version__ = "16.9.59"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────
@@ -140,24 +141,24 @@ def build_parser() -> argparse.ArgumentParser:
 def resolve_lem_env() -> str:
     """Locate the `lem-env` executable. Raises FileNotFoundError if absent.
 
-    Resolution order:
+    Resolution order (the env-manager folder is the ``env-manager`` service's
+    project in the shared ecosystem file, see :mod:`core.ecosystem`):
       1. `shutil.which("lem-env")` — hits if the venv is activated or
          lem-env is installed on PATH.
-      2. `../lemgendary-env-manager/.venv/Scripts/lem-env.exe` — Windows venv.
-      3. `../lemgendary-env-manager/.venv/Scripts/lem-env` — rare shebang case.
-      4. `../lemgendary-env-manager/.venv/bin/lem-env` — POSIX venv.
+      2. `<env-manager>/.venv/Scripts/lem-env.exe` — Windows venv.
+      3. `<env-manager>/.venv/Scripts/lem-env` — rare shebang case.
+      4. `<env-manager>/.venv/bin/lem-env` — POSIX venv.
     """
     found = shutil.which("lem-env")
     if found:
         return found
 
-    here = Path(__file__).parent.resolve()
-    proj_root = here.parent if here.name == "core" else here
-    workspace_root = proj_root.parent
+    env_manager_dir = ecosystem.project_dir(ecosystem.ENV_MANAGER_SERVICE)
+    venv_dir = env_manager_dir / ".venv"
     candidates = [
-        workspace_root / "lemgendary-env-manager" / ".venv" / "Scripts" / "lem-env.exe",
-        workspace_root / "lemgendary-env-manager" / ".venv" / "Scripts" / "lem-env",
-        workspace_root / "lemgendary-env-manager" / ".venv" / "bin" / "lem-env",
+        venv_dir / "Scripts" / "lem-env.exe",
+        venv_dir / "Scripts" / "lem-env",
+        venv_dir / "bin" / "lem-env",
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -166,9 +167,9 @@ def resolve_lem_env() -> str:
     raise FileNotFoundError(
         "lem-env executable not found. Install the LemGendary Environment "
         "Manager by running:\n"
-        "    cd ..\\lemgendary-env-manager\n"
+        f"    cd {env_manager_dir}\n"
         "    .\\.venv\\Scripts\\python.exe -m pip install -e .\n"
-        "Or ensure ../lemgendary-env-manager/.venv/Scripts/lem-env.exe exists."
+        f"Or ensure {candidates[0]} exists."
     )
 
 

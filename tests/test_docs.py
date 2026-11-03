@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 from PIL import Image
 
-from core import doc_generator
+from core import doc_generator, ecosystem
 from core.docs import (
     FOREX_COLUMN_FIELDS,
     clean_readme,
@@ -107,7 +107,9 @@ class TestDocumentationGenerator(unittest.TestCase):
             # Check dataset-metadata.json (Kaggle)
             meta_payload = _read_json(self, out_root / "dataset-metadata.json")
             self.assertEqual(meta_payload["licenses"][0]["name"], "CC-BY-NC-4.0")
-            self.assertEqual(meta_payload["id"], "lemtreursi/lemgendizednafnetdebluring")
+            self.assertEqual(
+                meta_payload["id"], f"{ecosystem.kaggle_owner()}/lemgendizednafnetdebluring"
+            )
             self.assertFalse(meta_payload["isPrivate"])
             self.assertTrue(len(meta_payload["keywords"]) >= 5)
 
@@ -202,7 +204,7 @@ class TestDocumentationGenerator(unittest.TestCase):
             meta_data = generate_kaggle_metadata(ctx, readme_content=readme_text)
             self.assertTrue((manifold_dir / "dataset-metadata.json").exists())
             self.assertEqual(meta_data["title"], "LemGendized CodeFormer")
-            self.assertEqual(meta_data["id"], "lemtreursi/lemgendizedcodeformer")
+            self.assertEqual(meta_data["id"], f"{ecosystem.kaggle_owner()}/lemgendizedcodeformer")
             self.assertTrue(20 <= len(meta_data["subtitle"]) <= 80)
             self.assertEqual(meta_data["headerImage"], img_file.name)
             self.assertTrue(len(meta_data["resources"]) >= 6)

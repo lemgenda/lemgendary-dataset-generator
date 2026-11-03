@@ -17,7 +17,7 @@ import certifi
 from kagglehub import clients as kagglehub_clients
 
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS
-from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+from core.kaggle_identity import default_owner
 from core.lazy_imports import load_kaggle_api
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def split_owner_slug(handle: str) -> tuple[str, str]:
     if "/" in handle:
         parts = handle.split("/")
         return parts[0], parts[1]
-    return DEFAULT_KAGGLE_OWNER, handle
+    return default_owner(), handle
 
 
 def kaggle_cli_creationflags() -> int:
@@ -123,12 +123,13 @@ def _suppress_version_warnings() -> None:
 
 
 def setup_kaggle_auth(
-    default_user: str | None = DEFAULT_KAGGLE_OWNER,
+    default_user: str | None = None,
     custom_user: str | None = None,
     custom_token: str | None = None,
 ) -> bool:
     """Ensure Kaggle credentials are initialized (explicit args > environment > .kaggle_token).
 
+    ``default_user`` defaults to the Kaggle owner in the ecosystem file.
     Returns True when an API token or username/key pair is available afterwards.
     """
     if custom_token:
@@ -136,7 +137,7 @@ def setup_kaggle_auth(
     if custom_user:
         os.environ["KAGGLE_USERNAME"] = custom_user
     if not custom_token:
-        _apply_token_file(default_user)
+        _apply_token_file(default_user or default_owner())
 
     _configure_ca_bundle()
     _suppress_version_warnings()

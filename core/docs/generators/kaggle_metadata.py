@@ -26,7 +26,7 @@ from core.docs.generators.common import (
     run_manifold_cli,
 )
 from core.docs.metadata import FOREX_COLUMN_FIELDS
-from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+from core.kaggle_identity import default_owner
 
 logger = logging.getLogger(__name__)
 
@@ -322,7 +322,7 @@ def generate_kaggle_metadata(
 
     metadata_payload: dict[str, Any] = {
         "title": listing.title,
-        "id": f"{DEFAULT_KAGGLE_OWNER}/{ctx.slug}",
+        "id": f"{default_owner()}/{ctx.slug}",
         "subtitle": listing.subtitle,
         "description": extract_kaggle_description(_resolve_readme(ctx, readme_content)),
         "keywords": listing.keywords,

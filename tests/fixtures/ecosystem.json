@@ -1,0 +1,46 @@
+{
+  "$schema": "./ecosystem.schema.json",
+  "schema_version": 1,
+  "identity": {
+    "docs_url": "https://docs.example.test/hub/",
+    "kaggle_owner": "fixtureowner",
+    "bind_host": "127.0.0.1"
+  },
+  "services": [
+    {
+      "id": "env-manager",
+      "aliases": ["env-manager", "lemgendary-env-manager", "env"],
+      "project": "fixture-env-manager",
+      "port": 18000,
+      "health_path": "/api/health",
+      "liveness_path": "/api/ping",
+      "websocket_path": "/ws/log",
+      "app_import": "env_manager.server:app",
+      "log_dir": ".env_server"
+    },
+    {
+      "id": "dataset-compiler",
+      "aliases": ["dataset-compiler", "lemgendary-datasets", "datasets"],
+      "project": "lemgendary-datasets",
+      "port": 18100,
+      "health_path": "/api/health",
+      "liveness_path": "/api/health",
+      "websocket_path": "/api/ws/events",
+      "app_import": "api.server:app",
+      "log_dir": ".lgd_server"
+    },
+    {
+      "id": "training-suite",
+      "aliases": ["training-suite", "lemgendary-training-suite", "training"],
+      "project": "lemgendary-training-suite",
+      "port": 18200,
+      "health_path": "/api/health",
+      "liveness_path": "/api/health",
+      "websocket_path": "/api/ws/logs",
+      "app_import": "training.server.app:app",
+      "log_dir": ".lemtrain_server"
+    }
+  ],
+  "projects": [],
+  "pipeline_steps": []
+}

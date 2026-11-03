@@ -20,7 +20,6 @@ in tests; rebinding a name on this facade does not affect the implementation.
 """
 
 from core.sync_auth import (
-    DEFAULT_KAGGLE_OWNER,
     is_kaggle_large_manifold,
     normalize_kaggle_handle,
     setup_kaggle_auth,
@@ -46,7 +45,6 @@ from core.sync_upload import perform_dataset_upload
 
 __all__ = [
     "CHUNK_SIZE",
-    "DEFAULT_KAGGLE_OWNER",
     "DatasetVersionInfo",
     "DownloadRequest",
     "cleanup_temp_archives",

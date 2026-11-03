@@ -31,6 +31,7 @@ from core.docs.templates import (
     render_forex_readme,
     render_standard_readme,
 )
+from core.kaggle_identity import default_owner
 
 _TF_NAMES = {
     1: "M1 (1min)", 5: "M5 (5min)", 15: "M15 (15min)",
@@ -76,6 +77,7 @@ def _render_forex(ctx: ManifoldContext) -> str:
                 manifold_name=ctx.manifold_name,
                 models_markdown=build_models_markdown(ctx.manifold_name, MODELS_META).strip(),
                 structure_text=structure_text.strip(),
+                kaggle_owner=default_owner(),
             ),
             category_str=ctx.profile.category,
             coverage=ForexCoverage(
@@ -156,6 +158,7 @@ def _render_standard(ctx: ManifoldContext) -> str:
                 manifold_name=ctx.manifold_name,
                 models_markdown=build_models_markdown(ctx.manifold_name, MODELS_META).strip(),
                 structure_text=structure_text.strip(),
+                kaggle_owner=default_owner(),
             ),
             overview=StandardOverview(
                 resolved_desc=ctx.profile.description,

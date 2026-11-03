@@ -15,7 +15,7 @@ from core.common_sync import (
     setup_kaggle_auth,
     track_kaggle_dataset_status,
 )
-from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+from core.kaggle_identity import default_owner
 from tools.modernize.queue_items import ManifoldQueueItem
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def push_manifold_to_kaggle(
 
     clean_handle = item.kaggle_ref.replace("kaggle://", "").strip()
     if "/" not in clean_handle:
-        clean_handle = f"{DEFAULT_KAGGLE_OWNER}/{clean_handle}"
+        clean_handle = f"{default_owner()}/{clean_handle}"
 
     target_dir = item.target_dir
     if not target_dir or not target_dir.exists():

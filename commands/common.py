@@ -15,7 +15,7 @@ from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
 from api.auth import get_or_create_token
-from core import paths
+from core import ecosystem, paths
 from services.job_watch import (
     TERMINAL_STATES,
     JobNotFoundError,
@@ -24,9 +24,22 @@ from services.job_watch import (
 )
 
 logger = logging.getLogger(__name__)
-DEFAULT_SERVER_HOST = "127.0.0.1"
-DEFAULT_SERVER_PORT = 8100
 console = Console()
+
+
+def server_host() -> str:
+    """Host the API sidecar binds to (``identity.bind_host`` in ecosystem.json)."""
+    return ecosystem.bind_host()
+
+
+def server_port() -> int:
+    """Port of the API sidecar (the ``dataset-compiler`` service in ecosystem.json)."""
+    return ecosystem.service_port(ecosystem.DATASETS_SERVICE)
+
+
+def sidecar_url(path: str = "") -> str:
+    """HTTP URL of the local API sidecar with ``path`` appended."""
+    return f"http://{server_host()}:{server_port()}{path}"
 
 
 def _spawn_detached(cmd: list[str], creationflags: int) -> subprocess.Popen:
@@ -38,8 +51,13 @@ def _spawn_detached(cmd: list[str], creationflags: int) -> subprocess.Popen:
     return subprocess.Popen(cmd, creationflags=creationflags, close_fds=True)
 
 
-def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
-    """Check if the local FastAPI server is healthy and responding."""
+def _is_server_available(host: str | None = None, port: int | None = None) -> bool:
+    """Check if the local FastAPI server is healthy and responding.
+
+    ``host`` and ``port`` default to the sidecar address in ecosystem.json.
+    """
+    host = host or server_host()
+    port = port or server_port()
     try:
         resp = requests.get(f"http://{host}:{port}/api/health", timeout=0.8)
         return resp.status_code == 200
@@ -48,10 +66,10 @@ def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SE
         return False
 
 
-def _stream_job_logs(
-    job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT
-) -> int:
+def _stream_job_logs(job_id: str, host: str | None = None, port: int | None = None) -> int:
     """Connect to WebSocket log feed and stream lines to console until completion."""
+    host = host or server_host()
+    port = port or server_port()
     ws_url = f"ws://{host}:{port}/api/ws/jobs/{job_id}/logs"
     try:
         with connect(ws_url) as ws:
@@ -92,7 +110,7 @@ def route_through_sidecar(endpoint: str, payload: dict) -> None:
     token = get_or_create_token()
     try:
         resp = requests.post(
-            f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/{endpoint}",
+            sidecar_url(f"/api/jobs/{endpoint}"),
             json=payload,
             headers={"X-API-Key": token},
             timeout=10,
@@ -170,7 +188,7 @@ JOB_POLL_INTERVAL_S = 2.0
 
 def _fetch_job_status(job_id: str, token: str) -> dict:
     """Read one job's status from the sidecar, mapping failures to JobStatusError."""
-    url = f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/{job_id}"
+    url = sidecar_url(f"/api/jobs/{job_id}")
     try:
         resp = requests.get(url, headers={"X-API-Key": token}, timeout=5)
     except requests.RequestException as exc:
@@ -187,7 +205,7 @@ def _fetch_job_status(job_id: str, token: str) -> dict:
 
 def _print_job_log_tail(job_id: str, token: str, lines: int = 200) -> None:
     """Show the end of the job log so failures are visible without the GUI."""
-    url = f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/api/jobs/{job_id}/logs"
+    url = sidecar_url(f"/api/jobs/{job_id}/logs")
     try:
         resp = requests.get(url, params={"tail": lines}, headers={"X-API-Key": token}, timeout=5)
     except requests.RequestException as exc:

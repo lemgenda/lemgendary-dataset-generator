@@ -23,7 +23,7 @@ from api.models import (
 from api.routes.datasets import _resolve_output_root
 from core import paths
 from core.common_sync import is_kaggle_large_manifold
-from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+from core.kaggle_identity import default_owner
 from services.invocation import ServiceInvocation
 from services.sync_service import kaggle_invocation, manifold_sync_invocation
 
@@ -220,7 +220,7 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
     repo_id = (
         req.kaggle_ref
         or _registry_kaggle_ref(req.manifold, manifold_dir, match_name=True)
-        or f"{DEFAULT_KAGGLE_OWNER}/{manifold_dir.name.lower()}"
+        or f"{default_owner()}/{manifold_dir.name.lower()}"
     )
     clean_id = _clean_kaggle_ref(repo_id)
 
@@ -266,7 +266,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         # repo_id is required by the request type and ignored with all_datasets
         work = kaggle_invocation(
             action="metadata",
-            repo_id=f"{DEFAULT_KAGGLE_OWNER}/placeholder",
+            repo_id=f"{default_owner()}/placeholder",
             output_dir=str(root),
             all_datasets=True,
         )
@@ -281,7 +281,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
     repo_id = (
         req.kaggle_ref
         or _registry_kaggle_ref(req.manifold, manifold_dir, match_name=False)
-        or f"{DEFAULT_KAGGLE_OWNER}/{manifold_dir.name.lower()}"
+        or f"{default_owner()}/{manifold_dir.name.lower()}"
     )
     clean_id = _clean_kaggle_ref(repo_id)
     if is_kaggle_large_manifold(clean_id):

@@ -21,13 +21,12 @@ from core.common_sync import (
     setup_kaggle_auth,
 )
 from core.docs.context import find_unified_entry
-from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+from core.kaggle_identity import default_owner
 from core.lazy_imports import load_kaggle_api
 from tools.manifold_sync import ROOT, resolve_kaggle_ref, resolve_manifold_folder
 
 logger = logging.getLogger(__name__)
 
-_OWNER = DEFAULT_KAGGLE_OWNER
 _SYNC_ERRORS = (OSError, ValueError, KeyError, AttributeError, RuntimeError, ImportError)
 
 
@@ -80,7 +79,7 @@ def _target_repo_id(
     meta: dict, manifold_dir: Path, existing_datasets: dict[str, str]
 ) -> str:
     """Kaggle handle to push a manifold's metadata to."""
-    raw_id = meta.get("id") or f"{_OWNER}/{manifold_dir.name.lower().replace('_', '')}"
+    raw_id = meta.get("id") or f"{default_owner()}/{manifold_dir.name.lower().replace('_', '')}"
     if existing_datasets:
         target = existing_datasets.get(raw_id.lower()) or _registry_repo_id(
             manifold_dir, existing_datasets
@@ -148,7 +147,7 @@ def _sync_all_metadata(datasets_root: Path, dry_run: bool) -> int:
         print(f"[WARNING] No dataset-metadata.json files found in {datasets_root}")
         return 0
 
-    existing_datasets = {} if dry_run else _fetch_existing_datasets(_OWNER)
+    existing_datasets = {} if dry_run else _fetch_existing_datasets(default_owner())
 
     print(f"Discovered {len(meta_files)} manifolds with local metadata in {datasets_root}")
     counts = {"success": 0, "skipped": 0, "failure": 0}
@@ -188,7 +187,7 @@ def _single_repo_id(meta_path: Path) -> str:
             repo_id = json.loads(meta_file.read_text(encoding="utf-8")).get("id")
         except (OSError, json.JSONDecodeError):
             repo_id = None
-    return repo_id or f"{_OWNER}/{meta_path.name.lower()}"
+    return repo_id or f"{default_owner()}/{meta_path.name.lower()}"
 
 
 def sync_metadata(

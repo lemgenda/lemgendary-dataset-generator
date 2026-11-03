@@ -72,6 +72,8 @@ class ReadmeCommon:
     manifold_name: str
     models_markdown: str
     structure_text: str
+    kaggle_owner: str
+    """Kaggle account that hosts the dataset (linked at the end of the README)."""
 
 
 @dataclass
@@ -285,6 +287,7 @@ def render_forex_readme(fields: ForexReadmeFields) -> str:
     common = fields.common
     coverage = fields.coverage
     slug = common.manifold_name.lower().replace("_", "-")
+    kaggle_url = f"https://www.kaggle.com/datasets/{common.kaggle_owner}/{slug}"
     horizon = (
         f"{coverage.start_date_str} to Present "
         "(6-Fold Walk-Forward Matrix with 14-day Embargo)"
@@ -324,7 +327,7 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
 
 ---
 
-**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{slug})
+**Kaggle Native Source**: [Access Dataset]({kaggle_url})
 """
     return clean_readme(content)
 
@@ -334,6 +337,7 @@ def render_standard_readme(fields: StandardReadmeFields) -> str:
     common = fields.common
     overview = fields.overview
     slug = common.manifold_name.lower().replace("_", "-")
+    kaggle_url = f"https://www.kaggle.com/datasets/{common.kaggle_owner}/{slug}"
     content = f"""# {common.manifold_name}
 
 > {overview.resolved_desc}
@@ -371,6 +375,6 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
 
 ---
 
-**Kaggle Native Source**: [Access Dataset](https://www.kaggle.com/datasets/lemtreursi/{slug})
+**Kaggle Native Source**: [Access Dataset]({kaggle_url})
 """
     return clean_readme(content)

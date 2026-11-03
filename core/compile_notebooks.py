@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 
+from core import ecosystem
 from core.lazy_imports import load_training_notebooks
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ def get_training_suite_notebook_generators():
     ``sys.path``; the import goes through ``core.lazy_imports`` because the
     training suite is an optional sibling repository.
     """
-    suite_dir = Path(__file__).resolve().parents[2] / "lemgendary-training-suite"
+    suite_dir = ecosystem.project_dir(ecosystem.TRAINING_SERVICE)
     if suite_dir.exists() and str(suite_dir) not in sys.path:
         sys.path.insert(0, str(suite_dir))
     notebooks = load_training_notebooks()

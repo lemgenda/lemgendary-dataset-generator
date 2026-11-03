@@ -32,7 +32,7 @@ from api.security import (
     ALLOWED_ORIGINS,
     origin_guard_middleware,
 )
-from core import paths
+from core import ecosystem, paths
 from core.cli_args import __version__
 
 logger = logging.getLogger("lemgendary.api.server")
@@ -128,12 +128,15 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8100, reload: bool = False) -> None:
-    """Launch the uvicorn ASGI server with the dataset compiler API application."""
+def run_server(host: str | None = None, port: int | None = None, reload: bool = False) -> None:
+    """Launch the uvicorn ASGI server with the dataset compiler API application.
+
+    ``host`` and ``port`` default to the ``dataset-compiler`` entry of ecosystem.json.
+    """
     uvicorn.run(
         "api.server:app",
-        host=host,
-        port=port,
+        host=host or ecosystem.bind_host(),
+        port=port or ecosystem.service_port(ecosystem.DATASETS_SERVICE),
         reload=reload,
         log_level="info",
     )
