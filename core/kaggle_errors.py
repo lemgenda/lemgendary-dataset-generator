@@ -14,7 +14,7 @@ from kagglehub.exceptions import (
     UnauthenticatedError,
 )
 
-KAGGLE_REMOTE_ERRORS: tuple[type[BaseException], ...] = (
+KAGGLE_REMOTE_ERRORS: tuple[type[Exception], ...] = (
     # requests.RequestException (incl. HTTPError, KaggleApiHTTPError) and
     # socket timeouts derive from OSError; missing kaggle.json raises OSError.
     OSError,
@@ -28,4 +28,4 @@ KAGGLE_REMOTE_ERRORS: tuple[type[BaseException], ...] = (
 
 # Lazy ``kaggle`` / ``kagglesdk`` imports can also fail; ``import kaggle``
 # authenticates on import and raises OSError when kaggle.json is missing.
-KAGGLE_CLIENT_ERRORS: tuple[type[BaseException], ...] = (ImportError, *KAGGLE_REMOTE_ERRORS)
+KAGGLE_CLIENT_ERRORS: tuple[type[Exception], ...] = (ImportError, *KAGGLE_REMOTE_ERRORS)

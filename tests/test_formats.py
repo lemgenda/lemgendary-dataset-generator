@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from PIL import Image
 
@@ -135,7 +136,8 @@ class TestWebDatasetWriter(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir)
             writer = WebDatasetWriter()
-            policy = ImageFormatPolicy(wds_shard_size_bytes=10_000_000)
+            # The writer duck-types its policy; the shard cap is not an image-policy field.
+            policy = SimpleNamespace(wds_shard_size_bytes=10_000_000)
 
             writer.open(out_root, policy)
 

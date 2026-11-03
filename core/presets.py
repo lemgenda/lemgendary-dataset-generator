@@ -35,24 +35,26 @@ class CompilerPreset(BaseModel):
     name: str = Field(..., description="Unique machine identifier for preset")
     title: str = Field(..., description="Human-readable title")
     description: str = Field(..., description="Detailed explanation of profile rationale")
-    image_format: str = Field("webp", description="Target image format (webp, jpeg, png)")
-    image_quality: int = Field(92, ge=1, le=100, description="Target image quality (1-100)")
+    image_format: str = Field(default="webp", description="Target image format (webp, jpeg, png)")
+    image_quality: int = Field(default=92, ge=1, le=100, description="Target image quality (1-100)")
     target_quality: int | None = Field(
-        95, ge=1, le=100, description="Target quality for ground truth pairs"
+        default=95, ge=1, le=100, description="Target quality for ground truth pairs"
     )
-    mask_format: str | None = Field("webp-lossless", description="Target mask format")
+    mask_format: str | None = Field(default="webp-lossless", description="Target mask format")
     min_resolution: int | None = Field(
-        256, ge=64, description="Minimum resolution floor in pixels"
+        default=256, ge=64, description="Minimum resolution floor in pixels"
     )
     resampling: str | None = Field(
-        "lanczos", description="Resampling filter (lanczos, bilinear, bicubic)"
+        default="lanczos", description="Resampling filter (lanczos, bilinear, bicubic)"
     )
     vetting_enabled: bool = Field(
-        False, description="Whether NIMA aesthetic vetting gate is active"
+        default=False, description="Whether NIMA aesthetic vetting gate is active"
     )
-    labeling_enabled: bool = Field(False, description="Whether YOLO auto-labeling is active")
+    labeling_enabled: bool = Field(
+        default=False, description="Whether YOLO auto-labeling is active"
+    )
     hardlink_gate: bool = Field(
-        True, description="Whether NTFS hardlinking is enforced for identical targets"
+        default=True, description="Whether NTFS hardlinking is enforced for identical targets"
     )
     containers: list[str] = Field(
         default_factory=list, description="Target container formats (parquet, mds, litdata)"

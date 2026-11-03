@@ -27,6 +27,7 @@ _RULE = "=" * 90
 def _convert_from_zip(it: ManifoldQueueItem, fmt: str, options: ConvertOptions) -> bool:
     """Stream the item's legacy zip archive into MDS or WebDataset shards."""
     assert it.zip_path is not None, f"zip_path must not be None for zip streaming of {it.key}"
+    assert it.target_dir is not None, f"target_dir must not be None for zip streaming of {it.key}"
     cleanup = options.cleanup
     legacy_dir = it.legacy_dir if cleanup.delete_legacy_dir else None
     if fmt == "mds":

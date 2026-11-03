@@ -33,10 +33,10 @@ router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
 
 class KaggleSyncRequest(BaseModel):
     """Request body for a Kaggle push or pull of one manifold."""
-    manifold: str | None = Field(None, description="Specific manifold ID or folder name")
-    push: bool = Field(False, description="Push local manifold to Kaggle")
-    pull: bool = Field(False, description="Pull remote dataset from Kaggle")
-    force: bool = Field(False, description="Force overwrite")
+    manifold: str | None = Field(default=None, description="Specific manifold ID or folder name")
+    push: bool = Field(default=False, description="Push local manifold to Kaggle")
+    pull: bool = Field(default=False, description="Pull remote dataset from Kaggle")
+    force: bool = Field(default=False, description="Force overwrite")
 
 
 def _clean_kaggle_ref(ref: str) -> str:

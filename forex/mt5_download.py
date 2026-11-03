@@ -47,7 +47,10 @@ class _BarRequest:
         ``dt_from`` stays naive for the MT5 range API; the downloaded bars are
         converted with ``utc=True``.
         """
-        return pd.Timestamp(self.dt_from, tz="UTC")
+        stamp = pd.Timestamp(self.dt_from, tz="UTC")
+        if not isinstance(stamp, pd.Timestamp):  # NaT: dt_from is not a real datetime
+            raise TypeError(f"dt_from is not a valid datetime: {self.dt_from!r}")
+        return stamp
 
 
 def _candidate_symbols(pair):

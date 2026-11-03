@@ -10,7 +10,26 @@ eagerly import all 14 CLI tools and heavy runtime dependencies (`torch`,
 from __future__ import annotations
 
 import importlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from . import (
+        convert_forex_manifold,
+        embed_parquet_descriptions,
+        forex_schema,
+        generate_cli,
+        generate_degrade,
+        manifold_reduce,
+        manifold_sync,
+        migrate_manifold_format,
+        migrate_manifold_image_format,
+        modernization_queue,
+        modernize_manifold,
+        mt5_bridge,
+        mt5_pipeline,
+        regenerate_manifolds_md,
+        sync_kaggle_metadata,
+    )
 
 __all__ = [
     "convert_forex_manifold",

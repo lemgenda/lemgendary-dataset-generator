@@ -125,9 +125,11 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         self.assertEqual(ai.dataset_type, "llm")
         self.assertEqual(ai.split_strategy, "stratified")
         self.assertEqual(ai.val_split, 0.20)
-        self.assertIsNotNone(ai.llm_pipeline)
-        self.assertEqual(ai.llm_pipeline.schema_format, "chatml_turn3")
-        self.assertTrue(len(ai.llm_pipeline.knowledge_sources) >= 3)
+        pipeline = ai.llm_pipeline
+        if pipeline is None:
+            self.fail("ai_helper_lemgend declares no llm_pipeline")
+        self.assertEqual(pipeline.schema_format, "chatml_turn3")
+        self.assertTrue(len(pipeline.knowledge_sources) >= 3)
 
 
 

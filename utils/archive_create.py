@@ -15,6 +15,7 @@ from pathlib import Path
 
 from utils.archive_io import (
     LARGE_FILE_THRESHOLD,
+    TarWriteMode,
     byte_progress_bar,
     copy_stream,
     tar_mode,
@@ -65,7 +66,7 @@ def _collect_entries(
 
 
 def _write_tar(
-    target_output: Path, mode: str, entries: list[_FileEntry], progress: _BarSpec
+    target_output: Path, mode: TarWriteMode, entries: list[_FileEntry], progress: _BarSpec
 ) -> None:
     with tarfile.open(target_output, mode) as tf, byte_progress_bar(*progress) as pbar:
         for full_path, arcname, size in entries:

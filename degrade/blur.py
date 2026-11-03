@@ -64,6 +64,13 @@ def _create_disk_kernel(radius: int) -> np.ndarray:
     return kernel / np.sum(kernel)
 
 
+def _gaussian_kernel_size(sigma: float, kernel_size: int | None) -> int:
+    """Odd kernel size: derived from ``sigma`` when unset, else rounded up to odd."""
+    if kernel_size is None:
+        return max(3, math.ceil(sigma * 3.0) * 2 + 1)
+    return kernel_size + 1 - kernel_size % 2
+
+
 @dataclass
 class GaussianBlur(DegradationFilter):
     """Applies isotropic Gaussian blur."""
@@ -75,25 +82,22 @@ class GaussianBlur(DegradationFilter):
 
     def __post_init__(self) -> None:
         self.sigma = max(0.1, float(self.sigma))
-        if self.kernel_size is None:
-            k = math.ceil(self.sigma * 3.0) * 2 + 1
-            self.kernel_size = max(3, k)
-        else:
-            self.kernel_size += 1 - self.kernel_size % 2  # round an even size up to odd
+        self.kernel_size = _gaussian_kernel_size(self.sigma, self.kernel_size)
 
     def __call__(
         self,
         img: np.ndarray,
         rng: random.Random,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        kernel = _create_gaussian_kernel(self.kernel_size, self.sigma)
+        size = _gaussian_kernel_size(self.sigma, self.kernel_size)
+        kernel = _create_gaussian_kernel(size, self.sigma)
         out = np.empty_like(img)
         for c in range(img.shape[2]):
             out[:, :, c] = convolve(img[:, :, c], kernel, mode="reflect")
 
         params = {
             "sigma": round(self.sigma, 4),
-            "kernel_size": self.kernel_size,
+            "kernel_size": size,
         }
         return np.clip(out, 0.0, 1.0), params
 

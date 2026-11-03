@@ -35,40 +35,44 @@ class JobType(str, Enum):
 
 class CompileJobRequest(BaseModel):
     """Request body for a dataset compile job."""
-    model: str | None = Field(None, description="Dataset/model key in unified_data.yaml")
+    model: str | None = Field(default=None, description="Dataset/model key in unified_data.yaml")
     preset: str | None = Field(
-        None, description="Compiler preset profile name from presets.yaml"
+        default=None, description="Compiler preset profile name from presets.yaml"
     )
-    max_gb: float | None = Field(None, description="Max size override in gigabytes")
-    suffix: str | None = Field(None, description="Manifold name suffix override")
-    workers: int | None = Field(None, description="Parallel worker process count")
-    no_vetting: bool = Field(False, description="Bypass NIMA aesthetic vetting gate")
-    no_labeling: bool = Field(False, description="Bypass YOLO auto-labeling")
-    no_hash: bool = Field(False, description="Bypass deduplication hash")
+    max_gb: float | None = Field(default=None, description="Max size override in gigabytes")
+    suffix: str | None = Field(default=None, description="Manifold name suffix override")
+    workers: int | None = Field(default=None, description="Parallel worker process count")
+    no_vetting: bool = Field(default=False, description="Bypass NIMA aesthetic vetting gate")
+    no_labeling: bool = Field(default=False, description="Bypass YOLO auto-labeling")
+    no_hash: bool = Field(default=False, description="Bypass deduplication hash")
     image_format: str | None = Field(
-        None,
+        default=None,
         description="Target image format (webp, jpeg, png, keep); unset uses the preset or config",
     )
     image_quality: int | None = Field(
-        None, description="Target image quality (1-100); unset uses the preset or config"
+        default=None, description="Target image quality (1-100); unset uses the preset or config"
     )
     target_quality: int | None = Field(
-        None,
+        default=None,
         description="Target quality for restoration ground truth; unset uses the preset or config",
     )
     mask_format: str | None = Field(
-        None, description="Target mask format; unset uses the preset or config"
+        default=None, description="Target mask format; unset uses the preset or config"
     )
     also_format: str | None = Field(
-        None, description="Comma-separated container formats (mds, litdata, wds, parquet)"
+        default=None, description="Comma-separated container formats (mds, litdata, wds, parquet)"
     )
-    force_duplicate: bool = Field(False, description="Bypass hardlink gate and duplicate bytes")
-    accept_space_loss: bool = Field(False, description="Accept storage growth for container writes")
-    label_strategy: str | None = Field(None, description="Auto-labeling strategy")
-    prompt_strategy: str | None = Field(None, description="Diffusion prompt template")
-    mask_strategy: str | None = Field(None, description="Segmentation mask strategy")
+    force_duplicate: bool = Field(
+        default=False, description="Bypass hardlink gate and duplicate bytes"
+    )
+    accept_space_loss: bool = Field(
+        default=False, description="Accept storage growth for container writes"
+    )
+    label_strategy: str | None = Field(default=None, description="Auto-labeling strategy")
+    prompt_strategy: str | None = Field(default=None, description="Diffusion prompt template")
+    mask_strategy: str | None = Field(default=None, description="Segmentation mask strategy")
     shard_ext: str | None = Field(
-        "data", description="WebDataset shard file extension without dot (default: 'data')"
+        default="data", description="WebDataset shard file extension without dot (default: 'data')"
     )
 
 
@@ -77,15 +81,18 @@ class DegradeJobRequest(BaseModel):
     source: str = Field(..., description="Source clean dataset path or registered manifold name")
     output: str = Field(..., description="Destination synthetic manifold folder name")
     profile: str = Field(
-        "motion-blur+iso-noise", description="Degradation profile expression or preset alias"
+        default="motion-blur+iso-noise",
+        description="Degradation profile expression or preset alias"
     )
-    intensity: str = Field("medium", description="Intensity preset (low, medium, high)")
-    pairs: int | None = Field(None, description="Maximum sample pairs to synthesize")
-    val_split: float = Field(0.12, description="Validation split ratio")
-    seed: int = Field(42, description="Deterministic seed")
-    image_format: str = Field("webp", description="Format for degraded images (webp, jpeg, png)")
-    workers: int | None = Field(None, description="Worker thread count")
-    dry_run: bool = Field(False, description="Simulate without writing files")
+    intensity: str = Field(default="medium", description="Intensity preset (low, medium, high)")
+    pairs: int | None = Field(default=None, description="Maximum sample pairs to synthesize")
+    val_split: float = Field(default=0.12, description="Validation split ratio")
+    seed: int = Field(default=42, description="Deterministic seed")
+    image_format: str = Field(
+        default="webp", description="Format for degraded images (webp, jpeg, png)"
+    )
+    workers: int | None = Field(default=None, description="Worker thread count")
+    dry_run: bool = Field(default=False, description="Simulate without writing files")
 
 
 class JobResponse(BaseModel):
@@ -94,10 +101,10 @@ class JobResponse(BaseModel):
     job_type: JobType = Field(..., description="Job category")
     state: JobState = Field(..., description="Current job lifecycle state")
     created_at: str = Field(..., description="ISO 8601 creation timestamp")
-    started_at: str | None = Field(None, description="ISO 8601 execution start timestamp")
-    completed_at: str | None = Field(None, description="ISO 8601 completion timestamp")
-    exit_code: int | None = Field(None, description="Process exit code")
-    error_message: str | None = Field(None, description="Error details if failed")
+    started_at: str | None = Field(default=None, description="ISO 8601 execution start timestamp")
+    completed_at: str | None = Field(default=None, description="ISO 8601 completion timestamp")
+    exit_code: int | None = Field(default=None, description="Process exit code")
+    error_message: str | None = Field(default=None, description="Error details if failed")
     log_file: str = Field(..., description="Relative or absolute path to execution log file")
     parameters: dict[str, Any] = Field(
         default_factory=dict, description="Job configuration parameters"
@@ -257,9 +264,9 @@ class PresetListResponse(BaseModel):
 class QuickCompileRequest(BaseModel):
     """Request body for compiling a dataset with a preset."""
     model: str = Field(..., description="Dataset or model key in unified_data.yaml")
-    preset: str = Field("quality-vision", description="Preset name from presets.yaml")
-    max_gb: float | None = Field(None, description="Max size override in gigabytes")
-    workers: int | None = Field(None, description="Parallel worker process count")
+    preset: str = Field(default="quality-vision", description="Preset name from presets.yaml")
+    max_gb: float | None = Field(default=None, description="Max size override in gigabytes")
+    workers: int | None = Field(default=None, description="Parallel worker process count")
 
 
 class GuiStateResponse(BaseModel):
@@ -293,16 +300,20 @@ class KaggleDownloadRequest(BaseModel):
     """Request body for downloading a Kaggle dataset."""
     kaggle_ref: str = Field(..., description="Kaggle dataset handle, kaggle:// URI, or URL")
     target_folder: str | None = Field(
-        None, description="Destination folder name under datasets root"
+        default=None, description="Destination folder name under datasets root"
     )
-    force: bool = Field(False, description="Force overwrite existing folder")
+    force: bool = Field(default=False, description="Force overwrite existing folder")
 
 
 class KaggleUploadRequest(BaseModel):
     """Request body for uploading a manifold to Kaggle."""
     manifold: str = Field(..., description="Local manifold folder name or registry key")
-    kaggle_ref: str | None = Field(None, description="Optional target Kaggle dataset handle")
-    no_wait: bool = Field(True, description="Do not wait for server-side extraction verification")
+    kaggle_ref: str | None = Field(
+        default=None, description="Optional target Kaggle dataset handle"
+    )
+    no_wait: bool = Field(
+        default=True, description="Do not wait for server-side extraction verification"
+    )
 
 
 class CustomCompileRequest(BaseModel):
@@ -312,22 +323,23 @@ class CustomCompileRequest(BaseModel):
         ..., description="Unique dataset manifold name (e.g. CustomFaceEnhance)"
     )
     task: str = Field(
-        "vision", description="Task type (restoration, segmentation, detection, quality, vision)"
+        default="vision",
+        description="Task type (restoration, segmentation, detection, quality, vision)"
     )
     preset: str | None = Field(
-        None,
+        default=None,
         description=(
             "Compiler preset ID from presets.yaml; omitted means presets.yaml `default_preset`"
         ),
     )
-    canonical_format: str = Field("webdataset", description="Target container format")
-    shard_size: int = Field(5000, description="Samples per shard container")
+    canonical_format: str = Field(default="webdataset", description="Target container format")
+    shard_size: int = Field(default=5000, description="Samples per shard container")
     sources: list[str] = Field(
         default_factory=list,
         description="List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)",
     )
     purge_loose_images: bool = Field(
-        True,
+        default=True,
         description=(
             "After a successful compile, purge loose images of manifolds packed into a container"
         ),

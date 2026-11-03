@@ -184,7 +184,7 @@ def cluster_styles(conn: sqlite3.Connection) -> None:
     latent_matrix = np.stack(latents)
     n_clusters = int(CONFIG.get("n_style_clusters", 16))
     kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(latent_matrix)
-    labels_list = [int(x) for x in kmeans.labels_]
+    labels_list = [int(x) for x in np.asarray(kmeans.labels_, dtype=np.int64)]
     for i, cid in tqdm(
         zip(ids, labels_list), total=len(ids), desc="[STYLING] Updating Clusters"
     ):

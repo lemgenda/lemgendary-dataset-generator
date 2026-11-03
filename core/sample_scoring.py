@@ -49,7 +49,7 @@ class ScoreSource:
     """What the ground-truth lookups need to know about a sample."""
 
     slug: str
-    fmt: str
+    fmt: str | None
     ann_data: Any
     img_path: Path
 

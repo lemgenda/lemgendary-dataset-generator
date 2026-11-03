@@ -8,6 +8,7 @@ manifold compilation pipelines.
 The package-level names below are loaded lazily (PEP 562): importing
 ``forex.schema`` or ``forex.converter`` does not pull in pandas through the
 download pipeline. ``from forex import <name>`` keeps working for every name.
+No ``__all__`` is declared: the names are bound on first access, not at import.
 """
 
 from __future__ import annotations
@@ -37,9 +38,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
 }
 _EXPORTS["run_pipeline_main"] = ("pipeline", "main")
 
-__all__: list[str] = []
-__all__.extend(_EXPORTS)
-
 
 def __getattr__(name: str) -> Any:
     if name not in _EXPORTS:
@@ -51,4 +49,4 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    return sorted({*globals(), *__all__})
+    return sorted({*globals(), *_EXPORTS})

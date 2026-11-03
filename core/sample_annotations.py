@@ -33,7 +33,7 @@ class Annotation(TypedDict):
 class AnnotationSource:
     """The raw annotation payload of one sample plus what parsing it needs."""
 
-    fmt: str
+    fmt: str | None
     ann_data: Any
     prefix: str
     task: str
@@ -212,7 +212,7 @@ _PARSERS: dict[str, Callable[[AnnotationSource], list[Annotation]]] = {
 
 def parse_annotations(src: AnnotationSource) -> list[Annotation]:
     """Dispatch to the parser registered for the source format."""
-    parser = _PARSERS.get(src.fmt)
+    parser = _PARSERS.get(src.fmt) if src.fmt is not None else None
     if parser is None:
         return []
     if src.fmt == "coco":

@@ -7,7 +7,7 @@ chunked stream copy shared by archive creation and extraction.
 
 from __future__ import annotations
 
-from typing import IO, Any
+from typing import IO, Any, Literal, overload
 
 from utils.progress import create_progress_bar
 
@@ -15,6 +15,8 @@ __all__ = [
     "CHUNK_SIZE",
     "LARGE_FILE_THRESHOLD",
     "TAR_SUFFIXES",
+    "TarReadMode",
+    "TarWriteMode",
     "byte_progress_bar",
     "copy_stream",
     "is_tar_path",
@@ -27,16 +29,29 @@ LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
 TAR_SUFFIXES = (".tar", ".tar.gz", ".tgz")
 _GZIP_TAR_SUFFIXES = (".tar.gz", ".tgz")
 
+TarReadMode = Literal["r:", "r:gz"]
+TarWriteMode = Literal["w:", "w:gz"]
+
 
 def is_tar_path(path_str: str) -> bool:
     """True when the path names a .tar, .tar.gz or .tgz archive."""
     return path_str.endswith(TAR_SUFFIXES)
 
 
-def tar_mode(path_str: str, action: str) -> str:
+@overload
+def tar_mode(path_str: str, action: Literal["r"]) -> TarReadMode: ...
+
+
+@overload
+def tar_mode(path_str: str, action: Literal["w"]) -> TarWriteMode: ...
+
+
+def tar_mode(path_str: str, action: Literal["r", "w"]) -> TarReadMode | TarWriteMode:
     """Return the tarfile mode (`r:gz`/`r:` or `w:gz`/`w:`) for `action` 'r' or 'w'."""
-    compression = "gz" if path_str.endswith(_GZIP_TAR_SUFFIXES) else ""
-    return f"{action}:{compression}"
+    gzip = path_str.endswith(_GZIP_TAR_SUFFIXES)
+    if action == "r":
+        return "r:gz" if gzip else "r:"
+    return "w:gz" if gzip else "w:"
 
 
 def byte_progress_bar(total_bytes: int, desc: str) -> Any:

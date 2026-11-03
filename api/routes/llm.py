@@ -31,14 +31,16 @@ class LLMCompileRequest(BaseModel):
         ...,
         description="Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)",
     )
-    target_samples: int | None = Field(None, description="Override target sample count")
-    async_mode: bool = Field(False, description="Run compilation as a background worker job")
+    target_samples: int | None = Field(default=None, description="Override target sample count")
+    async_mode: bool = Field(
+        default=False, description="Run compilation as a background worker job"
+    )
 
 
 class LLMValidationRequest(BaseModel):
     """Request payload for validating an LLM dataset JSONL file."""
     file_path: str | None = Field(
-        None,
+        default=None,
         description=(
             "Path to a .jsonl file inside the dataset root, preferably relative to it "
             "(e.g. ai_helper_lemgend/data/ai_helper_lemgend_train.jsonl). Absolute paths "
@@ -46,7 +48,7 @@ class LLMValidationRequest(BaseModel):
         ),
     )
     records: list[dict[str, Any]] | None = Field(
-        None, description="Inline list of records to validate"
+        default=None, description="Inline list of records to validate"
     )
 
 
@@ -159,7 +161,7 @@ def validate_llm_corpus(req: LLMValidationRequest) -> dict[str, Any]:
 
 class DatasetTestSuiteRequest(BaseModel):
     """Payload for triggering in-process test discovery sweep."""
-    pattern: str = Field("test_*.py", description="Test discovery file pattern")
+    pattern: str = Field(default="test_*.py", description="Test discovery file pattern")
 
 
 @router.post("/test-suite")

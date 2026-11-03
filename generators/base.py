@@ -52,3 +52,4 @@ class Generator(Protocol):
         context: dict[str, Any] | None = None,
     ) -> GenerationResult:
         """Generate the output for one image."""
+        ...

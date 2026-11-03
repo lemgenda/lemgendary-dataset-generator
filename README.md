@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.65-STABLE` |
+| **Version** | `v16.9.66-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,27 @@
 ---
 
 ## Changelog
+
+### v16.9.66 - Pyright Clean Again
+
+Pyright had drifted to 34 errors and 21 warnings; it reports 0 of each again,
+fixed at the source with no suppressions or config changes.
+
+- Request and response models (`api/models.py`, `api/routes/`,
+  `core/presets.py`) pass `Field(default=...)` by keyword, so type checkers see
+  the optional fields as optional. The OpenAPI schema is unchanged.
+- `fmt` is `str | None` on `AnnotationSource` and `ScoreSource`, matching the
+  job context; `KAGGLE_REMOTE_ERRORS` holds `Exception` types only.
+- `tar_mode` returns `Literal` tarfile modes; `GaussianBlur` resolves its odd
+  kernel size in one helper; the queue runner asserts `target_dir` before zip
+  streaming; `dt_from_utc` rejects a `NaT` result with `TypeError`.
+- The kagglehub `tqdm` patch writes through the module's `vars()`, k-means
+  labels go through `np.asarray`, and `Generator.generate` has a `...` body.
+- `__all__` lists only bound names: `tools/__init__.py` imports its lazy
+  submodules under `TYPE_CHECKING`, `tools/llm_helper/__init__.py` imports its
+  submodules, and `forex/__init__.py` drops `__all__` (its names load lazily).
+- Tests build models with their real types: a duck-typed WebDataset policy,
+  narrowed optional `llm_pipeline`, route `methods` and CORS allow-lists.
 
 ### v16.9.65 - Test Reads the Port From the Fixture
 
