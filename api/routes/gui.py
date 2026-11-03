@@ -45,7 +45,9 @@ router = APIRouter(prefix="/gui", tags=["Desktop GUI"])
 _STATS_CACHE: Dict[str, tuple[float, tuple[DatasetFormatStats, int, int, bool, float, int]]] = {}
 
 
-def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatStats, int, int, bool, float, int]:
+def _calculate_dataset_file_stats(
+    manifold_path: Path,
+) -> tuple[DatasetFormatStats, int, int, bool, float, int]:
     """Fast scan of manifold directory with container prioritization and mtime caching."""
     try:
         current_mtime = manifold_path.stat().st_mtime
@@ -69,7 +71,7 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
     file_count = 0
     shards_count = 0
 
-    # 1. First inspect container directories (shards, mds, wds, litdata) and their split subdirectories
+    # 1. Inspect container directories (shards, mds, wds, litdata) and their split folders
     for container_name in ("shards", "mds", "wds", "litdata", "data"):
         c_dir = manifold_path / container_name
         if c_dir.exists() and c_dir.is_dir():
@@ -102,7 +104,9 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                             try:
                                 total_size += entry.stat().st_size
                             except OSError as stat_exc:
-                                logger.debug("Could not stat container file %s: %s", entry.path, stat_exc)
+                                logger.debug(
+                                    "Could not stat container file %s: %s", entry.path, stat_exc
+                                )
                 except OSError as exc:
                     logger.debug("Failed scanning container folder %s: %s", check_d, exc)
 
@@ -112,7 +116,11 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
             if entry.is_file():
                 fname = entry.name
                 ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-                if fname != "index.json" and (ext in ("data", "tar", "bin", "mds", "parquet", "zstd", "jsonl") or fname.startswith("shard") or fname.startswith("chunk")):
+                if fname != "index.json" and (
+                    ext in ("data", "tar", "bin", "mds", "parquet", "zstd", "jsonl")
+                    or fname.startswith("shard")
+                    or fname.startswith("chunk")
+                ):
                     shards_count += 1
                 if ext == "parquet":
                     format_counts["parquet"] += 1
@@ -135,7 +143,8 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
             except OSError as exc:
                 logger.debug("Failed scanning images directory %s: %s", images_dir, exc)
 
-    # 4. Only scan loose image directories (images, targets, masks, labels) if no shards found or few files
+    # 4. Scan loose image directories (images, targets, masks, labels) only if no shards
+    #    were found or they hold few files
     if shards_count == 0 or file_count < 10:
         scan_dirs = [
             manifold_path / "images",
@@ -166,7 +175,9 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
                         try:
                             total_size += (Path(root_d) / fname).stat().st_size
                         except OSError as stat_exc:
-                            logger.debug("Could not stat file %s in %s: %s", fname, root_d, stat_exc)
+                            logger.debug(
+                                "Could not stat file %s in %s: %s", fname, root_d, stat_exc
+                            )
             except OSError as scan_exc:
                 logger.debug("Failed scanning %s: %s", directory, scan_exc)
 
@@ -198,19 +209,55 @@ def _extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
                         continue
                     item = json.loads(line)
                     doc = str(item.get("source_doc") or "")
-                    if "ECOSYSTEM_ARCHITECTURE" in doc or "LEMGENDARY_CURRENT_STATE" in doc or "VERSIONING_POLICY" in doc or "GUI_CONTROL_REGISTRY" in doc:
+                    if (
+                        "ECOSYSTEM_ARCHITECTURE" in doc
+                        or "LEMGENDARY_CURRENT_STATE" in doc
+                        or "VERSIONING_POLICY" in doc
+                        or "GUI_CONTROL_REGISTRY" in doc
+                    ):
                         counts["Ecosystem Architecture and Current State Manifest"] += 1
                     elif "GENERAL_AI_TRAINING_KNOWLEDGE" in doc:
                         counts["General AI Training Knowledge Reference"] += 1
                     elif "AI_HELPER_TROUBLESHOOTING" in doc or "GLOSSARY" in doc:
-                        counts["Canonical Glossary and AI Helper Troubleshooting Knowledge Base"] += 1
-                    elif "MANUAL_AI_STUDIO_GUI" in doc or "PAPER_AI_STUDIO_GUI" in doc or "MANUAL_CLI" in doc or "MANUAL_API" in doc or "MANUALS_HUB" in doc:
+                        counts[
+                            "Canonical Glossary and AI Helper Troubleshooting Knowledge Base"
+                        ] += 1
+                    elif (
+                        "MANUAL_AI_STUDIO_GUI" in doc
+                        or "PAPER_AI_STUDIO_GUI" in doc
+                        or "MANUAL_CLI" in doc
+                        or "MANUAL_API" in doc
+                        or "MANUALS_HUB" in doc
+                    ):
                         counts["Master Operations Manuals (GUI, CLI, API)"] += 1
                     elif "PAPER_DATASET_COMPILER" in doc or "PAPER_ENV_MANAGER" in doc:
                         counts["Dataset Compiler and Environment Manager Whitepapers"] += 1
                     elif "PAPER_TRAINING_SUITE" in doc or "PAPER_TRAINING_PATHOLOGY" in doc:
                         counts["Training Suite and Training Pathology Documentation"] += 1
-                    elif any(m in doc for m in ("NIMA", "NAFNET", "MPRNET", "MIRNET", "FFANET", "YOLO", "FOREX", "DEGRADATION", "RESTORATION", "ULTRAZOOM", "FACE_SUITE", "HYBRID", "CODEFORMER", "FILM_RESTORER", "NSFW_CLASSIFIER", "PARSENET", "RETINAFACE", "UPN_V2", "DETECTION")):
+                    elif any(
+                        m in doc
+                        for m in (
+                            "NIMA",
+                            "NAFNET",
+                            "MPRNET",
+                            "MIRNET",
+                            "FFANET",
+                            "YOLO",
+                            "FOREX",
+                            "DEGRADATION",
+                            "RESTORATION",
+                            "ULTRAZOOM",
+                            "FACE_SUITE",
+                            "HYBRID",
+                            "CODEFORMER",
+                            "FILM_RESTORER",
+                            "NSFW_CLASSIFIER",
+                            "PARSENET",
+                            "RETINAFACE",
+                            "UPN_V2",
+                            "DETECTION",
+                        )
+                    ):
                         counts["Model-Family Architecture Whitepapers"] += 1
                     elif "PAPER_FOUNDATION_MODELS_MASTER" in doc or "MANUALS_HUB" in doc:
                         counts["LemGendary AI Documentation Hub"] += 1
@@ -318,7 +365,9 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 with open(info_file, "r", encoding="utf-8") as f:
                     meta = yaml.safe_load(f) or {}
                     task = meta.get("task", task)
-                    sample_count = meta.get("count") or meta.get("total_samples") or meta.get("samples") or 0
+                    sample_count = (
+                        meta.get("count") or meta.get("total_samples") or meta.get("samples") or 0
+                    )
                     if meta.get("canonical_format"):
                         canonical_format = meta.get("canonical_format")
                     if meta.get("format"):
@@ -326,7 +375,9 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
-        formats, _counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
+        formats, _counted_files, size_bytes, has_hardlinks, ratio, shards_count = (
+            _calculate_dataset_file_stats(entry)
+        )
         jsonl_files = list(entry.glob("*.jsonl")) + list(entry.glob("data/*.jsonl"))
         has_jsonl = bool(jsonl_files)
         if sample_count == 0:
@@ -395,7 +446,10 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                 s_type = "SUB-MANIFOLD"
             elif any(k in s_lower for k in ("terminal", "forex", "mt5")):
                 s_type = "TERMINAL"
-            elif any(k in s_lower for k in ("documentation", "manual", "manifest", "whitepaper", "glossary", "guide")):
+            elif any(
+                k in s_lower
+                for k in ("documentation", "manual", "manifest", "whitepaper", "glossary", "guide")
+            ):
                 s_type = "DOCUMENTATION"
 
             this_count: int | None = None
@@ -413,7 +467,9 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                     matched_ref = v_ref
                     break
 
-            sources.append(DatasetSourceInfo(name=s_name, ref=matched_ref, count=this_count, type=s_type))
+            sources.append(
+                DatasetSourceInfo(name=s_name, ref=matched_ref, count=this_count, type=s_type)
+            )
 
         kaggle_ref = reg_info.get("kaggle_ref")
 
@@ -484,7 +540,11 @@ async def get_active_jobs_telemetry() -> ActiveJobsResponse:
                         try:
                             progress_pct = float(parts[-1].strip())
                         except ValueError as val_exc:
-                            logger.debug("Could not parse progress percentage from line '%s': %s", line, val_exc)
+                            logger.debug(
+                                "Could not parse progress percentage from line '%s': %s",
+                                line,
+                                val_exc,
+                            )
                     break
 
         telemetry_list.append(
@@ -571,7 +631,9 @@ async def quick_compile(
 
     loop = asyncio.get_running_loop()
     job_manager.start_job(job.id, loop)
-    logger.info("Dispatched quick-compile job %s with preset %s for model %s", job.id, req.preset, req.model)
+    logger.info(
+        "Dispatched quick-compile job %s with preset %s for model %s", job.id, req.preset, req.model
+    )
     return job
 
 

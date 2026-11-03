@@ -40,7 +40,9 @@ def download_image(url: str, dest_path: str, session=None) -> bool:
                 return False
         except (requests.RequestException, OSError) as exc:
             if attempt == max_retries - 1:
-                logger.warning("Giving up downloading %s after %d attempts: %s", url, max_retries, exc)
+                logger.warning(
+                    "Giving up downloading %s after %d attempts: %s", url, max_retries, exc
+                )
                 return False
             logger.debug("Download attempt %d for %s failed; retrying: %s", attempt + 1, url, exc)
             time.sleep(2 ** attempt)

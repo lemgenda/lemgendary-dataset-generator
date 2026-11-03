@@ -104,7 +104,10 @@ def _partition_zip_members(
             and parts[0].lower() not in ("images", "targets", "masks")
         ):
             base_name = parts[-1]
-            if any(base_name.endswith(ext) for ext in [".yaml", ".yml", ".md", ".json", ".txt", ".ipynb"]):
+            if any(
+                base_name.endswith(ext)
+                for ext in [".yaml", ".yml", ".md", ".json", ".txt", ".ipynb"]
+            ):
                 metadata_members.append(m)
                 continue
 
@@ -174,14 +177,19 @@ def stream_zip_to_webdataset(
 
     workers = max_workers or min(12, os.cpu_count() or 4)
     print(f"[STREAM] Opening source archive: {zip_path.name}")
-    print(f"[STREAM] Parallel WebP transcoding: {'ENABLED' if transcode_webp else 'DISABLED'} ({workers} workers).")
+    print(
+        f"[STREAM] Parallel WebP transcoding: {'ENABLED' if transcode_webp else 'DISABLED'}"
+        f" ({workers} workers)."
+    )
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             all_members = zf.infolist()
             print(f"[STREAM] Discovered {len(all_members)} entries inside archive.")
 
-            images_by_split, targets_by_split, has_images_dir, metadata_members = _partition_zip_members(zf)
+            images_by_split, targets_by_split, has_images_dir, metadata_members = (
+                _partition_zip_members(zf)
+            )
 
             count = _extract_metadata_files(zf, metadata_members, target_dir)
             print(f"[STREAM] Extracted {count} root metadata/notebook files to {target_dir.name}.")
@@ -194,11 +202,18 @@ def stream_zip_to_webdataset(
                         split_shards_dir.mkdir(parents=True, exist_ok=True)
                         target_map = targets_by_split.get(split, {})
                         total_samples = len(img_list)
-                        total_shards = (total_samples + shard_size_samples - 1) // shard_size_samples
-                        print(f"[STREAM] Split '{split}': {total_samples} images, {len(target_map)} targets -> {total_shards} shards.")
+                        total_shards = (
+                            total_samples + shard_size_samples - 1
+                        ) // shard_size_samples
+                        print(
+                            f"[STREAM] Split '{split}': {total_samples} images, {len(target_map)}"
+                            f" targets -> {total_shards} shards."
+                        )
 
                         # Pass 1: Stream images with WebP transcoding
-                        with create_progress_bar(total=total_samples, desc=f"IMAGES -> WEBP [{split}]", unit="img") as pbar:
+                        with create_progress_bar(
+                            total=total_samples, desc=f"IMAGES -> WEBP [{split}]", unit="img"
+                        ) as pbar:
                             for shard_idx in range(total_shards):
                                 start_i = shard_idx * shard_size_samples
                                 end_i = min(start_i + shard_size_samples, total_samples)
@@ -211,7 +226,9 @@ def stream_zip_to_webdataset(
                                             for stem, ext, zinfo in items:
                                                 yield stem, zf.read(zinfo), ext
 
-                                        for stem, data, out_ext in pool.map(_worker_img, _gen_img(chunk), chunksize=8):
+                                        for stem, data, out_ext in pool.map(
+                                            _worker_img, _gen_img(chunk), chunksize=8
+                                        ):
                                             ti = tarfile.TarInfo(name=f"{stem}{out_ext}")
                                             ti.size = len(data)
                                             tf.addfile(ti, io.BytesIO(data))
@@ -226,25 +243,37 @@ def stream_zip_to_webdataset(
 
                         # Pass 2: Append targets with WebP transcoding
                         if target_map:
-                            with create_progress_bar(total=total_samples, desc=f"TARGETS -> WEBP [{split}]", unit="img") as pbar:
+                            with create_progress_bar(
+                                total=total_samples, desc=f"TARGETS -> WEBP [{split}]", unit="img"
+                            ) as pbar:
                                 for shard_idx in range(total_shards):
                                     start_i = shard_idx * shard_size_samples
                                     end_i = min(start_i + shard_size_samples, total_samples)
                                     shard_file = split_shards_dir / f"shard-{shard_idx:05d}.{ext}"
                                     chunk = img_list[start_i:end_i]
 
-                                    matched_stems = [stem for stem, _, _ in chunk if stem in target_map]
+                                    matched_stems = [
+                                        stem for stem, _, _ in chunk if stem in target_map
+                                    ]
                                     if not matched_stems:
                                         continue
 
                                     with tarfile.open(shard_file, "a") as tf:
                                         if transcode_webp:
-                                            def _gen_tgt(stems: list[str], targets: dict[str, tuple[str, zipfile.ZipInfo]]):
+
+                                            def _gen_tgt(
+                                                stems: list[str],
+                                                targets: dict[str, tuple[str, zipfile.ZipInfo]],
+                                            ):
                                                 for stem in stems:
                                                     tgt_ext, tgt_zinfo = targets[stem]
                                                     yield stem, zf.read(tgt_zinfo), tgt_ext
 
-                                            for stem, data, out_ext in pool.map(_worker_tgt, _gen_tgt(matched_stems, target_map), chunksize=8):
+                                            for stem, data, out_ext in pool.map(
+                                                _worker_tgt,
+                                                _gen_tgt(matched_stems, target_map),
+                                                chunksize=8,
+                                            ):
                                                 ti = tarfile.TarInfo(name=f"{stem}.target{out_ext}")
                                                 ti.size = len(data)
                                                 tf.addfile(ti, io.BytesIO(data))
@@ -265,10 +294,17 @@ def stream_zip_to_webdataset(
                         split_shards_dir.mkdir(parents=True, exist_ok=True)
                         tgt_items = list(target_map.items())
                         total_samples = len(tgt_items)
-                        total_shards = (total_samples + shard_size_samples - 1) // shard_size_samples
-                        print(f"[STREAM] Split '{split}': {total_samples} target samples -> {total_shards} shards.")
+                        total_shards = (
+                            total_samples + shard_size_samples - 1
+                        ) // shard_size_samples
+                        print(
+                            f"[STREAM] Split '{split}': {total_samples} target samples ->"
+                            f" {total_shards} shards."
+                        )
 
-                        with create_progress_bar(total=total_samples, desc=f"SAMPLES -> WEBP [{split}]", unit="img") as pbar:
+                        with create_progress_bar(
+                            total=total_samples, desc=f"SAMPLES -> WEBP [{split}]", unit="img"
+                        ) as pbar:
                             for shard_idx in range(total_shards):
                                 start_i = shard_idx * shard_size_samples
                                 end_i = min(start_i + shard_size_samples, total_samples)
@@ -277,11 +313,16 @@ def stream_zip_to_webdataset(
 
                                 with tarfile.open(shard_file, "w") as tf:
                                     if transcode_webp:
-                                        def _gen_sample(items: list[tuple[str, tuple[str, zipfile.ZipInfo]]]):
+
+                                        def _gen_sample(
+                                            items: list[tuple[str, tuple[str, zipfile.ZipInfo]]],
+                                        ):
                                             for stem, (ext, zinfo) in items:
                                                 yield stem, zf.read(zinfo), ext
 
-                                        for stem, data, out_ext in pool.map(_worker_sample, _gen_sample(chunk), chunksize=8):
+                                        for stem, data, out_ext in pool.map(
+                                            _worker_sample, _gen_sample(chunk), chunksize=8
+                                        ):
                                             ti = tarfile.TarInfo(name=f"{stem}{out_ext}")
                                             ti.size = len(data)
                                             tf.addfile(ti, io.BytesIO(data))
@@ -305,23 +346,47 @@ def stream_zip_to_webdataset(
                 if transcode_webp:
                     info_data["image_format"] = "webp"
                 with open(ds_info_path, "w", encoding="utf-8") as f_out:
-                    yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
-                print(f"[METADATA] Updated {ds_info_path.name} format to 'webdataset' (image_format: webp).")
+                    yaml.safe_dump(
+                        info_data,
+                        f_out,
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                    )
+                print(
+                    f"[METADATA] Updated {ds_info_path.name} format to 'webdataset' (image_format:"
+                    " webp)."
+                )
             except (OSError, yaml.YAMLError, TypeError) as exc:
                 logger.warning("Failed updating %s: %s", ds_info_path, exc)
                 print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
         # Verify shards exist and are non-empty
-        shards_created = list(shards_dir.glob(f"**/*.{ext}")) or list(shards_dir.glob("**/*.tar")) or list(shards_dir.glob("**/*.data"))
+        shards_created = (
+            list(shards_dir.glob(f"**/*.{ext}"))
+            or list(shards_dir.glob("**/*.tar"))
+            or list(shards_dir.glob("**/*.data"))
+        )
         total_shard_bytes = sum(s.stat().st_size for s in shards_created)
-        print(f"[VERIFY] Created {len(shards_created)} shards ({total_shard_bytes / (1024**3):.2f} GB total).")
+        print(
+            f"[VERIFY] Created {len(shards_created)} shards ({total_shard_bytes / (1024**3):.2f} GB"
+            " total)."
+        )
         if not shards_created or total_shard_bytes == 0:
             print("[ERROR] Shard verification failed: 0 shards or 0 bytes created.")
             return False
 
         _post_process_zip(zip_path, legacy_dir, delete_zip)
         return True
-    except (OSError, ValueError, KeyError, RuntimeError, ImportError, zipfile.BadZipFile, tarfile.TarError) as exc:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        RuntimeError,
+        ImportError,
+        zipfile.BadZipFile,
+        tarfile.TarError,
+    ) as exc:
         logger.exception("Direct zip-to-WebDataset streaming failed for %s", zip_path)
         print(f"[ERROR] Direct zip-to-WebDataset streaming failed: {exc}")
         return False
@@ -343,7 +408,10 @@ def stream_zip_to_mds(
     try:
         streaming = load_streaming()
     except ImportError:
-        print("[NOTICE] mosaicml-streaming is not installed. Routing directly to WebDataset streaming...")
+        print(
+            "[NOTICE] mosaicml-streaming is not installed. Routing directly to WebDataset"
+            " streaming..."
+        )
         return stream_zip_to_webdataset(
             zip_path=zip_path,
             target_dir=target_dir,
@@ -361,7 +429,10 @@ def stream_zip_to_mds(
 
     workers = max_workers or min(12, os.cpu_count() or 4)
     print(f"[STREAM-MDS] Opening source archive: {zip_path.name}")
-    print(f"[STREAM-MDS] Parallel WebP transcoding: {'ENABLED' if transcode_webp else 'DISABLED'} ({workers} workers).")
+    print(
+        f"[STREAM-MDS] Parallel WebP transcoding: {'ENABLED' if transcode_webp else 'DISABLED'}"
+        f" ({workers} workers)."
+    )
     print(f"[STREAM-MDS] MDS shard size: {mds_shard_size_bytes / (1024**2):.0f} MB")
 
 
@@ -370,7 +441,9 @@ def stream_zip_to_mds(
             all_members = zf.infolist()
             print(f"[STREAM-MDS] Discovered {len(all_members)} entries inside archive.")
 
-            images_by_split, targets_by_split, has_images_dir, metadata_members = _partition_zip_members(zf)
+            images_by_split, targets_by_split, has_images_dir, metadata_members = (
+                _partition_zip_members(zf)
+            )
             count = _extract_metadata_files(zf, metadata_members, target_dir)
             print(f"[STREAM-MDS] Extracted {count} metadata files.")
 
@@ -389,7 +462,9 @@ def stream_zip_to_mds(
                         if split_mds_dir.exists():
                             shutil.rmtree(split_mds_dir)
                         split_mds_dir.mkdir(parents=True, exist_ok=True)
-                        print(f"[STREAM-MDS] Split '{split}': {total_samples} images -> MDS shards.")
+                        print(
+                            f"[STREAM-MDS] Split '{split}': {total_samples} images -> MDS shards."
+                        )
 
                         writer = mds_writer_cls(
                             out=mds_out_str,
@@ -398,18 +473,26 @@ def stream_zip_to_mds(
                             size_limit=mds_shard_size_bytes,
                             hashes=[],
                         )
-                        with create_progress_bar(total=total_samples, desc=f"MDS [{split}]", unit="img") as pbar:
+                        with create_progress_bar(
+                            total=total_samples, desc=f"MDS [{split}]", unit="img"
+                        ) as pbar:
                             if transcode_webp:
                                 def _gen_img_mds(items: list[tuple[str, str, zipfile.ZipInfo]]):
                                     for stem, ext, zinfo in items:
                                         yield stem, zf.read(zinfo), ext
 
-                                for img_stem, img_data, _img_ext in pool.map(_worker_img, _gen_img_mds(img_list), chunksize=8):
+                                for img_stem, img_data, _img_ext in pool.map(
+                                    _worker_img, _gen_img_mds(img_list), chunksize=8
+                                ):
                                     tgt_bytes = b""
                                     if img_stem in target_map:
                                         tgt_ext, tgt_zinfo = target_map[img_stem]
                                         raw_tgt = zf.read(tgt_zinfo)
-                                        tgt_bytes, _ = _transcode_to_webp(raw_tgt, tgt_ext, quality=95) if transcode_webp else (raw_tgt, tgt_ext)
+                                        tgt_bytes, _ = (
+                                            _transcode_to_webp(raw_tgt, tgt_ext, quality=95)
+                                            if transcode_webp
+                                            else (raw_tgt, tgt_ext)
+                                        )
                                     writer.write({
                                         "image": img_data,
                                         "target": tgt_bytes,
@@ -451,7 +534,9 @@ def stream_zip_to_mds(
                         if split_mds_dir.exists():
                             shutil.rmtree(split_mds_dir)
                         split_mds_dir.mkdir(parents=True, exist_ok=True)
-                        print(f"[STREAM-MDS] Split '{split}': {total_samples} targets -> MDS shards.")
+                        print(
+                            f"[STREAM-MDS] Split '{split}': {total_samples} targets -> MDS shards."
+                        )
 
                         writer = mds_writer_cls(
                             out=mds_out_str,
@@ -460,13 +545,20 @@ def stream_zip_to_mds(
                             size_limit=mds_shard_size_bytes,
                             hashes=[],
                         )
-                        with create_progress_bar(total=total_samples, desc=f"MDS [{split}]", unit="img") as pbar:
+                        with create_progress_bar(
+                            total=total_samples, desc=f"MDS [{split}]", unit="img"
+                        ) as pbar:
                             if transcode_webp:
-                                def _gen_tgt_mds(items: list[tuple[str, tuple[str, zipfile.ZipInfo]]]):
+
+                                def _gen_tgt_mds(
+                                    items: list[tuple[str, tuple[str, zipfile.ZipInfo]]],
+                                ):
                                     for stem, (ext, zinfo) in items:
                                         yield stem, zf.read(zinfo), ext
 
-                                for stem, data, _out_ext in pool.map(_worker_sample, _gen_tgt_mds(tgt_items), chunksize=8):
+                                for stem, data, _out_ext in pool.map(
+                                    _worker_sample, _gen_tgt_mds(tgt_items), chunksize=8
+                                ):
                                     writer.write({
                                         "image": data,
                                         "target": b"",
@@ -502,7 +594,13 @@ def stream_zip_to_mds(
                 if transcode_webp:
                     info_data["image_format"] = "webp"
                 with open(ds_info_path, "w", encoding="utf-8") as f_out:
-                    yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                    yaml.safe_dump(
+                        info_data,
+                        f_out,
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                    )
                 print(f"[METADATA] Updated {ds_info_path.name} format to 'mds'.")
             except (OSError, yaml.YAMLError, TypeError) as exc:
                 logger.warning("Failed updating %s: %s", ds_info_path, exc)
@@ -518,7 +616,15 @@ def stream_zip_to_mds(
 
         _post_process_zip(zip_path, legacy_dir, delete_zip)
         return True
-    except (OSError, ValueError, KeyError, RuntimeError, ImportError, zipfile.BadZipFile, tarfile.TarError) as exc:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        RuntimeError,
+        ImportError,
+        zipfile.BadZipFile,
+        tarfile.TarError,
+    ) as exc:
         logger.exception("Direct zip-to-MDS streaming failed for %s", zip_path)
         print(f"[ERROR] Direct zip-to-MDS streaming failed: {exc}")
         return False
@@ -547,7 +653,9 @@ def _post_process_zip(zip_path: Path, legacy_dir: Path | None, delete_zip: bool)
 
 def main() -> int:
     """Stream a legacy zip archive into WebDataset or MDS shards (CLI entry point)."""
-    parser = argparse.ArgumentParser(description="Stream legacy zip directly into canonical container format.")
+    parser = argparse.ArgumentParser(
+        description="Stream legacy zip directly into canonical container format."
+    )
     parser.add_argument("--zip", required=True, type=Path, help="Path to source .zip archive")
     parser.add_argument("--target", required=True, type=Path, help="Destination manifold directory")
     parser.add_argument("--format", default="webdataset", choices=["webdataset", "mds"],
@@ -556,9 +664,20 @@ def main() -> int:
                         help="Number of samples per WebDataset shard (ignored for MDS)")
     parser.add_argument("--mds-shard-mb", type=int, default=512,
                         help="MDS shard size in MB (default: 512)")
-    parser.add_argument("--no-webp", action="store_true", help="Disable WebP transcoding (keep original format)")
-    parser.add_argument("--workers", type=int, default=None, help="Number of parallel worker threads for transcoding")
-    parser.add_argument("--delete-zip", action="store_true", help="Delete source zip archive upon successful conversion")
+    parser.add_argument(
+        "--no-webp", action="store_true", help="Disable WebP transcoding (keep original format)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker threads for transcoding",
+    )
+    parser.add_argument(
+        "--delete-zip",
+        action="store_true",
+        help="Delete source zip archive upon successful conversion",
+    )
     parser.add_argument("--delete-legacy-dir", type=Path, default=None,
                         help="Optional legacy directory to delete after conversion")
     args = parser.parse_args()

@@ -169,7 +169,7 @@ class TestServerWiring(unittest.TestCase):
     """The real sidecar app uses the guard and a closed CORS allow-list."""
 
     def test_server_middleware_configuration(self) -> None:
-        """The server installs the origin guard outermost and a CORS allow-list without wildcards."""
+        """The origin guard is the outermost middleware and CORS uses an allow-list, no wildcard."""
         classes = [m.cls for m in server_app.user_middleware]
         self.assertIn(origin_guard_middleware, classes)
         self.assertIn(CORSMiddleware, classes)

@@ -22,7 +22,8 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
         """Verify detection of legacy *large manifold handles, URLs, and slugs."""
         large_targets = [
             "https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge",
-            "https://www.kaggle.com/datasets/lemtreursi/lemgendizedclassificationmastermanifoldlarge",
+            "https://www.kaggle.com/datasets/lemtreursi/"
+            "lemgendizedclassificationmastermanifoldlarge",
             "kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge",
             "lemtreursi/lemgendizedforexuniverselarge",
             "lemtreursi/lemgendizedclassificationmastermanifoldlarge",
@@ -79,7 +80,8 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
             self.assertFalse(res_handle)
 
             res_url = push_kaggle_dataset_metadata(
-                "https://www.kaggle.com/datasets/lemtreursi/lemgendizedclassificationmastermanifoldlarge",
+                "https://www.kaggle.com/datasets/lemtreursi/"
+                "lemgendizedclassificationmastermanifoldlarge",
                 meta_file,
             )
             self.assertFalse(res_url)

@@ -48,8 +48,12 @@ def generate_category_txt(
 def main() -> None:
     """CLI entrypoint for category.txt generation."""
     parser = argparse.ArgumentParser(description="Generate category.txt for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Generate category.txt for all manifolds")
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Manifold directory name or path"
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Generate category.txt for all manifolds"
+    )
     parser.add_argument("--category", type=str, default=None, help="Explicit category override")
     args = parser.parse_args()
 
@@ -64,7 +68,9 @@ def main() -> None:
         for m_dir in sorted(datasets_root.iterdir()):
             if m_dir.is_dir() and not m_dir.name.startswith("."):
                 out = generate_category_txt(m_dir, category_str=args.category)
-                print(f"[OK] {m_dir.name} -> {out.name} ({out.read_text(encoding='utf-8').strip()})")
+                print(
+                    f"[OK] {m_dir.name} -> {out.name} ({out.read_text(encoding='utf-8').strip()})"
+                )
                 count += 1
         print(f"Generated category.txt for {count} manifolds.")
     elif args.manifold:

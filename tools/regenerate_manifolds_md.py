@@ -238,7 +238,8 @@ def _render(rows: list[dict]) -> str:
     lines.append("## 1. Master Manifolds Matrix")
     lines.append("")
     lines.append(
-        "| Manifold Name | Domain | Task | Samples | Format | Upstream Sources | Bound Model(s) | Kaggle Reference |"
+        "| Manifold Name | Domain | Task | Samples | Format | Upstream Sources | Bound Model(s) |"
+        " Kaggle Reference |"
     )
     lines.append("| :--- | :--- | :--- | ---: | :--- | :--- | :--- | :--- |")
     for r in rows:
@@ -281,7 +282,7 @@ def _render(rows: list[dict]) -> str:
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 def main(args: list[str] | argparse.Namespace | None = None) -> int:
-    """Regenerate manifolds.md, or with ``--check`` only print the summary; returns the exit code."""
+    """Regenerate manifolds.md (``--check`` only prints the summary); returns the exit code."""
     if isinstance(args, argparse.Namespace):
         parsed = args
     else:

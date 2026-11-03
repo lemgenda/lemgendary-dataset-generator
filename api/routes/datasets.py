@@ -22,7 +22,9 @@ def _resolve_output_root() -> Path:
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-                folder = data.get("_registry_metadata", {}).get("output_folder_name", "../LemGendaryDatasets")
+                folder = data.get("_registry_metadata", {}).get(
+                    "output_folder_name", "../LemGendaryDatasets"
+                )
                 p = Path(folder)
                 if not p.is_absolute():
                     p = (config_file.parent / p).resolve()
@@ -56,7 +58,14 @@ async def list_datasets() -> DatasetListResponse:
                     meta = yaml.safe_load(f) or {}
                     task = meta.get("task", task)
                     sample_count = int(meta.get("total_samples", 0) or 0)
-            except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError, TypeError, ValueError) as exc:
+            except (
+                OSError,
+                UnicodeDecodeError,
+                yaml.YAMLError,
+                AttributeError,
+                TypeError,
+                ValueError,
+            ) as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
         size_bytes = 0

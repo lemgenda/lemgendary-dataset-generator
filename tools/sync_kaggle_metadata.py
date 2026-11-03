@@ -24,7 +24,11 @@ from core.docs.context import find_unified_entry
 from core.lazy_imports import load_kaggle_api
 from tools.manifold_sync import resolve_kaggle_ref, resolve_manifold_folder
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
+_ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "tools"
+    else Path(__file__).resolve().parent
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +45,11 @@ def sync_metadata(
     dry_run: bool = False,
 ) -> int:
     """Synchronize dataset metadata and column descriptors to Kaggle (returns 0 on success)."""
-    datasets_root = Path(metadata_dir).resolve() if (all_datasets and metadata_dir) else (_ROOT.parent / "LemGendaryDatasets")
+    datasets_root = (
+        Path(metadata_dir).resolve()
+        if (all_datasets and metadata_dir)
+        else (_ROOT.parent / "LemGendaryDatasets")
+    )
 
     if all_datasets:
         if not datasets_root.exists():
@@ -68,10 +76,16 @@ def sync_metadata(
                     if ds is not None and getattr(ds, "ref", None) is not None
                     and not is_large_manifold(ds.ref)
                 }
-                print(f"[INFO] Discovered {len(existing_datasets)} active published datasets on Kaggle for @{owner}")
+                print(
+                    f"[INFO] Discovered {len(existing_datasets)} active published datasets on"
+                    f" Kaggle for @{owner}"
+                )
             except (OSError, ValueError, RuntimeError) as exc:
                 logger.warning("Could not pre-fetch Kaggle dataset list for %s: %s", owner, exc)
-                print(f"[WARNING] Could not pre-fetch remote dataset list ({exc}); will attempt direct push for all.")
+                print(
+                    f"[WARNING] Could not pre-fetch remote dataset list ({exc}); will attempt"
+                    " direct push for all."
+                )
                 existing_datasets = {}
 
         print(f"Discovered {len(meta_files)} manifolds with local metadata in {datasets_root}")
@@ -84,7 +98,9 @@ def sync_metadata(
             manifold_dir = mf.parent
             try:
                 meta = json.loads(mf.read_text(encoding="utf-8"))
-                raw_id = meta.get("id") or f"lemtreursi/{manifold_dir.name.lower().replace('_', '')}"
+                raw_id = (
+                    meta.get("id") or f"lemtreursi/{manifold_dir.name.lower().replace('_', '')}"
+                )
 
                 target_repo_id = None
                 if existing_datasets:
@@ -103,7 +119,10 @@ def sync_metadata(
                     target_repo_id = raw_id
 
                 if is_large_manifold(target_repo_id):
-                    print(f"[SKIP] Refusing to touch legacy *large manifold: {target_repo_id} ({manifold_dir.name})")
+                    print(
+                        f"[SKIP] Refusing to touch legacy *large manifold: {target_repo_id}"
+                        f" ({manifold_dir.name})"
+                    )
                     skipped += 1
                     continue
 
@@ -131,13 +150,23 @@ def sync_metadata(
                     successes += 1
                 else:
                     failures += 1
-            except (OSError, ValueError, KeyError, AttributeError, RuntimeError, ImportError) as exc:
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                RuntimeError,
+                ImportError,
+            ) as exc:
                 logger.error("Failed to push metadata for %s: %s", manifold_dir, exc)
                 print(f"[ERROR] Failed to push metadata for {manifold_dir.name}: {exc}")
                 failures += 1
 
         action_word = "Simulated" if dry_run else "Completed"
-        print(f"\n{action_word} synchronization: {successes} succeeded, {skipped} skipped, {failures} failed.")
+        print(
+            f"\n{action_word} synchronization: {successes} succeeded, {skipped} skipped, {failures}"
+            " failed."
+        )
         return 1 if failures > 0 else 0
 
     meta_path: Path
@@ -157,7 +186,9 @@ def sync_metadata(
             repo_id = resolved_ref
         elif (meta_path / "dataset-metadata.json").exists():
             try:
-                mdata = json.loads((meta_path / "dataset-metadata.json").read_text(encoding="utf-8"))
+                mdata = json.loads(
+                    (meta_path / "dataset-metadata.json").read_text(encoding="utf-8")
+                )
                 repo_id = mdata.get("id")
             except (OSError, json.JSONDecodeError):
                 repo_id = None
@@ -179,11 +210,23 @@ def sync_metadata(
 
 def main() -> None:
     """CLI entrypoint to push dataset metadata to Kaggle."""
-    parser = argparse.ArgumentParser(description="Synchronize dataset metadata and column descriptors to Kaggle.")
+    parser = argparse.ArgumentParser(
+        description="Synchronize dataset metadata and column descriptors to Kaggle."
+    )
     parser.add_argument("--repo_id", default=None, help="Kaggle dataset handle (owner/slug)")
-    parser.add_argument("--metadata_dir", default=None, help="Directory containing dataset-metadata.json")
-    parser.add_argument("--all", action="store_true", help="Synchronize metadata for all manifolds in LemGendaryDatasets")
-    parser.add_argument("--dry-run", action="store_true", help="Simulate metadata synchronization without making Kaggle API mutations")
+    parser.add_argument(
+        "--metadata_dir", default=None, help="Directory containing dataset-metadata.json"
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Synchronize metadata for all manifolds in LemGendaryDatasets",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Simulate metadata synchronization without making Kaggle API mutations",
+    )
     args = parser.parse_args()
 
     code = sync_metadata(

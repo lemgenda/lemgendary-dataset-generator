@@ -14,8 +14,7 @@ disable=
     too-many-arguments,
     too-many-positional-arguments,
     too-many-instance-attributes,
-    too-many-nested-blocks,
-    line-too-long
+    too-many-nested-blocks
 
 [REPORTS]
 output-format=text

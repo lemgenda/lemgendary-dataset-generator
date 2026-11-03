@@ -64,11 +64,15 @@ class QualityValidator:
         assistant_text = ""
         for idx, m in enumerate(messages):
             if not isinstance(m, dict):
-                issues.append(ValidationIssue(rec_id, f"messages[{idx}]", "Message must be a dictionary"))
+                issues.append(
+                    ValidationIssue(rec_id, f"messages[{idx}]", "Message must be a dictionary")
+                )
                 continue
             content = m.get("content", "")
             if not isinstance(content, str) or not content.strip():
-                issues.append(ValidationIssue(rec_id, f"messages[{idx}]", "Message content is empty"))
+                issues.append(
+                    ValidationIssue(rec_id, f"messages[{idx}]", "Message content is empty")
+                )
             full_text += " " + str(content)
             if m.get("role") == "assistant":
                 assistant_text += " " + str(content)
@@ -76,21 +80,44 @@ class QualityValidator:
         if self.zero_emojis:
             emojis = EMOJI_PATTERN.findall(full_text)
             if emojis:
-                issues.append(ValidationIssue(rec_id, "content", f"Found {len(emojis)} illegal emoji characters: {emojis}"))
+                issues.append(
+                    ValidationIssue(
+                        rec_id, "content", f"Found {len(emojis)} illegal emoji characters: {emojis}"
+                    )
+                )
 
         cat = str(record.get("category", ""))
         if cat == "troubleshooting_diagnostics":
             if self.enforce_epistemic_tags:
                 matches = EPISTEMIC_TAG_PATTERN.findall(assistant_text)
                 if not matches:
-                    issues.append(ValidationIssue(rec_id, "assistant", "Missing epistemic tag in troubleshooting response", severity="WARNING"))
+                    issues.append(
+                        ValidationIssue(
+                            rec_id,
+                            "assistant",
+                            "Missing epistemic tag in troubleshooting response",
+                            severity="WARNING",
+                        )
+                    )
 
             if self.enforce_diag_stages:
                 has_s1 = "stage 1" in assistant_text.lower() or "triage" in assistant_text.lower()
-                has_s2 = "stage 2" in assistant_text.lower() or "diagnosis" in assistant_text.lower()
-                has_s3 = "stage 3" in assistant_text.lower() or "remediation" in assistant_text.lower()
+                has_s2 = (
+                    "stage 2" in assistant_text.lower() or "diagnosis" in assistant_text.lower()
+                )
+                has_s3 = (
+                    "stage 3" in assistant_text.lower() or "remediation" in assistant_text.lower()
+                )
                 if not (has_s1 and has_s2 and has_s3):
-                    issues.append(ValidationIssue(rec_id, "assistant", "Incomplete 3-Stage Diagnostic Intake Protocol in troubleshooting response", severity="WARNING"))
+                    issues.append(
+                        ValidationIssue(
+                            rec_id,
+                            "assistant",
+                            "Incomplete 3-Stage Diagnostic Intake Protocol in troubleshooting"
+                            " response",
+                            severity="WARNING",
+                        )
+                    )
 
         return issues
 

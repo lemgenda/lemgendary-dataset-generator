@@ -1,4 +1,7 @@
-"""Compile datasets from unified_data.yaml into manifolds; run as ``python -m core.manifold_compile``."""
+"""Compile the datasets in unified_data.yaml into manifolds.
+
+Run as ``python -m core.manifold_compile``.
+"""
 
 import argparse
 import hashlib
@@ -12,7 +15,14 @@ import shutil
 import signal
 import sqlite3
 import sys
-from concurrent.futures import FIRST_COMPLETED, BrokenExecutor, CancelledError, ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    BrokenExecutor,
+    CancelledError,
+    ThreadPoolExecutor,
+    as_completed,
+    wait,
+)
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -192,7 +202,11 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     outcomes: list[ManifoldOutcome] = []
 
     min_gb = META.get("global_constraints", {}).get("min_size_gb", 0.1)
-    max_gb = args.max_gb if args.max_gb is not None else META.get("global_constraints", {}).get("max_size_gb", 50.0)
+    max_gb = (
+        args.max_gb
+        if args.max_gb is not None
+        else META.get("global_constraints", {}).get("max_size_gb", 50.0)
+    )
     prefix_str = META.get("name_prefix", "")
     suffix_str = args.suffix if args.suffix is not None else META.get("name_suffix", "")
 
@@ -234,7 +248,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     final_workers = args.workers if args.workers else CONFIG.get("num_workers", 4)
 
     if not args.workers and final_workers > 8:
-        print("[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
+        print(
+            "[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to"
+            " override."
+        )
         final_workers = 8
 
     # 2026 DPED Optimization: Pre-cache canon paths to avoid O(N) exists() calls
@@ -251,7 +268,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 ]
                 for cr in canon_roots:
                     if cr.exists():
-                        print(f"[DPED] Caching ground truth manifold for {slug} ({cr.parent.name})...")
+                        print(
+                            f"[DPED] Caching ground truth manifold for {slug} ({cr.parent.name})..."
+                        )
                         for r, _, f_list in os.walk(cr):
                             for f in f_list:
                                 dped_canon_paths.add(os.path.join(r, f).replace("\\", "/").lower())
@@ -280,7 +299,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         db_path = output_root / "manifold_registry.db"
 
         if not output_root.exists():
-            if model_config.get("dataset_type") != "forex" and model_config.get("acquisition_mode") != "mt5_terminal":
+            if (
+                model_config.get("dataset_type") != "forex"
+                and model_config.get("acquisition_mode") != "mt5_terminal"
+            ):
                 for s in ["train", "val"]:
                     (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
                 if task in ["quality", "classification", "detection", "pose", "yolo"]:
@@ -296,11 +318,19 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
         # ─── FOREX MANIFOLD ────────────────────────────────────────────────────
-        if model_config.get("dataset_type") == "forex" or model_config.get("acquisition_mode") == "mt5_terminal":
+        if (
+            model_config.get("dataset_type") == "forex"
+            or model_config.get("acquisition_mode") == "mt5_terminal"
+        ):
             print(f"\n[FOREX MANIFOLD] Compiling Foundation Matrix: {output_root.name}...")
             output_root.mkdir(parents=True, exist_ok=True)
 
-            for empty_dir in [output_root / "images", output_root / "labels", output_root / "masks", output_root / "targets"]:
+            for empty_dir in [
+                output_root / "images",
+                output_root / "labels",
+                output_root / "masks",
+                output_root / "targets",
+            ]:
                 if empty_dir.exists():
                     shutil.rmtree(empty_dir)
 
@@ -311,7 +341,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
             full_name = prefix_str + pascal_name + suffix_str
 
-            print(f" -> Engaging MT5 Auto-Acquisition Bridge for {len(pairs_list)} symbols across {len(tfs_list)} timeframes...")
+            print(
+                f" -> Engaging MT5 Auto-Acquisition Bridge for {len(pairs_list)} symbols across"
+                f" {len(tfs_list)} timeframes..."
+            )
             try:
                 dataset_defs = [{
                     "name": full_name,
@@ -332,8 +365,16 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             try:
                 gen_train_nb, gen_colab_nb = _get_training_suite_notebook_generators()
                 target_model = "forex_predictor" if model_key == "forex_universe" else model_key
-                gen_train_nb(pascal_name, target_model, str(output_root / f"{target_model}_kaggle_training.ipynb"))
-                gen_colab_nb(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
+                gen_train_nb(
+                    pascal_name,
+                    target_model,
+                    str(output_root / f"{target_model}_kaggle_training.ipynb"),
+                )
+                gen_colab_nb(
+                    pascal_name,
+                    target_model,
+                    str(output_root / f"{target_model}_colab_training.ipynb"),
+                )
             except (ImportError, OSError, ValueError) as e:
                 logger.warning("Forex notebook generation skipped: %s", e)
 
@@ -352,11 +393,15 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 yaml.dump(yaml_info, f, default_flow_style=False, explicit_start=True)
 
             try:
-                generate_dataset_docs(output_root, final_index=None, pascal_name=pascal_name, overrides=yaml_info)
+                generate_dataset_docs(
+                    output_root, final_index=None, pascal_name=pascal_name, overrides=yaml_info
+                )
             except DOC_GENERATION_ERRORS as e:
                 logger.warning("Documentation engine skipped for %s: %s", pascal_name, e)
 
-            print("[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n")
+            print(
+                "[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n"
+            )
             outcomes.append(ManifoldOutcome(model_key, output_root, samples=0, sample_based=False))
             continue
 
@@ -364,7 +409,11 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         seen_hashes = set()
 
         # 2026 Phase 1.3: Registry lives inside the manifold folder.
-        _root = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
+        _root = (
+            Path(__file__).resolve().parent.parent
+            if Path(__file__).parent.name == "core"
+            else Path(__file__).resolve().parent
+        )
         legacy_path = _root / ".cache" / f"registry_{pascal_name}.db"
         conn = initialize_registry(db_path, migrate_from=legacy_path)
 
@@ -375,7 +424,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 rows = conn.execute("SELECT name FROM registry").fetchall()
                 existing_names = {r[0] for r in rows}
                 if existing_names:
-                    print(f"[OK] Found {len(existing_names)} existing samples. Resuming from checkpoint.")
+                    print(
+                        f"[OK] Found {len(existing_names)} existing samples. Resuming from"
+                        " checkpoint."
+                    )
             except sqlite3.Error as e:
                 logger.warning("Resumption scan of %s failed: %s", db_path, e)
 
@@ -383,7 +435,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         existing_on_disk = set()
         img_dir = output_root / "images"
         if img_dir.exists():
-            print(f"[RESUMPTION] Surgical scan of {pascal_name} manifold for physical consistency...")
+            print(
+                f"[RESUMPTION] Surgical scan of {pascal_name} manifold for physical consistency..."
+            )
             count = 0
             _buf = []
             for split in ["train", "val"]:
@@ -396,7 +450,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                             if entry.is_file():
                                 fname = entry.name
                                 dot_idx = fname.find('.')
-                                _buf.append(fname[:dot_idx].lower() if dot_idx != -1 else fname.lower())
+                                _buf.append(
+                                    fname[:dot_idx].lower() if dot_idx != -1 else fname.lower()
+                                )
                                 count += 1
                                 if count % 5000 == 0:
                                     print(f"   -> Indexed {count // 1000}k samples...", flush=True)
@@ -407,13 +463,20 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             existing_on_disk.update(_buf)
             _buf = None
 
-            print(f"[OK] Physical discovery complete: {len(existing_on_disk)} samples verified on disk.")
+            print(
+                f"[OK] Physical discovery complete: {len(existing_on_disk)} samples verified on"
+                " disk."
+            )
 
         if args.no_vetting and args.no_labeling:
             init_worker(CONFIG, dped_canon_paths, existing_on_disk)
             executor_ctx = ExecutorClass(max_workers=max_workers)
         else:
-            executor_ctx = ExecutorClass(max_workers=max_workers, initializer=init_worker, initargs=(CONFIG, dped_canon_paths, existing_on_disk))
+            executor_ctx = ExecutorClass(
+                max_workers=max_workers,
+                initializer=init_worker,
+                initargs=(CONFIG, dped_canon_paths, existing_on_disk),
+            )
 
         executor = executor_ctx
 
@@ -437,13 +500,22 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                         o_key, o_source, task, o_split, "adopted", 1.0, None, None, None, None
                     ))
 
-                conn.executemany("""
-                    INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO registry (
+                        name, source, task, split, hash,
+                        nima_score, caption, style_tag, clip_latent, img_bytes
+                    )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, orphan_entries)
+                """,
+                    orphan_entries,
+                )
                 conn.commit()
                 total_adopted += len(orphan_entries)
-                print(f"   -> Adopted {total_adopted // 1000}k / {len(orphans) // 1000}k orphans...", flush=True)
+                print(
+                    f"   -> Adopted {total_adopted // 1000}k / {len(orphans) // 1000}k orphans...",
+                    flush=True,
+                )
 
             print(f"[OK] [REPAIR] {total_adopted} orphans successfully merged into registry.")
             existing_names.update(orphans)
@@ -485,15 +557,27 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                         "ParseNet": "face_parser"
                     }
                     task_tag = mapping.get(m_name)
-                    print(f"[RECIRCULATION] Using compiled manifold: {m_name} | Task Tag: {task_tag}")
+                    print(
+                        f"[RECIRCULATION] Using compiled manifold: {m_name} | Task Tag: {task_tag}"
+                    )
                 else:
                     print(f"[SKIP] Manifold {m_name} not found at {m_path}")
                     continue
             else:
-                slug = ref.replace('hf://', '').replace('gh://', '').replace('kaggle://', '').split('/')[-1]
+                slug = (
+                    ref.replace('hf://', '')
+                    .replace('gh://', '')
+                    .replace('kaggle://', '')
+                    .split('/')[-1]
+                )
                 if ":" in slug:
                     repo_slug = slug.split(":")[0]
-                    target_slug = slug.split(":")[-1].replace(".tgz", "").replace(".tar.gz", "").replace(".zip", "")
+                    target_slug = (
+                        slug.split(":")[-1]
+                        .replace(".tgz", "")
+                        .replace(".tar.gz", "")
+                        .replace(".zip", "")
+                    )
                     dataset = shared_root / repo_slug / target_slug
                     slug = target_slug
                 else:
@@ -507,12 +591,18 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 dataset = shared_root / slug.lower()
                 if not dataset.is_dir():
                     try:
-                        matches = [d for d in shared_root.iterdir() if d.is_dir() and slug.lower() in d.name.lower()]
+                        matches = [
+                            d
+                            for d in shared_root.iterdir()
+                            if d.is_dir() and slug.lower() in d.name.lower()
+                        ]
                         if matches:
                             dataset = matches[0]
                             print(f"[DISCOVERY] Mapping {ref} -> {dataset.name}")
                     except OSError as exc:
-                        logger.warning("Discovery scan for %s in %s failed: %s", slug, shared_root, exc)
+                        logger.warning(
+                            "Discovery scan for %s in %s failed: %s", slug, shared_root, exc
+                        )
 
             if not dataset.is_dir():
                 print(f"[SKIP] Source {ref} not found in {shared_root}")
@@ -537,7 +627,17 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             elif fmt in ["xml", "yolo"]:
                 ann_data = _require_ann_path(ann_path)
 
-            valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".safetensors", ".tiff", ".tif", ".bmp", ".npy"}
+            valid_exts = {
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".webp",
+                ".safetensors",
+                ".tiff",
+                ".tif",
+                ".bmp",
+                ".npy",
+            }
             images = list(_fast_scan(str(dataset), valid_exts))
 
             is_virtual = False
@@ -545,7 +645,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 for pq_path, _, cols in ann_data_list:
                     if "image" in cols or "pixel_values" in cols:
                         is_virtual = True
-                        print(f"[VIRTUAL] {slug} identified as Sharded Parquet dataset ({len(ann_data_list)} shards).")
+                        print(
+                            f"[VIRTUAL] {slug} identified as Sharded Parquet dataset"
+                            f" ({len(ann_data_list)} shards)."
+                        )
                         break
 
             is_lazy = False
@@ -553,7 +656,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 for pq_path, _, cols in ann_data_list:
                     if "url" in cols:
                         is_lazy = True
-                        print(f"[LAZY] {slug} identified as URL-based manifest. Commencing background retrieval...")
+                        print(
+                            f"[LAZY] {slug} identified as URL-based manifest. Commencing background"
+                            " retrieval..."
+                        )
                         break
 
             if is_lazy:
@@ -568,7 +674,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                         try:
                             df = pd.read_parquet(pq_path)
                         except PARQUET_READ_ERRORS as e:
-                            logger.warning("Skipping corrupted lazy parquet shard %s: %s", pq_path, e)
+                            logger.warning(
+                                "Skipping corrupted lazy parquet shard %s: %s", pq_path, e
+                            )
                             continue
                         for row in df.itertuples():
                             url = getattr(row, url_col)
@@ -579,11 +687,21 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                 to_download.append((url, str(dest)))
 
                 if to_download:
-                    print(f"[RETRIEVAL] Downloading {len(to_download)} missing images for {slug}...")
+                    print(
+                        f"[RETRIEVAL] Downloading {len(to_download)} missing images for {slug}..."
+                    )
                     with requests.Session() as session:
                         with ThreadPoolExecutor(max_workers=16) as dl_executor:
-                            dl_tasks = [dl_executor.submit(download_image, url, dest, session) for url, dest in to_download]
-                            for _ in tqdm(as_completed(dl_tasks), total=len(dl_tasks), desc="   -> Downloading", leave=False):
+                            dl_tasks = [
+                                dl_executor.submit(download_image, url, dest, session)
+                                for url, dest in to_download
+                            ]
+                            for _ in tqdm(
+                                as_completed(dl_tasks),
+                                total=len(dl_tasks),
+                                desc="   -> Downloading",
+                                leave=False,
+                            ):
                                 pass
 
                 images = list(_fast_scan(str(dl_dir), valid_exts))
@@ -608,7 +726,11 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     logger.warning("Skipping corrupted parquet %s: %s", pq_path, e)
                     df = pd.DataFrame()
                 file_col = mapping.get("file_name", "file_name")
-                if file_col in df.columns and len(df) > 0 and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str)):
+                if (
+                    file_col in df.columns
+                    and len(df) > 0
+                    and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str))
+                ):
                     for fname, group in df.groupby(file_col):
                         parquet_map[str(fname)] = group
             elif fmt == "matlab" and ann_data:
@@ -626,7 +748,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 sample_count = len(images)
             else:
                 try:
-                    sample_count = sum(pd.read_parquet(d[0], columns=[]).shape[0] for d in ann_data_list)
+                    sample_count = sum(
+                        pd.read_parquet(d[0], columns=[]).shape[0] for d in ann_data_list
+                    )
                 except PARQUET_READ_ERRORS as exc:
                     logger.warning("Could not count parquet samples: %s", exc)
                     sample_count = 0
@@ -647,21 +771,43 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     try:
                         num_rows = load_parquet().read_metadata(str(pq_path)).num_rows
                     except (ImportError, *PARQUET_READ_ERRORS) as meta_exc:
-                        logger.debug("pyarrow metadata read failed for %s (%s); counting rows via pandas", pq_path, meta_exc)
+                        logger.debug(
+                            "pyarrow metadata read failed for %s (%s); counting rows via pandas",
+                            pq_path,
+                            meta_exc,
+                        )
                         try:
                             num_rows = pd.read_parquet(pq_path, columns=[]).shape[0]
                         except PARQUET_READ_ERRORS as e:
-                            logger.warning("Skipping corrupted virtual parquet shard %s: %s", pq_path, e)
+                            logger.warning(
+                                "Skipping corrupted virtual parquet shard %s: %s", pq_path, e
+                            )
                             continue
 
                     if num_rows == 0:
                         continue
 
-                    task_item: TaskItem = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
+                    task_item: TaskItem = (
+                        process_parquet_shard,
+                        pq_path,
+                        prefix,
+                        c_slug,
+                        global_idx,
+                        task,
+                        fmt,
+                        output_root_str,
+                        skip_lbl,
+                        train_prob,
+                        existing_names,
+                        existing_on_disk,
+                        1.0,
+                        num_rows,
+                    )
 
                     if tag == "nsfw":
                         nsfw_tasks.append(task_item)
-                    else: sfw_tasks.append(task_item)
+                    else:
+                        sfw_tasks.append(task_item)
 
                     global_idx += num_rows
 
@@ -730,13 +876,33 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                             specific_ann_data = str(ann_file)
 
                     if task == "diffusion":
-                        task_item: TaskItem = (process_diffusion, img_path, prefix, c_slug, i, split)
+                        task_item: TaskItem = (
+                            process_diffusion,
+                            img_path,
+                            prefix,
+                            c_slug,
+                            i,
+                            split,
+                        )
                     else:
-                        task_item: TaskItem = (process_image, img_path, prefix, c_slug, i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
+                        task_item: TaskItem = (
+                            process_image,
+                            img_path,
+                            prefix,
+                            c_slug,
+                            i,
+                            task,
+                            fmt,
+                            specific_ann_data,
+                            split,
+                            output_root_str,
+                            skip_lbl,
+                        )
 
                     if tag == "nsfw":
                         nsfw_tasks.append(task_item)
-                    else: sfw_tasks.append(task_item)
+                    else:
+                        sfw_tasks.append(task_item)
 
                 print(f"   -> [{slug}] Discovered {sample_count} source tensors.")
 
@@ -749,7 +915,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         if target_nsfw_ratio > 0 and nsfw_count > 0:
             max_nsfw = int(sfw_count * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
             if nsfw_count > max_nsfw:
-                print(f"[BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio*100}% cap. Capping at {max_nsfw} samples.")
+                print(
+                    f"[BALANCING] NSFW pool ({nsfw_count}) exceeds {target_nsfw_ratio * 100}% cap."
+                    f" Capping at {max_nsfw} samples."
+                )
                 nsfw_keep_prob = max_nsfw / nsfw_count
 
                 new_nsfw_tasks: list[TaskItem] = []
@@ -757,7 +926,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     if item[0].__name__ == "process_parquet_shard":
                         new_item = list(item)
                         new_item[_SHARD_KEEP_PROB_IDX] = nsfw_keep_prob
-                        new_item[_SHARD_NUM_ROWS_IDX] = int(item[_SHARD_NUM_ROWS_IDX] * nsfw_keep_prob)
+                        new_item[_SHARD_NUM_ROWS_IDX] = int(
+                            item[_SHARD_NUM_ROWS_IDX] * nsfw_keep_prob
+                        )
                         new_nsfw_tasks.append(tuple(new_item))
                     else:
                         if random.random() <= nsfw_keep_prob:
@@ -777,23 +948,40 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         processed_count = len(existing_names)
         if not torch.cuda.is_available() and len(all_tasks) > 50000:
             if not args.no_labeling or not args.no_vetting:
-                print(f"[CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling High-Speed Mode.", flush=True)
+                print(
+                    f"[CPU-GUARD] Massive dataset ({len(all_tasks)} items) on CPU. Auto-enabling"
+                    " High-Speed Mode.",
+                    flush=True,
+                )
                 args.no_labeling = True
                 args.no_vetting = True
 
-        desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
+        desc_label = (
+            "[PASS 1] Extraction & Vetting"
+            if not args.no_vetting and task in ["quality", "classification"]
+            else "[PASS 1] Extraction & Processing"
+        )
 
         if not args.finalize:
             batch_size = 100 if args.no_vetting else 50
-            task_batches = [all_tasks[i:i + batch_size] for i in range(0, len(all_tasks), batch_size)]
+            task_batches = [
+                all_tasks[i : i + batch_size] for i in range(0, len(all_tasks), batch_size)
+            ]
 
             pbar = None
             total_items_to_process = sum(_count_one(t) for t in all_tasks)
-            with tqdm(total=total_items_to_process + len(existing_names), initial=len(existing_names), desc=desc_label, smoothing=0.1) as pbar:
+            with tqdm(
+                total=total_items_to_process + len(existing_names),
+                initial=len(existing_names),
+                desc=desc_label,
+                smoothing=0.1,
+            ) as pbar:
                 # --- 2026 Resilience: SAFE-START WARMUP (SOTA v6.3) ---
                 warmup_limit = min(500, len(all_tasks))
                 if warmup_limit > 0:
-                    print(f"[SAFE-START] Warming up manifold (Serial Pass: {warmup_limit} samples)...")
+                    print(
+                        f"[SAFE-START] Warming up manifold (Serial Pass: {warmup_limit} samples)..."
+                    )
                     for i in range(warmup_limit):
                         task_args = all_tasks[i]
                         res = task_args[0](*task_args[1:])
@@ -810,16 +998,25 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                         r.get("clip_latent"), r.get("img_bytes")
                                     ))
                             if batch_entries:
-                                conn.executemany("""
-                                    INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                                conn.executemany(
+                                    """
+                                    INSERT OR IGNORE INTO registry (
+                                        name, source, task, split, hash,
+                                        nima_score, caption, style_tag, clip_latent, img_bytes
+                                    )
                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """, batch_entries)
+                                """,
+                                    batch_entries,
+                                )
                         if i % 100 == 99:
                             conn.commit()
                     print("[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
 
                 remaining_tasks = all_tasks[warmup_limit:]
-                task_batches = [remaining_tasks[i:i + batch_size] for i in range(0, len(remaining_tasks), batch_size)]
+                task_batches = [
+                    remaining_tasks[i : i + batch_size]
+                    for i in range(0, len(remaining_tasks), batch_size)
+                ]
 
                 futures = set()
                 batch_iter = iter(task_batches)
@@ -842,16 +1039,29 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                 pbar.update(len(batch_results))
                                 for res in batch_results:
                                     if res:
-                                        if CONFIG["enable_dedup"] and not args.no_hash and res["hash"] in seen_hashes:
+                                        if (
+                                            CONFIG["enable_dedup"]
+                                            and not args.no_hash
+                                            and res["hash"] in seen_hashes
+                                        ):
                                             continue
                                         if res["hash"]:
                                             seen_hashes.add(res["hash"])
                                         compiled_bytes += res.get("size", 0)
-                                        batch_entries.append((
-                                            res["name"], res["source"], res["task"], res["split"], res["hash"],
-                                            res["nima_score"], res.get("caption"), res.get("style_tag"),
-                                            res.get("clip_latent"), res.get("img_bytes")
-                                        ))
+                                        batch_entries.append(
+                                            (
+                                                res["name"],
+                                                res["source"],
+                                                res["task"],
+                                                res["split"],
+                                                res["hash"],
+                                                res["nima_score"],
+                                                res.get("caption"),
+                                                res.get("style_tag"),
+                                                res.get("clip_latent"),
+                                                res.get("img_bytes"),
+                                            )
+                                        )
                                         processed_count += 1
                                         if (compiled_bytes / (1024**3)) >= max_gb:
                                             for f in futures:
@@ -862,10 +1072,16 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                 logger.error("Worker batch failed: %s", e)
 
                         if batch_entries:
-                            conn.executemany("""
-                                INSERT OR IGNORE INTO registry (name, source, task, split, hash, nima_score, caption, style_tag, clip_latent, img_bytes)
+                            conn.executemany(
+                                """
+                                INSERT OR IGNORE INTO registry (
+                                    name, source, task, split, hash,
+                                    nima_score, caption, style_tag, clip_latent, img_bytes
+                                )
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, batch_entries)
+                            """,
+                                batch_entries,
+                            )
                             conn.commit()
 
                         for _ in range(len(done)):
@@ -881,7 +1097,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
         compiled_gb = compiled_bytes / (1024**3)
         if compiled_gb < min_gb:
-            print(f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold constraint ({min_gb:.2f}GB).")
+            print(
+                f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold"
+                f" constraint ({min_gb:.2f}GB)."
+            )
 
         # STEP 2: Style Clustering
         print("[STYLING] Commencing Style Clustering on all extracted latents...")
@@ -898,7 +1117,9 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             n_clusters = int(CONFIG.get("n_style_clusters", 16))
             kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=42).fit(latent_matrix)
             labels_list = [int(x) for x in kmeans.labels_]
-            for i, cid in tqdm(zip(ids, labels_list), total=len(ids), desc="[STYLING] Updating Clusters"):
+            for i, cid in tqdm(
+                zip(ids, labels_list), total=len(ids), desc="[STYLING] Updating Clusters"
+            ):
                 conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (cid, i))
             conn.commit()
         else:
@@ -908,16 +1129,23 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         print("[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
 
         shard_dir = None
-        has_diffusion = conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone() is not None
+        has_diffusion = (
+            conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone()
+            is not None
+        )
         if has_diffusion:
             shard_dir = output_root / "shards"
             shard_dir.mkdir(parents=True, exist_ok=True)
 
-        unique_sources = [r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()]
+        unique_sources = [
+            r[0] for r in conn.execute("SELECT DISTINCT source FROM registry").fetchall()
+        ]
 
         final_index = []
         for source in unique_sources:
-            cursor = conn.execute("SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,))
+            cursor = conn.execute(
+                "SELECT * FROM registry WHERE source = ? ORDER BY cluster_id, id", (source,)
+            )
             rows = cursor.fetchall()
 
             if has_diffusion and shard_dir is not None:
@@ -928,16 +1156,34 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 sink = None
 
             for row in rows:
-                res = {"id": row[0], "name": row[1], "source": row[2], "task": row[3], "split": row[4],
-                       "hash": row[5], "nima_score": row[6], "caption": row[7], "style_tag": row[8], "cluster_id": row[11]}
+                res = {
+                    "id": row[0],
+                    "name": row[1],
+                    "source": row[2],
+                    "task": row[3],
+                    "split": row[4],
+                    "hash": row[5],
+                    "nima_score": row[6],
+                    "caption": row[7],
+                    "style_tag": row[8],
+                    "cluster_id": row[11],
+                }
 
                 if res["task"] == "diffusion" and row[10] and sink:
-                    sink.write({
-                        "__key__": res["name"],
-                        "jpg": row[10],
-                        "txt": res["caption"],
-                        "json": json.dumps({"style": res["style_tag"], "cluster": res["cluster_id"], "source": res["source"]})
-                    })
+                    sink.write(
+                        {
+                            "__key__": res["name"],
+                            "jpg": row[10],
+                            "txt": res["caption"],
+                            "json": json.dumps(
+                                {
+                                    "style": res["style_tag"],
+                                    "cluster": res["cluster_id"],
+                                    "source": res["source"],
+                                }
+                            ),
+                        }
+                    )
                 final_index.append(res)
 
             if sink:
@@ -957,7 +1203,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             try:
                 extra_formats = parse_also_format(args.also_format)
                 if extra_formats:
-                    print(f"[CONTAINER] Writing additional container format(s): {', '.join(extra_formats)}...")
+                    print(
+                        "[CONTAINER] Writing additional container format(s):"
+                        f" {', '.join(extra_formats)}..."
+                    )
                     container_rc = migrate_manifold(
                         root=output_root,
                         formats=extra_formats,
@@ -967,7 +1216,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     if container_rc == 0:
                         containers_written = tuple(f for f in extra_formats if f != "directory")
                     else:
-                        print(f"[ERROR] Container writer exited with code {container_rc}; loose layout kept.")
+                        print(
+                            f"[ERROR] Container writer exited with code {container_rc}; loose"
+                            " layout kept."
+                        )
             except (ImportError, OSError, ValueError) as e:
                 logger.error("Failed writing additional container format: %s", e)
 
@@ -976,7 +1228,12 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
             resolved_model = model_key
             if not resolved_model:
-                clean_name = pascal_name.replace("LemGendized", "").replace("KaggleReady", "").replace("Large", "").replace("Mini", "")
+                clean_name = (
+                    pascal_name.replace("LemGendized", "")
+                    .replace("KaggleReady", "")
+                    .replace("Large", "")
+                    .replace("Mini", "")
+                )
                 resolved_model = re.sub(r'(?<!^)(?=[A-Z])', '_', clean_name).lower()
 
             if "naf_net" in resolved_model:
@@ -984,12 +1241,19 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             if "upn_v_2" in resolved_model:
                 resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
 
-            gen_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_kaggle_training.ipynb")
-            gen_colab_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_colab_training.ipynb")
+            gen_nb(
+                pascal_name, resolved_model, output_root / f"{resolved_model}_kaggle_training.ipynb"
+            )
+            gen_colab_nb(
+                pascal_name, resolved_model, output_root / f"{resolved_model}_colab_training.ipynb"
+            )
         except (ImportError, OSError, ValueError) as e:
             logger.error("Could not generate training notebooks for %s: %s", pascal_name, e)
 
-        print(f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for {pascal_name}.")
+        print(
+            f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for"
+            f" {pascal_name}."
+        )
         executor.shutdown(wait=True)
         outcomes.append(ManifoldOutcome(model_key, output_root, samples=len(final_index),
                                         containers_written=containers_written))

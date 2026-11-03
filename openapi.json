@@ -410,7 +410,7 @@
           "Kaggle"
         ],
         "summary": "List Registry Kaggle Datasets",
-        "description": "List all production manifolds from unified_data.yaml that can be downloaded/uploaded via Kaggle.",
+        "description": "List the production manifolds in unified_data.yaml that can move through Kaggle.",
         "operationId": "list_registry_kaggle_datasets_api_kaggle_registry_datasets_get",
         "responses": {
           "200": {
@@ -562,7 +562,7 @@
           "Kaggle"
         ],
         "summary": "Update Kaggle Metadata",
-        "description": "Push Kaggle dataset metadata (title, description, license, columns) without re-uploading data.",
+        "description": "Push Kaggle metadata (title, description, license, columns) without re-uploading data.",
         "operationId": "update_kaggle_metadata_api_kaggle_update_metadata_post",
         "requestBody": {
           "content": {

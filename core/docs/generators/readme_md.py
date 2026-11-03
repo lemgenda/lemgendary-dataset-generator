@@ -123,14 +123,19 @@ def generate_readme_md(
         if not table_text:
             table_text = "| **Curated Production Synthesis** | N/A | N/A | Full Contribution |"
 
-        total_samples_display = f"{ctx.total_samples:,}" if ctx.total_samples > 0 else "Curated Benchmark Split"
+        total_samples_display = (
+            f"{ctx.total_samples:,}" if ctx.total_samples > 0 else "Curated Benchmark Split"
+        )
 
         if total_train_all == 0 and ctx.total_samples > 0:
             total_val_all = int(ctx.total_samples * 0.12)
             total_train_all = ctx.total_samples - total_val_all
 
         manifest_rows: list[str] = []
-        is_llm = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+        is_llm = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in (
+            "llm",
+            "ai_helper",
+        )
         if is_llm:
             train_file_rel = ctx.unified_entry.get("train_file", f"data/{ctx.slug}_train.jsonl")
             val_file_rel = ctx.unified_entry.get("val_file", f"data/{ctx.slug}_val.jsonl")
@@ -140,7 +145,11 @@ def generate_readme_md(
             manifest_rows.append(f"| **images** | {total_train_all:,} | {total_val_all:,} |")
             if (target_dir / "targets").exists() or ctx.task in ["restoration", "super-resolution"]:
                 manifest_rows.append(f"| **targets** | {total_train_all:,} | {total_val_all:,} |")
-            if (target_dir / "labels").exists() or ctx.task in ["detection", "pose", "classification"]:
+            if (target_dir / "labels").exists() or ctx.task in [
+                "detection",
+                "pose",
+                "classification",
+            ]:
                 manifest_rows.append(f"| **labels** | {total_train_all:,} | {total_val_all:,} |")
 
         manifest_text = "\n".join(manifest_rows)
@@ -175,7 +184,9 @@ def generate_readme_md(
 def main() -> None:
     """CLI entrypoint for README.md generation."""
     parser = argparse.ArgumentParser(description="Generate README.md for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Manifold directory name or path"
+    )
     parser.add_argument("--all", action="store_true", help="Generate README.md for all manifolds")
     args = parser.parse_args()
 

@@ -25,9 +25,11 @@ from .base import GenerationResult, Generator
 
 _TEMPLATES: dict[str, str] = {
     "diffusers-v1": "{subject}, {style}, {lighting}, {camera}, {quality_tokens}",
-    "sd-v1":        "{subject}, {style}, {quality_tokens}",
-    "flux-v1":      "{subject}. Style: {style}. Lighting: {lighting}. Camera: {camera}. {quality_tokens}",
-    "minimal":      "{subject}",
+    "sd-v1": "{subject}, {style}, {quality_tokens}",
+    "flux-v1": (
+        "{subject}. Style: {style}. Lighting: {lighting}. Camera: {camera}. {quality_tokens}"
+    ),
+    "minimal": "{subject}",
 }
 
 _DEFAULT_QUALITY_TOKENS = "masterpiece, best quality, highly detailed, 8k"

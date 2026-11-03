@@ -178,7 +178,11 @@ else:
     CONFIG = dict(DEFAULT_CONFIG)
 
 
-ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
+ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "core"
+    else Path(__file__).resolve().parent
+)
 
 try:
     _manifest_path = ROOT / "unified_data.yaml"
@@ -306,8 +310,6 @@ else:
     CATEGORY_MAP = {}
 
 DATASETS_META: dict[str, Any] = YAML_DATA.get("datasets", {})
-
-
 
 
 # ─── Per-process worker state ───────────────────────────────────────────────
@@ -478,7 +480,9 @@ def init_worker(
         model_path = os.path.join(base_dir, "models", f"nima_{model_type}_best.pth")
         if os.path.exists(model_path):
             try:
-                _WORKER.sentry = quality_scorer.QualitySentry(model_path, model_name=model_type, device=device)
+                _WORKER.sentry = quality_scorer.QualitySentry(
+                    model_path, model_name=model_type, device=device
+                )
             except MODEL_LOAD_ERRORS as exc:
                 logger.warning("Worker failed loading QualitySentry (%s): %s", model_path, exc)
 
@@ -529,7 +533,9 @@ def get_labeler(task: str, device: str = "cuda"):
             mode = "face_landmarks"
         else:
             mode = "segmentation" if "seg" in task else "detection"
-        _WORKER.labelers[task] = load_model_module("detection").AutoLabeler(mode=mode, device=device)
+        _WORKER.labelers[task] = load_model_module("detection").AutoLabeler(
+            mode=mode, device=device
+        )
     return _WORKER.labelers[task]
 
 
@@ -601,7 +607,12 @@ def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
             else:
                 results.append(res)
         except SAMPLE_PROCESSING_ERRORS as exc:
-            logger.warning("Worker task failed: %s with args %s: %s", getattr(task_func, "__name__", str(task_func)), task_args, exc)
+            logger.warning(
+                "Worker task failed: %s with args %s: %s",
+                getattr(task_func, "__name__", str(task_func)),
+                task_args,
+                exc,
+            )
             results.append(None)
     return results
 
@@ -670,7 +681,9 @@ def _write_image_phase3(
         os.link(str(source_path), str(out_path))
         return out_path
     except (OSError, AttributeError) as exc:
-        logger.debug("Hardlink creation skipped on %s, falling back to copy: %s", out_path.name, exc)
+        logger.debug(
+            "Hardlink creation skipped on %s, falling back to copy: %s", out_path.name, exc
+        )
     try:
         shutil.copy2(str(source_path), str(out_path))
     except (shutil.SameFileError, OSError) as exc:
@@ -769,7 +782,9 @@ def process_image(
                 if any(k in parent.name.lower() for k in blur_keys):
                     try:
                         for sibling in parent.parent.iterdir():
-                            if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
+                            if sibling.is_dir() and any(
+                                k in sibling.name.lower() for k in sharp_keys
+                            ):
                                 potential = sibling / img_path.name
                                 if potential.exists():
                                     target_img_path = str(potential)
@@ -791,10 +806,14 @@ def process_image(
 
                 if not target_img_path:
                     for ancestor in [parent, parent.parent]:
-                        if any(k in ancestor.name.lower() for k in ["train", "test", "val", "images"]):
+                        if any(
+                            k in ancestor.name.lower() for k in ["train", "test", "val", "images"]
+                        ):
                             try:
                                 for sibling in ancestor.parent.iterdir():
-                                    if sibling.is_dir() and any(k in sibling.name.lower() for k in sharp_keys):
+                                    if sibling.is_dir() and any(
+                                        k in sibling.name.lower() for k in sharp_keys
+                                    ):
                                         potential = sibling / img_path.name
                                         if potential.exists():
                                             target_img_path = str(potential)
@@ -806,9 +825,13 @@ def process_image(
                                                 target_img_path = str(potential_rel)
                                                 break
                                         except ValueError as exc:
-                                            logger.debug("Relative path computation failed: %s", exc)
+                                            logger.debug(
+                                                "Relative path computation failed: %s", exc
+                                            )
                             except OSError as exc:
-                                logger.debug("Ancestor sibling search OSError on %s: %s", ancestor, exc)
+                                logger.debug(
+                                    "Ancestor sibling search OSError on %s: %s", ancestor, exc
+                                )
                             if target_img_path:
                                 break
 
@@ -940,7 +963,11 @@ def process_image(
 
         # ── Hash + output writes ────────────────────────────────────────────
         hash_target = img_data if isinstance(img_input, (bytes, dict)) else img_path
-        h = _WORKER.exact_hasher.hash(hash_target) if (CONFIG["enable_dedup"] and _WORKER.exact_hasher) else None
+        h = (
+            _WORKER.exact_hasher.hash(hash_target)
+            if (CONFIG["enable_dedup"] and _WORKER.exact_hasher)
+            else None
+        )
 
         ph: str | None = None
         if CONFIG.get("enable_perceptual_dedup") and _WORKER.perceptual_hasher and img is not None:
@@ -949,7 +976,9 @@ def process_image(
                 ph = f"{p_hashes[0]}:{p_hashes[1]}"
 
         is_already_on_disk = _WORKER.physical_index and name.lower() in _WORKER.physical_index
-        is_clean_only = ("parsenet" in slug.lower() or "codeformer" in slug.lower()) and task == "restoration"
+        is_clean_only = (
+            "parsenet" in slug.lower() or "codeformer" in slug.lower()
+        ) and task == "restoration"
         if is_clean_only and not target_img_path and isinstance(img_input, (str, Path)):
             target_img_path = str(img_path)
 
@@ -989,7 +1018,9 @@ def process_image(
                         kind="image",
                     )
                 elif task == "segmentation" and _WORKER.mask_gen is not None and img is not None:
-                    mask_result = _WORKER.mask_gen.generate(img, context={"task": task, "slug": slug})
+                    mask_result = _WORKER.mask_gen.generate(
+                        img, context={"task": task, "slug": slug}
+                    )
                     if mask_result.value is not None:
                         out_tgt_path = _write_image_phase3(
                             loaded_img=mask_result.value,
@@ -1005,7 +1036,9 @@ def process_image(
                         try:
                             shutil.copy2(out_img_path, out_tgt_path)
                         except OSError as exc:
-                            logger.debug("Target copy fallback error for %s: %s", out_tgt_path.name, exc)
+                            logger.debug(
+                                "Target copy fallback error for %s: %s", out_tgt_path.name, exc
+                            )
 
         elif task == "parameter_prediction":
             if target_img_path:
@@ -1031,7 +1064,11 @@ def process_image(
                     try:
                         shutil.copy2(str(out_img_path), str(out_tgt_path))
                     except OSError as exc:
-                        logger.debug("Param prediction copy fallback error for %s: %s", out_tgt_path.name, exc)
+                        logger.debug(
+                            "Param prediction copy fallback error for %s: %s",
+                            out_tgt_path.name,
+                            exc,
+                        )
 
         # ── Annotation dispatch ─────────────────────────────────────────────
         annotations: list[_Annotation] = []
@@ -1043,9 +1080,11 @@ def process_image(
                     kpts = normalize_points(a_["keypoints"], w, hgt, stride=3)
                     annotations.append({"type": "pose", "cls": cls, "data": a_["bbox"] + kpts})
                 elif "segmentation" in a_ and a_["segmentation"]:
-                    poly_raw = (a_["segmentation"][0]
-                                if isinstance(a_["segmentation"], list) and len(a_["segmentation"]) > 0
-                                else [])
+                    poly_raw = (
+                        a_["segmentation"][0]
+                        if isinstance(a_["segmentation"], list) and len(a_["segmentation"]) > 0
+                        else []
+                    )
                     if poly_raw:
                         poly = normalize_points(poly_raw, w, hgt, stride=2)
                         annotations.append({"type": "segmentation", "cls": cls, "data": poly})
@@ -1258,7 +1297,11 @@ def process_diffusion(img_path, prefix, slug, idx, split):
     """Text-image processor for Diffusion manifolds."""
     try:
         if isinstance(img_path, (bytes, dict)):
-            raw = img_path["bytes"] if isinstance(img_path, dict) and "bytes" in img_path else img_path
+            raw = (
+                img_path["bytes"]
+                if isinstance(img_path, dict) and "bytes" in img_path
+                else img_path
+            )
             if not isinstance(raw, bytes):
                 return None
             img_data = raw
@@ -1301,9 +1344,15 @@ def process_diffusion(img_path, prefix, slug, idx, split):
         clip_latent = None
         if _WORKER.clip_manifold:
             style_tag = _WORKER.clip_manifold.tag_style(img)
-            clip_latent = _WORKER.clip_manifold.extract_features(img).cpu().numpy().flatten().tolist()
+            clip_latent = (
+                _WORKER.clip_manifold.extract_features(img).cpu().numpy().flatten().tolist()
+            )
 
-        h = _WORKER.exact_hasher.hash(img) if (CONFIG["enable_dedup"] and _WORKER.exact_hasher) else None
+        h = (
+            _WORKER.exact_hasher.hash(img)
+            if (CONFIG["enable_dedup"] and _WORKER.exact_hasher)
+            else None
+        )
         ph: str | None = None
         if CONFIG.get("enable_perceptual_dedup") and _WORKER.perceptual_hasher:
             p_hashes = _WORKER.perceptual_hasher.hash(img)
@@ -1323,7 +1372,9 @@ def process_diffusion(img_path, prefix, slug, idx, split):
         if clip_latent:
             latent_blob = sqlite3.Binary(np.array(clip_latent).astype(np.float32).tobytes())
 
-        nima_val = float(nima_score[0]) if isinstance(nima_score, (tuple, list)) else float(nima_score)
+        nima_val = (
+            float(nima_score[0]) if isinstance(nima_score, (tuple, list)) else float(nima_score)
+        )
         return {
             "name": name, "source": slug, "task": "diffusion", "split": split,
             "hash": h, "perceptual_hash": ph,

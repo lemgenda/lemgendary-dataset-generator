@@ -73,7 +73,9 @@ class AutoLabeler:
         if self.face_detector is None:
             base_dir = os.path.dirname(__file__)
             # Point to the downloaded face_landmarker.task
-            model_path = os.path.join(base_dir, "..", "..", "lemgendary-training-suite", "face_landmarker.task")
+            model_path = os.path.join(
+                base_dir, "..", "..", "lemgendary-training-suite", "face_landmarker.task"
+            )
             if not os.path.exists(model_path):
                 # Fallback to current dir if needed
                 model_path = os.path.join(base_dir, "face_landmarker.task")
@@ -123,6 +125,12 @@ class AutoLabeler:
                 # AutoLabeler returns absolute pixels for bbox in YOLO output format, wait!
                 # Actually, in 'detection' mode above, x_min, y_min, w, h are absolute?
                 # No! `box.xyxy[0]` is absolute.
-                annotations.append({"type": "pose", "cls": cls, "data": [x_min, y_min, x_max-x_min, y_max-y_min] + kpts})
+                annotations.append(
+                    {
+                        "type": "pose",
+                        "cls": cls,
+                        "data": [x_min, y_min, x_max - x_min, y_max - y_min] + kpts,
+                    }
+                )
 
         return annotations

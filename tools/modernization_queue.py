@@ -41,7 +41,11 @@ from core.common_sync import (
 from core.lazy_imports import load_streaming
 from formats.mds import LOOSE_MDS_COLUMNS
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
+_ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "tools"
+    else Path(__file__).resolve().parent
+)
 
 # Load stream_zip_to_container dynamically to bypass tools/__init__.py bulk imports
 _stream_tool_path = _ROOT / "tools" / "stream_zip_to_container.py"
@@ -107,11 +111,18 @@ def _fast_has_tar_shards(shards_dir: Path) -> tuple[bool, int]:
                 total_bytes += entry.stat().st_size
             elif entry.is_dir():
                 for sub_entry in os.scandir(entry.path):
-                    if sub_entry.is_file() and (sub_entry.name.endswith(".data") or sub_entry.name.endswith(".tar")):
+                    if sub_entry.is_file() and (
+                        sub_entry.name.endswith(".data") or sub_entry.name.endswith(".tar")
+                    ):
                         found = True
                         total_bytes += sub_entry.stat().st_size
     except OSError as exc:
-        logger.warning("Could not scan shard directory %s (partial size %d bytes): %s", shards_dir, total_bytes, exc)
+        logger.warning(
+            "Could not scan shard directory %s (partial size %d bytes): %s",
+            shards_dir,
+            total_bytes,
+            exc,
+        )
     return found, total_bytes
 
 
@@ -128,7 +139,9 @@ def _fast_has_mds(mds_dir: Path) -> tuple[bool, int]:
                     found = True
                     total_bytes += os.path.getsize(os.path.join(root, f))
     except OSError as exc:
-        logger.warning("Could not scan MDS directory %s (partial size %d bytes): %s", mds_dir, total_bytes, exc)
+        logger.warning(
+            "Could not scan MDS directory %s (partial size %d bytes): %s", mds_dir, total_bytes, exc
+        )
     return found, total_bytes
 
 
@@ -169,8 +182,12 @@ def load_queue_manifest(
                 found_zip = z
                 break
 
-        has_shards, shard_bytes = _fast_has_tar_shards(target_dir / "shards") if target_dir.exists() else (False, 0)
-        has_mds_flag, mds_bytes = _fast_has_mds(target_dir / "mds") if target_dir.exists() else (False, 0)
+        has_shards, shard_bytes = (
+            _fast_has_tar_shards(target_dir / "shards") if target_dir.exists() else (False, 0)
+        )
+        has_mds_flag, mds_bytes = (
+            _fast_has_mds(target_dir / "mds") if target_dir.exists() else (False, 0)
+        )
         has_parquet = any(target_dir.glob("*.parquet")) if target_dir.exists() else False
         has_litdata = any(target_dir.glob("chunk-*.bin")) if target_dir.exists() else False
 
@@ -195,13 +212,17 @@ def load_queue_manifest(
                 try:
                     with open(info_yaml, "r", encoding="utf-8") as f_info:
                         i_data = yaml.safe_load(f_info) or {}
-                    container_bytes = i_data.get("approx_bytes") or i_data.get("container_bytes") or 0
+                    container_bytes = (
+                        i_data.get("approx_bytes") or i_data.get("container_bytes") or 0
+                    )
                 except (OSError, yaml.YAMLError, AttributeError) as exc:
                     logger.warning("Could not read container size from %s: %s", info_yaml, exc)
                     container_bytes = 0
             if container_bytes == 0:
                 try:
-                    container_bytes = sum(e.stat().st_size for e in os.scandir(target_dir) if e.is_file())
+                    container_bytes = sum(
+                        e.stat().st_size for e in os.scandir(target_dir) if e.is_file()
+                    )
                 except OSError as exc:
                     logger.warning("Could not compute container size for %s: %s", target_dir, exc)
 
@@ -265,7 +286,10 @@ def convert_loose_directory_to_webdataset(
             break
 
     target_splits = splits if has_splits else ["all"]
-    print(f"[CONVERT] Packaging loose directory {source_dir.name} into WebDataset shards ({workers} workers)...")
+    print(
+        f"[CONVERT] Packaging loose directory {source_dir.name} into WebDataset shards ({workers}"
+        " workers)..."
+    )
 
     for split in target_splits:
         split_img_dir = (images_dir / split) if has_splits else images_dir
@@ -275,7 +299,11 @@ def convert_loose_directory_to_webdataset(
 
         img_files: list[Path] = []
         if split_img_dir.exists():
-            img_files = [p for p in split_img_dir.iterdir() if p.is_file() and p.suffix.lower() in _IMAGE_EXTS]
+            img_files = [
+                p
+                for p in split_img_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in _IMAGE_EXTS
+            ]
 
         tgt_files: dict[str, Path] = {}
         if split_tgt_dir.exists():
@@ -292,7 +320,9 @@ def convert_loose_directory_to_webdataset(
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
             if img_files:
-                with tqdm(total=total_samples, desc=f"SHARDS [{split}]", unit="img", dynamic_ncols=True) as pbar:
+                with tqdm(
+                    total=total_samples, desc=f"SHARDS [{split}]", unit="img", dynamic_ncols=True
+                ) as pbar:
                     for s_idx in range(total_shards):
                         start_i = s_idx * shard_size_samples
                         end_i = min(start_i + shard_size_samples, total_samples)
@@ -318,7 +348,9 @@ def convert_loose_directory_to_webdataset(
                                     tgt_p = tgt_files[stem]
                                     tgt_raw = tgt_p.read_bytes()
                                     if transcode_webp:
-                                        t_bytes, t_ext = _transcode_to_webp(tgt_raw, tgt_p.suffix, quality=95)
+                                        t_bytes, t_ext = _transcode_to_webp(
+                                            tgt_raw, tgt_p.suffix, quality=95
+                                        )
                                     else:
                                         t_bytes, t_ext = tgt_raw, tgt_p.suffix.lower()
                                     t_ti = tarfile.TarInfo(name=f"{stem}.target{t_ext}")
@@ -329,7 +361,12 @@ def convert_loose_directory_to_webdataset(
             else:
                 # Target-only
                 tgt_list = list(tgt_files.values())
-                with tqdm(total=total_samples, desc=f"TARGET SHARDS [{split}]", unit="img", dynamic_ncols=True) as pbar:
+                with tqdm(
+                    total=total_samples,
+                    desc=f"TARGET SHARDS [{split}]",
+                    unit="img",
+                    dynamic_ncols=True,
+                ) as pbar:
                     for s_idx in range(total_shards):
                         start_i = s_idx * shard_size_samples
                         end_i = min(start_i + shard_size_samples, total_samples)
@@ -364,7 +401,9 @@ def convert_loose_directory_to_webdataset(
             if transcode_webp:
                 idata["image_format"] = "webp"
             with open(info_path, "w", encoding="utf-8") as f_out:
-                yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                yaml.safe_dump(
+                    idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True
+                )
             print(f"[METADATA] Updated {info_path.name} format to webdataset.")
         except (OSError, yaml.YAMLError, TypeError) as exc:
             logger.warning("Failed updating %s: %s", info_path, exc)
@@ -394,7 +433,10 @@ def convert_loose_directory_to_mds(
     try:
         streaming = load_streaming()
     except ImportError:
-        print("[NOTICE] mosaicml-streaming is not installed. Routing loose directory directly to WebDataset shards...")
+        print(
+            "[NOTICE] mosaicml-streaming is not installed. Routing loose directory directly to"
+            " WebDataset shards..."
+        )
         return convert_loose_directory_to_webdataset(
             source_dir=source_dir,
             target_dir=target_dir,
@@ -415,7 +457,10 @@ def convert_loose_directory_to_mds(
     has_splits = any((images_dir / s).exists() or (targets_dir / s).exists() for s in splits)
     target_splits = splits if has_splits else ["all"]
 
-    print(f"[CONVERT-MDS] Packaging loose directory {source_dir.name} into MDS shards ({workers} workers)...")
+    print(
+        f"[CONVERT-MDS] Packaging loose directory {source_dir.name} into MDS shards ({workers}"
+        " workers)..."
+    )
 
     mds_writer_cls = streaming.MDSWriter
 
@@ -428,7 +473,11 @@ def convert_loose_directory_to_mds(
 
             img_files: list[Path] = []
             if split_img_dir.exists():
-                img_files = [p for p in split_img_dir.iterdir() if p.is_file() and p.suffix.lower() in _IMAGE_EXTS]
+                img_files = [
+                    p
+                    for p in split_img_dir.iterdir()
+                    if p.is_file() and p.suffix.lower() in _IMAGE_EXTS
+                ]
 
             tgt_map: dict[str, Path] = {}
             if split_tgt_dir.exists():
@@ -460,7 +509,9 @@ def convert_loose_directory_to_mds(
                 hashes=[],
             )
 
-            with tqdm(total=total_samples, desc=f"MDS [{split}]", unit="img", dynamic_ncols=True) as pbar:
+            with tqdm(
+                total=total_samples, desc=f"MDS [{split}]", unit="img", dynamic_ncols=True
+            ) as pbar:
                 samples_iter = img_files if img_files else list(tgt_map.values())
 
                 def _read_and_transcode_img(p: Path) -> tuple[str, bytes, str]:
@@ -474,7 +525,11 @@ def convert_loose_directory_to_mds(
                     tgt_bytes = b""
                     if stem in tgt_map:
                         raw_tgt = tgt_map[stem].read_bytes()
-                        tgt_bytes, _ = _transcode_to_webp(raw_tgt, tgt_map[stem].suffix, quality=95) if transcode_webp else (raw_tgt, "")
+                        tgt_bytes, _ = (
+                            _transcode_to_webp(raw_tgt, tgt_map[stem].suffix, quality=95)
+                            if transcode_webp
+                            else (raw_tgt, "")
+                        )
                     writer.write({
                         "image": img_data,
                         "target": tgt_bytes,
@@ -499,7 +554,9 @@ def convert_loose_directory_to_mds(
             if transcode_webp:
                 idata["image_format"] = "webp"
             with open(info_path, "w", encoding="utf-8") as f_out:
-                yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                yaml.safe_dump(
+                    idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True
+                )
             print(f"[METADATA] Updated {info_path.name} format to mds.")
         except (OSError, yaml.YAMLError, TypeError) as exc:
             logger.warning("Failed updating %s: %s", info_path, exc)
@@ -527,7 +584,9 @@ def _detect_img_ext(b: bytes) -> str:
     return "webp"
 
 
-def _mds_sample_to_tar_members(fields: dict[str, bytes | None], key: str) -> list[tuple[str, bytes]]:
+def _mds_sample_to_tar_members(
+    fields: dict[str, bytes | None], key: str
+) -> list[tuple[str, bytes]]:
     """Map one decoded MDS sample to its WebDataset tar members (name, payload)."""
     members: list[tuple[str, bytes]] = []
     for field_name, suffix in (("image", ""), ("target", ".target"), ("mask", ".mask")):
@@ -562,7 +621,9 @@ def _iter_mds_tar_members(
 
         raw_data = dctx.decompress(mds_file.read_bytes())
         shard_samples = struct.unpack("<I", raw_data[:4])[0]
-        sample_offsets = struct.unpack(f"<{shard_samples + 1}I", raw_data[4:4 + (shard_samples + 1) * 4])
+        sample_offsets = struct.unpack(
+            f"<{shard_samples + 1}I", raw_data[4 : 4 + (shard_samples + 1) * 4]
+        )
 
         for idx in range(shard_samples):
             s_bytes = raw_data[sample_offsets[idx]:sample_offsets[idx + 1]]
@@ -605,7 +666,9 @@ def transcode_mds_to_webdataset(
     ext = shard_ext.lstrip(".")
 
     splits =["train", "val", "test"]
-    found_splits = [s for s in splits if (mds_dir / s).exists() and (mds_dir / s / "index.json").exists()]
+    found_splits = [
+        s for s in splits if (mds_dir / s).exists() and (mds_dir / s / "index.json").exists()
+    ]
     if not found_splits:
         if (mds_dir / "index.json").exists():
             found_splits = ["all"]
@@ -628,20 +691,30 @@ def transcode_mds_to_webdataset(
 
         shards_meta = meta.get("shards", [])
         split_samples_expected = sum(s["samples"] for s in shards_meta)
-        print(f"[MDS-TRANSCODE] Split '{split}': {len(shards_meta)} MDS shards, {split_samples_expected:,} samples expected.")
+        print(
+            f"[MDS-TRANSCODE] Split '{split}': {len(shards_meta)} MDS shards,"
+            f" {split_samples_expected:,} samples expected."
+        )
 
         split_samples_written = 0
         total_shards_in_split = 0
         samples = _iter_mds_tar_members(split_mds_dir, shards_meta, dctx)
 
-        with tqdm(total=split_samples_expected, desc=f"MDS -> WEBDATASET [{split}]", unit="img", dynamic_ncols=True) as pbar:
+        with tqdm(
+            total=split_samples_expected,
+            desc=f"MDS -> WEBDATASET [{split}]",
+            unit="img",
+            dynamic_ncols=True,
+        ) as pbar:
             # Each shard is written under its own context manager; a shard is
             # only created once there is at least one sample to put in it.
             first_members = next(samples, None)
             while first_members is not None:
                 shard_path = split_out_dir / f"shard-{total_shards_in_split:05d}.{ext}"
                 with tarfile.open(shard_path, "w") as tf:
-                    for members in itertools.chain([first_members], itertools.islice(samples, max(shard_size_samples - 1, 0))):
+                    for members in itertools.chain(
+                        [first_members], itertools.islice(samples, max(shard_size_samples - 1, 0))
+                    ):
                         _add_tar_members(tf, members)
                         split_samples_written += 1
                         pbar.update(1)
@@ -650,7 +723,10 @@ def transcode_mds_to_webdataset(
 
         total_samples_all_splits += split_samples_written
         total_shards_all_splits += total_shards_in_split
-        print(f"[MDS-TRANSCODE] Split '{split}' complete: {split_samples_written:,} samples -> {total_shards_in_split} shards.")
+        print(
+            f"[MDS-TRANSCODE] Split '{split}' complete: {split_samples_written:,} samples ->"
+            f" {total_shards_in_split} shards."
+        )
 
     # Update dataset_info.yaml
     info_path = target_dir / "dataset_info.yaml"
@@ -664,7 +740,9 @@ def transcode_mds_to_webdataset(
             idata["total_samples"] = total_samples_all_splits
             idata["total_shards"] = total_shards_all_splits
             with open(info_path, "w", encoding="utf-8") as f_out:
-                yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                yaml.safe_dump(
+                    idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True
+                )
             print(f"[METADATA] Updated {info_path.name} format to webdataset ({ext} shards).")
         except (OSError, yaml.YAMLError, TypeError) as exc:
             logger.warning("Failed updating %s: %s", info_path, exc)
@@ -673,10 +751,16 @@ def transcode_mds_to_webdataset(
     # Verify shards exist before purging legacy mds
     has_valid_shards, total_shard_bytes = _fast_has_tar_shards(shards_dir)
     if not has_valid_shards or total_shard_bytes == 0:
-        print("[ERROR] Shard verification failed: output shards directory is empty. Aborting MDS cleanup.")
+        print(
+            "[ERROR] Shard verification failed: output shards directory is empty. Aborting MDS"
+            " cleanup."
+        )
         return False
 
-    print(f"[VERIFIED] Created {total_shards_all_splits} WebDataset shards ({total_shard_bytes / (1024**3):.1f} GB total).")
+    print(
+        f"[VERIFIED] Created {total_shards_all_splits} WebDataset shards"
+        f" ({total_shard_bytes / (1024**3):.1f} GB total)."
+    )
 
     if purge_mds:
         print(f"[CLEANUP] Safely purging legacy MDS directory {mds_dir.name} to reclaim storage...")
@@ -713,7 +797,10 @@ def _convert_item(
             )
         # Default: webdataset (and fallback for other formats via zip)
         if fmt not in ("webdataset",):
-            print(f"[NOTICE] Format '{fmt}' does not have a direct zip streaming path. Falling back to WebDataset streaming.")
+            print(
+                f"[NOTICE] Format '{fmt}' does not have a direct zip streaming path. Falling back"
+                " to WebDataset streaming."
+            )
         print(f"[ACTION] Streaming legacy zip {it.zip_path.name} into WebDataset shards...")
         return stream_zip_to_webdataset(
             zip_path=it.zip_path,
@@ -727,8 +814,13 @@ def _convert_item(
 
     # ── From legacy MDS shards ────────────────────────────────────────────────
     if it.has_mds and fmt in ("webdataset", "directory"):
-        assert it.target_dir is not None, f"target_dir must not be None for MDS transcode of {it.key}"
-        print(f"[ACTION] Transcoding legacy MDS shards in {it.target_dir.name} to WebDataset (.data) shards...")
+        assert it.target_dir is not None, (
+            f"target_dir must not be None for MDS transcode of {it.key}"
+        )
+        print(
+            f"[ACTION] Transcoding legacy MDS shards in {it.target_dir.name} to WebDataset (.data)"
+            " shards..."
+        )
         return transcode_mds_to_webdataset(
             target_dir=it.target_dir,
             shard_size_samples=shard_size,
@@ -744,7 +836,9 @@ def _convert_item(
 
     if fmt == "mds":
         # it.target_dir is guaranteed non-None when has_loose_files is True; assert to narrow type.
-        assert it.target_dir is not None, f"target_dir must not be None for loose MDS pack of {it.key}"
+        assert it.target_dir is not None, (
+            f"target_dir must not be None for loose MDS pack of {it.key}"
+        )
         print(f"[ACTION] Packing loose directory {src.name} into MDS shards...")
         ok = convert_loose_directory_to_mds(
             source_dir=src,
@@ -761,9 +855,14 @@ def _convert_item(
 
     # webdataset or fallback
     if fmt not in ("webdataset", "directory"):
-        print(f"[NOTICE] Format '{fmt}' loose-to-container not yet implemented in queue. Packing as WebDataset.")
+        print(
+            f"[NOTICE] Format '{fmt}' loose-to-container not yet implemented in queue. Packing as"
+            " WebDataset."
+        )
     # it.target_dir is guaranteed non-None when has_loose_files is True; assert to narrow type.
-    assert it.target_dir is not None, f"target_dir must not be None for loose WebDataset pack of {it.key}"
+    assert it.target_dir is not None, (
+        f"target_dir must not be None for loose WebDataset pack of {it.key}"
+    )
     print(f"[ACTION] Packing loose directory {src.name} into WebDataset shards...")
     ok = convert_loose_directory_to_webdataset(
         source_dir=src,
@@ -802,9 +901,14 @@ def push_manifold_to_kaggle(
     v_info = get_dataset_version_info(clean_handle)
     current_ver = v_info.get("latest_version") or 0
     next_ver = current_ver + 1
-    notes = version_notes or f"v{next_ver}: Modernized {item.canonical_format} format with WebP transcoding"
+    notes = (
+        version_notes
+        or f"v{next_ver}: Modernized {item.canonical_format} format with WebP transcoding"
+    )
 
-    print(f"\n[KAGGLE-PUSH] Uploading {item.name} to {clean_handle} (target version: v{next_ver})...")
+    print(
+        f"\n[KAGGLE-PUSH] Uploading {item.name} to {clean_handle} (target version: v{next_ver})..."
+    )
     print(f"[KAGGLE-PUSH] Payload directory: {target_dir}")
 
     # Synchronize dataset-metadata.json id field with clean_handle
@@ -862,7 +966,9 @@ def push_manifold_to_kaggle(
     return True
 
 
-def select_queue_items(base_queue: list[ManifoldQueueItem], filter_keys: list[str]) -> list[ManifoldQueueItem]:
+def select_queue_items(
+    base_queue: list[ManifoldQueueItem], filter_keys: list[str]
+) -> list[ManifoldQueueItem]:
     """Select the queue items named by ``filter_keys``, preserving queue order.
 
     Each key may be a 1-based queue index, an exact dataset key / name /
@@ -916,7 +1022,10 @@ def describe_planned_actions(
             if delete_legacy_dir and it.legacy_dir:
                 actions.append(f"would delete legacy folder {it.legacy_dir.name}")
         elif it.has_mds and it.canonical_format.lower() in ("webdataset", "directory"):
-            actions = [f"{prefix} legacy MDS shards to WebDataset", "would delete legacy MDS folder"]
+            actions = [
+                f"{prefix} legacy MDS shards to WebDataset",
+                "would delete legacy MDS folder",
+            ]
         elif it.has_loose_files:
             actions = [f"{prefix} loose files to {it.canonical_format}"]
             if purge_loose:
@@ -990,7 +1099,11 @@ def run_queue(
         if priority_keys:
             for p_idx, pk in enumerate(priority_keys):
                 norm_pk = pk.lower().replace("-", "_")
-                if it.key.lower() == norm_pk or it.name.lower() == norm_pk or norm_pk in it.key.lower():
+                if (
+                    it.key.lower() == norm_pk
+                    or it.name.lower() == norm_pk
+                    or norm_pk in it.key.lower()
+                ):
                     return (0, p_idx, it.key)
         if it.is_containerized:
             return (1, 0, it.key)
@@ -1007,7 +1120,10 @@ def run_queue(
     if filter_keys:
         queue = select_queue_items(base_queue, filter_keys)
         if not queue:
-            print(f"[ERROR] No manifolds matched the requested dataset(s): {', '.join(filter_keys)}. Nothing to do.")
+            print(
+                f"[ERROR] No manifolds matched the requested dataset(s): {', '.join(filter_keys)}."
+                " Nothing to do."
+            )
             return 1
     else:
         queue = base_queue
@@ -1042,7 +1158,10 @@ def run_queue(
             status_str = "MISSING SOURCE"
             src_str = "None"
 
-        print(f"{idx:<3} | {it.key:<26} | {it.canonical_format:<10} | {status_str:<18} | {src_str:<25}")
+        print(
+            f"{idx:<3} | {it.key:<26} | {it.canonical_format:<10} | {status_str:<18} |"
+            f" {src_str:<25}"
+        )
 
     print("=" * 90 + "\n")
 
@@ -1064,15 +1183,23 @@ def run_queue(
     failure_count = 0
 
     for idx, it in enumerate(queue, 1):
-        print(f"\n[{idx}/{len(queue)}] Processing Manifold: {it.name} ({it.key}) [Format: {it.canonical_format}]")
+        print(
+            f"\n[{idx}/{len(queue)}] Processing Manifold: {it.name} ({it.key}) [Format:"
+            f" {it.canonical_format}]"
+        )
         print("-" * 60)
 
         # Step 1: Container Conversion (if not already containerized or force requested)
         if not it.is_containerized or force:
             if it.is_containerized and force:
-                print(f"[FORCE] Re-conversion requested for already containerized manifold {it.name}.")
+                print(
+                    f"[FORCE] Re-conversion requested for already containerized manifold {it.name}."
+                )
                 if not it.zip_path and not it.has_loose_files and not it.legacy_dir:
-                    print("[NOTICE] No source archive or loose files found (purged post-modernization). Preserving existing containerized shards.")
+                    print(
+                        "[NOTICE] No source archive or loose files found (purged"
+                        " post-modernization). Preserving existing containerized shards."
+                    )
                     success_count += 1
                     continue
             ok = _convert_item(
@@ -1091,7 +1218,10 @@ def run_queue(
             it.is_containerized = True
         else:
             size_gb = it.container_bytes / (1024**3)
-            print(f"[READY] Manifold {it.name} ({it.key}) is already containerized ({size_gb:.1f}GB {it.canonical_format}). Shards are verified and ready.")
+            print(
+                f"[READY] Manifold {it.name} ({it.key}) is already containerized ({size_gb:.1f}GB"
+                f" {it.canonical_format}). Shards are verified and ready."
+            )
 
         # Step 2: Push to Kaggle if requested
         if push_kaggle:
@@ -1114,20 +1244,60 @@ def run_queue(
 
 def main(argv: list[str] | None = None) -> int:
     """Parse the CLI arguments and list or run the modernization queue."""
-    parser = argparse.ArgumentParser(description="LemGendary Dataset Modernization and Kaggle Publication Queue")
-    parser.add_argument("--list", action="store_true", help="Print modernization queue status table and exit")
-    parser.add_argument("--dry-run", action="store_true", help="Preview plan without executing conversions or uploads")
-    parser.add_argument("--priority", default="mirnet_exposure,upn_v2", help="Comma-separated list of dataset keys to prioritize")
-    parser.add_argument("--datasets", default=None, help="Comma-separated list of specific dataset keys to process")
-    parser.add_argument("--push-kaggle", action="store_true", help="Push datasets to Kaggle as new versions after conversion")
-    parser.add_argument("--no-wait", action="store_true", help="Do not wait for Kaggle server-side extraction tracking")
-    parser.add_argument("--workers", type=int, default=None, help="Worker threads for WebP transcoding")
+    parser = argparse.ArgumentParser(
+        description="LemGendary Dataset Modernization and Kaggle Publication Queue"
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="Print modernization queue status table and exit"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview plan without executing conversions or uploads",
+    )
+    parser.add_argument(
+        "--priority",
+        default="mirnet_exposure,upn_v2",
+        help="Comma-separated list of dataset keys to prioritize",
+    )
+    parser.add_argument(
+        "--datasets", default=None, help="Comma-separated list of specific dataset keys to process"
+    )
+    parser.add_argument(
+        "--push-kaggle",
+        action="store_true",
+        help="Push datasets to Kaggle as new versions after conversion",
+    )
+    parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Do not wait for Kaggle server-side extraction tracking",
+    )
+    parser.add_argument(
+        "--workers", type=int, default=None, help="Worker threads for WebP transcoding"
+    )
     parser.add_argument("--shard-size", type=int, default=5000, help="Samples per WebDataset shard")
-    parser.add_argument("--mds-shard-mb", type=int, default=512, help="MDS shard size in MB (default: 512)")
-    parser.add_argument("--keep-zip", action="store_true", help="Keep source zip archives (do not delete)")
-    parser.add_argument("--keep-legacy-dir", action="store_true", help="Keep legacy Large directories (do not delete)")
-    parser.add_argument("--purge-loose", action="store_true", help="Delete loose images/targets directories after packaging")
-    parser.add_argument("--force", action="store_true", help="Force re-conversion even if containerized shards already exist")
+    parser.add_argument(
+        "--mds-shard-mb", type=int, default=512, help="MDS shard size in MB (default: 512)"
+    )
+    parser.add_argument(
+        "--keep-zip", action="store_true", help="Keep source zip archives (do not delete)"
+    )
+    parser.add_argument(
+        "--keep-legacy-dir",
+        action="store_true",
+        help="Keep legacy Large directories (do not delete)",
+    )
+    parser.add_argument(
+        "--purge-loose",
+        action="store_true",
+        help="Delete loose images/targets directories after packaging",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-conversion even if containerized shards already exist",
+    )
     args = parser.parse_args(argv)
 
     datasets_root = (_ROOT.parent / "LemGendaryDatasets").resolve()
@@ -1139,8 +1309,12 @@ def main(argv: list[str] | None = None) -> int:
 
     items = load_queue_manifest(datasets_root, registry_yaml)
 
-    priority_keys = [k.strip() for k in args.priority.split(",") if k.strip()] if args.priority else []
-    filter_keys = [k.strip() for k in args.datasets.split(",") if k.strip()] if args.datasets else None
+    priority_keys = (
+        [k.strip() for k in args.priority.split(",") if k.strip()] if args.priority else []
+    )
+    filter_keys = (
+        [k.strip() for k in args.datasets.split(",") if k.strip()] if args.datasets else None
+    )
 
     if args.list:
         return run_queue(

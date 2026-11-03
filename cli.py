@@ -96,7 +96,9 @@ def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SE
         return False
 
 
-def _stream_job_logs(job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> int:
+def _stream_job_logs(
+    job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT
+) -> int:
     """Connect to WebSocket log feed and stream lines to console until completion."""
     ws_url = f"ws://{host}:{port}/api/ws/jobs/{job_id}/logs"
     try:
@@ -183,14 +185,18 @@ def version() -> None:
 @app.command(name="compile")
 def compile_manifold(
     model: str | None = typer.Option(None, "--model", "-m", help="Model key to compile"),
-    preset: str | None = typer.Option(None, "--preset", "-p", help="Compiler preset profile name (from presets.yaml)"),
+    preset: str | None = typer.Option(
+        None, "--preset", "-p", help="Compiler preset profile name (from presets.yaml)"
+    ),
     max_gb: float | None = typer.Option(None, "--max-gb", help="Override max_size_gb"),
     suffix: str | None = typer.Option(None, "--suffix", help="Manifold name suffix override"),
     workers: int | None = typer.Option(None, "--workers", help="Parallel worker count"),
     no_vetting: bool = typer.Option(False, "--no-vetting", help="Disable NIMA quality gate"),
     no_labeling: bool = typer.Option(False, "--no-labeling", help="Disable YOLO auto-labeling"),
     no_hash: bool = typer.Option(False, "--no-hash", help="Disable deduplication hash"),
-    image_format: str | None = typer.Option(None, "--image-format", help="webp | jpeg | png | keep"),
+    image_format: str | None = typer.Option(
+        None, "--image-format", help="webp | jpeg | png | keep"
+    ),
     image_quality: int | None = typer.Option(None, "--image-quality"),
     target_quality: int | None = typer.Option(None, "--target-quality"),
     mask_format: str | None = typer.Option(None, "--mask-format", help="webp-lossless | png"),
@@ -205,7 +211,9 @@ def compile_manifold(
     shard_ext: str = typer.Option(
         "data", "--shard-ext", help="WebDataset shard file extension without dot (default: 'data')"
     ),
-    no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
+    no_server: bool = typer.Option(
+        False, "--no-server", help="Bypass API server and execute in-process"
+    ),
 ) -> None:
     """Compile a manifold from raw sources (delegates to CompilerService or API)."""
     if not no_server and _is_server_available():
@@ -247,10 +255,13 @@ def compile_manifold(
                 exit_code = _stream_job_logs(job_id)
                 raise typer.Exit(code=exit_code)
             console.print(
-                f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]"
+                f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to"
+                " in-process...[/yellow]"
             )
         except requests.RequestException as e:
-            console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
+            console.print(
+                f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]"
+            )
 
     code = CompilerService.run_compile(
         model=model,
@@ -341,9 +352,15 @@ def sync_pull(
 
 @sync_app.command("metadata")
 def sync_metadata(
-    model: str | None = typer.Option(None, "--model", "-m", help="Specific dataset or manifold key"),
-    all_datasets: bool = typer.Option(False, "--all", "-a", help="Update metadata for all registered datasets"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview metadata push without mutating Kaggle"),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="Specific dataset or manifold key"
+    ),
+    all_datasets: bool = typer.Option(
+        False, "--all", "-a", help="Update metadata for all registered datasets"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview metadata push without mutating Kaggle"
+    ),
 ) -> None:
     """Push Kaggle dataset metadata without re-uploading file archives."""
     if not model and not all_datasets:
@@ -416,11 +433,17 @@ app.add_typer(config_app, name="config")
 @app.command()
 def transcode(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
-    image_format: str = typer.Option("webp", "--image-format", help="Output format (webp/jpeg/png/keep)"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
+    image_format: str = typer.Option(
+        "webp", "--image-format", help="Output format (webp/jpeg/png/keep)"
+    ),
     image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
     target_quality: int = typer.Option(95, "--target-quality", help="Quality for targets (1-100)"),
-    mask_format: str = typer.Option("webp-lossless", "--mask-format", help="Mask format (webp-lossless/png)"),
+    mask_format: str = typer.Option(
+        "webp-lossless", "--mask-format", help="Mask format (webp-lossless/png)"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
 ) -> None:
     """Retroactively transcode an existing manifold's images, in place."""
@@ -446,7 +469,9 @@ def modernize_manifolds(
     all_: bool = typer.Option(False, "--all", help="Select all eligible manifolds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation gate"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do not modify anything"),
-    datasets: str | None = typer.Option(None, "--datasets", help="Comma-separated folder names or dataset keys"),
+    datasets: str | None = typer.Option(
+        None, "--datasets", help="Comma-separated folder names or dataset keys"
+    ),
     skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Skip Kaggle re-upload"),
     image_format: str = typer.Option(
         "webp", "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"
@@ -455,12 +480,17 @@ def modernize_manifolds(
     also_format: str | None = typer.Option(
         None,
         "--also-format",
-        help="Optional container format to convert dataset into (e.g., webdataset, mds, litdata, parquet)",
+        help=(
+            "Optional container format to convert dataset into (e.g., webdataset, mds, litdata,"
+            " parquet)"
+        ),
     ),
     skip_transcode: bool = typer.Option(False, "--skip-transcode", help="Skip WebP transcoding"),
-    skip_container: bool = typer.Option(False, "--skip-container", help="Skip container format conversion"),
+    skip_container: bool = typer.Option(
+        False, "--skip-container", help="Skip container format conversion"
+    ),
 ) -> None:
-    """Modernize manifolds: retire legacy suffix, transcode images to WebP, and write container formats."""
+    """Modernize manifolds: retire the legacy suffix, transcode to WebP, write containers."""
     code = MigrationService.modernize_manifolds(
         all_=all_,
         yes=yes,
@@ -480,8 +510,12 @@ def modernize_manifolds(
 @format_app.command("write")
 def format_write(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
-    to: str = typer.Option(..., "--to", help="Comma-separated container formats (mds,litdata,webdataset,parquet)"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
+    to: str = typer.Option(
+        ..., "--to", help="Comma-separated container formats (mds,litdata,webdataset,parquet)"
+    ),
     force_duplicate: bool = typer.Option(
         False, "--force-duplicate", help="Proceed despite WARN-tier hardlink fraction"
     ),
@@ -507,7 +541,9 @@ def format_write(
 @format_app.command("migrate")
 def format_migrate(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
     to: str = typer.Option(..., "--to", help="Comma-separated container formats"),
     force_duplicate: bool = typer.Option(False, "--force-duplicate"),
     accept_space_loss: bool = typer.Option(False, "--accept-space-loss"),
@@ -568,7 +604,9 @@ app.add_typer(presets_app, name="presets")
 @app.command()
 def audit(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key to audit"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
     sample: int | None = typer.Option(None, "--sample", help="Cap image scan for a quick preview"),
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> None:
@@ -588,7 +626,9 @@ def audit(
 @app.command()
 def label(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
     strategy: str = typer.Option(
         "blip_caption",
         "--strategy",
@@ -616,7 +656,9 @@ def label(
 @app.command()
 def prompt(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
     template: str = typer.Option(
         "diffusers-v1", "--template", help="diffusers-v1 | sd-v1 | flux-v1 | minimal"
     ),
@@ -643,7 +685,9 @@ def prompt(
 @app.command()
 def mask(
     model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(None, "--manifold", help="Direct path to a manifold folder"),
+    manifold: str | None = typer.Option(
+        None, "--manifold", help="Direct path to a manifold folder"
+    ),
     strategy: str = typer.Option("parsenet", "--strategy", help="parsenet | sam | modnet"),
     device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
     sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
@@ -667,10 +711,15 @@ def mask(
 # ─── degradation engine (Phase 6) ───────────────────────────────────────────
 @app.command()
 def degrade(
-    source: str = typer.Option(..., "--source", "-s", help="Source clean dataset directory or manifold name"),
+    source: str = typer.Option(
+        ..., "--source", "-s", help="Source clean dataset directory or manifold name"
+    ),
     output: str = typer.Option(..., "--output", "-o", help="Target synthetic manifold name"),
     profile: str = typer.Option(
-        "motion-blur+iso-noise", "--profile", "-p", help="Degradation profile expression or preset alias"
+        "motion-blur+iso-noise",
+        "--profile",
+        "-p",
+        help="Degradation profile expression or preset alias",
     ),
     intensity: str = typer.Option("medium", "--intensity", help="low | medium | high"),
     pairs: int | None = typer.Option(None, "--pairs", help="Max sample pairs to synthesize"),
@@ -679,7 +728,9 @@ def degrade(
     image_format: str = typer.Option("webp", "--image-format", help="webp | jpeg | png"),
     workers: int | None = typer.Option(None, "--workers", "-w", help="Worker thread count"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without writing"),
-    no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
+    no_server: bool = typer.Option(
+        False, "--no-server", help="Bypass API server and execute in-process"
+    ),
 ) -> None:
     """Compiler-time degradation synthesis (blur, noise, haze, rain, jpeg, film)."""
     if not no_server and _is_server_available():
@@ -712,10 +763,13 @@ def degrade(
                 exit_code = _stream_job_logs(job_id)
                 raise typer.Exit(code=exit_code)
             console.print(
-                f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to in-process...[/yellow]"
+                f"[yellow]API rejected job ({resp.status_code}): {resp.text}. Falling back to"
+                " in-process...[/yellow]"
             )
         except requests.RequestException as e:
-            console.print(f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]")
+            console.print(
+                f"[yellow]Could not route to API ({e}). Falling back to in-process...[/yellow]"
+            )
 
     code = DegradeService.run_degrade(
         source=source,
@@ -737,7 +791,9 @@ def degrade(
 def server_start(
     host: str = typer.Option(DEFAULT_SERVER_HOST, "--host", "-h", help="Bind host address"),
     port: int = typer.Option(DEFAULT_SERVER_PORT, "--port", "-p", help="Bind port number"),
-    background: bool = typer.Option(False, "--background", "-d", help="Run server in background daemon process"),
+    background: bool = typer.Option(
+        False, "--background", "-d", help="Run server in background daemon process"
+    ),
     reload: bool = typer.Option(False, "--reload", help="Enable automatic code reloading"),
 ) -> None:
     """Start the local HTTP and WebSocket API sidecar server."""
@@ -750,24 +806,32 @@ def server_start(
         console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
         flags = 0
         if sys.platform == "win32":
-            flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+            flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+                subprocess, "DETACHED_PROCESS", 0
+            )
         proc = _spawn_detached(cmd, flags)
         time.sleep(1.5)
         if _is_server_available(host, port):
             console.print(
-                f"[bold green]Started LemGendary Dataset Compiler API server in background[/bold green] "
-                f"[dim](http://{host}:{port}, PID: {proc.pid})[/dim]"
+                "[bold green]Started LemGendary Dataset Compiler API server in background[/bold"
+                f" green] [dim](http://{host}:{port}, PID: {proc.pid})[/dim]"
             )
-            console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
+            console.print(
+                f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]"
+            )
         else:
             console.print(
-                f"[yellow]Server process launched (PID {proc.pid}), still initializing at http://{host}:{port}...[/yellow]"
+                f"[yellow]Server process launched (PID {proc.pid}), still initializing at"
+                f" http://{host}:{port}...[/yellow]"
             )
     else:
         console.print(
-            f"[bold green]Starting LemGendary Dataset Compiler API server on http://{host}:{port}...[/bold green]"
+            "[bold green]Starting LemGendary Dataset Compiler API server on"
+            f" http://{host}:{port}...[/bold green]"
         )
-        console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
+        console.print(
+            f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]"
+        )
         run_server(host=host, port=port, reload=reload)
 
 
@@ -794,7 +858,10 @@ def server_stop() -> None:
             console.print(f"[yellow]Warning while stopping server process: {exc}[/yellow]")
 
     if not stopped and _is_server_available():
-        console.print("[yellow]Server is running under an unmanaged PID. Please terminate via Task Manager.[/yellow]")
+        console.print(
+            "[yellow]Server is running under an unmanaged PID. Please terminate via Task"
+            " Manager.[/yellow]"
+        )
     elif stopped:
         console.print("[bold green]LemGendary Dataset Compiler API server stopped.[/bold green]")
     else:
@@ -808,7 +875,10 @@ def server_status(
 ) -> None:
     """Check the health, uptime, and hardware sensors of the API server."""
     if not _is_server_available(host, port):
-        console.print(f"[yellow]LemGendary Dataset Compiler API server is not running on http://{host}:{port}[/yellow]")
+        console.print(
+            "[yellow]LemGendary Dataset Compiler API server is not running on"
+            f" http://{host}:{port}[/yellow]"
+        )
         return
 
     try:
@@ -826,8 +896,13 @@ def server_status(
 
             hw = data.get("hardware", {})
             table.add_row("CPU Cores", str(hw.get("cpu_count", "unknown")))
-            table.add_row("RAM (Total / Avail)", f"{hw.get('ram_total_gb', 0)} GB / {hw.get('ram_available_gb', 0)} GB")
-            table.add_row("CUDA Acceleration", "Available" if hw.get("cuda_available") else "Disabled (CPU)")
+            table.add_row(
+                "RAM (Total / Avail)",
+                f"{hw.get('ram_total_gb', 0)} GB / {hw.get('ram_available_gb', 0)} GB",
+            )
+            table.add_row(
+                "CUDA Acceleration", "Available" if hw.get("cuda_available") else "Disabled (CPU)"
+            )
             table.add_row("Primary Device", str(hw.get("device_name", "CPU")))
             table.add_row("Swagger Documentation", f"http://{host}:{port}/docs")
 
@@ -845,10 +920,14 @@ app.add_typer(server_app, name="server")
 # ─── forex sub-app ──────────────────────────────────────────────────────────
 @forex_app.command("convert")
 def forex_convert(
-    year: int | None = typer.Option(None, "--year", "-y", help="Specific year to convert (2019..2026)"),
+    year: int | None = typer.Option(
+        None, "--year", "-y", help="Specific year to convert (2019..2026)"
+    ),
     all_: bool = typer.Option(False, "--all", help="Convert all years 2019..2026 sequentially"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate conversion without writing"),
-    skip_cleanup: bool = typer.Option(False, "--skip-cleanup", help="Keep source .npy directories after conversion"),
+    skip_cleanup: bool = typer.Option(
+        False, "--skip-cleanup", help="Keep source .npy directories after conversion"
+    ),
 ) -> None:
     """Convert raw .npy Forex manifolds into unified Apache Parquet files."""
     datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
@@ -865,7 +944,9 @@ def forex_convert(
         raise typer.Exit(code=0)
 
     for yr in years:
-        ok = load_forex_module("converter").convert_year(base_manifold, yr, dry_run=dry_run, skip_cleanup=skip_cleanup)
+        ok = load_forex_module("converter").convert_year(
+            base_manifold, yr, dry_run=dry_run, skip_cleanup=skip_cleanup
+        )
         if not ok:
             raise typer.Exit(code=1)
     raise typer.Exit(code=0)
@@ -897,7 +978,10 @@ def modernize_queue() -> None:
 
     for item in items:
         if item.is_containerized:
-            status_label, reason = "CONTAINERIZED", f"{item.container_bytes / (1024**3):.1f} GB ready"
+            status_label, reason = (
+                "CONTAINERIZED",
+                f"{item.container_bytes / (1024**3):.1f} GB ready",
+            )
         elif item.zip_path:
             status_label, reason = "PENDING STREAM", item.zip_path.name
         elif item.has_loose_files:
@@ -918,13 +1002,23 @@ def modernize_queue() -> None:
 
 @modernize_app.command("run")
 def modernize_run(
-    dataset: str | None = typer.Option(None, "--dataset", "-d", help="Specific dataset key to modernize"),
-    workers: int | None = typer.Option(None, "--workers", "-w", help="Worker threads for WebP transcoding"),
-    push_kaggle: bool = typer.Option(False, "--push-kaggle", help="Push to Kaggle after conversion"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without executing conversions"),
+    dataset: str | None = typer.Option(
+        None, "--dataset", "-d", help="Specific dataset key to modernize"
+    ),
+    workers: int | None = typer.Option(
+        None, "--workers", "-w", help="Worker threads for WebP transcoding"
+    ),
+    push_kaggle: bool = typer.Option(
+        False, "--push-kaggle", help="Push to Kaggle after conversion"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview plan without executing conversions"
+    ),
     force: bool = typer.Option(False, "--force", help="Force re-conversion"),
     purge_source: bool = typer.Option(
-        False, "--purge-source", help="Delete zip, legacy folder and loose images after a successful conversion"
+        False,
+        "--purge-source",
+        help="Delete zip, legacy folder and loose images after a successful conversion",
     ),
 ) -> None:
     """Run batch modernization queue conversion (same service as POST /api/modernize/run)."""
@@ -941,10 +1035,18 @@ def modernize_run(
 
 @modernize_app.command("reduce")
 def modernize_reduce(
-    dataset: str | None = typer.Option(None, "--dataset", "-d", help="Manifold folder name to reduce"),
-    fraction: float | None = typer.Option(None, "--fraction", help="Share of samples to keep, in (0, 1]"),
-    max_gb: float | None = typer.Option(None, "--max-gb", help="Target max size for reduced variant"),
-    suffix: str | None = typer.Option(None, "--suffix", help="Suffix for the reduced manifold (default: Reduced)"),
+    dataset: str | None = typer.Option(
+        None, "--dataset", "-d", help="Manifold folder name to reduce"
+    ),
+    fraction: float | None = typer.Option(
+        None, "--fraction", help="Share of samples to keep, in (0, 1]"
+    ),
+    max_gb: float | None = typer.Option(
+        None, "--max-gb", help="Target max size for reduced variant"
+    ),
+    suffix: str | None = typer.Option(
+        None, "--suffix", help="Suffix for the reduced manifold (default: Reduced)"
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Do not prompt; requires --dataset"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report the plan only; write nothing"),
 ) -> None:
@@ -965,7 +1067,6 @@ def modernize_regen(
     """Regenerate manifolds.md registry index."""
     code = DocService.rebuild_manifolds_md(check_only=check)
     raise typer.Exit(code=code)
-
 
 
 # ??? LLM Dataset Sub-Commands ????????????????????????????????????????????????
@@ -1023,10 +1124,16 @@ def _wait_for_sidecar_job(job_id: str, token: str, timeout_s: float) -> int:
 
 @llm_app.command("compile")
 def llm_compile(
-    dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset key declared in unified_data.yaml (e.g. test_llm)"),
-    no_server: bool = typer.Option(False, "--no-server", help="Bypass API server and execute in-process"),
+    dataset: str = typer.Option(
+        ..., "--dataset", "-d", help="Dataset key declared in unified_data.yaml (e.g. test_llm)"
+    ),
+    no_server: bool = typer.Option(
+        False, "--no-server", help="Bypass API server and execute in-process"
+    ),
     timeout: float = typer.Option(
-        DEFAULT_JOB_TIMEOUT_S, "--timeout", min=1.0,
+        DEFAULT_JOB_TIMEOUT_S,
+        "--timeout",
+        min=1.0,
         help="Seconds to wait for the sidecar job before giving up (exit 1)",
     ),
 ) -> None:
@@ -1045,11 +1152,18 @@ def llm_compile(
                 data = resp.json()
                 job_id = data.get("job_id")
                 if not job_id:
-                    console.print(f"[bold red]Sidecar accepted the request but returned no job id:[/bold red] {data}")
+                    console.print(
+                        "[bold red]Sidecar accepted the request but returned no job id:[/bold red]"
+                        f" {data}"
+                    )
                     raise typer.Exit(1)
-                console.print(f"[green]Enqueued LLM compile job {job_id} on sidecar daemon.[/green]")
+                console.print(
+                    f"[green]Enqueued LLM compile job {job_id} on sidecar daemon.[/green]"
+                )
                 raise typer.Exit(code=_wait_for_sidecar_job(job_id, token, timeout))
-            console.print(f"[yellow]API returned {resp.status_code}. Executing in-process...[/yellow]")
+            console.print(
+                f"[yellow]API returned {resp.status_code}. Executing in-process...[/yellow]"
+            )
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Executing in-process...[/yellow]")
 
@@ -1059,12 +1173,22 @@ def llm_compile(
         res = compiler.compile_manifold(dataset)
         console.print(f"[bold green]Successfully compiled {dataset}:[/bold green]")
         console.print(f"  Total records: {res.get('total_records')}")
-        console.print(f"  Train shard:   {res.get('train_path')} ({res.get('train_count')} samples)")
+        console.print(
+            f"  Train shard:   {res.get('train_path')} ({res.get('train_count')} samples)"
+        )
         console.print(f"  Val shard:     {res.get('val_path')} ({res.get('val_count')} samples)")
         return
     except typer.Exit:
         raise
-    except (KeyError, ValueError, NotImplementedError, OSError, ImportError, RuntimeError, yaml.YAMLError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        NotImplementedError,
+        OSError,
+        ImportError,
+        RuntimeError,
+        yaml.YAMLError,
+    ) as exc:
         logger.error("LLM compilation failed for dataset %s: %s", dataset, exc)
         console.print(f"[bold red]LLM compilation error:[/bold red] {exc}")
         console.print_exception()
@@ -1073,7 +1197,9 @@ def llm_compile(
 
 @llm_app.command("validate")
 def llm_validate(
-    file_path: Path = typer.Option(..., "--file", "-f", help="Path to .jsonl dataset file to validate"),
+    file_path: Path = typer.Option(
+        ..., "--file", "-f", help="Path to .jsonl dataset file to validate"
+    ),
 ) -> None:
     """Run QualityValidator on an LLM dataset JSONL file for 4 quality invariants."""
     if not file_path.exists():
@@ -1087,7 +1213,10 @@ def llm_validate(
         console.print(f"[bold red]Could not read {file_path}:[/bold red] {exc}")
         raise typer.Exit(1)
 
-    console.print(f"[cyan]Loaded {len(records)} records from {file_path.name}. Running QualityValidator...[/cyan]")
+    console.print(
+        f"[cyan]Loaded {len(records)} records from {file_path.name}. Running"
+        " QualityValidator...[/cyan]"
+    )
     is_valid, issues = QualityValidator().validate_corpus(records)
     errors = [iss for iss in issues if iss.severity == "ERROR"]
     warnings = [iss for iss in issues if iss.severity == "WARNING"]
@@ -1098,10 +1227,17 @@ def llm_validate(
         )
         return
 
-    console.print(f"[bold red][FAIL] Validation failed with {len(errors)} errors and {len(warnings)} warnings.[/bold red]")
+    console.print(
+        f"[bold red][FAIL] Validation failed with {len(errors)} errors and {len(warnings)}"
+        " warnings.[/bold red]"
+    )
     shown = 20
     for iss in (errors + warnings)[:shown]:
-        console.print(f"  - {iss.severity} [{iss.field}] ({iss.record_id}): {iss.issue}", markup=False, highlight=False)
+        console.print(
+            f"  - {iss.severity} [{iss.field}] ({iss.record_id}): {iss.issue}",
+            markup=False,
+            highlight=False,
+        )
     if len(issues) > shown:
         console.print(f"  ... and {len(issues) - shown} more issues.")
     raise typer.Exit(1)
@@ -1115,20 +1251,29 @@ app.add_typer(llm_app, name="llm")
 
 @app.command("test")
 def test_datasets(
-    pattern: str = typer.Option("test_*.py", "--pattern", "-p", help="Test file pattern to execute"),
+    pattern: str = typer.Option(
+        "test_*.py", "--pattern", "-p", help="Test file pattern to execute"
+    ),
 ) -> None:
     """Run full test suite for the Dataset Compiler Suite in-process using unittest."""
     project_root = Path(__file__).resolve().parent
     tests_dir = project_root / "tests"
-    console.print(f"[bold cyan]Running LemGendary Dataset Compiler tests in {tests_dir}...[/bold cyan]")
+    console.print(
+        f"[bold cyan]Running LemGendary Dataset Compiler tests in {tests_dir}...[/bold cyan]"
+    )
     loader = unittest.TestLoader()
     suite = loader.discover(str(tests_dir), pattern=pattern)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     if not result.wasSuccessful():
-        console.print(f"[bold red][FAIL] Tests failed ({len(result.failures)} failures, {len(result.errors)} errors)[/bold red]")
+        console.print(
+            f"[bold red][FAIL] Tests failed ({len(result.failures)} failures, {len(result.errors)}"
+            " errors)[/bold red]"
+        )
         raise typer.Exit(1)
-    console.print(f"[bold green][PASS] All {result.testsRun} tests passed successfully![/bold green]")
+    console.print(
+        f"[bold green][PASS] All {result.testsRun} tests passed successfully![/bold green]"
+    )
 
 
 if __name__ == "__main__":

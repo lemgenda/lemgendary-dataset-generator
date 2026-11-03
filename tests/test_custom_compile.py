@@ -43,7 +43,9 @@ class _FakeJobManager:
         self.created: list[dict[str, Any]] = []
         self.started: list[str] = []
 
-    def create_job(self, job_type: JobType, command: list[str], parameters: dict[str, Any]) -> JobResponse:
+    def create_job(
+        self, job_type: JobType, command: list[str], parameters: dict[str, Any]
+    ) -> JobResponse:
         """Record the job and return a pending JobResponse."""
         self.created.append({"command": command, "parameters": parameters})
         return JobResponse(
@@ -89,7 +91,10 @@ class _TempRegistryCase(unittest.TestCase):
         self.client = TestClient(app)
 
     def _post(self, **body: Any):
-        payload = {"custom_name": "Unit Test Faces", "sources": ["https://www.kaggle.com/datasets/owner/faces"]}
+        payload = {
+            "custom_name": "Unit Test Faces",
+            "sources": ["https://www.kaggle.com/datasets/owner/faces"],
+        }
         payload.update(body)
         return self.client.post("/gui/custom-compile", json=payload)
 
@@ -118,14 +123,16 @@ class TestDefaultPreset(_TempRegistryCase):
         """A default_preset that names no preset raises ValueError."""
         text = self.presets_path.read_text(encoding="utf-8")
         self.presets_path.write_text(
-            text.replace('default_preset: "quality-vision"', 'default_preset: "streaming-webdataset"'),
+            text.replace(
+                'default_preset: "quality-vision"', 'default_preset: "streaming-webdataset"'
+            ),
             encoding="utf-8",
         )
         with self.assertRaises(ValueError):
             presets.get_default_preset_name()
 
     def test_unknown_preset_returns_422_with_valid_list(self) -> None:
-        """An unknown preset returns 422 listing the valid presets and leaves the registry untouched."""
+        """An unknown preset returns 422 listing the valid ones and leaves the registry alone."""
         before = self.unified_path.read_bytes()
         response = self._post(preset="streaming-webdataset")
         self.assertEqual(response.status_code, 422)
@@ -142,8 +149,11 @@ class TestRegistryWrite(_TempRegistryCase):
         """Comments and formatting in unified_data.yaml survive adding an entry."""
         original = self.unified_path.read_bytes().decode("utf-8")
         newline = "\r\n" if "\r\n" in original else "\n"
-        commented = original.replace(f"datasets:{newline}", f"# top comment{newline}datasets:{newline}"
-                                     f"  # dataset comment{newline}", 1)
+        commented = original.replace(
+            f"datasets:{newline}",
+            f"# top comment{newline}datasets:{newline}  # dataset comment{newline}",
+            1,
+        )
         self.unified_path.write_bytes(commented.encode("utf-8"))
 
         response = self._post(preset="detection-variable", canonical_format="parquet")
@@ -190,7 +200,9 @@ class TestRegistryWrite(_TempRegistryCase):
         self.assertEqual(self.unified_path.read_bytes(), before)
         self.assertEqual(self.jobs.created, [])
         self.assertEqual(self.jobs.started, [])
-        self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), ["presets.yaml", "unified_data.yaml"])
+        self.assertEqual(
+            sorted(p.name for p in self.tmp.iterdir()), ["presets.yaml", "unified_data.yaml"]
+        )
 
     def test_registry_service_refuses_existing_key(self) -> None:
         """add_dataset_entry raises RegistryEntryExistsError for an existing key."""
@@ -250,11 +262,17 @@ class TestCompilerWiring(unittest.TestCase):
     """manifold_compile imports torch, so its wiring is checked on the source tree."""
 
     def setUp(self) -> None:
-        self.tree = ast.parse((PROJECT_ROOT / "core" / "manifold_compile.py").read_text(encoding="utf-8"))
+        self.tree = ast.parse(
+            (PROJECT_ROOT / "core" / "manifold_compile.py").read_text(encoding="utf-8")
+        )
 
     def test_cleanup_does_not_short_circuit_process_dataset(self) -> None:
         """process_dataset does not call a cleanup that ends it early."""
-        func = next(n for n in self.tree.body if isinstance(n, ast.FunctionDef) and n.name == "process_dataset")
+        func = next(
+            n
+            for n in self.tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "process_dataset"
+        )
         attrs = {n.attr for n in ast.walk(func) if isinstance(n, ast.Attribute)}
         self.assertNotIn("cleanup", attrs)
 
@@ -264,7 +282,11 @@ class TestCompilerWiring(unittest.TestCase):
             n for n in self.tree.body
             if isinstance(n, ast.If) and "__main__" in ast.unparse(n.test)
         )
-        calls = {n.func.id for n in ast.walk(main) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        calls = {
+            n.func.id
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
         self.assertIn("finalize_compile", calls)
 
 

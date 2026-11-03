@@ -66,7 +66,9 @@ def _find_datasets_block_end(lines: list[str]) -> int:
 
 def _render_entry(key: str, entry: dict[str, Any], newline: str) -> list[str]:
     """Serialize one dataset entry indented for the ``datasets:`` block."""
-    body = yaml.safe_dump({key: entry}, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    body = yaml.safe_dump(
+        {key: entry}, default_flow_style=False, sort_keys=False, allow_unicode=True
+    )
     return [f"{_ENTRY_INDENT}{line}{newline}" for line in body.splitlines()]
 
 
@@ -119,11 +121,14 @@ def add_dataset_entry(key: str, entry: dict[str, Any], path: Path | None = None)
         if lines and not lines[-1].endswith("\n"):
             lines[-1] += newline
         insert_at = _find_datasets_block_end(lines)
-        new_text = "".join(lines[:insert_at] + _render_entry(key, entry, newline) + lines[insert_at:])
+        new_text = "".join(
+            lines[:insert_at] + _render_entry(key, entry, newline) + lines[insert_at:]
+        )
 
         if yaml.safe_load(new_text) != merged:
             raise RegistryWriteError(
-                f"Inserting '{key}' into {target.name} would not yield the validated registry; nothing written"
+                f"Inserting '{key}' into {target.name} would not yield the validated registry;"
+                " nothing written"
             )
 
         _atomic_write(target, new_text)

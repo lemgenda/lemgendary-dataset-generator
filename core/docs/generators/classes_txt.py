@@ -64,7 +64,9 @@ def generate_classes_txt(
 def main() -> None:
     """CLI entrypoint for classes.txt generation."""
     parser = argparse.ArgumentParser(description="Generate classes.txt for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Manifold directory name or path"
+    )
     parser.add_argument("--all", action="store_true", help="Generate classes.txt for all manifolds")
     args = parser.parse_args()
 

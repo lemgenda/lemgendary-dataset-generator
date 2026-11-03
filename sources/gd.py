@@ -31,12 +31,20 @@ def main():
     """Download a Google Drive file or folder (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary Google Drive Downloader")
     parser.add_argument("--repo_id", type=str, required=True, help="Google Drive File or Folder ID")
-    parser.add_argument("--output_dir", type=str, required=True, help="Output directory path (will be converted to .zip in parent dir)")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Output directory path (will be converted to .zip in parent dir)",
+    )
     parser.add_argument("--action", type=str, default="download")
     args = parser.parse_args()
 
     if gdown is None:
-        raise RuntimeError("gdown package is required for Google Drive operations. Please install via pip: pip install gdown")
+        raise RuntimeError(
+            "gdown package is required for Google Drive operations. Please install via pip: pip"
+            " install gdown"
+        )
 
     if args.action == "download":
         print(f"STATUS:GD-PULLING {args.repo_id}")
@@ -54,7 +62,11 @@ def main():
                 raise RuntimeError("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
         except gdown_errors as e:
-            logger.warning("Google Drive file download failed for %s; trying folder download: %s", args.repo_id, e)
+            logger.warning(
+                "Google Drive file download failed for %s; trying folder download: %s",
+                args.repo_id,
+                e,
+            )
             print(f"WARNING: File download failed ({e}). Attempting folder download...")
             if os.path.exists(zip_path):
                 try:

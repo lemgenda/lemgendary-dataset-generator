@@ -55,7 +55,9 @@ class TestArchiveUtils(unittest.TestCase):
             (src_dir / "data.bin").write_bytes(b"\x00\x01\x02\x03")
 
             tar_out = Path(tmp_dir) / "test_archive.tar.gz"
-            success = create_archive(source_dir=src_dir, output_path=tar_out, archive_format="tar.gz")
+            success = create_archive(
+                source_dir=src_dir, output_path=tar_out, archive_format="tar.gz"
+            )
             self.assertTrue(success)
             self.assertTrue(tar_out.exists())
             self.assertTrue(verify_archive(tar_out))
@@ -141,7 +143,9 @@ class TestStreamZipToContainer(unittest.TestCase):
                 zf.writestr("images/val/sample_102.png", self.sample_png_bytes)
                 zf.writestr("targets/val/sample_102.png", self.sample_png_bytes)
                 zf.writestr("README.md", "# Test Dataset Readme")
-                zf.writestr("dataset_info.yaml", yaml.safe_dump({"name": "test_ds", "format": "legacy"}))
+                zf.writestr(
+                    "dataset_info.yaml", yaml.safe_dump({"name": "test_ds", "format": "legacy"})
+                )
 
             success = stream_zip_to_webdataset(
                 zip_path=source_zip,

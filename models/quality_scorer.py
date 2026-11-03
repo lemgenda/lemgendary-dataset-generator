@@ -9,7 +9,13 @@ class QualitySentry:
     """
     Automated image quality vetting using a pre-trained NIMA model.
     """
-    def __init__(self, model_path, model_name="nima_technical", device="cuda" if torch.cuda.is_available() else "cpu"):
+
+    def __init__(
+        self,
+        model_path,
+        model_name="nima_technical",
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    ):
         self.device = device
 
         # Technical NIMA uses EfficientNetV2-S, Aesthetic uses MobileNetV3-Small
@@ -32,7 +38,7 @@ class QualitySentry:
 
     @torch.no_grad()
     def score(self, img_pil, return_probs=False):
-        """Return the mean NIMA score of an image, with the score distribution when ``return_probs``."""
+        """Return an image's mean NIMA score, plus the score distribution when ``return_probs``."""
         img_tensor = self.transform(img_pil).unsqueeze(0).to(self.device)
         with torch.no_grad():
             logits = self.model(img_tensor)

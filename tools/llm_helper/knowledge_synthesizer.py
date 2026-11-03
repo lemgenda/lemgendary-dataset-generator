@@ -70,12 +70,14 @@ def synthesize_instruction_from_section(
         user_prompt = f"How does LemGendary AI diagnose and remediate: {h_clean}?"
         epistemic = "[CONFIRMED]" if "confirmed" in header.lower() else "[PROBABLE]"
         assistant_reply = (
-            f"Based on the official documentation in `{doc_id}` ({h_clean}), the diagnostic breakdown is:\n\n"
-            f"{clean_text}\n\n"
-            f"Epistemic Status: {epistemic} - verified against runtime documentation contracts."
+            f"Based on the official documentation in `{doc_id}` ({h_clean}), the diagnostic"
+            f" breakdown is:\n\n{clean_text}\n\nEpistemic Status: {epistemic} - verified against"
+            " runtime documentation contracts."
         )
     elif category == "cli_command":
-        user_prompt = f"What are the CLI operations and flags for {h_clean} in the LemGendary ecosystem?"
+        user_prompt = (
+            f"What are the CLI operations and flags for {h_clean} in the LemGendary ecosystem?"
+        )
         assistant_reply = (
             f"According to `{doc_id}` under section '{h_clean}':\n\n"
             f"{clean_text}"
@@ -87,19 +89,27 @@ def synthesize_instruction_from_section(
             f"{clean_text}"
         )
     elif category == "api_procedure":
-        user_prompt = f"What is the specification and procedure for {h_clean} in the LemGendary REST API?"
+        user_prompt = (
+            f"What is the specification and procedure for {h_clean} in the LemGendary REST API?"
+        )
         assistant_reply = (
             f"Reference: `{doc_id}` ({h_clean}).\n\n"
             f"{clean_text}"
         )
     elif category == "terminology_concept":
-        user_prompt = f"Explain the concept and mathematical/architectural definition of {h_clean} in LemGendary AI."
+        user_prompt = (
+            f"Explain the concept and mathematical/architectural definition of {h_clean} in"
+            " LemGendary AI."
+        )
         assistant_reply = (
             f"Reference: `{doc_id}` ({h_clean}).\n\n"
             f"{clean_text}"
         )
     else:
-        user_prompt = f"Explain the architectural design and implementation details of {h_clean} from {doc_base}."
+        user_prompt = (
+            f"Explain the architectural design and implementation details of {h_clean} from"
+            f" {doc_base}."
+        )
         assistant_reply = (
             f"According to `{doc_id}` ({h_clean}):\n\n"
             f"{clean_text}"

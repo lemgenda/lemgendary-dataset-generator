@@ -111,7 +111,11 @@ class KnowledgeIngestor:
                         data = json.load(f)
                     content = json.dumps(data, indent=2)
                 else:
-                    lines = [line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                    lines = [
+                        line.strip()
+                        for line in file_path.read_text(encoding="utf-8").splitlines()
+                        if line.strip()
+                    ]
                     content = "\n".join(lines)
                 return KnowledgeDocument(
                     doc_id=doc_id,
@@ -171,7 +175,9 @@ class KnowledgeIngestor:
             content = cache_file.read_text(encoding="utf-8")
         else:
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "LemGendary-Knowledge-Ingestor/1.0"})
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "LemGendary-Knowledge-Ingestor/1.0"}
+                )
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     raw_bytes = resp.read()
                     html_text = raw_bytes.decode("utf-8", errors="replace")
@@ -184,7 +190,12 @@ class KnowledgeIngestor:
                 if not cache_exists:
                     logger.warning("Remote URL fetch failed for %s (%s). Falling back.", url, exc)
                     return None
-                logger.warning("Remote URL refresh failed for %s (%s). Using stale cache %s.", url, exc, cache_file)
+                logger.warning(
+                    "Remote URL refresh failed for %s (%s). Using stale cache %s.",
+                    url,
+                    exc,
+                    cache_file,
+                )
                 content = cache_file.read_text(encoding="utf-8")
 
         parsed = urllib.parse.urlparse(url)

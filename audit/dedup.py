@@ -34,7 +34,7 @@ class ExactHasher:
         self.no_hash = no_hash
 
     def hash(self, src: str | Path | bytes | Image.Image) -> str | None:
-        """Return the MD5 hex digest of a file, raw bytes or PIL image, or None when hashing is disabled."""
+        """Return the MD5 hex digest of a file, bytes or PIL image; None when hashing is off."""
         if self.no_hash:
             return None
 

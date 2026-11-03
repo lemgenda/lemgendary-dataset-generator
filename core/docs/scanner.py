@@ -63,9 +63,15 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
                     "count": int(count),
                 }
                 result["details"].append(entry)
-                result["samples_per_year"][year] = result["samples_per_year"].get(year, 0) + int(count)
-                result["samples_per_pair"][str(pair)] = result["samples_per_pair"].get(str(pair), 0) + int(count)
-                result["samples_per_tf"][int(tf)] = result["samples_per_tf"].get(int(tf), 0) + int(count)
+                result["samples_per_year"][year] = result["samples_per_year"].get(year, 0) + int(
+                    count
+                )
+                result["samples_per_pair"][str(pair)] = result["samples_per_pair"].get(
+                    str(pair), 0
+                ) + int(count)
+                result["samples_per_tf"][int(tf)] = result["samples_per_tf"].get(int(tf), 0) + int(
+                    count
+                )
         except (*PARQUET_READ_ERRORS, KeyError) as e:
             logger.warning("Error scanning %s: %s", pq_file.name, e)
 
@@ -117,9 +123,15 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
                         "count": total_samples,
                     }
                     result["details"].append(entry)
-                    result["samples_per_year"][year] = result["samples_per_year"].get(year, 0) + total_samples
-                    result["samples_per_pair"][pair] = result["samples_per_pair"].get(pair, 0) + total_samples
-                    result["samples_per_tf"][tf] = result["samples_per_tf"].get(tf, 0) + total_samples
+                    result["samples_per_year"][year] = (
+                        result["samples_per_year"].get(year, 0) + total_samples
+                    )
+                    result["samples_per_pair"][pair] = (
+                        result["samples_per_pair"].get(pair, 0) + total_samples
+                    )
+                    result["samples_per_tf"][tf] = (
+                        result["samples_per_tf"].get(tf, 0) + total_samples
+                    )
 
     result["years"] = sorted(year_set)
     result["pairs"] = sorted(pair_set)

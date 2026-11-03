@@ -60,9 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Mode selectors ──────────────────────────────────────────────────────
     parser.add_argument("--reduce", action="store_true",
                         help="Start in Reduce mode")
-    parser.add_argument("--cleanup", action="store_true",
-                        help="After a successful compile, purge the loose directory layout "
-                             "(images/labels/targets/masks) of manifolds that were packed into a container")
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="After a successful compile, purge the loose directory layout "
+        "(images/labels/targets/masks) of manifolds that were packed into a container",
+    )
     parser.add_argument("--finalize", action="store_true",
                         help="Sharding + README only — skip re-processing")
 
@@ -90,8 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--also-format", dest="also_format", type=str, default=None,
                         help="Comma-separated container formats to write in addition "
                              "to the canonical directory layout (e.g. 'mds' or 'mds,litdata')")
-    parser.add_argument("--shard-ext", dest="shard_ext", type=str, default="data",
-                        help="WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle backend ingestion)")
+    parser.add_argument(
+        "--shard-ext",
+        dest="shard_ext",
+        type=str,
+        default="data",
+        help=(
+            "WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle"
+            " backend ingestion)"
+        ),
+    )
     parser.add_argument("--force-duplicate", dest="force_duplicate", action="store_true",
                         help="Proceed with container write despite WARN-tier hardlink fraction")
     parser.add_argument("--accept-space-loss", dest="accept_space_loss", action="store_true",
@@ -109,12 +120,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Mask generation strategy (default: parsenet for segmentation)")
 
     # ── Compiler Preset Profiles (Phase 8) ─────────────────────────────────
-    parser.add_argument("--preset", dest="preset", type=str, default=None,
-                        help="Compiler preset profile name from presets.yaml (e.g. quality-vision, restoration-hardlinked)")
+    parser.add_argument(
+        "--preset",
+        dest="preset",
+        type=str,
+        default=None,
+        help=(
+            "Compiler preset profile name from presets.yaml (e.g. quality-vision,"
+            " restoration-hardlinked)"
+        ),
+    )
 
     return parser
-
-
 
 
 # ─── lem-env discovery ──────────────────────────────────────────────────────

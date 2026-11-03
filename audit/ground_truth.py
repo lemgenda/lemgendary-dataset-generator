@@ -34,7 +34,7 @@ class GroundTruthCaches:
     tid: dict = field(default_factory=dict)
 
     def load(self, root: Path, _model_name: str = "") -> None:
-        """Run every registered loader against ``root``; a loader that fails is logged and skipped."""
+        """Run every registered loader on ``root``; a failing loader is logged and skipped."""
         for loader in _LOADERS:
             try:
                 loader(self, Path(root))
@@ -168,6 +168,8 @@ def _load_tad66k(c: GroundTruthCaches, root: Path) -> None:
             df = pd.read_csv(os.path.join(dirpath, f))
             for _, row in df.iterrows():
                 if "image" in row and "score" in row:
-                    c.tid[str(row["image"]).lower()] = max(1.0, min(10.0, float(cast(Any, row["score"]))))
+                    c.tid[str(row["image"]).lower()] = max(
+                        1.0, min(10.0, float(cast(Any, row["score"])))
+                    )
                     count += 1
     print(f"[GT] {count} TAD66K ratings cached.")

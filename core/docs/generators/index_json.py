@@ -64,13 +64,24 @@ def generate_index_json(
     # 3. Task-specific index reconstruction
     constructed_index: list[dict[str, Any]] = []
 
-    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in (
+        "llm",
+        "ai_helper",
+    )
     if is_llm_task:
         # Build index from JSONL instruction datasets
         train_file_rel = ctx.unified_entry.get("train_file")
         val_file_rel = ctx.unified_entry.get("val_file")
-        train_file = (target_dir / train_file_rel) if train_file_rel else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
-        val_file = (target_dir / val_file_rel) if val_file_rel else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
+        train_file = (
+            (target_dir / train_file_rel)
+            if train_file_rel
+            else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
+        )
+        val_file = (
+            (target_dir / val_file_rel)
+            if val_file_rel
+            else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
+        )
         if not train_file.exists():
             train_file = target_dir / "data" / "ai_helper_train.jsonl"
             val_file = target_dir / "data" / "ai_helper_val.jsonl"
@@ -90,13 +101,20 @@ def generate_index_json(
                         try:
                             record = json.loads(line_str)
                         except json.JSONDecodeError as exc:
-                            logger.debug("Line %d of %s split is not JSON (%s); hashing its position", line_num, split, exc)
+                            logger.debug(
+                                "Line %d of %s split is not JSON (%s); hashing its position",
+                                line_num,
+                                split,
+                                exc,
+                            )
                             record = None
                         if isinstance(record, dict):
                             prompt_text = str(record.get("prompt", record.get("instruction", "")))
                             h = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:16]
                         else:
-                            h = hashlib.sha256(f"{split}_{line_num}".encode("utf-8")).hexdigest()[:16]
+                            h = hashlib.sha256(f"{split}_{line_num}".encode("utf-8")).hexdigest()[
+                                :16
+                            ]
 
                         constructed_index.append({
                             "id": idx_counter,
@@ -140,8 +158,12 @@ def generate_index_json(
 
 def main() -> None:
     """CLI entrypoint for index.json generation."""
-    parser = argparse.ArgumentParser(description="Generate/Validate index.json for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
+    parser = argparse.ArgumentParser(
+        description="Generate/Validate index.json for dataset manifolds"
+    )
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Manifold directory name or path"
+    )
     parser.add_argument("--all", action="store_true", help="Process index.json for all manifolds")
     args = parser.parse_args()
 

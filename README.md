@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.34-STABLE` |
+| **Version** | `v16.9.35-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,13 @@
 ---
 
 ## Changelog
+
+### v16.9.35 - Lines Wrapped to 100 Characters, `line-too-long` Re-Enabled
+
+- **`.pylintrc` Disables One Fewer Check**: `line-too-long` is enabled again at pylint's default limit of 100 characters. Only the `too-many-*` size checks remain disabled.
+- **How the 801 Long Lines Were Wrapped**: no formatter is configured for the repository, so only the statements that held a long line were reformatted, not whole files. Ruff's range formatter (`--line-length 100`, quote style preserved) wrapped signatures, calls and expressions, and black's string splitting (`--line-ranges`) split long string literals into implicitly concatenated parts. The remaining 48 lines (comments, docstrings, SQL column lists and Markdown templates) were shortened or wrapped by hand. Both formatters check that the code's AST is unchanged.
+- **Template Output Unchanged**: the Forex README template in `core/docs/templates.py` and the degraded-manifold README in `tools/generate_degrade.py` build their long lines from a local variable, so the generated Markdown stays the same.
+- **OpenAPI Contract Regenerated**: two shortened route docstrings in `api/routes/kaggle.py` changed their operation descriptions in `openapi.json`.
 
 ### v16.9.34 - Every Module, Class and Function Documented, Docstring Checks Re-Enabled
 

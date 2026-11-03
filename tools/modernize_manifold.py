@@ -49,7 +49,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ─── Paths ──────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
+ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "tools"
+    else Path(__file__).resolve().parent
+)
 
 REGISTRY_YAML = ROOT / "unified_data.yaml"
 VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
@@ -133,7 +137,9 @@ def _save_registry(data: dict) -> None:
         )
 
 
-def _find_dataset_entry(registry: dict, base_name: str, folder_name: str) -> tuple[str | None, dict]:
+def _find_dataset_entry(
+    registry: dict, base_name: str, folder_name: str
+) -> tuple[str | None, dict]:
     """Find dataset key and entry from registry."""
     datasets = registry.get("datasets", {})
     for key, entry in datasets.items():
@@ -265,7 +271,9 @@ def _confirm(selected: list[dict], override_format: str | None = None) -> bool:
     for item in selected:
         status = " (RESUME partial)" if item.get("is_resume") else " (new folder)"
         fmt_disp = (override_format or item.get("canonical_format", "directory")).upper()
-        print(f"  {item['folder_name']}  ->  {item['target_name']}{status}  [Canonical: {fmt_disp}]")
+        print(
+            f"  {item['folder_name']}  ->  {item['target_name']}{status}  [Canonical: {fmt_disp}]"
+        )
     print()
     print(f"  Total: {len(selected)} modernized manifold(s) will be processed.")
     print("  Zero Duplication: Intermediate loose files will be purged for containerized sets.")
@@ -307,7 +315,10 @@ def _create_modernized_batch(
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
             if is_resume:
-                print(f"[RESUME] Target manifold exists with partial data: {dst_dir.name}. Checking for missing files...")
+                print(
+                    f"[RESUME] Target manifold exists with partial data: {dst_dir.name}. Checking"
+                    " for missing files..."
+                )
             else:
                 print(f"[CREATE] Created modern target directory: {dst_dir.name}")
         except OSError as e:
@@ -340,7 +351,11 @@ def _create_modernized_batch(
                     elif "targets" in rel_file.parts:
                         kind = "target"
 
-                    out_ext = ".webp" if policy.format == "webp" else transcoder.extension_for(policy.format)
+                    out_ext = (
+                        ".webp"
+                        if policy.format == "webp"
+                        else transcoder.extension_for(policy.format)
+                    )
                     if kind == "mask" and policy.mask_format == "webp-lossless":
                         out_ext = ".webp"
 
@@ -351,13 +366,19 @@ def _create_modernized_batch(
                         transcode_tasks.append((src_file, target_file, kind))
                 else:
                     target_file = target_sub / fname
-                    if target_file.exists() and target_file.stat().st_size == src_file.stat().st_size:
+                    if (
+                        target_file.exists()
+                        and target_file.stat().st_size == src_file.stat().st_size
+                    ):
                         skipped_copies += 1
                     else:
                         copy_tasks.append((src_file, target_file))
 
         if skipped_copies > 0 or skipped_images > 0:
-            print(f"[RESUME] Found existing files: {skipped_images} image(s), {skipped_copies} metadata file(s) already complete.")
+            print(
+                f"[RESUME] Found existing files: {skipped_images} image(s), {skipped_copies}"
+                " metadata file(s) already complete."
+            )
 
         if copy_tasks:
             print(f"[COPY] Copying {len(copy_tasks)} structure, label, and metadata file(s)...")
@@ -378,10 +399,16 @@ def _create_modernized_batch(
                 except OSError as exc:
                     logger.warning("Copy failed for %s -> %s: %s", s_f, d_f, exc)
         elif skipped_copies > 0:
-            print(f"[COPY] All {skipped_copies} structure, label, and metadata file(s) already in place.")
+            print(
+                f"[COPY] All {skipped_copies} structure, label, and metadata file(s) already in"
+                " place."
+            )
 
         if transcode_tasks:
-            print(f"[TRANSCODE] Modernizing {len(transcode_tasks)} image(s) to {policy.format.upper()} in {dst_dir.name}...")
+            print(
+                f"[TRANSCODE] Modernizing {len(transcode_tasks)} image(s) to"
+                f" {policy.format.upper()} in {dst_dir.name}..."
+            )
 
             def _worker(task: tuple[Path, Path, Literal["image", "target", "mask"]]) -> bool:
                 s_p, d_p, k = task
@@ -401,22 +428,35 @@ def _create_modernized_batch(
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 if tqdm is not None and len(transcode_tasks) > 20:
-                    name_disp = dst_dir.name if len(dst_dir.name) <= 24 else f"{dst_dir.name[:21]}..."
-                    results = list(tqdm(
-                        executor.map(_worker, transcode_tasks),
-                        total=len(transcode_tasks),
-                        desc=f"  -> Transcode [{name_disp}]",
-                        unit="img",
-                        dynamic_ncols=True,
-                        bar_format="{l_bar}{bar:15}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
-                        mininterval=0.5,
-                    ))
+                    name_disp = (
+                        dst_dir.name if len(dst_dir.name) <= 24 else f"{dst_dir.name[:21]}..."
+                    )
+                    results = list(
+                        tqdm(
+                            executor.map(_worker, transcode_tasks),
+                            total=len(transcode_tasks),
+                            desc=f"  -> Transcode [{name_disp}]",
+                            unit="img",
+                            dynamic_ncols=True,
+                            bar_format=(
+                                "{l_bar}{bar:15}| {n_fmt}/{total_fmt} [{elapsed}<{remaining},"
+                                " {rate_fmt}]"
+                            ),
+                            mininterval=0.5,
+                        )
+                    )
                 else:
                     results = list(executor.map(_worker, transcode_tasks))
             successes = sum(1 for r in results if r)
-            print(f"[TRANSCODE] Completed: {successes}/{len(transcode_tasks)} images converted to {policy.format.upper()}.")
+            print(
+                f"[TRANSCODE] Completed: {successes}/{len(transcode_tasks)} images converted to"
+                f" {policy.format.upper()}."
+            )
         elif skipped_images > 0:
-            print(f"[TRANSCODE] All {skipped_images} image(s) already converted to {policy.format.upper()} in {dst_dir.name}.")
+            print(
+                f"[TRANSCODE] All {skipped_images} image(s) already converted to"
+                f" {policy.format.upper()} in {dst_dir.name}."
+            )
 
         created.append(item)
     return True, created
@@ -460,7 +500,9 @@ def _kaggle_reupload(item: dict, dry_run: bool = False) -> tuple[bool, str]:
         return True, f"[DRY-RUN] Would upload {item['target_name']} -> {new_ref}"
 
     try:
-        manifold_sync.action_sync(manifold_name=item["target_name"], repo_id=clean_ref, no_wait=False)
+        manifold_sync.action_sync(
+            manifold_name=item["target_name"], repo_id=clean_ref, no_wait=False
+        )
         return True, f"Uploaded to {new_ref}"
     except SystemExit as exc:
         logger.warning("Kaggle re-upload of %s exited with %r", item["target_name"], exc.code)
@@ -520,7 +562,10 @@ def _report(
 def build_parser() -> argparse.ArgumentParser:
     """Return the argument parser for manifold modernization."""
     parser = argparse.ArgumentParser(
-        description="LemGendary Manifold Modernization (create modern manifold variants, WebP transcoding, container formats)"
+        description=(
+            "LemGendary Manifold Modernization (create modern manifold variants, WebP transcoding,"
+            " container formats)"
+        )
     )
     parser.add_argument("--dry-run", action="store_true", help="Show plan, do not modify anything")
     parser.add_argument("--all", action="store_true", help="Select all eligible manifolds")
@@ -539,12 +584,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mask-format", type=str, default="webp-lossless",
                         choices=["webp-lossless", "png"],
                         help="Format for mask transcoding")
-    parser.add_argument("--format", type=str, default=None,
-                        help="Override target format for all selected datasets (default: auto-detect from unified_data.yaml canonical_format)")
-    parser.add_argument("--also-format", type=str, default=None,
-                        help="Alias for --format (e.g., webdataset, mds, litdata, parquet, directory)")
-    parser.add_argument("--keep-intermediate", action="store_true",
-                        help="Keep intermediate loose images after container conversion (default: false, purge for zero duplication)")
+    parser.add_argument(
+        "--format",
+        type=str,
+        default=None,
+        help=(
+            "Override target format for all selected datasets (default: auto-detect from"
+            " unified_data.yaml canonical_format)"
+        ),
+    )
+    parser.add_argument(
+        "--also-format",
+        type=str,
+        default=None,
+        help="Alias for --format (e.g., webdataset, mds, litdata, parquet, directory)",
+    )
+    parser.add_argument(
+        "--keep-intermediate",
+        action="store_true",
+        help=(
+            "Keep intermediate loose images after container conversion (default: false, purge for"
+            " zero duplication)"
+        ),
+    )
     parser.add_argument("--skip-transcode", action="store_true",
                         help="Skip WebP image transcoding")
     parser.add_argument("--skip-container", action="store_true",
@@ -600,8 +662,13 @@ def run(args: argparse.Namespace) -> int:
         print("[DRY-RUN] Would perform the following:")
         for item in selected:
             new_ref = _compute_new_kaggle_ref(item)
-            canon_fmt = (target_fmt_override or item.get("canonical_format", "directory")).strip().lower()
-            print(f"  {item['folder_name']}  ->  {item['target_name']} (new folder)  [Canonical: {canon_fmt.upper()}]  (kaggle: {new_ref})")
+            canon_fmt = (
+                (target_fmt_override or item.get("canonical_format", "directory")).strip().lower()
+            )
+            print(
+                f"  {item['folder_name']}  ->  {item['target_name']} (new folder)  [Canonical:"
+                f" {canon_fmt.upper()}]  (kaggle: {new_ref})"
+            )
             print(f"    + create new modernized manifold directory: {item['target_name']}")
             print("    + copy non-image structures, labels, and metadata files")
             if not args.skip_transcode and policy.format != "keep":
@@ -609,7 +676,10 @@ def run(args: argparse.Namespace) -> int:
             if canon_fmt != "directory" and not args.skip_container:
                 print(f"    + convert to modern container format -> {canon_fmt}")
                 if not args.keep_intermediate:
-                    print("    + [ZERO-DUP] purge intermediate loose image directories (images/, targets/, masks/)")
+                    print(
+                        "    + [ZERO-DUP] purge intermediate loose image directories (images/,"
+                        " targets/, masks/)"
+                    )
             print("    + regenerate modern dataset documentation and index manifests")
             if not args.skip_kaggle:
                 print(f"    + upload modernized manifold to kaggle: {new_ref}")
@@ -650,13 +720,21 @@ def run(args: argparse.Namespace) -> int:
         print("── Phase C: Canonical Container Conversion & Zero Duplication ──")
         for item in modernized:
             target_path = item["target_path"]
-            target_format = (target_fmt_override or item.get("canonical_format", "directory")).strip().lower()
+            target_format = (
+                (target_fmt_override or item.get("canonical_format", "directory")).strip().lower()
+            )
 
             if target_format == "directory":
-                print(f"[CONTAINER] {target_path.name} canonical format is DIRECTORY. Retaining optimized WebP structure.")
+                print(
+                    f"[CONTAINER] {target_path.name} canonical format is DIRECTORY. Retaining"
+                    " optimized WebP structure."
+                )
                 continue
 
-            print(f"[CONTAINER] Modernizing {target_path.name} to canonical format: {target_format.upper()}...")
+            print(
+                f"[CONTAINER] Modernizing {target_path.name} to canonical format:"
+                f" {target_format.upper()}..."
+            )
             try:
                 container_formats = parse_also_format(target_format)
                 purge_loose = not args.keep_intermediate
@@ -670,7 +748,10 @@ def run(args: argparse.Namespace) -> int:
                 )
                 if mig_code == 0:
                     if purge_loose:
-                        print(f"[ZERO-DUP] Purged intermediate loose image directories from {target_path.name}.")
+                        print(
+                            "[ZERO-DUP] Purged intermediate loose image directories from"
+                            f" {target_path.name}."
+                        )
                     # Update format in dataset_info.yaml
                     ds_info_path = target_path / "dataset_info.yaml"
                     if ds_info_path.exists():
@@ -679,17 +760,36 @@ def run(args: argparse.Namespace) -> int:
                                 info_data = yaml.safe_load(f_in) or {}
                             info_data["format"] = target_format
                             with open(ds_info_path, "w", encoding="utf-8") as f_out:
-                                yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                                yaml.safe_dump(
+                                    info_data,
+                                    f_out,
+                                    default_flow_style=False,
+                                    sort_keys=False,
+                                    allow_unicode=True,
+                                )
                         except (OSError, yaml.YAMLError, TypeError) as exc:
                             logger.warning("Failed updating format in %s: %s", ds_info_path, exc)
 
-                    # Re-run docs generator to update README structure listing without deleted loose images
+                    # Regenerate the docs so the README structure no longer lists the deleted images
                     _regen_docs(item)
                 else:
-                    print(f"[WARN] Container migration returned code {mig_code} for {target_path.name}")
-            except (ImportError, OSError, ValueError, KeyError, RuntimeError, yaml.YAMLError) as exc:
+                    print(
+                        f"[WARN] Container migration returned code {mig_code} for"
+                        f" {target_path.name}"
+                    )
+            except (
+                ImportError,
+                OSError,
+                ValueError,
+                KeyError,
+                RuntimeError,
+                yaml.YAMLError,
+            ) as exc:
                 logger.error("Container conversion failed for %s: %s", target_path, exc)
-                print(f"[ERROR] Container conversion encountered an issue for {target_path.name}: {exc}")
+                print(
+                    f"[ERROR] Container conversion encountered an issue for {target_path.name}:"
+                    f" {exc}"
+                )
 
     # ── Phase D: Kaggle re-upload ──────────────────────────────────────────
     kaggle_ok: list[dict] = []

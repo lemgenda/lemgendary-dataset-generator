@@ -98,7 +98,15 @@ class KnowledgeSourceConfig(BaseModel):
     """Declarative specification of an offline or online knowledge source."""
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["markdown_dir", "markdown_file", "yaml_file", "json_file", "text_file", "csv_file", "remote_url"]
+    type: Literal[
+        "markdown_dir",
+        "markdown_file",
+        "yaml_file",
+        "json_file",
+        "text_file",
+        "csv_file",
+        "remote_url",
+    ]
     path: str | None = None
     glob: str | None = None
     url: str | None = None
@@ -165,7 +173,9 @@ class DatasetEntry(BaseModel):
     task: str | None = None
 
     # Domain classification
-    dataset_type: Literal["vision", "forex", "diffusion", "vlm", "ai_helper", "nlp", "llm"] = "vision"
+    dataset_type: Literal["vision", "forex", "diffusion", "vlm", "ai_helper", "nlp", "llm"] = (
+        "vision"
+    )
     acquisition_mode: Literal[
         "hf", "kaggle", "gh", "gdrive", "mt5_terminal", "local"
     ] = "kaggle"
@@ -215,7 +225,6 @@ class DatasetEntry(BaseModel):
     stratify_by: str | None = None
     validation_requirements: list[str] = Field(default_factory=list)
     llm_pipeline: LLMPipelineConfig | None = None
-
 
 
 # ─── Root document ──────────────────────────────────────────────────────────
@@ -323,7 +332,10 @@ def _cli_validate() -> int:
     print(f"[OK] Configuration validated: {target}")
     print(f"     version={rm.version}  prefix='{rm.name_prefix}'  suffix='{rm.name_suffix}'")
     print(f"     output_folder='{rm.output_folder_name}'")
-    print(f"     global_constraints: min={rm.global_constraints.min_size_gb}GB  max={rm.global_constraints.max_size_gb}GB")
+    print(
+        f"     global_constraints: min={rm.global_constraints.min_size_gb}GB "
+        f" max={rm.global_constraints.max_size_gb}GB"
+    )
     print(f"     datasets: {len(data.datasets)}")
     print()
     for key, entry in sorted(data.datasets.items()):

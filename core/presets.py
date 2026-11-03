@@ -14,7 +14,11 @@ from pydantic import BaseModel, Field, ValidationError
 
 _log = logging.getLogger(__name__)
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
+_ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "core"
+    else Path(__file__).resolve().parent
+)
 DEFAULT_PRESETS_FILE = _ROOT / "presets.yaml"
 if not DEFAULT_PRESETS_FILE.exists():
     DEFAULT_PRESETS_FILE = Path(__file__).resolve().parent / "presets.yaml"
@@ -28,14 +32,26 @@ class CompilerPreset(BaseModel):
     description: str = Field(..., description="Detailed explanation of profile rationale")
     image_format: str = Field("webp", description="Target image format (webp, jpeg, png)")
     image_quality: int = Field(92, ge=1, le=100, description="Target image quality (1-100)")
-    target_quality: Optional[int] = Field(95, ge=1, le=100, description="Target quality for ground truth pairs")
+    target_quality: Optional[int] = Field(
+        95, ge=1, le=100, description="Target quality for ground truth pairs"
+    )
     mask_format: Optional[str] = Field("webp-lossless", description="Target mask format")
-    min_resolution: Optional[int] = Field(256, ge=64, description="Minimum resolution floor in pixels")
-    resampling: Optional[str] = Field("lanczos", description="Resampling filter (lanczos, bilinear, bicubic)")
-    vetting_enabled: bool = Field(False, description="Whether NIMA aesthetic vetting gate is active")
+    min_resolution: Optional[int] = Field(
+        256, ge=64, description="Minimum resolution floor in pixels"
+    )
+    resampling: Optional[str] = Field(
+        "lanczos", description="Resampling filter (lanczos, bilinear, bicubic)"
+    )
+    vetting_enabled: bool = Field(
+        False, description="Whether NIMA aesthetic vetting gate is active"
+    )
     labeling_enabled: bool = Field(False, description="Whether YOLO auto-labeling is active")
-    hardlink_gate: bool = Field(True, description="Whether NTFS hardlinking is enforced for identical targets")
-    containers: List[str] = Field(default_factory=list, description="Target container formats (parquet, mds, litdata)")
+    hardlink_gate: bool = Field(
+        True, description="Whether NTFS hardlinking is enforced for identical targets"
+    )
+    containers: List[str] = Field(
+        default_factory=list, description="Target container formats (parquet, mds, litdata)"
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert preset model to dictionary representation."""

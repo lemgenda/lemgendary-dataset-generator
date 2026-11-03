@@ -107,8 +107,8 @@ class MaskGenerator(Generator):
             importlib.import_module("segment_anything")
         except ImportError as e:
             raise ImportError(
-                "segment-anything is required for --mask-strategy sam. "
-                "Install from: pip install git+https://github.com/facebookresearch/segment-anything.git"
+                "segment-anything is required for --mask-strategy sam. Install from: pip install"
+                " git+https://github.com/facebookresearch/segment-anything.git"
             ) from e
         # SAM requires a checkpoint path and prompts; this strategy is a
         # placeholder until the deployment-specific wiring lands.

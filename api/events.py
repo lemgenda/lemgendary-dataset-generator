@@ -23,14 +23,19 @@ class ConnectionManager:
         await websocket.accept()
         async with self._lock:
             self.global_connections.append(websocket)
-        logger.debug("WebSocket client registered for global events (total: %d)", len(self.global_connections))
+        logger.debug(
+            "WebSocket client registered for global events (total: %d)",
+            len(self.global_connections),
+        )
 
     async def disconnect_global(self, websocket: WebSocket) -> None:
         """Unregister a WebSocket client from global server broadcasts."""
         async with self._lock:
             if websocket in self.global_connections:
                 self.global_connections.remove(websocket)
-        logger.debug("WebSocket client removed from global events (total: %d)", len(self.global_connections))
+        logger.debug(
+            "WebSocket client removed from global events (total: %d)", len(self.global_connections)
+        )
 
     async def connect_job(self, job_id: str, websocket: WebSocket) -> None:
         """Register a WebSocket client for streaming logs of a specific job."""
@@ -39,7 +44,11 @@ class ConnectionManager:
             if job_id not in self.job_connections:
                 self.job_connections[job_id] = []
             self.job_connections[job_id].append(websocket)
-        logger.debug("WebSocket client registered for job %s stream (subscribers: %d)", job_id, len(self.job_connections[job_id]))
+        logger.debug(
+            "WebSocket client registered for job %s stream (subscribers: %d)",
+            job_id,
+            len(self.job_connections[job_id]),
+        )
 
     async def disconnect_job(self, job_id: str, websocket: WebSocket) -> None:
         """Unregister a WebSocket client from streaming logs of a specific job."""

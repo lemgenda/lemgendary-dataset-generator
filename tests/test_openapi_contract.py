@@ -38,7 +38,9 @@ def _schema_operations(routes: list, prefix: str = "") -> set[tuple[str, str]]:
         elif hasattr(route, "original_router"):
             context = route.include_context
             if context.include_in_schema:
-                operations |= _schema_operations(route.original_router.routes, prefix + context.prefix)
+                operations |= _schema_operations(
+                    route.original_router.routes, prefix + context.prefix
+                )
     return operations
 
 

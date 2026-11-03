@@ -61,7 +61,10 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
 
     # Verify rows written match expected rows exactly
     if rows_written != total_expected_rows:
-        print(f"[ERROR] Row mismatch in {file_path.name}: Expected {total_expected_rows}, got {rows_written}")
+        print(
+            f"[ERROR] Row mismatch in {file_path.name}: Expected {total_expected_rows}, got"
+            f" {rows_written}"
+        )
         if temp_path.exists():
             temp_path.unlink()
         return False
@@ -71,7 +74,9 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
     assert pf_check.metadata.num_rows == total_expected_rows, "Check row count failed"
     for col_name in COLUMN_DESCRIPTIONS:
         field_meta = pf_check.schema_arrow.field(col_name).metadata
-        assert field_meta is not None and b"description" in field_meta, f"Missing description on {col_name}"
+        assert field_meta is not None and b"description" in field_meta, (
+            f"Missing description on {col_name}"
+        )
     pf_check.close()
 
     # Atomically replace original
@@ -86,19 +91,32 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
 
     final_size_mb = file_path.stat().st_size / (1024 * 1024)
     elapsed = time.time() - t0
-    print(f"[SUCCESS] {file_path.name}: {total_expected_rows:,} rows processed in {elapsed:.1f}s ({final_size_mb:.2f} MB)")
+    print(
+        f"[SUCCESS] {file_path.name}: {total_expected_rows:,} rows processed in {elapsed:.1f}s"
+        f" ({final_size_mb:.2f} MB)"
+    )
     return True
 
 
 def main():
     """Embed column descriptions into the Forex Parquet files (CLI entry point)."""
-    default_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverse"
+    default_dir = (
+        Path(__file__).resolve().parent.parent.parent
+        / "LemGendaryDatasets"
+        / "LemGendizedForexUniverse"
+    )
     if not default_dir.exists():
-        legacy_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"
+        legacy_dir = (
+            Path(__file__).resolve().parent.parent.parent
+            / "LemGendaryDatasets"
+            / "LemGendizedForexUniverseLarge"
+        )
         if legacy_dir.exists():
             default_dir = legacy_dir
 
-    parser = argparse.ArgumentParser(description="Embed column descriptions into Forex Parquet files.")
+    parser = argparse.ArgumentParser(
+        description="Embed column descriptions into Forex Parquet files."
+    )
     parser.add_argument(
         "--dir",
         type=Path,
@@ -126,7 +144,10 @@ def main():
 
     total_elapsed = time.time() - total_start
     print(f"\n{'=' * 75}")
-    print(f"[ALL COMPLETE] Successfully embedded column descriptions in all {len(parquet_files)} Parquet files in {total_elapsed:.1f}s.")
+    print(
+        f"[ALL COMPLETE] Successfully embedded column descriptions in all {len(parquet_files)}"
+        f" Parquet files in {total_elapsed:.1f}s."
+    )
     print(f"{'=' * 75}")
 
 

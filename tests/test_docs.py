@@ -60,7 +60,9 @@ class TestDocumentationGenerator(unittest.TestCase):
                 {"name": "img_003", "source": "gopro", "split": "val", "task": "restoration"},
             ]
 
-            sample_count = generate_dataset_docs(out_root, sample_index, "LemGendizedNafNetDebluring")
+            sample_count = generate_dataset_docs(
+                out_root, sample_index, "LemGendizedNafNetDebluring"
+            )
             self.assertEqual(sample_count, 3)
 
             # Check index.json
@@ -127,7 +129,9 @@ class TestDocumentationGenerator(unittest.TestCase):
                 "category": "Forex & Financial Time-Series",
             }
 
-            sample_count = generate_dataset_docs(out_root, None, "LemGendizedForexUniverse", overrides)
+            sample_count = generate_dataset_docs(
+                out_root, None, "LemGendizedForexUniverse", overrides
+            )
             self.assertIsInstance(sample_count, int)
 
             # Check dataset_info.yaml
@@ -159,7 +163,7 @@ class TestDocumentationGenerator(unittest.TestCase):
             self.assertEqual(first_resource["schema"]["fields"], FOREX_COLUMN_FIELDS)
 
     def test_separate_generator_scripts(self) -> None:
-        """Verify each separate generator script runs independently and produces 100% accurate output."""
+        """Each document generator runs on its own and produces the expected output."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             manifold_dir = Path(tmp_dir) / "LemGendizedCodeFormer"
             manifold_dir.mkdir(parents=True, exist_ok=True)
@@ -191,7 +195,15 @@ class TestDocumentationGenerator(unittest.TestCase):
             self.assertEqual(info["name"], "LemGendizedCodeFormer")
 
             # 5. index_json
-            sample_idx = [{"id": 0, "name": "sample_0", "source": "FFHQ", "split": "train", "task": "restoration"}]
+            sample_idx = [
+                {
+                    "id": 0,
+                    "name": "sample_0",
+                    "source": "FFHQ",
+                    "split": "train",
+                    "task": "restoration",
+                }
+            ]
             idx_file = generate_index_json(ctx, final_index=sample_idx)
             self.assertTrue(idx_file.exists())
             with open(idx_file, "r", encoding="utf-8") as jf:

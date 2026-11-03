@@ -44,7 +44,12 @@ class TestLLMCompilerPipeline(unittest.TestCase):
             "messages": [
                 {"role": "system", "content": "You are assistant."},
                 {"role": "user", "content": "Help me."},
-                {"role": "assistant", "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."},
+                {
+                    "role": "assistant",
+                    "content": (
+                        "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."
+                    ),
+                },
             ],
         }
         issues = validator.validate_record(valid)
@@ -65,10 +70,24 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             train_recs = [
-                {"id": "t1", "category": "api_procedure", "messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]}
+                {
+                    "id": "t1",
+                    "category": "api_procedure",
+                    "messages": [
+                        {"role": "user", "content": "q"},
+                        {"role": "assistant", "content": "a"},
+                    ],
+                }
             ]
             val_recs = [
-                {"id": "v1", "category": "api_procedure", "messages": [{"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"}]}
+                {
+                    "id": "v1",
+                    "category": "api_procedure",
+                    "messages": [
+                        {"role": "user", "content": "q2"},
+                        {"role": "assistant", "content": "a2"},
+                    ],
+                }
             ]
             generate_llm_metadata(
                 manifold_dir=tmp,

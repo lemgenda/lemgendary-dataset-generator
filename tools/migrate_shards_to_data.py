@@ -16,7 +16,7 @@ def migrate_shards(
     dry_run: bool = False,
     reverse: bool = False,
 ) -> int:
-    """Rename WebDataset shards under ``datasets_root`` from .tar to .data (or back with ``reverse``)."""
+    """Rename WebDataset shards under ``datasets_root`` .tar to .data, or back (``reverse``)."""
     datasets_root = datasets_root.resolve()
     if not datasets_root.exists() or not datasets_root.is_dir():
         print(f"[ERROR] Datasets directory not found: {datasets_root}")
@@ -68,7 +68,10 @@ def migrate_shards(
     gb_processed = total_bytes / (1024 ** 3)
 
     print("-" * 80)
-    print(f"Migration Complete: {total_renamed} shard(s) migrated across {len(dataset_summary)} dataset(s).")
+    print(
+        f"Migration Complete: {total_renamed} shard(s) migrated across {len(dataset_summary)}"
+        " dataset(s)."
+    )
     print(f"Total Shard Volume: {gb_processed:.2f} GB")
     print(f"Elapsed Time: {elapsed:.2f}s")
     print("=" * 80)
@@ -93,7 +96,9 @@ def main() -> None:
         default=Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets",
         help="Path to LemGendaryDatasets root directory",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Simulate renames without writing changes")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Simulate renames without writing changes"
+    )
     parser.add_argument("--reverse", action="store_true", help="Reverse migration (.data -> .tar)")
     args = parser.parse_args()
 

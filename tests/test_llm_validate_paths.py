@@ -27,7 +27,10 @@ VALID_RECORD = {
     "messages": [
         {"role": "system", "content": "System prompt."},
         {"role": "user", "content": "Help me."},
-        {"role": "assistant", "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."},
+        {
+            "role": "assistant",
+            "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation.",
+        },
     ],
 }
 

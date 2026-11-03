@@ -54,7 +54,10 @@ def finalize_compile(
 
     failed = [o.model_key for o in outcomes if not o.compiled]
     if failed:
-        print(f"[FAILED] Compile produced no samples for: {', '.join(failed)}. Loose images were not purged.")
+        print(
+            f"[FAILED] Compile produced no samples for: {', '.join(failed)}. Loose images were not"
+            " purged."
+        )
         return 1
 
     if purge_loose:
@@ -62,8 +65,10 @@ def finalize_compile(
             if not outcome.sample_based:
                 continue
             if not outcome.containers_written:
-                print(f"[JANITOR] Keeping loose images for {outcome.model_key}: no packed container was "
-                      "written, so the directory layout is the only copy.")
+                print(
+                    f"[JANITOR] Keeping loose images for {outcome.model_key}: no packed container"
+                    " was written, so the directory layout is the only copy."
+                )
                 continue
             removed = purge(outcome.output_root)
             print(f"[JANITOR] Purged loose layout for {outcome.model_key} "

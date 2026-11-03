@@ -36,7 +36,9 @@ class BaseLLMCompiler:
         workspace_root: str | Path | None = None,
     ) -> None:
         self.workspace_root = Path(workspace_root or Path(__file__).resolve().parents[3])
-        self.config_path = Path(config_path or (self.workspace_root / "lemgendary-datasets" / "unified_data.yaml"))
+        self.config_path = Path(
+            config_path or (self.workspace_root / "lemgendary-datasets" / "unified_data.yaml")
+        )
         self.ingestor = KnowledgeIngestor()
         self.chunker = RecursiveChunker()
         self.validator = QualityValidator()
@@ -74,7 +76,10 @@ class BaseLLMCompiler:
             # Check generator module in llm_pipeline or fallback to pack dispatcher
             llm_pipe = cfg.get("llm_pipeline", {})
             gen_module = llm_pipe.get("generator_module")
-            if gen_module == "tools.llm_helper.knowledge_synthesizer" or dataset_key in ("test_llm", "ai_helper_lemgend"):
+            if gen_module == "tools.llm_helper.knowledge_synthesizer" or dataset_key in (
+                "test_llm",
+                "ai_helper_lemgend",
+            ):
                 knowledge_sources = llm_pipe.get("knowledge_sources", [])
                 system_prompt = llm_pipe.get("system_prompt", "")
                 target_samples = int(llm_pipe.get("target_samples", 525))
@@ -91,7 +96,10 @@ class BaseLLMCompiler:
         is_valid, issues = self.validator.validate_corpus(records)
         critical_errors = [iss for iss in issues if iss.severity == "ERROR"]
         if not is_valid:
-            raise ValueError(f"Corpus validation failed with {len(critical_errors)} critical errors: {critical_errors[:5]}")
+            raise ValueError(
+                f"Corpus validation failed with {len(critical_errors)} critical errors:"
+                f" {critical_errors[:5]}"
+            )
 
         # 3. Fallback Stratified Partitioning if not using predefined balanced generator
         if not train_records and not val_records:

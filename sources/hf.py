@@ -36,8 +36,12 @@ def main():
     parser = argparse.ArgumentParser(description="LemGendary HF Downloader")
     parser.add_argument("--repo_id", type=str, required=True, help="Hugging Face Repo ID")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
-    parser.add_argument("--repo_type", type=str, default="model", help="Repository type: model, dataset, space")
-    parser.add_argument("--token_file", type=str, default=".huggingface_token", help="Path to token file")
+    parser.add_argument(
+        "--repo_type", type=str, default="model", help="Repository type: model, dataset, space"
+    )
+    parser.add_argument(
+        "--token_file", type=str, default=".huggingface_token", help="Path to token file"
+    )
     args = parser.parse_args()
 
     # Auth
@@ -69,8 +73,13 @@ def main():
             targets = [f for f in all_files if f.lower() in human_technical_targets]
 
             if not targets:
-                print("[HF] No specific custom/IQA targets found. Falling back to full archives & parquets...")
-                targets = [f for f in all_files if f.endswith(('.tgz', '.tar.gz', '.zip', '.parquet'))]
+                print(
+                    "[HF] No specific custom/IQA targets found. Falling back to full archives &"
+                    " parquets..."
+                )
+                targets = [
+                    f for f in all_files if f.endswith(('.tgz', '.tar.gz', '.zip', '.parquet'))
+                ]
 
         if not targets:
             print("[HF] No specific targets found. Performing full snapshot download...")
@@ -86,7 +95,12 @@ def main():
                 # Resolve output directory
                 if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
                     # Use Path(t_file).name to strip any repo subdirectories (like data/)
-                    slug = Path(t_file).name.replace('.tgz', '').replace('.tar.gz', '').replace('.zip', '')
+                    slug = (
+                        Path(t_file)
+                        .name.replace('.tgz', '')
+                        .replace('.tar.gz', '')
+                        .replace('.zip', '')
+                    )
                     # Extract inside the actual dataset folder (output_dir), not its parent
                     dedicated_dir = Path(args.output_dir) / slug
                 else:
@@ -106,7 +120,10 @@ def main():
                     if path.exists():
                         existing_size = path.stat().st_size
                         headers["Range"] = f"bytes={existing_size}-"
-                        print(f"  [RESUME] Found partial file ({existing_size/(1024*1024):.2f} MB). Picking up...")
+                        print(
+                            f"  [RESUME] Found partial file ({existing_size / (1024 * 1024):.2f}"
+                            " MB). Picking up..."
+                        )
 
                     response = requests.get(url, headers=headers, stream=True, timeout=60)
                     # If 206 Partial Content, we are resuming
@@ -118,15 +135,21 @@ def main():
                         total_size += existing_size
 
                     mode = "ab" if existing_size > 0 else "wb"
-                    with open(path, mode) as f, tqdm(
-                        desc=f"   [DL] {t_file}",
-                        total=total_size,
-                        initial=existing_size,
-                        unit='B',
-                        unit_scale=True,
-                        unit_divisor=1024,
-                        bar_format='{desc}: {bar} | {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
-                    ) as pbar:
+                    with (
+                        open(path, mode) as f,
+                        tqdm(
+                            desc=f"   [DL] {t_file}",
+                            total=total_size,
+                            initial=existing_size,
+                            unit='B',
+                            unit_scale=True,
+                            unit_divisor=1024,
+                            bar_format=(
+                                '{desc}: {bar} | {n_fmt}/{total_fmt} [{elapsed}<{remaining},'
+                                ' {rate_fmt}]'
+                            ),
+                        ) as pbar,
+                    ):
                         for data in response.iter_content(chunk_size=1024*1024):
                             size = f.write(data)
                             pbar.update(size)
@@ -135,9 +158,19 @@ def main():
                     if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
                         smart_extract(path, dedicated_dir, delete_after=True)
                 except _DOWNLOAD_ERRORS as e:
-                    logger.warning("Direct HTTP download of %s failed; falling back to hf_hub_download: %s", t_file, e)
+                    logger.warning(
+                        "Direct HTTP download of %s failed; falling back to hf_hub_download: %s",
+                        t_file,
+                        e,
+                    )
                     print(f"  [WARN] Requests failed, falling back to basic HF-Hub: {e}")
-                    path = hf_hub_download(repo_id=repo_id, filename=t_file, repo_type=args.repo_type, local_dir=dedicated_dir, token=token)
+                    path = hf_hub_download(
+                        repo_id=repo_id,
+                        filename=t_file,
+                        repo_type=args.repo_type,
+                        local_dir=dedicated_dir,
+                        token=token,
+                    )
 
         # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
         print(f"[SWEEP] Scanning {args.output_dir} for unextracted archives...")

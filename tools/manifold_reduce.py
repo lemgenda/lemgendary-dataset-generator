@@ -1,4 +1,7 @@
-"""Create reduced (sampled) variants of compiled manifolds; run as ``python -m tools.manifold_reduce``."""
+"""Create reduced (sampled) variants of compiled manifolds.
+
+Run as ``python -m tools.manifold_reduce``.
+"""
 
 from collections import defaultdict
 import argparse
@@ -86,7 +89,9 @@ def _prompt_multiselect(label, options, default_all=True):
 
 def _select_manifolds(manifolds):
     try:
-        sel = input("\nSelect manifold to reduce (number, comma-separated, or 'a' for all): ").strip()
+        sel = input(
+            "\nSelect manifold to reduce (number, comma-separated, or 'a' for all): "
+        ).strip()
         if not sel:
             return None
         if sel.lower() == 'a':
@@ -136,7 +141,7 @@ def _prompt_reduction_params(max_gb_override=None, suffix_override=None, interac
 
 
 def _find_manifold(manifolds, dataset):
-    """Return the manifold folder named ``dataset`` (exact, case-insensitive; legacy suffix tolerated)."""
+    """Return the manifold folder named ``dataset`` (case-insensitive; legacy suffix allowed)."""
     wanted = dataset.strip().lower()
     old_suffix = str(CONFIG.get("name_suffix", "Large")).lower()
     for m in manifolds:
@@ -200,7 +205,9 @@ def reduce_dataset(
             return 1
 
     for source_root in targets:
-        code = _reduce_one(source_root, max_gb_override, suffix_override, fraction, interactive, dry_run)
+        code = _reduce_one(
+            source_root, max_gb_override, suffix_override, fraction, interactive, dry_run
+        )
         if code != 0:
             return code
     return 0
@@ -260,7 +267,10 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
     share = f", {fraction:.0%} sampling" if fraction is not None else ""
 
     if dry_run:
-        print(f"\n[DRY-RUN] Would reduce {source_root.name} -> {target_name} ({max_gb} GB cap{share}). Nothing written.")
+        print(
+            f"\n[DRY-RUN] Would reduce {source_root.name} -> {target_name} ({max_gb} GB"
+            f" cap{share}). Nothing written."
+        )
         return 0
 
     print(f"\n[REDUCING] {source_root.name} -> {target_name} ({max_gb} GB cap{share})...")
@@ -317,11 +327,19 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
                     sampled_imgs.append(lst.pop())
         sampled_imgs = sampled_imgs[:_sample_count(len(sampled_imgs), fraction)]
 
-        split_limit_bytes = max_gb * (1024 ** 3) * (train_prob if split == "train" else (1 - train_prob))
+        split_limit_bytes = (
+            max_gb * (1024**3) * (train_prob if split == "train" else (1 - train_prob))
+        )
         current_bytes = 0
 
         try:
-            with tqdm(total=split_limit_bytes, desc=f"Copying {split}", unit='B', unit_scale=True, unit_divisor=1024) as pbar:
+            with tqdm(
+                total=split_limit_bytes,
+                desc=f"Copying {split}",
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as pbar:
                 for img_path in sampled_imgs:
                     if current_bytes >= split_limit_bytes:
                         break
@@ -385,12 +403,23 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
 
     remove_empty_dirs(target_root)
     generate_dataset_docs(target_root, new_index, target_name)
-    print("[INFO] Run `lemtrain notebooks generate --all` to regenerate notebooks for reduced datasets.")
+    print(
+        "[INFO] Run `lemtrain notebooks generate --all` to regenerate notebooks for reduced"
+        " datasets."
+    )
     print(f"\n[SUCCESS] Reduced manifold created at {target_root.name}")
     return 0
 
 
-def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fraction=None, suffix_override=None, dry_run=False):
+def _reduce_forex_dataset(
+    source_root,
+    base_name,
+    info,
+    interactive=True,
+    fraction=None,
+    suffix_override=None,
+    dry_run=False,
+):
 
     print(f"\n--- Forex Reduction: {source_root.name} ---")
 
@@ -422,7 +451,10 @@ def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fracti
     avail_years = sorted(avail_years)
 
     if not avail_pairs or not avail_tfs or not avail_years:
-        print(f"[ERROR] No compiled forex data found under {forex_src} (missing pairs, timeframes, or year folders).")
+        print(
+            f"[ERROR] No compiled forex data found under {forex_src} (missing pairs, timeframes, or"
+            " year folders)."
+        )
         return 1
 
     # Non-interactive default keeps every year (or the most recent share of them).
@@ -485,9 +517,14 @@ def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fracti
     target_name = f"{base_name}{suffix}"
     target_root = OUT_PARENT / target_name
 
-    plan = f"  Years: {kept_years[0]} – {kept_years[-1]}  |  Timeframes: {sorted(kept_tfs)}  |  Pairs: all ({len(kept_pairs)})"
+    plan = (
+        f"  Years: {kept_years[0]} – {kept_years[-1]}  |  Timeframes: {sorted(kept_tfs)}  |  Pairs:"
+        f" all ({len(kept_pairs)})"
+    )
     if dry_run:
-        print(f"\n[DRY-RUN] Would reduce forex {source_root.name} -> {target_name}. Nothing written.")
+        print(
+            f"\n[DRY-RUN] Would reduce forex {source_root.name} -> {target_name}. Nothing written."
+        )
         print(plan)
         return 0
 
@@ -562,7 +599,9 @@ def purge_ghost_manifolds():
     for item in OUT_PARENT.iterdir():
         if not item.is_dir() or item.name == ".git":
             continue
-        has_data = any((item / d).exists() for d in ["images", "shards", "index.json", "dataset_info.yaml"])
+        has_data = any(
+            (item / d).exists() for d in ["images", "shards", "index.json", "dataset_info.yaml"]
+        )
         if not has_data:
             ghosts.append(item)
 
@@ -577,13 +616,25 @@ def main(argv=None):
     """Command-line entry point; returns an exit code."""
 
     parser = argparse.ArgumentParser(description="Manifold downsampling and scale reduction")
-    parser.add_argument("--reduce", action="store_true", help="Run dataset reduction flow (default action)")
-    parser.add_argument("--dataset", default=None, help="Manifold folder name to reduce (required with --yes)")
-    parser.add_argument("--fraction", type=float, default=None, help="Share of samples to keep, in (0, 1]")
-    parser.add_argument("--max_gb", "--max-gb", type=float, default=None, help="Target max size in GB")
+    parser.add_argument(
+        "--reduce", action="store_true", help="Run dataset reduction flow (default action)"
+    )
+    parser.add_argument(
+        "--dataset", default=None, help="Manifold folder name to reduce (required with --yes)"
+    )
+    parser.add_argument(
+        "--fraction", type=float, default=None, help="Share of samples to keep, in (0, 1]"
+    )
+    parser.add_argument(
+        "--max_gb", "--max-gb", type=float, default=None, help="Target max size in GB"
+    )
     parser.add_argument("--suffix", default=None, help="Suffix for reduced manifold")
-    parser.add_argument("--yes", "-y", action="store_true", help="Non-interactive: never prompt, use defaults")
-    parser.add_argument("--dry-run", action="store_true", help="Report the plan only; write nothing")
+    parser.add_argument(
+        "--yes", "-y", action="store_true", help="Non-interactive: never prompt, use defaults"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report the plan only; write nothing"
+    )
     args = parser.parse_args(argv)
     return reduce_dataset(
         max_gb_override=args.max_gb,

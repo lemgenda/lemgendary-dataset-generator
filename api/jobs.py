@@ -28,7 +28,7 @@ _LOGS_DIR = _DB_DIR / "logs"
 
 
 class JobManager:
-    """Manages persistent SQLite job registry, background subprocess execution, and log streaming."""
+    """Persistent SQLite job registry, background subprocess execution and log streaming."""
 
     def __init__(self, db_path: Path = _DB_PATH, logs_dir: Path = _LOGS_DIR) -> None:
         self.db_path = db_path
@@ -82,7 +82,10 @@ class JobManager:
                 ),
             )
             if cursor.rowcount > 0:
-                logger.info("Marked %d orphaned jobs as interrupted following server reboot", cursor.rowcount)
+                logger.info(
+                    "Marked %d orphaned jobs as interrupted following server reboot",
+                    cursor.rowcount,
+                )
             conn.commit()
 
     def create_job(
@@ -143,7 +146,9 @@ class JobManager:
     def _execute_job_thread(self, job_id: str, loop: asyncio.AbstractEventLoop) -> None:
         """Worker thread executing the subprocess, writing disk logs, and streaming lines."""
         with self._get_connection() as conn:
-            row = conn.execute("SELECT command, parameters, log_file, job_type FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            row = conn.execute(
+                "SELECT command, parameters, log_file, job_type FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
             if not row:
                 logger.error("Job %s not found for execution", job_id)
                 return
@@ -152,7 +157,10 @@ class JobManager:
             log_file = Path(row["log_file"])
             started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-            conn.execute("UPDATE jobs SET state = ?, started_at = ? WHERE id = ?", (JobState.RUNNING.value, started_at, job_id))
+            conn.execute(
+                "UPDATE jobs SET state = ?, started_at = ? WHERE id = ?",
+                (JobState.RUNNING.value, started_at, job_id),
+            )
             conn.commit()
 
         logger.info("Executing job %s: %s", job_id, " ".join(cmd))
@@ -223,9 +231,11 @@ class JobManager:
                             or "B/s" in clean_line
                         )
 
-                        # Strip outdated ASCII progress bars; the modern GUI progress tracker renders the bar
+                        # Strip ASCII progress bars; the GUI progress tracker renders the bar
                         if is_progress:
-                            clean_line = re.sub(r"(\|[ █━─\-=#]+?\||\[[ █━─\-=#]+?\])", "", clean_line)
+                            clean_line = re.sub(
+                                r"(\|[ █━─\-=#]+?\||\[[ █━─\-=#]+?\])", "", clean_line
+                            )
                             clean_line = re.sub(r"\s{2,}", " ", clean_line).strip()
 
                         global_log = {
@@ -255,7 +265,9 @@ class JobManager:
             exit_code = 1
             error_message = str(exc)
         else:
-            error_message = None if exit_code == 0 else f"Process exited with non-zero status code: {exit_code}"
+            error_message = (
+                None if exit_code == 0 else f"Process exited with non-zero status code: {exit_code}"
+            )
         finally:
             with self._lock:
                 if job_id in self.active_processes:
@@ -266,7 +278,9 @@ class JobManager:
 
         # Check if process was actively cancelled
         with self._get_connection() as conn:
-            current_state = conn.execute("SELECT state FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            current_state = conn.execute(
+                "SELECT state FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
             if current_state and current_state["state"] == JobState.CANCELLED.value:
                 final_state = JobState.CANCELLED
 
@@ -280,9 +294,14 @@ class JobManager:
             )
             conn.commit()
 
-        logger.info("Job %s finalized with state: %s (exit code: %s)", job_id, final_state.value, exit_code)
+        logger.info(
+            "Job %s finalized with state: %s (exit code: %s)", job_id, final_state.value, exit_code
+        )
         # Notify WebSocket subscribers of completion
-        terminal_event = f"\n[PROCESS_TERMINATED] Job {job_id} {final_state.value.upper()} (Exit Code: {exit_code})\n"
+        terminal_event = (
+            f"\n[PROCESS_TERMINATED] Job {job_id} {final_state.value.upper()} (Exit Code:"
+            f" {exit_code})\n"
+        )
         asyncio.run_coroutine_threadsafe(
             manager.broadcast_job_log(job_id, terminal_event),
             loop,
@@ -292,7 +311,10 @@ class JobManager:
             "type": "event",
             "step_name": "Compiler",
             "status": "success" if final_state == JobState.COMPLETED else "error",
-            "message": f"[JOB_{final_state.value.upper()}] Job {job_id} ({row['job_type']}) finished with exit code {exit_code}",
+            "message": (
+                f"[JOB_{final_state.value.upper()}] Job {job_id} ({row['job_type']}) finished with"
+                f" exit code {exit_code}"
+            ),
             "timestamp": completed_at,
         }
         asyncio.run_coroutine_threadsafe(
@@ -314,7 +336,13 @@ class JobManager:
         with self._get_connection() as conn:
             conn.execute(
                 "UPDATE jobs SET state = ?, error_message = ? WHERE id = ? AND state IN (?, ?)",
-                (JobState.CANCELLED.value, "Process cancelled by user request.", job_id, JobState.PENDING.value, JobState.RUNNING.value),
+                (
+                    JobState.CANCELLED.value,
+                    "Process cancelled by user request.",
+                    job_id,
+                    JobState.PENDING.value,
+                    JobState.RUNNING.value,
+                ),
             )
             conn.commit()
             return conn.total_changes > 0
@@ -413,7 +441,9 @@ class JobManager:
         try:
             params = json.loads(row["parameters"])
         except (TypeError, ValueError) as exc:
-            logger.warning("Job %s has unparseable parameters JSON; using empty parameters: %s", row["id"], exc)
+            logger.warning(
+                "Job %s has unparseable parameters JSON; using empty parameters: %s", row["id"], exc
+            )
             params = {}
 
         return self._build_response(

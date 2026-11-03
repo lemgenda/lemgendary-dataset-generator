@@ -92,7 +92,11 @@ def regenerate_all_docs(
     """Regenerate documentation for all existing manifolds discovered in workspace."""
     if datasets_dir is None:
         cand = Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets"
-        datasets_dir = cand if cand.exists() else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+        datasets_dir = (
+            cand
+            if cand.exists()
+            else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+        )
     datasets_dir = Path(datasets_dir).resolve()
 
     if not datasets_dir.exists():
@@ -135,13 +139,21 @@ regenerate_all_non_forex = regenerate_all_docs
 def main() -> None:
     """Command-line entrypoint for LemGendary Dataset Documentation Orchestrator."""
     parser = argparse.ArgumentParser(description="LemGendary Dataset Doc Orchestrator")
-    parser.add_argument("--all", action="store_true", help="Regenerate documentation for all manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Specific manifold folder name or path")
+    parser.add_argument(
+        "--all", action="store_true", help="Regenerate documentation for all manifolds"
+    )
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Specific manifold folder name or path"
+    )
     parser.add_argument("--force-images", action="store_true", help="Force regenerate cover images")
     args = parser.parse_args()
 
     cand_root = Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets"
-    datasets_root = cand_root if cand_root.exists() else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+    datasets_root = (
+        cand_root
+        if cand_root.exists()
+        else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+    )
 
     if args.manifold:
         m_path = Path(args.manifold)

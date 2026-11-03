@@ -44,7 +44,9 @@ class AtmosphericHaze:
         grid = np.mgrid[0:h, 0:w]
         yy = grid[0].astype(np.float32)
         xx = grid[1].astype(np.float32)
-        base_depth = 1.0 - (yy / max(1.0, float(h))) * 0.7  # distant at top (1.0), near at bottom (0.3)
+        base_depth = (
+            1.0 - (yy / max(1.0, float(h))) * 0.7
+        )  # distant at top (1.0), near at bottom (0.3)
 
         # Subtle spatial perturbation to depth map
         noise_phase_x = np_rng.uniform(0.0, 2.0 * np.pi)

@@ -28,7 +28,11 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 
 class LLMCompileRequest(BaseModel):
     """Request payload for compiling an LLM instruction dataset."""
-    dataset_key: str = Field(..., description="Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)")
+
+    dataset_key: str = Field(
+        ...,
+        description="Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)",
+    )
     target_samples: int | None = Field(None, description="Override target sample count")
     async_mode: bool = Field(False, description="Run compilation as a background worker job")
 
@@ -43,7 +47,9 @@ class LLMValidationRequest(BaseModel):
             "are accepted only when they resolve inside the dataset root."
         ),
     )
-    records: list[dict[str, Any]] | None = Field(None, description="Inline list of records to validate")
+    records: list[dict[str, Any]] | None = Field(
+        None, description="Inline list of records to validate"
+    )
 
 
 @router.post("/compile")
@@ -55,7 +61,15 @@ async def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
     compile path runs in a worker thread so it never blocks that loop.
     """
     if req.async_mode:
-        cmd = [venv_python(), "cli.py", "llm", "compile", "--dataset", req.dataset_key, "--no-server"]
+        cmd = [
+            venv_python(),
+            "cli.py",
+            "llm",
+            "compile",
+            "--dataset",
+            req.dataset_key,
+            "--no-server",
+        ]
         job = job_manager.create_job(
             job_type=JobType.LLM,
             command=cmd,
@@ -107,7 +121,9 @@ def resolve_corpus_path(raw_path: str) -> Path:
             detail=f"Path is outside the dataset root and cannot be validated: {raw_path}",
         )
     if not resolved.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {raw_path}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {raw_path}"
+        )
     return resolved
 
 
@@ -124,9 +140,14 @@ def validate_llm_corpus(req: LLMValidationRequest) -> dict[str, Any]:
             with open(corpus_path, "r", encoding="utf-8") as f:
                 records = [json.loads(line) for line in f if line.strip()]
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to parse JSONL file: {exc}") from exc
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to parse JSONL file: {exc}"
+            ) from exc
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Must provide either file_path or records")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Must provide either file_path or records",
+        )
 
     validator = QualityValidator()
     is_valid, issues = validator.validate_corpus(records)

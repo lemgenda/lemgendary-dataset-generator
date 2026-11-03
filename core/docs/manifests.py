@@ -64,7 +64,7 @@ def _introspect_root_resources(
     output_root: Path,
     manifold_name: str,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Introspect files and subdirectories directly in output_root and return Frictionless resource descriptors."""
+    """Return Frictionless resource descriptors for the entries directly in output_root."""
     ctx = resolve_manifold_context(output_root, pascal_name=manifold_name)
     return introspect_root_resources(output_root, ctx)
 

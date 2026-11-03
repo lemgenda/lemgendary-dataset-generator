@@ -1,4 +1,7 @@
-"""Modernize and reduce plumbing: scope, dry-run, force and non-interactive reduce (review D-05, D-06, D-09)."""
+"""Modernize and reduce plumbing: scope, dry-run, force and non-interactive reduce.
+
+Covers review findings D-05, D-06 and D-09.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +30,9 @@ from services.migration_service import MigrationService
 from tools import modernization_queue
 
 # tools.manifold_reduce imports core.compiler_core, which needs the heavy compile stack.
-HAS_REDUCE_DEPS = all(importlib.util.find_spec(m) is not None for m in ("pandas", "torch", "webdataset"))
+HAS_REDUCE_DEPS = all(
+    importlib.util.find_spec(m) is not None for m in ("pandas", "torch", "webdataset")
+)
 requires_reduce_deps = unittest.skipUnless(
     HAS_REDUCE_DEPS, "tools.manifold_reduce needs pandas, torch and webdataset"
 )
@@ -38,7 +43,9 @@ def _manifold_reduce():
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:
-    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+    return {
+        str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()
+    }
 
 
 def _make_datasets_root(root: Path) -> Path:
@@ -97,7 +104,12 @@ class TestModernizationQueueSafety(unittest.TestCase):
         """Dry run lists the zip and legacy folder it would delete."""
         alpha = next(it for it in self._items() if it.key == "alpha")
         plan = modernization_queue.describe_planned_actions(
-            alpha, push_kaggle=False, delete_zip=True, delete_legacy_dir=True, purge_loose=False, force=False
+            alpha,
+            push_kaggle=False,
+            delete_zip=True,
+            delete_legacy_dir=True,
+            purge_loose=False,
+            force=False,
         )
         self.assertTrue(any("would delete zip" in line for line in plan))
         self.assertTrue(any("would delete legacy folder" in line for line in plan))
@@ -171,7 +183,11 @@ class TestModernizeRoute(unittest.TestCase):
         """The run route creates a job with the built command."""
         with patch.object(modernize_route, "job_manager") as jm:
             jm.create_job.return_value.id = "job-1"
-            asyncio.run(modernize_route.run_modernization(ModernizeRunRequest(dataset="alpha", dry_run=True)))
+            asyncio.run(
+                modernize_route.run_modernization(
+                    ModernizeRunRequest(dataset="alpha", dry_run=True)
+                )
+            )
         cmd = jm.create_job.call_args.kwargs["command"]
         self.assertIn("--dry-run", cmd)
         jm.start_job.assert_called_once()
@@ -203,7 +219,9 @@ class TestReduceRoute(unittest.TestCase):
     def test_command_is_accepted_by_tool_parser(self) -> None:
         """The tool's real argparse accepts the route's arguments; no input() may be called."""
         manifold_reduce = _manifold_reduce()
-        cmd = build_reduce_command(ManifoldReduceRequest(manifold="LemGendizedAlpha", scale=0.5, dry_run=True))
+        cmd = build_reduce_command(
+            ManifoldReduceRequest(manifold="LemGendizedAlpha", scale=0.5, dry_run=True)
+        )
         with patch.object(manifold_reduce, "reduce_dataset", return_value=0) as reduce_fn, \
                 patch("builtins.input", side_effect=AssertionError("input() called")):
             self.assertEqual(manifold_reduce.main(cmd[2:]), 0)
@@ -248,7 +266,9 @@ class TestNonInteractiveReduce(unittest.TestCase):
     def test_dry_run_writes_nothing(self) -> None:
         """Dry run writes nothing."""
         before = _snapshot(self.out)
-        code = self.mr.reduce_dataset(dataset="LemGendizedAlpha", fraction=0.5, assume_yes=True, dry_run=True)
+        code = self.mr.reduce_dataset(
+            dataset="LemGendizedAlpha", fraction=0.5, assume_yes=True, dry_run=True
+        )
         self.assertEqual(code, 0)
         self.assertEqual(_snapshot(self.out), before)
 
@@ -261,7 +281,9 @@ class TestNonInteractiveReduce(unittest.TestCase):
 
     def test_invalid_fraction_rejected(self) -> None:
         """A fraction above 1 is rejected."""
-        self.assertEqual(self.mr.reduce_dataset(dataset="LemGendizedAlpha", fraction=1.5, assume_yes=True), 1)
+        self.assertEqual(
+            self.mr.reduce_dataset(dataset="LemGendizedAlpha", fraction=1.5, assume_yes=True), 1
+        )
 
 
 class TestCliModernize(unittest.TestCase):
@@ -269,7 +291,9 @@ class TestCliModernize(unittest.TestCase):
     def test_modernize_manifolds_is_reachable(self) -> None:
         """modernize manifolds calls MigrationService.modernize_manifolds."""
         with patch.object(MigrationService, "modernize_manifolds", return_value=0) as svc:
-            result = CliRunner().invoke(cli.app, ["modernize", "manifolds", "--dry-run", "--datasets", "a,b"])
+            result = CliRunner().invoke(
+                cli.app, ["modernize", "manifolds", "--dry-run", "--datasets", "a,b"]
+            )
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertTrue(svc.call_args.kwargs["dry_run"])
         self.assertEqual(svc.call_args.kwargs["datasets"], "a,b")
@@ -277,17 +301,22 @@ class TestCliModernize(unittest.TestCase):
     def test_modernize_run_uses_queue_service(self) -> None:
         """modernize run passes its options to the queue's main."""
         with patch.object(modernization_queue, "main", return_value=0) as qmain:
-            result = CliRunner().invoke(cli.app, ["modernize", "run", "--dataset", "alpha", "--dry-run", "--force"])
+            result = CliRunner().invoke(
+                cli.app, ["modernize", "run", "--dataset", "alpha", "--dry-run", "--force"]
+            )
         self.assertEqual(result.exit_code, 0, result.output)
         args = qmain.call_args.args[0]
-        self.assertEqual(args, modernization_queue.build_queue_args(datasets=["alpha"], dry_run=True, force=True))
+        self.assertEqual(
+            args, modernization_queue.build_queue_args(datasets=["alpha"], dry_run=True, force=True)
+        )
 
     def test_reduce_yes_passes_through(self) -> None:
         """reduce and modernize reduce pass --yes to MigrationService.reduce_manifolds."""
         for command in (["reduce"], ["modernize", "reduce"]):
             with patch.object(MigrationService, "reduce_manifolds", return_value=0) as svc:
                 result = CliRunner().invoke(
-                    cli.app, [*command, "--dataset", "LemGendizedAlpha", "--fraction", "0.5", "--yes"]
+                    cli.app,
+                    [*command, "--dataset", "LemGendizedAlpha", "--fraction", "0.5", "--yes"],
                 )
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertTrue(svc.call_args.kwargs["yes"])

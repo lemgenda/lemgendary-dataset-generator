@@ -36,7 +36,10 @@ VALID_RECORD = {
     "messages": [
         {"role": "system", "content": "System prompt."},
         {"role": "user", "content": "Help me."},
-        {"role": "assistant", "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."},
+        {
+            "role": "assistant",
+            "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation.",
+        },
     ],
 }
 
@@ -49,7 +52,9 @@ class _StubCommandJobManager(JobManager):
         self.stub_code = stub_code
         self.requested: list[dict[str, Any]] = []
 
-    def create_job(self, job_type: JobType, command: list[str], parameters: dict[str, Any]) -> JobResponse:
+    def create_job(
+        self, job_type: JobType, command: list[str], parameters: dict[str, Any]
+    ) -> JobResponse:
         self.requested.append({"job_type": job_type, "command": command})
         return super().create_job(job_type, [sys.executable, "-c", self.stub_code], parameters)
 
@@ -63,14 +68,18 @@ class TestAsyncLLMCompileJob(unittest.TestCase):
         app = FastAPI()
         app.include_router(llm_routes.router, prefix="/api")
         with patch.object(llm_routes, "job_manager", manager), TestClient(app) as client:
-            resp = client.post("/api/llm/compile", json={"dataset_key": "test_llm", "async_mode": True})
+            resp = client.post(
+                "/api/llm/compile", json={"dataset_key": "test_llm", "async_mode": True}
+            )
             self.assertEqual(resp.status_code, 200, resp.text)
             body = resp.json()
             self.assertEqual(body["status"], "enqueued")
             job_id = body["job_id"]
             # The runner thread uses the app's event loop for broadcasts, so
             # join it before the TestClient shuts that loop down.
-            runner = next((t for t in threading.enumerate() if t.name == f"job-runner-{job_id}"), None)
+            runner = next(
+                (t for t in threading.enumerate() if t.name == f"job-runner-{job_id}"), None
+            )
             if runner is not None:
                 runner.join(timeout=30)
             job = manager.get_job(job_id)
@@ -142,16 +151,22 @@ class TestWaitForJob(unittest.TestCase):
                 raise item
             return item
 
-        return wait_for_job(fetch, timeout_s=timeout_s, poll_interval_s=1.0, sleep=clock.sleep, clock=clock)
+        return wait_for_job(
+            fetch, timeout_s=timeout_s, poll_interval_s=1.0, sleep=clock.sleep, clock=clock
+        )
 
     def test_completed_exits_zero(self) -> None:
         """A completed job gives exit code 0."""
-        result = self._wait([{"state": "pending"}, {"state": "running"}, {"state": "completed", "exit_code": 0}])
+        result = self._wait(
+            [{"state": "pending"}, {"state": "running"}, {"state": "completed", "exit_code": 0}]
+        )
         self.assertEqual((result.state, result.exit_code), ("completed", 0))
 
     def test_failed_propagates_exit_code(self) -> None:
         """A failed job passes its exit code and error message through."""
-        result = self._wait([{"state": "running"}, {"state": "failed", "exit_code": 2, "error_message": "boom"}])
+        result = self._wait(
+            [{"state": "running"}, {"state": "failed", "exit_code": 2, "error_message": "boom"}]
+        )
         self.assertEqual((result.state, result.exit_code, result.detail), ("failed", 2, "boom"))
 
     def test_cancelled_without_exit_code_is_non_zero(self) -> None:
@@ -172,7 +187,9 @@ class TestWaitForJob(unittest.TestCase):
 
     def test_transient_status_errors_are_retried(self) -> None:
         """A transient status error is retried."""
-        result = self._wait([JobStatusError("connection reset"), {"state": "completed", "exit_code": 0}])
+        result = self._wait(
+            [JobStatusError("connection reset"), {"state": "completed", "exit_code": 0}]
+        )
         self.assertEqual(result.exit_code, 0)
 
 
@@ -194,11 +211,17 @@ class TestCliLLMCompilePolling(unittest.TestCase):
                 return _response(200, {"job_id": "job-1", "logs": "stub log line\n"})
             return _response(200, next(states, job_states[-1]))
 
-        with patch.object(cli, "_is_server_available", return_value=True), \
-                patch.object(cli, "get_or_create_token", return_value="token"), \
-                patch.object(cli, "JOB_POLL_INTERVAL_S", 0.01), \
-                patch.object(cli.requests, "post", return_value=_response(200, {"status": "enqueued", "job_id": "job-1"})), \
-                patch.object(cli.requests, "get", side_effect=fake_get):
+        with (
+            patch.object(cli, "_is_server_available", return_value=True),
+            patch.object(cli, "get_or_create_token", return_value="token"),
+            patch.object(cli, "JOB_POLL_INTERVAL_S", 0.01),
+            patch.object(
+                cli.requests,
+                "post",
+                return_value=_response(200, {"status": "enqueued", "job_id": "job-1"}),
+            ),
+            patch.object(cli.requests, "get", side_effect=fake_get),
+        ):
             return CliRunner().invoke(cli.app, ["llm", "compile", "--dataset", "test_llm", *extra])
 
     def test_exits_zero_on_completed(self) -> None:
@@ -209,7 +232,9 @@ class TestCliLLMCompilePolling(unittest.TestCase):
 
     def test_exits_with_job_code_on_failed(self) -> None:
         """A failed job exits with the job's code and prints its error."""
-        result = self._invoke([{"state": "failed", "exit_code": 4, "error_message": "compile crashed"}])
+        result = self._invoke(
+            [{"state": "failed", "exit_code": 4, "error_message": "compile crashed"}]
+        )
         self.assertEqual(result.exit_code, 4, result.output)
         self.assertIn("compile crashed", result.output)
 
@@ -225,7 +250,9 @@ class TestCliLLMCompilePolling(unittest.TestCase):
         """An in-process compile failure exits 1 and prints the traceback."""
         with patch("tools.llm_helper.base_compiler.BaseLLMCompiler") as compiler:
             compiler.return_value.compile_manifold.side_effect = KeyError("test_llm")
-            result = CliRunner().invoke(cli.app, ["llm", "compile", "--dataset", "test_llm", "--no-server"])
+            result = CliRunner().invoke(
+                cli.app, ["llm", "compile", "--dataset", "test_llm", "--no-server"]
+            )
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Traceback", result.output)
 

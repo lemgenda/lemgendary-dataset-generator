@@ -153,8 +153,11 @@ def main() -> int:
                         help="Proceed despite WARN-tier hardlink fraction")
     parser.add_argument("--accept-space-loss", action="store_true",
                         help="Proceed despite BLOCK-tier hardlink fraction")
-    parser.add_argument("--purge-source", action="store_true",
-                        help="Remove source directories after migration (requires --accept-space-loss)")
+    parser.add_argument(
+        "--purge-source",
+        action="store_true",
+        help="Remove source directories after migration (requires --accept-space-loss)",
+    )
     args = parser.parse_args()
 
     root = Path(args.manifold)

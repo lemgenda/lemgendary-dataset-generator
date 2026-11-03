@@ -130,7 +130,11 @@ def setup_kaggle_auth(
         os.environ["KAGGLE_API_TOKEN"] = custom_token
     if custom_user:
         os.environ["KAGGLE_USERNAME"] = custom_user
-    _root = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
+    _root = (
+        Path(__file__).resolve().parent.parent
+        if Path(__file__).parent.name == "core"
+        else Path(__file__).resolve().parent
+    )
     token_file = _root / ".kaggle_token"
     if not token_file.exists():
         token_file = Path(__file__).parent / ".kaggle_token"
@@ -177,7 +181,9 @@ def setup_kaggle_auth(
     )
 
 
-def robust_staging_cleanup(staging_dir: Path, target_zip: Path | None = None, max_retries: int = 5) -> bool:
+def robust_staging_cleanup(
+    staging_dir: Path, target_zip: Path | None = None, max_retries: int = 5
+) -> bool:
     """Robustly purge staging archive and directory on Windows with GC and retry backoff."""
     gc.collect()
     time.sleep(0.5)
@@ -193,7 +199,10 @@ def robust_staging_cleanup(staging_dir: Path, target_zip: Path | None = None, ma
                 gc.collect()
                 time.sleep(0.5 * (attempt + 1))
         if not deleted and target_zip.exists():
-            print(f"[WARN] Staging archive {target_zip.name} remained locked. Directory purge will attempt removal.")
+            print(
+                f"[WARN] Staging archive {target_zip.name} remained locked. Directory purge will"
+                " attempt removal."
+            )
 
     if staging_dir.exists():
         deleted_dir = False
@@ -206,7 +215,10 @@ def robust_staging_cleanup(staging_dir: Path, target_zip: Path | None = None, ma
                 gc.collect()
                 time.sleep(0.5 * (attempt + 1))
         if not deleted_dir and staging_dir.exists():
-            print(f"[WARN] Staging directory {staging_dir.name} retained file locks. Scheduled for background sweep.")
+            print(
+                f"[WARN] Staging directory {staging_dir.name} retained file locks. Scheduled for"
+                " background sweep."
+            )
             return False
     return True
 
@@ -279,7 +291,9 @@ def get_dataset_version_info(repo_id: str) -> DatasetVersionInfo:
             resp = client.datasets.dataset_api_client.get_dataset(req)
             curr = resp.current_version_number or 0
             raw_versions = resp.versions or []
-            valid_versions = [v for v in raw_versions if v is not None and v.version_number is not None]
+            valid_versions = [
+                v for v in raw_versions if v is not None and v.version_number is not None
+            ]
             max_v = max((v.version_number for v in valid_versions), default=curr)
             versions_dict: dict[int, str] = {
                 v.version_number: v.status or ""
@@ -314,7 +328,9 @@ def get_dataset_status(repo_id: str) -> str | None:
         logger.debug("Kaggle API dataset_status failed, falling back to the Kaggle CLI: %s", exc)
 
     try:
-        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        cflags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        )
         res = subprocess.run(
             ["kaggle", "datasets", "status", clean_handle],
             capture_output=True,
@@ -359,7 +375,10 @@ def track_kaggle_dataset_status(
             return True
 
     target_ver: int = target_version
-    print(f"\n[KAGGLE] Monitoring server-side extraction for '{clean_handle}' (Target Version: {target_ver})...")
+    print(
+        f"\n[KAGGLE] Monitoring server-side extraction for '{clean_handle}' (Target Version:"
+        f" {target_ver})..."
+    )
     start_time = time.time()
 
     pbar = tqdm(
@@ -385,16 +404,29 @@ def track_kaggle_dataset_status(
                 pbar.refresh()
                 pbar.close()
                 elapsed_sec = int(time.time() - start_time)
-                print(f"KAGGLE EXTRACTION: {clean_handle} - 100% [{elapsed_sec}s, COMPLETE]", flush=True)
-                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' version {target_ver} is ready.", flush=True)
+                print(
+                    f"KAGGLE EXTRACTION: {clean_handle} - 100% [{elapsed_sec}s, COMPLETE]",
+                    flush=True,
+                )
+                print(
+                    f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}'"
+                    f" version {target_ver} is ready.",
+                    flush=True,
+                )
                 return True
             if status_val in ["error", "failed"]:
                 pbar.set_postfix_str("FAILED")
                 pbar.refresh()
                 pbar.close()
                 elapsed_sec = int(time.time() - start_time)
-                print(f"KAGGLE EXTRACTION: {clean_handle} - 0% [{elapsed_sec}s, FAILED]", flush=True)
-                print(f"\n[ERROR] Kaggle reports extraction/processing failed for version {target_ver}.", flush=True)
+                print(
+                    f"KAGGLE EXTRACTION: {clean_handle} - 0% [{elapsed_sec}s, FAILED]", flush=True
+                )
+                print(
+                    "\n[ERROR] Kaggle reports extraction/processing failed for version"
+                    f" {target_ver}.",
+                    flush=True,
+                )
                 return False
 
             file_pct = None
@@ -403,9 +435,15 @@ def track_kaggle_dataset_status(
                     with build_kaggle_client() as client:
                         sreq = ApiGetDatasetFilesSummaryRequest()
                         sreq.owner_slug = owner
-                        sreq.dataset_slug = clean_handle.split("/")[1] if "/" in clean_handle else clean_handle
+                        sreq.dataset_slug = (
+                            clean_handle.split("/")[1] if "/" in clean_handle else clean_handle
+                        )
                         sresp = client.datasets.dataset_api_client.get_dataset_files_summary(sreq)
-                        summary_files = getattr(sresp, "files", None) or getattr(sresp, "dataset_files", None) or []
+                        summary_files = (
+                            getattr(sresp, "files", None)
+                            or getattr(sresp, "dataset_files", None)
+                            or []
+                        )
                         cur_files = len(summary_files)
                         if cur_files > 0:
                             file_pct = min(99.0, (cur_files / expected_files) * 100.0)
@@ -431,16 +469,28 @@ def track_kaggle_dataset_status(
                 pbar.refresh()
                 pbar.close()
                 elapsed_sec = int(time.time() - start_time)
-                print(f"KAGGLE EXTRACTION: {clean_handle} - 100% [{elapsed_sec}s, COMPLETE]", flush=True)
-                print(f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' is ready.", flush=True)
+                print(
+                    f"KAGGLE EXTRACTION: {clean_handle} - 100% [{elapsed_sec}s, COMPLETE]",
+                    flush=True,
+                )
+                print(
+                    f"[SUCCESS] Kaggle server-side extraction complete! Dataset '{clean_handle}' is"
+                    " ready.",
+                    flush=True,
+                )
                 return True
             if raw_status and raw_status.lower() in ["error", "failed"]:
                 pbar.set_postfix_str("FAILED")
                 pbar.refresh()
                 pbar.close()
                 elapsed_sec = int(time.time() - start_time)
-                print(f"KAGGLE EXTRACTION: {clean_handle} - 0% [{elapsed_sec}s, FAILED]", flush=True)
-                print(f"\n[ERROR] Kaggle reports processing failed for dataset '{clean_handle}'.", flush=True)
+                print(
+                    f"KAGGLE EXTRACTION: {clean_handle} - 0% [{elapsed_sec}s, FAILED]", flush=True
+                )
+                print(
+                    f"\n[ERROR] Kaggle reports processing failed for dataset '{clean_handle}'.",
+                    flush=True,
+                )
                 return False
 
             simulated_pct = min(90.0, (time.time() - start_time) / 180.0 * 75.0)
@@ -453,12 +503,19 @@ def track_kaggle_dataset_status(
         elapsed_sec = int(time.time() - start_time)
         pct_display = int(pbar.n)
         status_postfix = pbar.postfix or "PROCESSING"
-        print(f"KAGGLE EXTRACTION: {clean_handle} - {pct_display}% [{elapsed_sec}s, {status_postfix}]", flush=True)
+        print(
+            f"KAGGLE EXTRACTION: {clean_handle} - {pct_display}% [{elapsed_sec}s,"
+            f" {status_postfix}]",
+            flush=True,
+        )
 
         time.sleep(poll_interval)
 
     pbar.close()
-    print(f"\n[TIMEOUT] Monitoring timed out after {timeout} seconds. Dataset may still be processing on Kaggle.")
+    print(
+        f"\n[TIMEOUT] Monitoring timed out after {timeout} seconds. Dataset may still be processing"
+        " on Kaggle."
+    )
     return False
 
 
@@ -471,10 +528,16 @@ def _verify_or_create_staging_zip(
 ) -> None:
     can_reuse = False
     if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
-        print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
+        print(
+            f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f}"
+            " GB). Verifying..."
+        )
         if target_zip.stat().st_mtime >= newest_src_mtime and verify_archive(target_zip):
             can_reuse = True
-            print("[SYNC] Existing staging archive is valid and up to date. Skipping compression and resuming upload...")
+            print(
+                "[SYNC] Existing staging archive is valid and up to date. Skipping compression and"
+                " resuming upload..."
+            )
         else:
             print("[SYNC] Existing archive is outdated or invalid. Re-creating...")
             try:
@@ -484,7 +547,9 @@ def _verify_or_create_staging_zip(
 
     if not can_reuse:
         print(f"[SYNC] Archiving manifold '{src_path.name}' ({file_count} files)...")
-        success = create_archive(src_path, target_zip, archive_format="zip", root_dir=root_datasets_dir)
+        success = create_archive(
+            src_path, target_zip, archive_format="zip", root_dir=root_datasets_dir
+        )
         if not success or not target_zip.exists():
             raise RuntimeError(f"Archive creation failed for {src_path}")
 
@@ -497,7 +562,12 @@ def is_kaggle_large_manifold(repo_id: str) -> bool:
     elif clean.startswith("kaggle://"):
         clean = clean.replace("kaggle://", "").strip("/")
     slug = clean.split("/")[-1].lower() if "/" in clean else clean.lower()
-    return slug.endswith("large") or "manifoldlarge" in slug or "large" in slug.split("_") or "large" in slug.split("-")
+    return (
+        slug.endswith("large")
+        or "manifoldlarge" in slug
+        or "large" in slug.split("_")
+        or "large" in slug.split("-")
+    )
 
 
 def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: str = "") -> bool:
@@ -508,7 +578,10 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
     README.md is pushed first, making the slug addressable before the actual upload.
     """
     if is_kaggle_large_manifold(clean_repo_id):
-        print(f"[SAFEGUARD] Refusing to create placeholder for legacy *large manifold: {clean_repo_id}")
+        print(
+            "[SAFEGUARD] Refusing to create placeholder for legacy *large manifold:"
+            f" {clean_repo_id}"
+        )
         return False
 
     version_info = get_dataset_version_info(clean_repo_id)
@@ -518,7 +591,10 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     slug = clean_repo_id.split("/")[1] if "/" in clean_repo_id else clean_repo_id
 
-    print(f"[INIT] Dataset '{clean_repo_id}' not found on Kaggle. Creating empty public placeholder...")
+    print(
+        f"[INIT] Dataset '{clean_repo_id}' not found on Kaggle. Creating empty public"
+        " placeholder..."
+    )
 
     with tempfile.TemporaryDirectory() as td:
         tmp_dir = Path(td)
@@ -558,11 +634,17 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
             if resp and getattr(resp, "status", None) == "error":
                 err_msg = getattr(resp, "error", str(resp))
                 if "already in use" in str(err_msg):
-                    print(f"[INIT] Dataset '{clean_repo_id}' already exists on Kaggle (concurrent creation). Proceeding.")
+                    print(
+                        f"[INIT] Dataset '{clean_repo_id}' already exists on Kaggle (concurrent"
+                        " creation). Proceeding."
+                    )
                     return True
                 print(f"[ERROR] Failed to create Kaggle dataset '{clean_repo_id}': {err_msg}")
                 return False
-            print(f"[OK] [INIT] Kaggle dataset '{clean_repo_id}' created successfully. Ready for data upload.")
+            print(
+                f"[OK] [INIT] Kaggle dataset '{clean_repo_id}' created successfully. Ready for data"
+                " upload."
+            )
             return True
         except KAGGLE_CLIENT_ERRORS as exc:
             err_str = str(exc)
@@ -596,7 +678,10 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
 
     # Ensure the Kaggle dataset exists before uploading (prevents 403 on metadata update)
     if not ensure_kaggle_dataset_exists(clean_repo_id, title=dataset_title):
-        print(f"[WARN] Could not pre-create Kaggle dataset '{clean_repo_id}'. Upload may still succeed if dataset exists.")
+        print(
+            f"[WARN] Could not pre-create Kaggle dataset '{clean_repo_id}'. Upload may still"
+            " succeed if dataset exists."
+        )
 
     version_info = get_dataset_version_info(clean_repo_id)
     target_version: int = (version_info["latest_version"] or 0) + 1
@@ -618,7 +703,9 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
     staging_dir.mkdir(parents=True, exist_ok=True)
     target_zip = staging_dir / f"{manifold_name}.zip"
 
-    _verify_or_create_staging_zip(src_path, target_zip, root_datasets_dir, file_count, newest_src_mtime)
+    _verify_or_create_staging_zip(
+        src_path, target_zip, root_datasets_dir, file_count, newest_src_mtime
+    )
 
     zip_size_gb = target_zip.stat().st_size / (1024**3)
     print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
@@ -635,7 +722,8 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
                     kwargs.setdefault("dynamic_ncols", False)
                     kwargs.setdefault(
                         "bar_format",
-                        "{desc} - {percentage:3.0f}% [{n_fmt}/{total_fmt}, {elapsed}<{remaining}, {rate_fmt}]",
+                        "{desc} - {percentage:3.0f}% [{n_fmt}/{total_fmt}, {elapsed}<{remaining},"
+                        " {rate_fmt}]",
                     )
                     return _orig_tqdm(*args, **kwargs)
 
@@ -647,7 +735,10 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
     except KAGGLE_REMOTE_ERRORS as e:
         logger.error("Kaggle upload of %s failed: %s", clean_repo_id, e)
         print(f"[ERROR] Upload failed: {e}")
-        print(f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next attempt.")
+        print(
+            f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next"
+            " attempt."
+        )
         return False
     finally:
         if upload_success:
@@ -665,7 +756,7 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
             print(f"[WARN] Kaggle metadata update notice: {meta_ex}")
 
     if not no_wait:
-        # Scale timeout dynamically: base 30m + 3m per GB + 2m per 10k files (up to 4 hours for massive manifolds)
+        # Timeout: 30 min + 3 min per GB + 2 min per 10k files, capped at 4 hours
         size_timeout_sec = int(zip_size_gb * 180)
         file_timeout_sec = (file_count // 10000) * 120
         dynamic_timeout = max(1800, min(14400, 1800 + size_timeout_sec + file_timeout_sec))
@@ -712,17 +803,23 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     slug = clean_handle.split("/")[1] if "/" in clean_handle else clean_handle
     setup_kaggle_auth(default_user=owner)
 
-    meta_file = metadata_path if metadata_path.is_file() else metadata_path / "dataset-metadata.json"
+    meta_file = (
+        metadata_path if metadata_path.is_file() else metadata_path / "dataset-metadata.json"
+    )
     if not meta_file.exists():
         print(f"[ERROR] Metadata file not found at {meta_file}")
         return False
 
     meta = json.loads(meta_file.read_text(encoding="utf-8"))
 
-    # Ensure dataset exists on Kaggle before updating metadata; creates minimal README placeholder if missing to prevent 403 Forbidden
+    # The dataset must exist before its metadata is updated, or Kaggle answers 403;
+    # a missing dataset is created with a minimal README placeholder.
     dataset_title = meta.get("title", slug)
     if not ensure_kaggle_dataset_exists(clean_handle, title=dataset_title):
-        print(f"[WARN] Could not ensure Kaggle dataset placeholder exists for '{clean_handle}'. Attempting metadata update anyway...")
+        print(
+            f"[WARN] Could not ensure Kaggle dataset placeholder exists for '{clean_handle}'."
+            " Attempting metadata update anyway..."
+        )
 
     api = load_kaggle_api()()
     api.authenticate()
@@ -746,7 +843,12 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     # Kaggle strictly requires exactly one valid license
     lic_name = "CC0-1.0"
     raw_lic = meta.get("licenses", [])
-    if raw_lic and isinstance(raw_lic, list) and isinstance(raw_lic[0], dict) and "name" in raw_lic[0]:
+    if (
+        raw_lic
+        and isinstance(raw_lic, list)
+        and isinstance(raw_lic[0], dict)
+        and "name" in raw_lic[0]
+    ):
         lic_name = raw_lic[0]["name"]
     canonical_lic = lic_name
     lic_lower = lic_name.lower().replace("_", "-")
@@ -763,7 +865,9 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     lic.name = canonical_lic
     settings.licenses = [lic]
 
-    settings.expected_update_frequency = meta.get("expectedUpdateFrequency", meta.get("expected_update_frequency", "never"))
+    settings.expected_update_frequency = meta.get(
+        "expectedUpdateFrequency", meta.get("expected_update_frequency", "never")
+    )
     settings.is_private = meta.get("isPrivate", meta.get("is_private", False))
 
     sources_val = meta.get("userSpecifiedSources") or meta.get("user_specified_sources")
@@ -802,7 +906,10 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
                 settings.image = cropped_upload
                 print(f"[INFO] Uploaded header image {header_img_name} for {clean_handle}")
         except KAGGLE_REMOTE_ERRORS as img_err:
-            print(f"[WARN] Could not upload header image {header_img_name} for {clean_handle}: {img_err}")
+            print(
+                f"[WARN] Could not upload header image {header_img_name} for {clean_handle}:"
+                f" {img_err}"
+            )
 
     if meta.get("keywords"):
         raw_kws = [str(k) for k in meta["keywords"]]
@@ -862,8 +969,12 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     elif "resources" in meta and isinstance(meta["resources"], list):
         for r in meta["resources"]:
             res_path = r.get("path", "")
-            # Skip directories or extensionless paths; Kaggle file settings only support individual files
-            if not res_path or (meta_folder / res_path).is_dir() or "." not in os.path.basename(res_path):
+            # Skip directories and extensionless paths; Kaggle file settings take files only
+            if (
+                not res_path
+                or (meta_folder / res_path).is_dir()
+                or "." not in os.path.basename(res_path)
+            ):
                 continue
             df = DatasetSettingsFile()
             target_name = res_path
@@ -919,7 +1030,9 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
                     missing_match = re.search(r"contain a file named '([^']+)'", err)
                     if missing_match and settings.data:
                         missing_name = missing_match.group(1)
-                        settings.data = [f for f in settings.data if getattr(f, "name", None) != missing_name]
+                        settings.data = [
+                            f for f in settings.data if getattr(f, "name", None) != missing_name
+                        ]
                         if not settings.data:
                             settings.data = None
                         should_retry = True
@@ -931,7 +1044,8 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
                         settings.title = settings.title[:50].rsplit(" ", 1)[0]
                         should_retry = True
             if should_retry:
-                # Kaggle image upload tokens are single-use; clear image on retry to prevent 500 / JSONDecodeError
+                # Image upload tokens are single-use; drop the image on retry to avoid a 500 /
+                # JSONDecodeError
                 settings.image = None
                 resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
             else:
@@ -941,13 +1055,17 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
             print(f"[ERROR] Kaggle metadata update rejected for {clean_handle}: {resp.errors}")
             return False
     except KAGGLE_REMOTE_ERRORS as exc:
-        # If an exception happened (such as JSONDecodeError due to consumed image token), retry without image first while preserving file descriptions
+        # A consumed image token raises (e.g. JSONDecodeError): retry once without the
+        # image, keeping the file descriptions
         if getattr(settings, "image", None) is not None:
             settings.image = None
             try:
                 resp = client.datasets.dataset_api_client.update_dataset_metadata(req)
                 if not resp or not getattr(resp, "errors", None) or len(resp.errors) == 0:
-                    print(f"[SUCCESS] Kaggle dataset metadata & column descriptors synced successfully ({len(files_data)} file definitions registered).")
+                    print(
+                        "[SUCCESS] Kaggle dataset metadata & column descriptors synced"
+                        f" successfully ({len(files_data)} file definitions registered)."
+                    )
                     return True
             except KAGGLE_REMOTE_ERRORS as img_retry_exc:
                 logger.debug("Retry without image token also encountered: %s", img_retry_exc)
@@ -955,7 +1073,10 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
         if not files_data:
             print(f"[ERROR] Kaggle metadata update call failed for {clean_handle}: {exc}")
             return False
-        print(f"[WARN] Metadata call failed with file schemas ({exc}); retrying without column descriptors...")
+        print(
+            f"[WARN] Metadata call failed with file schemas ({exc}); retrying without column"
+            " descriptors..."
+        )
         settings.data = None
         files_data = []
         try:
@@ -967,7 +1088,10 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
             print(f"[ERROR] Kaggle metadata update rejected for {clean_handle}: {resp.errors}")
             return False
 
-    print(f"[SUCCESS] Kaggle dataset metadata & column descriptors synced successfully ({len(files_data)} file definitions registered).")
+    print(
+        "[SUCCESS] Kaggle dataset metadata & column descriptors synced successfully"
+        f" ({len(files_data)} file definitions registered)."
+    )
     return True
 
 
@@ -981,9 +1105,19 @@ def _fetch_remote_archive(
     """Download archive or directory payload from Kaggle."""
 
     if is_competition:
-        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        cflags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+        )
         subprocess.run(
-            ["kaggle", "competitions", "download", "-c", clean_repo_id, "-p", str(root_datasets_dir)],
+            [
+                "kaggle",
+                "competitions",
+                "download",
+                "-c",
+                clean_repo_id,
+                "-p",
+                str(root_datasets_dir),
+            ],
             check=True,
             creationflags=cflags,
         )
@@ -998,12 +1132,20 @@ def _fetch_remote_archive(
         api = load_kaggle_api()()
         api.authenticate()
         print(f"[GET] Streaming dataset archive directly to {root_datasets_dir} via Kaggle API...")
-        api.dataset_download_files(clean_repo_id, path=str(root_datasets_dir), unzip=False, quiet=False)
+        api.dataset_download_files(
+            clean_repo_id, path=str(root_datasets_dir), unzip=False, quiet=False
+        )
         downloaded = True
     except KAGGLE_CLIENT_ERRORS as ex:
-        print(f"[WARN] Kaggle API direct download encountered an issue: {ex}. Falling back to Kaggle CLI...")
+        print(
+            f"[WARN] Kaggle API direct download encountered an issue: {ex}. Falling back to Kaggle"
+            " CLI..."
+        )
         try:
-            subprocess.run(["kaggle", "datasets", "download", clean_repo_id, "-p", str(root_datasets_dir)], check=True)
+            subprocess.run(
+                ["kaggle", "datasets", "download", clean_repo_id, "-p", str(root_datasets_dir)],
+                check=True,
+            )
             downloaded = True
         except (OSError, subprocess.CalledProcessError) as cli_ex:
             print(f"[WARN] Kaggle CLI download also failed: {cli_ex}. Falling back to kagglehub...")
@@ -1012,7 +1154,11 @@ def _fetch_remote_archive(
                 return Path(path)
             print(f"[GET] Dataset cached by kagglehub at {path}. Finalizing to {target_dir}...")
             items = os.listdir(path)
-            sub_src = os.path.join(path, items[0]) if (len(items) == 1 and items[0] == target_dir.name) else path
+            sub_src = (
+                os.path.join(path, items[0])
+                if (len(items) == 1 and items[0] == target_dir.name)
+                else path
+            )
             copy_tree_with_progress(sub_src, str(target_dir))
             shutil.rmtree(path, ignore_errors=True)
 
@@ -1020,7 +1166,9 @@ def _fetch_remote_archive(
         for cand in archive_candidates:
             if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
                 return cand
-        recent_zips = sorted(root_datasets_dir.glob("*.zip"), key=lambda f: f.stat().st_mtime, reverse=True)
+        recent_zips = sorted(
+            root_datasets_dir.glob("*.zip"), key=lambda f: f.stat().st_mtime, reverse=True
+        )
         if recent_zips:
             return recent_zips[0]
 
@@ -1052,12 +1200,20 @@ def perform_dataset_download(
 
     for cand in archive_candidates:
         if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
-            print(f"[GET] Inspecting existing archive: {cand.name} ({cand.stat().st_size / (1024**3):.2f} GB)...")
+            print(
+                f"[GET] Inspecting existing archive: {cand.name}"
+                f" ({cand.stat().st_size / (1024**3):.2f} GB)..."
+            )
             if verify_archive(cand):
                 existing_archive = cand
-                print("[GET] Archive verification passed. Resuming extraction directly from local archive...")
+                print(
+                    "[GET] Archive verification passed. Resuming extraction directly from local"
+                    " archive..."
+                )
                 break
-            print(f"[WARN] Existing archive {cand.name} is incomplete or corrupted. Re-downloading...")
+            print(
+                f"[WARN] Existing archive {cand.name} is incomplete or corrupted. Re-downloading..."
+            )
             try:
                 cand.unlink()
             except OSError as exc:
@@ -1072,7 +1228,7 @@ def perform_dataset_download(
     )
 
     if archive_to_extract and archive_to_extract.exists():
-        # Check if the archive is a legacy vision dataset that should be streamed directly to WebDataset
+        # Legacy vision archives are streamed straight into WebDataset shards
         use_streaming_webdataset = False
         try:
             if archive_to_extract.name.endswith(".zip"):
@@ -1096,19 +1252,30 @@ def perform_dataset_download(
                                 if entry.get("canonical_format") == "webdataset":
                                     m_folder = entry.get("modernized_folder", "")
                                     k_ref = entry.get("kaggle_ref", "")
-                                    if (m_folder and m_folder.lower() in target_dir.name.lower()) or (k_ref and slug.lower() in k_ref.lower()):
+                                    if (
+                                        m_folder and m_folder.lower() in target_dir.name.lower()
+                                    ) or (k_ref and slug.lower() in k_ref.lower()):
                                         is_webdataset_target = True
                                         break
                     except (OSError, yaml.YAMLError) as exc:
-                        logger.debug("Could not read unified_data.yaml during download inspection: %s", exc)
+                        logger.debug(
+                            "Could not read unified_data.yaml during download inspection: %s", exc
+                        )
                     if (has_loose_images or is_webdataset_target) and not has_tar_shards:
                         use_streaming_webdataset = True
         except (OSError, zipfile.BadZipFile, tarfile.TarError) as check_exc:
-            logger.warning("Archive inspection of %s failed; using standard extraction: %s", archive_to_extract, check_exc)
+            logger.warning(
+                "Archive inspection of %s failed; using standard extraction: %s",
+                archive_to_extract,
+                check_exc,
+            )
 
         if use_streaming_webdataset:
             print(f"[STREAM] Discovered legacy image matrix in {archive_to_extract.name}.")
-            print("[STREAM] Converting directly into modern WebDataset (.tar) shards via in-memory streaming...")
+            print(
+                "[STREAM] Converting directly into modern WebDataset (.tar) shards via in-memory"
+                " streaming..."
+            )
             try:
                 success = stream_zip_to_webdataset(
                     zip_path=archive_to_extract,
@@ -1118,17 +1285,34 @@ def perform_dataset_download(
                     transcode_webp=True,
                 )
                 if not success:
-                    print(f"[ERROR] Streaming conversion failed. Archive preserved at {archive_to_extract}.")
+                    print(
+                        "[ERROR] Streaming conversion failed. Archive preserved at"
+                        f" {archive_to_extract}."
+                    )
                     return False
-                print(f"[SUCCESS] Manifold modernized directly into WebDataset shards at {target_dir}")
+                print(
+                    f"[SUCCESS] Manifold modernized directly into WebDataset shards at {target_dir}"
+                )
                 return True
-            except (ImportError, OSError, ValueError, zipfile.BadZipFile, tarfile.TarError) as stream_err:
-                print(f"[WARN] Direct stream-to-container encountered error: {stream_err}. Falling back to standard extraction...")
+            except (
+                ImportError,
+                OSError,
+                ValueError,
+                zipfile.BadZipFile,
+                tarfile.TarError,
+            ) as stream_err:
+                print(
+                    f"[WARN] Direct stream-to-container encountered error: {stream_err}. Falling"
+                    " back to standard extraction..."
+                )
 
         print(f"[EXTRACT] Unpacking manifold archive: {archive_to_extract.name}")
         success = smart_extract(archive_to_extract, str(target_dir), delete_after=True)
         if not success:
-            print(f"[ERROR] Extraction failed or interrupted. Archive preserved at {archive_to_extract} for resumption.")
+            print(
+                "[ERROR] Extraction failed or interrupted. Archive preserved at"
+                f" {archive_to_extract} for resumption."
+            )
             return False
         print(f"[SUCCESS] Manifold extracted successfully into {target_dir}")
         return True

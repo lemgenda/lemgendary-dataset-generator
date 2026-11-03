@@ -126,11 +126,9 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
             raise RuntimeError(f"[MT5] Initialize exception: {e}") from e
     else:
         raise RuntimeError(
-            "[MT5] Could not connect to MetaTrader 5.\n"
-            "Please ensure:\n"
-            "  1. MetaTrader 5 is running and logged in\n"
-            "  2. If using a demo account, it is active\n"
-            "  3. If you need explicit login, set MT5_LOGIN, MT5_PASSWORD, MT5_SERVER environment variables"
+            "[MT5] Could not connect to MetaTrader 5.\nPlease ensure:\n  1. MetaTrader 5 is running"
+            " and logged in\n  2. If using a demo account, it is active\n  3. If you need explicit"
+            " login, set MT5_LOGIN, MT5_PASSWORD, MT5_SERVER environment variables"
         )
 
 
@@ -200,7 +198,7 @@ def resolve_symbol(pair: str) -> Optional[str]:
 
 
 def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
-    """Download OHLCV bars for one pair and timeframe from MT5 since ``start_date``, with retries."""
+    """Download one pair and timeframe of OHLCV bars from MT5 since ``start_date``, with retries."""
     tf_attr = MT5_TIMEFRAMES.get(timeframe_min)
     if tf_attr is None:
         raise ValueError(f"Unsupported timeframe: {timeframe_min}min")
@@ -227,12 +225,18 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
             if info is None:
                 print(f" [MT5] Symbol '{mt5_symbol}' not found. Trying next candidate.")
                 continue
-            print(f" [MT5] Symbol '{mt5_symbol}' exists but not in Market Watch; will attempt to fetch data anyway.")
+            print(
+                f" [MT5] Symbol '{mt5_symbol}' exists but not in Market Watch; will attempt to"
+                " fetch data anyway."
+            )
 
         # Try to fetch data
         for attempt in range(retries):
             try:
-                print(f" [MT5] Fetching historical range for {mt5_symbol} {timeframe_min}min via Range API...")
+                print(
+                    f" [MT5] Fetching historical range for {mt5_symbol} {timeframe_min}min via"
+                    " Range API..."
+                )
                 rates = _mt5_call("copy_rates_range", mt5_symbol, tf, dt_from, dt_to)
 
                 if rates is not None and len(rates) > 0:
@@ -242,8 +246,9 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                     df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
                     time_s = pd.Series(df['time'])
                     print(
-                        f" [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min "
-                        f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})"
+                        f" [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol})"
+                        f" {timeframe_min}min (Spans {time_s.iloc[0].strftime('%Y-%m-%d')} ->"
+                        f" {time_s.iloc[-1].strftime('%Y-%m-%d')})"
                     )
                     _SYMBOL_CACHE[pair] = mt5_symbol
                     return df
@@ -286,7 +291,10 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                 df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
                 df = df[df['time'] >= dt_from]
                 if len(df) == 0:
-                    print(f" [MT5] No bars after filtering from {start_date}; using all available data.")
+                    print(
+                        f" [MT5] No bars after filtering from {start_date}; using all available"
+                        " data."
+                    )
                     df = pd.DataFrame(rates)
                     df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
                     df['volume'] = df['tick_volume']
@@ -294,20 +302,27 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
 
                 time_s = pd.Series(df['time'])
                 print(
-                    f"\n [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol}) {timeframe_min}min via fallback "
-                    f"(Spans {time_s.iloc[0].strftime('%Y-%m-%d')} -> {time_s.iloc[-1].strftime('%Y-%m-%d')})"
+                    f"\n [MT5] Downloaded {len(df)} bars for {pair} ({mt5_symbol})"
+                    f" {timeframe_min}min via fallback (Spans {time_s.iloc[0].strftime('%Y-%m-%d')}"
+                    f" -> {time_s.iloc[-1].strftime('%Y-%m-%d')})"
                 )
                 _SYMBOL_CACHE[pair] = mt5_symbol
                 return df
 
             except (RuntimeError, AttributeError, OSError, KeyError, ValueError, IndexError) as e:
-                logger.warning("MT5 download attempt %d for %s failed: %s", attempt + 1, mt5_symbol, e)
+                logger.warning(
+                    "MT5 download attempt %d for %s failed: %s", attempt + 1, mt5_symbol, e
+                )
                 if attempt < retries - 1:
                     wait = 2 ** attempt
-                    print(f" [MT5] Download attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
+                    print(
+                        f" [MT5] Download attempt {attempt + 1} failed: {e}. Retrying in {wait}s..."
+                    )
                     time.sleep(wait)
                 else:
-                    print(f" [MT5] Failed to download for {mt5_symbol} after {retries} attempts: {e}")
+                    print(
+                        f" [MT5] Failed to download for {mt5_symbol} after {retries} attempts: {e}"
+                    )
                     break
 
     print(f" [MT5] WARNING: No symbol found for pair {pair}. Skipping.")
@@ -336,12 +351,20 @@ def compute_indicators(df):
 
         rsi_col = next((c for c in df_ta.columns if c.upper().startswith('RSI_')), None)
         macd_col = next(
-            (c for c in df_ta.columns if 'MACD_' in c.upper() and 'H' not in c.upper() and 'S' not in c.upper()),
+            (
+                c
+                for c in df_ta.columns
+                if 'MACD_' in c.upper() and 'H' not in c.upper() and 'S' not in c.upper()
+            ),
             None,
         )
         macds_col = next((c for c in df_ta.columns if 'MACDS_' in c.upper()), None)
         atr_col = next(
-            (c for c in df_ta.columns if c.upper().startswith('ATRR_') or c.upper().startswith('ATR')),
+            (
+                c
+                for c in df_ta.columns
+                if c.upper().startswith('ATRR_') or c.upper().startswith('ATR')
+            ),
             None,
         )
         bbu_col = next((c for c in df_ta.columns if 'BBU_' in c.upper()), None)
@@ -350,10 +373,15 @@ def compute_indicators(df):
         if all((rsi_col, macd_col, macds_col, atr_col, bbu_col, bbl_col)):
             df['rsi'] = (np.asarray(df_ta[rsi_col], dtype=np.float64) / 100.0).tolist()
             df['macd'] = (np.asarray(df_ta[macd_col], dtype=np.float64) / (close + 1e-8)).tolist()
-            df['macd_signal'] = (np.asarray(df_ta[macds_col], dtype=np.float64) / (close + 1e-8)).tolist()
+            df['macd_signal'] = (
+                np.asarray(df_ta[macds_col], dtype=np.float64) / (close + 1e-8)
+            ).tolist()
             df['atr'] = (np.asarray(df_ta[atr_col], dtype=np.float64) / (close + 1e-8)).tolist()
             df['bb_width'] = (
-                (np.asarray(df_ta[bbu_col], dtype=np.float64) - np.asarray(df_ta[bbl_col], dtype=np.float64))
+                (
+                    np.asarray(df_ta[bbu_col], dtype=np.float64)
+                    - np.asarray(df_ta[bbl_col], dtype=np.float64)
+                )
                 / (close + 1e-8)
             ).tolist()
             computed_ta = True
@@ -361,7 +389,9 @@ def compute_indicators(df):
         logger.debug("pandas_ta_classic unavailable, using manual indicators: %s", err)
         computed_ta = False
     except (AttributeError, KeyError, ValueError, TypeError) as err:
-        logger.warning("pandas_ta_classic indicator computation failed, using manual indicators: %s", err)
+        logger.warning(
+            "pandas_ta_classic indicator computation failed, using manual indicators: %s", err
+        )
         computed_ta = False
 
     if not computed_ta:
@@ -408,8 +438,12 @@ def _rsi_manual(close, period=14):
     delta = np.diff(close, prepend=close[0])
     gain = np.where(delta > 0, delta, 0.0).astype(np.float64)
     loss = np.where(delta < 0, -delta, 0.0).astype(np.float64)
-    avg_g = np.asarray(pd.Series(gain.tolist()).ewm(alpha=1 / period, min_periods=period).mean(), dtype=np.float64)
-    avg_l = np.asarray(pd.Series(loss.tolist()).ewm(alpha=1 / period, min_periods=period).mean(), dtype=np.float64)
+    avg_g = np.asarray(
+        pd.Series(gain.tolist()).ewm(alpha=1 / period, min_periods=period).mean(), dtype=np.float64
+    )
+    avg_l = np.asarray(
+        pd.Series(loss.tolist()).ewm(alpha=1 / period, min_periods=period).mean(), dtype=np.float64
+    )
     rs = avg_g / (avg_l + 1e-8)
     return np.asarray(1.0 - 1.0 / (1.0 + rs), dtype=np.float64)
 
@@ -428,7 +462,9 @@ def _atr_manual(high, low, close, period=14):
     prev_close = np.roll(close, 1)
     prev_close[0] = close[0]
     tr = np.maximum(high - low, np.maximum(np.abs(high - prev_close), np.abs(low - prev_close)))
-    return np.asarray(pd.Series(tr.tolist()).ewm(span=period, adjust=False).mean(), dtype=np.float64)
+    return np.asarray(
+        pd.Series(tr.tolist()).ewm(span=period, adjust=False).mean(), dtype=np.float64
+    )
 
 
 def _bbwidth_manual(close, period=20, std_mult=2.0):
@@ -444,7 +480,7 @@ def _bbwidth_manual(close, period=20, std_mult=2.0):
 
 
 def generate_labels(df, pair, horizon=LABEL_HORIZON_BARS, threshold_pips=DIRECTION_THRESHOLD_PIPS):
-    """Add direction (0 down, 1 flat, 2 up), take-profit and stop-loss pip labels over ``horizon`` bars."""
+    """Add direction (0 down, 1 flat, 2 up), TP and SL pip labels over ``horizon`` bars."""
     if any(x in pair for x in ["JPY"]):
         pip_size = 0.01
     elif "XAU" in pair:
@@ -546,7 +582,7 @@ def save_shards(
     timestamps=None,
     chunk_suffix=None,
 ):
-    """Write one shard of feature windows and labels as Parquet under the year's pair/timeframe folder."""
+    """Write one Parquet shard of feature windows and labels in its year/pair/timeframe folder."""
     shard_dir = os.path.join(out_dir, f"ForexUniverse{year_split}", pair, str(timeframe_min))
     os.makedirs(shard_dir, exist_ok=True)
 
@@ -592,7 +628,9 @@ def consolidate_year_parquet(out_dir, year):
     if not shard_files:
         return
     print(f" [MT5Pipeline] Consolidating {len(shard_files)} shards into {final_parquet}...")
-    writer = pq.ParquetWriter(final_parquet, schema=PARQUET_SCHEMA, compression="zstd", compression_level=3)
+    writer = pq.ParquetWriter(
+        final_parquet, schema=PARQUET_SCHEMA, compression="zstd", compression_level=3
+    )
     for sf in sorted(shard_files):
         tbl = pq.read_table(sf)
         writer.write_table(tbl, row_group_size=5000)
@@ -746,7 +784,9 @@ def run_download_pipeline(
                     year_parquet = os.path.join(out_dir, ds_name, f"ForexUniverse{year}.parquet")
                     if os.path.isfile(year_parquet):
                         continue
-                    shard_dir = os.path.join(out_dir, ds_name, f"ForexUniverse{year}", pair, str(tf))
+                    shard_dir = os.path.join(
+                        out_dir, ds_name, f"ForexUniverse{year}", pair, str(tf)
+                    )
                     if not os.path.isdir(shard_dir):
                         all_years_present = False
                         break
@@ -762,7 +802,10 @@ def run_download_pipeline(
                     missing_datasets.append(ds_name)
 
             if not missing_datasets:
-                print(f" [RESUME] {pair} @ {tf}min already complete for all datasets. Skipping download.")
+                print(
+                    f" [RESUME] {pair} @ {tf}min already complete for all datasets. Skipping"
+                    " download."
+                )
                 continue
 
             print(
@@ -811,14 +854,20 @@ def run_download_pipeline(
 def main():
     """Run the MT5 download pipeline (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary MT5 Data Pipeline (Final - Resilient)")
-    parser.add_argument("--config", default="unified_data.yaml", help="Path to the unified_data.yaml manifest")
+    parser.add_argument(
+        "--config", default="unified_data.yaml", help="Path to the unified_data.yaml manifest"
+    )
     parser.add_argument("--out_dir", default="data/forex", help="Output directory for .npy shards")
     parser.add_argument("--login", type=int, default=None, help="MT5 demo account login ID")
     parser.add_argument("--password", type=str, default=None, help="MT5 demo account password")
     parser.add_argument("--server", type=str, default=None, help="MT5 demo account server name")
     parser.add_argument("--api_key", type=str, default=None, help="MT5 demo account API key")
-    parser.add_argument("--pairs", nargs="+", default=None, help="Override: list of pairs to process")
-    parser.add_argument("--timeframes", nargs="+", type=int, default=None, help="Override: timeframes in minutes")
+    parser.add_argument(
+        "--pairs", nargs="+", default=None, help="Override: list of pairs to process"
+    )
+    parser.add_argument(
+        "--timeframes", nargs="+", type=int, default=None, help="Override: timeframes in minutes"
+    )
     parser.add_argument("--start_date", type=str, default="2019-01-01", help="Override: start date")
 
     args = parser.parse_args()
@@ -843,7 +892,10 @@ def main():
 
     print(f" [MT5Pipeline] Processing {len(dataset_defs)} dataset(s):")
     for ds in dataset_defs:
-        print(f"   - {ds['name']}: {len(ds['pairs'])} pairs, {len(ds['timeframes'])} timeframes, start={ds['start_date']}")
+        print(
+            f"   - {ds['name']}: {len(ds['pairs'])} pairs, {len(ds['timeframes'])} timeframes,"
+            f" start={ds['start_date']}"
+        )
 
     run_download_pipeline(
         dataset_defs=dataset_defs,

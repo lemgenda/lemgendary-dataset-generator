@@ -55,7 +55,10 @@ def generate_dataset_info_yaml(
     if not canonical_format:
         if ctx.task == "forex":
             canonical_format = "parquet"
-        elif ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper"):
+        elif ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in (
+            "llm",
+            "ai_helper",
+        ):
             canonical_format = "jsonl"
         elif (target_dir / "mds").exists():
             canonical_format = "mds"
@@ -107,12 +110,23 @@ def generate_dataset_info_yaml(
         info_payload["format"] = "parquet"
         info_payload["compression"] = "zstd"
 
-    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
+    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in (
+        "llm",
+        "ai_helper",
+    )
     if is_llm_task:
         train_file_rel = ctx.unified_entry.get("train_file")
         val_file_rel = ctx.unified_entry.get("val_file")
-        train_file = (target_dir / train_file_rel) if train_file_rel else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
-        val_file = (target_dir / val_file_rel) if val_file_rel else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
+        train_file = (
+            (target_dir / train_file_rel)
+            if train_file_rel
+            else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
+        )
+        val_file = (
+            (target_dir / val_file_rel)
+            if val_file_rel
+            else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
+        )
         if not train_file.exists():
             train_file = target_dir / "data" / "ai_helper_train.jsonl"
             val_file = target_dir / "data" / "ai_helper_val.jsonl"
@@ -146,8 +160,12 @@ def generate_dataset_info_yaml(
 def main() -> None:
     """CLI entrypoint for dataset_info.yaml generation."""
     parser = argparse.ArgumentParser(description="Generate dataset_info.yaml for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Generate dataset_info.yaml for all manifolds")
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Manifold directory name or path"
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Generate dataset_info.yaml for all manifolds"
+    )
     args = parser.parse_args()
 
     cand = _MODULE_ROOT.parent / "LemGendaryDatasets"
@@ -163,7 +181,10 @@ def main() -> None:
                 out = generate_dataset_info_yaml(m_dir)
                 with open(out, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
-                print(f"[OK] {m_dir.name} -> {out.name} (samples={data.get('count')}, task={data.get('task')})")
+                print(
+                    f"[OK] {m_dir.name} -> {out.name} (samples={data.get('count')},"
+                    f" task={data.get('task')})"
+                )
                 count += 1
         print(f"Generated dataset_info.yaml for {count} manifolds.")
     elif args.manifold:

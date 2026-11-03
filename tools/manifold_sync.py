@@ -14,7 +14,11 @@ from core.common_sync import (
     setup_kaggle_auth,
 )
 
-ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
+ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "tools"
+    else Path(__file__).resolve().parent
+)
 # Load dataset registry directly from YAML
 OUT_PARENT = (ROOT.parent / "LemGendaryDatasets").resolve()
 DATASETS_META = {}
@@ -74,7 +78,13 @@ def get_kaggle_ref(manifold_id: str | None) -> str | None:
     if not manifold_id:
         return None
     target_clean = manifold_id.strip()
-    norm_target = target_clean.lower().replace("_", "").replace("-", "").replace("lemgendized", "").replace("large", "")
+    norm_target = (
+        target_clean.lower()
+        .replace("_", "")
+        .replace("-", "")
+        .replace("lemgendized", "")
+        .replace("large", "")
+    )
     prefix = META.get("name_prefix", "LemGendized")
     suffix = META.get("name_suffix", "")
 
@@ -97,8 +107,20 @@ def get_kaggle_ref(manifold_id: str | None) -> str | None:
             return clean_ref
 
         # 4. Normalized fuzzy match
-        norm_k = k.lower().replace("_", "").replace("-", "").replace("lemgendized", "").replace("large", "")
-        norm_slug = slug_name.lower().replace("_", "").replace("-", "").replace("lemgendized", "").replace("large", "")
+        norm_k = (
+            k.lower()
+            .replace("_", "")
+            .replace("-", "")
+            .replace("lemgendized", "")
+            .replace("large", "")
+        )
+        norm_slug = (
+            slug_name.lower()
+            .replace("_", "")
+            .replace("-", "")
+            .replace("lemgendized", "")
+            .replace("large", "")
+        )
         if norm_target in [norm_k, norm_slug]:
             return clean_ref
 
@@ -109,7 +131,10 @@ def action_sync(manifold_name, repo_id=None, no_wait=False):
     resolved_folder = resolve_manifold_folder(manifold_name)
     src_dir = OUT_PARENT / resolved_folder
     if not src_dir.exists():
-        print(f"[ERROR] Local manifold '{manifold_name}' (resolved: '{resolved_folder}') not found at {src_dir}")
+        print(
+            f"[ERROR] Local manifold '{manifold_name}' (resolved: '{resolved_folder}') not found at"
+            f" {src_dir}"
+        )
         return
 
     resolved_repo = repo_id or get_kaggle_ref(manifold_name) or get_kaggle_ref(resolved_folder)
@@ -119,7 +144,6 @@ def action_sync(manifold_name, repo_id=None, no_wait=False):
     clean_repo_id = resolved_repo.replace("kaggle://", "")
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     setup_auth(default_user=owner)
-
 
     # Pre-cleanup any dangling staging directories (preserves recent archives for resumption)
     cleanup_temp_archives(manifold_name=resolved_folder, base_dir=OUT_PARENT, force=False)
@@ -157,7 +181,9 @@ def action_get(repo_id, output_name=None):
         print(f"[WARNING] Local manifold '{output_name}' already exists at {dest_dir}!")
         ans = input("Do you want to RESUME extraction or overwrite? (R/o/n): ").strip().lower()
         if ans == 'o':
-            confirm = input(f"[CRITICAL] Are you ABSOLUTELY sure? Type 'YES' to delete {dest_dir}: ").strip()
+            confirm = input(
+                f"[CRITICAL] Are you ABSOLUTELY sure? Type 'YES' to delete {dest_dir}: "
+            ).strip()
             if confirm == 'YES':
                 print("[GET] Purging existing manifold...")
                 shutil.rmtree(dest_dir, ignore_errors=True)
@@ -200,11 +226,17 @@ def main():
     """Parse the CLI arguments and run the sync or get action."""
     parser = argparse.ArgumentParser(description="LemGendary Manifold Sync Manager")
     parser.add_argument("--action", choices=["sync", "get"], help="Action to perform")
-    parser.add_argument("--model", "--manifold", dest="model", type=str, help="Local manifold name or YAML key")
+    parser.add_argument(
+        "--model", "--manifold", dest="model", type=str, help="Local manifold name or YAML key"
+    )
     parser.add_argument("--url", type=str, help="Kaggle Dataset URL or ID (e.g., user/dataset)")
     parser.add_argument("--user", type=str, help="Custom Kaggle Username")
     parser.add_argument("--token", type=str, help="Custom Kaggle API Token")
-    parser.add_argument("--no-wait", action="store_true", help="Skip monitoring Kaggle server-side extraction status")
+    parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Skip monitoring Kaggle server-side extraction status",
+    )
     parser.add_argument("--push", action="store_true", help="Alias for --action sync")
     parser.add_argument("--pull", action="store_true", help="Alias for --action get")
     parser.add_argument("--force", action="store_true", help="Force sync operation")
@@ -292,7 +324,11 @@ def main():
         for k, v in DATASETS_META.items():
             slug = v.get("name", "")
             compiled = f"{prefix}{slug}{suffix}"
-            if model in [k, slug, compiled] or model.lower() in [k.lower(), slug.lower(), compiled.lower()]:
+            if model in [k, slug, compiled] or model.lower() in [
+                k.lower(),
+                slug.lower(),
+                compiled.lower(),
+            ]:
                 model = compiled
                 break
 

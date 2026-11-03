@@ -100,7 +100,7 @@ class MigrationService:
         skip_transcode: bool = False,
         skip_container: bool = False,
     ) -> int:
-        """Retire the legacy Large suffix across manifolds, transcode images, and convert to container formats."""
+        """Retire the legacy Large suffix, transcode images and convert to container formats."""
 
         try:
             args = []
@@ -139,7 +139,7 @@ class MigrationService:
         yes: bool = False,
         dry_run: bool = False,
     ) -> int:
-        """Create a reduced manifold variant; prompts unless ``yes`` (then ``dataset`` is required)."""
+        """Create a reduced manifold variant; prompts unless ``yes``, which requires ``dataset``."""
         manifold_reduce = load_manifold_reduce()
 
         try:

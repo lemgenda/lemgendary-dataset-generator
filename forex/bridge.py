@@ -78,7 +78,7 @@ def copy_rates_range(symbol: str, timeframe: int, start: Any, end: Any) -> Any:
 
 
 def copy_rates_from_pos(symbol: str, timeframe: int, pos: int, count: int) -> Any:
-    """Return ``count`` MT5 bars for ``symbol`` from bar index ``pos``, or None without MetaTrader5."""
+    """Return ``count`` MT5 bars of ``symbol`` from bar ``pos``, or None without MetaTrader5."""
     return _MT5.copy_rates_from_pos(symbol, timeframe, pos, count) if _MT5 is not None else None
 
 

@@ -31,7 +31,9 @@ def supports_unicode() -> bool:
         if "utf" in encoding.lower():
             return True
         # Check PYTHONIOENCODING or modern Windows Terminal
-        if os.environ.get("WT_SESSION") or os.environ.get("PYTHONIOENCODING", "").lower().startswith("utf"):
+        if os.environ.get("WT_SESSION") or os.environ.get(
+            "PYTHONIOENCODING", ""
+        ).lower().startswith("utf"):
             return True
         return False
     except (AttributeError, TypeError, ValueError) as exc:

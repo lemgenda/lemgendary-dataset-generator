@@ -59,7 +59,10 @@ def process_shards():
                 temp_output_tar = tar_path.with_name(tar_path.stem + "_temp.tar")
 
                 try:
-                    with tarfile.open(tar_path, "r") as src_tar, tarfile.open(temp_output_tar, "w") as dest_tar:
+                    with (
+                        tarfile.open(tar_path, "r") as src_tar,
+                        tarfile.open(temp_output_tar, "w") as dest_tar,
+                    ):
                         # 2. List and iterate through members
                         for member in src_tar.getmembers():
                             extracted_file = src_tar.extractfile(member)
@@ -69,7 +72,7 @@ def process_shards():
                                 file_bytes = extracted_file.read()
                                 dest_tar.addfile(member, io.BytesIO(file_bytes))
                             else:
-                                # Safe fallback to copy directories/links directly without reading bytes
+                                # Copy directories and links as they are, without reading bytes
                                 dest_tar.addfile(member)
                                 continue
 

@@ -382,7 +382,9 @@ class TestAllServicesOrchestration(unittest.TestCase):
         with patch("tools.manifold_sync.action_sync") as mock_push:
             ret = SyncService.push(model="nima_technical", url=None, no_wait=True)
             self.assertEqual(ret, 0)
-            mock_push.assert_called_once_with(manifold_name="nima_technical", repo_id=None, no_wait=True)
+            mock_push.assert_called_once_with(
+                manifold_name="nima_technical", repo_id=None, no_wait=True
+            )
 
         with patch("tools.manifold_sync.action_get") as mock_pull:
             ret = SyncService.pull(url="lemtreursi/lemgendizednimatechnical")

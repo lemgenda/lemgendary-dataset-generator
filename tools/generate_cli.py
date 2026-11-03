@@ -25,7 +25,11 @@ from PIL import Image
 from core.lazy_imports import load_model_module
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
+_ROOT = (
+    Path(__file__).resolve().parent.parent
+    if Path(__file__).parent.name == "tools"
+    else Path(__file__).resolve().parent
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,9 @@ def _load_generator(
             labeler = load_model_module("detection").AutoLabeler(mode=mode, device=device)
         elif strategy == "nima_quality":
             model_path = _ROOT / "models" / "nima_aesthetic_best.pth"
-            sentry = load_model_module("quality_scorer").QualitySentry(str(model_path), model_name="aesthetic", device=device)
+            sentry = load_model_module("quality_scorer").QualitySentry(
+                str(model_path), model_name="aesthetic", device=device
+            )
         return LabelGenerator(
             strategy,
             captioner=captioner,
@@ -150,7 +156,7 @@ def run(
     sample_limit: int | None,
     dry_run: bool,
 ) -> int:
-    """Run a label, prompt or mask generator over every image in a manifold; returns the exit code."""
+    """Run a label, prompt or mask generator over a manifold's images; returns the exit code."""
     if not manifold.exists():
         print(f"[ERROR] Manifold not found: {manifold}")
         return 1
@@ -159,7 +165,10 @@ def run(
 
     generator = _load_generator(kind, strategy, template, device)
     images = list(_iter_images(manifold, sample_limit))
-    print(f"[SCAN] {len(images)} image(s) discovered" + (f" (capped at {sample_limit})" if sample_limit else ""))
+    print(
+        f"[SCAN] {len(images)} image(s) discovered"
+        + (f" (capped at {sample_limit})" if sample_limit else "")
+    )
 
     if dry_run:
         print("[DRY-RUN] Not writing any files.")

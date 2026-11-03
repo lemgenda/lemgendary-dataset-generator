@@ -34,7 +34,9 @@ def build_models_markdown(manifold_name: str, models_meta: dict[str, Any]) -> st
             applicable_models.append(m_info)
     if not applicable_models:
         for m_key, m_info in models_meta.items():
-            if isinstance(m_info, dict) and m_key.lower() in manifold_name.lower().replace("lemgendized", "").replace("large", ""):
+            if isinstance(m_info, dict) and m_key.lower() in manifold_name.lower().replace(
+                "lemgendized", ""
+            ).replace("large", ""):
                 applicable_models.append(m_info)
 
     if not applicable_models:
@@ -46,7 +48,10 @@ def build_models_markdown(manifold_name: str, models_meta: dict[str, Any]) -> st
         arch_val = am.get("arch") or am.get("architecture_type") or "Standard Backbone"
         opt_val = am.get("loss", "Unknown")
 
-        model_block = f"### Model: {model_name}\n\n- **Architecture**: {arch_val}\n- **Optimization**: {opt_val}\n"
+        model_block = (
+            f"### Model: {model_name}\n\n- **Architecture**: {arch_val}\n- **Optimization**:"
+            f" {opt_val}\n"
+        )
         sota = am.get("sota_targets", {})
         if sota:
             table_lines = [
@@ -72,25 +77,38 @@ def build_models_markdown(manifold_name: str, models_meta: dict[str, Any]) -> st
                     if lower_is_better:
                         base = val * 1.5
                         adv = val * 1.2
-                        table_lines.append(f"| **{met_name}** | < {base:.2f} | < {adv:.2f} | **< {val}** |")
+                        table_lines.append(
+                            f"| **{met_name}** | < {base:.2f} | < {adv:.2f} | **< {val}** |"
+                        )
                     elif "psnr" in met.lower():
                         base = val * 0.85
                         adv = val * 0.94
-                        table_lines.append(f"| **{met_name}** | ~{base:.1f} dB | > {adv:.1f} dB | **> {val:.1f} dB** |")
+                        table_lines.append(
+                            f"| **{met_name}** | ~{base:.1f} dB | > {adv:.1f} dB | **> {val:.1f}"
+                            " dB** |"
+                        )
                     elif "ssim" in met.lower():
                         base = val * 0.88
                         adv = val * 0.95
-                        table_lines.append(f"| **{met_name}** | ~{base:.4f} | > {adv:.4f} | **> {val:.4f}** |")
+                        table_lines.append(
+                            f"| **{met_name}** | ~{base:.4f} | > {adv:.4f} | **> {val:.4f}** |"
+                        )
                     else:
-                        is_pct = any(x in met.lower() for x in ["acc", "win", "rate"]) or (20.0 < val <= 100.0)
+                        is_pct = any(x in met.lower() for x in ["acc", "win", "rate"]) or (
+                            20.0 < val <= 100.0
+                        )
                         if is_pct and val > 10.0:
                             base = val * 0.8
                             adv = val * 0.9
-                            table_lines.append(f"| **{met_name}** | ~{base:.1f}% | > {adv:.1f}% | **> {val}%** |")
+                            table_lines.append(
+                                f"| **{met_name}** | ~{base:.1f}% | > {adv:.1f}% | **> {val}%** |"
+                            )
                         else:
                             base = val * 0.8
                             adv = val * 0.9
-                            table_lines.append(f"| **{met_name}** | ~{base:.2f} | > {adv:.2f} | **> {val}** |")
+                            table_lines.append(
+                                f"| **{met_name}** | ~{base:.2f} | > {adv:.2f} | **> {val}** |"
+                            )
                 else:
                     table_lines.append(f"| **{met_name}** | N/A | N/A | **{val}** |")
             model_block += "\n".join(table_lines) + "\n"
@@ -114,11 +132,18 @@ def build_structure_text(
     desc_map: dict[str, str] = {
         "images": f"Normalized input tensors ({img_desc}, standardized resolution).",
         "labels": "Strict numerical annotation vectors (JSON/TXT format).",
-        "targets": f"Clean ground truth tensors ({tgt_desc})." if task_key == "restoration" else targets_desc,
+        "targets": (
+            f"Clean ground truth tensors ({tgt_desc})."
+            if task_key == "restoration"
+            else targets_desc
+        ),
         "shards": "WebDataset `.tar` shards containing serialized manifold data.",
         "forex": "Shards containing serialized manifold data.",
         "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
-        "dataset-metadata.json": "Kaggle Frictionless metadata manifest, licensing, and schema column definitions for Parquet feature tensors.",
+        "dataset-metadata.json": (
+            "Kaggle Frictionless metadata manifest, licensing, and schema column definitions for"
+            " Parquet feature tensors."
+        ),
         "category.txt": "Top-level categorization tag.",
         "classes.txt": "Class labels mapping.",
         "index.json": "Compiled metadata index mapping all dataset samples.",
@@ -174,6 +199,10 @@ def render_forex_readme(
 ) -> str:
     """Render comprehensive Markdown documentation for Forex manifold."""
     slug = manifold_name.lower().replace("_", "-")
+    horizon = (
+        f"{start_date_str} to Present "
+        "(6-Fold Walk-Forward Matrix with 14-day Embargo)"
+    )
     content = f"""# {manifold_name}
 
 > High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.
@@ -184,7 +213,7 @@ def render_forex_readme(
 - **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
 - **Pairs Included:** {pairs_display}
 - **Timeframe Rungs:** {tfs_display}
-- **Historical Horizon:** {start_date_str} to Present (6-Fold Walk-Forward Matrix with 14-day Embargo)
+- **Historical Horizon:** {horizon}
 - **Lookback Window:** {lookback_bars} bars
 - **Total Samples:** {total_samples:,}
 - **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)

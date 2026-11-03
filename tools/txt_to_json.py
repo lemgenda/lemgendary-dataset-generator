@@ -85,7 +85,10 @@ def convert_labels():
                     # Structure JSON payload based on the model's objective
                     if model_type == "nima":
                         parsed_data = parse_nima_line(lines[0])
-                        json_data = {"filename": f"{file_path.stem}.jpg", "nima_scores": parsed_data}
+                        json_data = {
+                            "filename": f"{file_path.stem}.jpg",
+                            "nima_scores": parsed_data,
+                        }
                     else:  # retinaface
                         parsed_data = parse_retinaface_lines(lines)
                         json_data = {"filename": f"{file_path.stem}.jpg", **parsed_data}

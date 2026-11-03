@@ -35,32 +35,43 @@ class JobType(str, Enum):
 class CompileJobRequest(BaseModel):
     """Request body for a dataset compile job."""
     model: Optional[str] = Field(None, description="Dataset/model key in unified_data.yaml")
-    preset: Optional[str] = Field(None, description="Compiler preset profile name from presets.yaml")
+    preset: Optional[str] = Field(
+        None, description="Compiler preset profile name from presets.yaml"
+    )
     max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
     suffix: Optional[str] = Field(None, description="Manifold name suffix override")
     workers: Optional[int] = Field(None, description="Parallel worker process count")
     no_vetting: bool = Field(False, description="Bypass NIMA aesthetic vetting gate")
     no_labeling: bool = Field(False, description="Bypass YOLO auto-labeling")
     no_hash: bool = Field(False, description="Bypass deduplication hash")
-    image_format: Optional[str] = Field("webp", description="Target image format (webp, jpeg, png, keep)")
+    image_format: Optional[str] = Field(
+        "webp", description="Target image format (webp, jpeg, png, keep)"
+    )
     image_quality: Optional[int] = Field(92, description="Target image quality (1-100)")
-    target_quality: Optional[int] = Field(95, description="Target quality for restoration ground truth")
+    target_quality: Optional[int] = Field(
+        95, description="Target quality for restoration ground truth"
+    )
     mask_format: Optional[str] = Field("webp-lossless", description="Target mask format")
-    also_format: Optional[str] = Field(None, description="Comma-separated container formats (mds, litdata, wds, parquet)")
+    also_format: Optional[str] = Field(
+        None, description="Comma-separated container formats (mds, litdata, wds, parquet)"
+    )
     force_duplicate: bool = Field(False, description="Bypass hardlink gate and duplicate bytes")
     accept_space_loss: bool = Field(False, description="Accept storage growth for container writes")
     label_strategy: Optional[str] = Field(None, description="Auto-labeling strategy")
     prompt_strategy: Optional[str] = Field(None, description="Diffusion prompt template")
     mask_strategy: Optional[str] = Field(None, description="Segmentation mask strategy")
-    shard_ext: Optional[str] = Field("data", description="WebDataset shard file extension without dot (default: 'data')")
-
+    shard_ext: Optional[str] = Field(
+        "data", description="WebDataset shard file extension without dot (default: 'data')"
+    )
 
 
 class DegradeJobRequest(BaseModel):
     """Request body for a degradation (synthetic pair) job."""
     source: str = Field(..., description="Source clean dataset path or registered manifold name")
     output: str = Field(..., description="Destination synthetic manifold folder name")
-    profile: str = Field("motion-blur+iso-noise", description="Degradation profile expression or preset alias")
+    profile: str = Field(
+        "motion-blur+iso-noise", description="Degradation profile expression or preset alias"
+    )
     intensity: str = Field("medium", description="Intensity preset (low, medium, high)")
     pairs: Optional[int] = Field(None, description="Maximum sample pairs to synthesize")
     val_split: float = Field(0.12, description="Validation split ratio")
@@ -88,7 +99,9 @@ class JobResponse(BaseModel):
     exit_code: Optional[int] = Field(None, description="Process exit code")
     error_message: Optional[str] = Field(None, description="Error details if failed")
     log_file: str = Field(..., description="Relative or absolute path to execution log file")
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Job configuration parameters")
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict, description="Job configuration parameters"
+    )
 
 
 class JobListResponse(BaseModel):
@@ -279,7 +292,9 @@ class KaggleDatasetRegistryItem(BaseModel):
 class KaggleDownloadRequest(BaseModel):
     """Request body for downloading a Kaggle dataset."""
     kaggle_ref: str = Field(..., description="Kaggle dataset handle, kaggle:// URI, or URL")
-    target_folder: Optional[str] = Field(None, description="Destination folder name under datasets root")
+    target_folder: Optional[str] = Field(
+        None, description="Destination folder name under datasets root"
+    )
     force: bool = Field(False, description="Force overwrite existing folder")
 
 
@@ -292,16 +307,28 @@ class KaggleUploadRequest(BaseModel):
 
 class CustomCompileRequest(BaseModel):
     """Request body for compiling a custom multi-source dataset."""
-    custom_name: str = Field(..., description="Unique dataset manifold name (e.g. CustomFaceEnhance)")
-    task: str = Field("vision", description="Task type (restoration, segmentation, detection, quality, vision)")
+
+    custom_name: str = Field(
+        ..., description="Unique dataset manifold name (e.g. CustomFaceEnhance)"
+    )
+    task: str = Field(
+        "vision", description="Task type (restoration, segmentation, detection, quality, vision)"
+    )
     preset: str | None = Field(
         None,
-        description="Compiler preset ID from presets.yaml; omitted means presets.yaml `default_preset`",
+        description=(
+            "Compiler preset ID from presets.yaml; omitted means presets.yaml `default_preset`"
+        ),
     )
     canonical_format: str = Field("webdataset", description="Target container format")
     shard_size: int = Field(5000, description="Samples per shard container")
-    sources: List[str] = Field(default_factory=list, description="List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)")
+    sources: List[str] = Field(
+        default_factory=list,
+        description="List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)",
+    )
     purge_loose_images: bool = Field(
         True,
-        description="After a successful compile, purge loose images of manifolds packed into a container",
+        description=(
+            "After a successful compile, purge loose images of manifolds packed into a container"
+        ),
     )

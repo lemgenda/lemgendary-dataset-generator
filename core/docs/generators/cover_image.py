@@ -57,8 +57,12 @@ def _create_fallback_banner(
     draw.line([(width - 7, 6), (width - 7, 6 + corner_len)], fill=accent_green, width=3)
     draw.line([(6, height - 7), (6 + corner_len, height - 7)], fill=accent_green, width=3)
     draw.line([(6, height - 7), (6, height - 7 - corner_len)], fill=accent_green, width=3)
-    draw.line([(width - 7, height - 7), (width - 7 - corner_len, height - 7)], fill=accent_green, width=3)
-    draw.line([(width - 7, height - 7), (width - 7, height - 7 - corner_len)], fill=accent_green, width=3)
+    draw.line(
+        [(width - 7, height - 7), (width - 7 - corner_len, height - 7)], fill=accent_green, width=3
+    )
+    draw.line(
+        [(width - 7, height - 7), (width - 7, height - 7 - corner_len)], fill=accent_green, width=3
+    )
 
     # 3. Badges and Text
     font_large = None
@@ -78,7 +82,9 @@ def _create_fallback_banner(
     draw.text((28, 25), "LEMGENDARY ECOSYSTEM", fill=(88, 166, 255), font=font_badge)
 
     # Status badge top-right
-    draw.rectangle([width - 150, 20, width - 20, 42], fill=(22, 27, 34), outline=accent_green, width=1)
+    draw.rectangle(
+        [width - 150, 20, width - 20, 42], fill=(22, 27, 34), outline=accent_green, width=1
+    )
     draw.text((width - 138, 25), "PRODUCTION V26", fill=accent_green, font=font_badge)
 
     # Main Title
@@ -87,12 +93,27 @@ def _create_fallback_banner(
 
     # Subtitle / Category
     draw.text((24, 135), f"Category: {category}", fill=(139, 148, 158), font=font_small)
-    draw.text((24, 162), f"Archetype: {task.upper()} | High-Fidelity Manifold", fill=(110, 118, 129), font=font_small)
+    draw.text(
+        (24, 162),
+        f"Archetype: {task.upper()} | High-Fidelity Manifold",
+        fill=(110, 118, 129),
+        font=font_small,
+    )
 
     # Lower status line
     draw.line([(24, 210), (width - 24, 210)], fill=(48, 54, 61), width=1)
-    draw.text((24, 225), "Standardized Streaming Container Topology  WebDataset / Parquet / MDS", fill=(88, 166, 255), font=font_badge)
-    draw.text((24, 245), "Verified Lineage  Curated Benchmark Splits  Deterministic Pipeline", fill=(139, 148, 158), font=font_badge)
+    draw.text(
+        (24, 225),
+        "Standardized Streaming Container Topology  WebDataset / Parquet / MDS",
+        fill=(88, 166, 255),
+        font=font_badge,
+    )
+    draw.text(
+        (24, 245),
+        "Verified Lineage  Curated Benchmark Splits  Deterministic Pipeline",
+        fill=(139, 148, 158),
+        font=font_badge,
+    )
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(target_path, "JPEG", quality=95)
@@ -150,8 +171,12 @@ def generate_cover_image(
 
 def main() -> None:
     """CLI entrypoint for cover image generation."""
-    parser = argparse.ArgumentParser(description="Validate/Generate cover image (<ModelName>.jpg) for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
+    parser = argparse.ArgumentParser(
+        description="Validate/Generate cover image (<ModelName>.jpg) for dataset manifolds"
+    )
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Manifold directory name or path"
+    )
     parser.add_argument("--all", action="store_true", help="Process cover images for all manifolds")
     parser.add_argument("--force", action="store_true", help="Force regenerate existing images")
     args = parser.parse_args()

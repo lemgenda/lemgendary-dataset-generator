@@ -39,21 +39,32 @@ class QueueItemResponse(BaseModel):
 
 class ModernizeRunRequest(BaseModel):
     """Request body for a modernization run."""
-    datasets: list[str] | None = Field(None, description="Specific dataset key(s) to modernize. Omit (with `dataset`) for full batch.")
-    dataset: str | None = Field(None, description="Single dataset key or folder to modernize (merged with `datasets`).")
+
+    datasets: list[str] | None = Field(
+        None,
+        description="Specific dataset key(s) to modernize. Omit (with `dataset`) for full batch.",
+    )
+    dataset: str | None = Field(
+        None, description="Single dataset key or folder to modernize (merged with `datasets`)."
+    )
     workers: int | None = Field(12, description="Transcoding worker threads")
     mds_shard_mb: int | None = Field(512, description="MDS shard size in MB")
     purge_loose: bool = Field(
         False,
-        description="Delete source material (zip, legacy folder, loose images) after a successful conversion. "
-        "False keeps every source.",
+        description=(
+            "Delete source material (zip, legacy folder, loose images) after a successful"
+            " conversion. False keeps every source."
+        ),
     )
     push_kaggle: bool = Field(False, description="Push modernized package to Kaggle automatically")
-    dry_run: bool = Field(False, description="Report the plan only: nothing is converted, deleted, written or uploaded")
+    dry_run: bool = Field(
+        False,
+        description="Report the plan only: nothing is converted, deleted, written or uploaded",
+    )
     force: bool = Field(False, description="Re-convert manifolds that are already containerized")
 
     def target_datasets(self) -> list[str]:
-        """Return the requested dataset keys (``dataset`` plus ``datasets``), de-duplicated in order."""
+        """Return ``dataset`` plus ``datasets`` as one key list, de-duplicated in order."""
         keys = [self.dataset] if self.dataset else []
         keys.extend(self.datasets or [])
         return list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
@@ -61,17 +72,26 @@ class ModernizeRunRequest(BaseModel):
 
 class ManifoldReduceRequest(BaseModel):
     """Request body for creating a reduced manifold variant."""
-    dataset_key: str | None = Field(None, description="Target manifold folder or dataset key to reduce")
+
+    dataset_key: str | None = Field(
+        None, description="Target manifold folder or dataset key to reduce"
+    )
     manifold: str | None = Field(None, description="Alias of `dataset_key` (manifold folder name)")
     scale: float | None = Field(
         2,
         gt=0,
-        description="Sampling scale: a fraction in (0, 1] keeps that share of samples (0.25 = 25%); "
-        "a value above 1 is a downsampling factor (2 keeps 1/2).",
+        description=(
+            "Sampling scale: a fraction in (0, 1] keeps that share of samples (0.25 = 25%); "
+            "a value above 1 is a downsampling factor (2 keeps 1/2)."
+        ),
     )
     workers: int | None = Field(8, description="Worker threads count (not used by the reduce tool)")
-    max_gb: float | None = Field(None, gt=0, description="Optional size cap in GB for the reduced manifold")
-    suffix: str | None = Field(None, description="Suffix for the reduced manifold folder (default: Reduced)")
+    max_gb: float | None = Field(
+        None, gt=0, description="Optional size cap in GB for the reduced manifold"
+    )
+    suffix: str | None = Field(
+        None, description="Suffix for the reduced manifold folder (default: Reduced)"
+    )
     dry_run: bool = Field(False, description="Report the plan only: nothing is written")
 
 

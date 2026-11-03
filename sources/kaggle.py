@@ -66,9 +66,20 @@ def main():
     parser.add_argument("--repo_id", required=True, help="Kaggle dataset handle or URL")
     parser.add_argument("--output_dir", default="", help="Target local directory")
     parser.add_argument("--is_competition", action="store_true", help="Download from competition")
-    parser.add_argument("--action", default="download", choices=["download", "upload", "status", "metadata"], help="Action to perform")
-    parser.add_argument("--all-datasets", action="store_true", help="Update metadata for all datasets in unified_data.yaml (metadata action only)")
-    parser.add_argument("--no-wait", action="store_true", help="Skip monitoring server-side extraction after upload")
+    parser.add_argument(
+        "--action",
+        default="download",
+        choices=["download", "upload", "status", "metadata"],
+        help="Action to perform",
+    )
+    parser.add_argument(
+        "--all-datasets",
+        action="store_true",
+        help="Update metadata for all datasets in unified_data.yaml (metadata action only)",
+    )
+    parser.add_argument(
+        "--no-wait", action="store_true", help="Skip monitoring server-side extraction after upload"
+    )
     args = parser.parse_args()
 
     if args.action in ["download", "upload"] and not args.output_dir:
@@ -80,7 +91,9 @@ def main():
 
     if args.action == "download":
         print(f"PULLING: {clean_repo_id}")
-        target_dir, root_datasets_dir, manifold_name, slug = _resolve_manifold_paths(clean_repo_id, args.output_dir)
+        target_dir, root_datasets_dir, manifold_name, slug = _resolve_manifold_paths(
+            clean_repo_id, args.output_dir
+        )
         success = perform_dataset_download(
             clean_repo_id=clean_repo_id,
             target_dir=target_dir,

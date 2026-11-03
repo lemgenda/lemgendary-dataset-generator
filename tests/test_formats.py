@@ -337,7 +337,7 @@ class TestMDSWriter(unittest.TestCase):
                 "MDS index.json was not created",
             )
 
-            # Test idempotency: re-opening the existing non-empty directory must not raise FileExistsError
+            # Idempotency: re-opening the non-empty directory must not raise FileExistsError
             writer2 = MDSWriter()
             writer2.open(out_root, None)
             writer2.write(sample1)

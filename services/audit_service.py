@@ -66,7 +66,9 @@ class AuditService:
                     header_bytes = f.read(16)
                 header_res = auditor.verify_header(header_bytes)
                 if not header_res.valid:
-                    rejection_breakdown[header_res.code or "ERR_HEADER_INVALID"] = rejection_breakdown.get(header_res.code or "ERR_HEADER_INVALID", 0) + 1
+                    rejection_breakdown[header_res.code or "ERR_HEADER_INVALID"] = (
+                        rejection_breakdown.get(header_res.code or "ERR_HEADER_INVALID", 0) + 1
+                    )
                     continue
 
                 with Image.open(img_p) as img:
@@ -115,14 +117,21 @@ class AuditService:
         table.add_row("Total Files Checked", f"{hardlink_res.total_files:,}")
         table.add_row(
             "Hardlink Deduplication",
-            f"{hardlink_res.hardlinked_files:,} ({hardlink_res.hardlink_pct:.1f}%) [Verdict: {hardlink_res.verdict}]"
+            f"{hardlink_res.hardlinked_files:,} ({hardlink_res.hardlink_pct:.1f}%) [Verdict:"
+            f" {hardlink_res.verdict}]",
         )
-        table.add_row("Hardlinked Data", f"{hardlink_res.hardlinked_bytes / (1024**3):.2f} GB / {hardlink_res.total_bytes / (1024**3):.2f} GB")
+        table.add_row(
+            "Hardlinked Data",
+            f"{hardlink_res.hardlinked_bytes / (1024**3):.2f} GB /"
+            f" {hardlink_res.total_bytes / (1024**3):.2f} GB",
+        )
         table.add_row("Audited Image Samples", f"{audited_count:,}")
         table.add_row("Sample Pass Rate", f"{pass_rate:.1f}% ({passed_count}/{audited_count})")
 
         if rejection_breakdown:
-            table.add_row("Rejection Codes", ", ".join(f"{k}: {v}" for k, v in rejection_breakdown.items()))
+            table.add_row(
+                "Rejection Codes", ", ".join(f"{k}: {v}" for k, v in rejection_breakdown.items())
+            )
         else:
             table.add_row("Rejection Codes", "None (Clean)")
 

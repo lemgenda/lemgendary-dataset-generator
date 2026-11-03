@@ -56,7 +56,10 @@ def _verify_converted_parquet(temp_parquet: Path, total_written: int, year: int)
 
     pf = pq.ParquetFile(str(temp_parquet))
     if pf.metadata.num_rows != total_written:
-        print(f" [FAIL] Row count mismatch: {pf.metadata.num_rows} in file vs {total_written} written.")
+        print(
+            f" [FAIL] Row count mismatch: {pf.metadata.num_rows} in file vs {total_written}"
+            " written."
+        )
         temp_parquet.unlink(missing_ok=True)
         return False
 
@@ -87,14 +90,19 @@ def _verify_converted_parquet(temp_parquet: Path, total_written: int, year: int)
             return False
 
     v_duration = time.time() - v_start
-    print(f" [PASS] Bit-exact verification PASSED in {v_duration:.2f}s ({pf.metadata.num_rows:,} rows verified).")
+    print(
+        f" [PASS] Bit-exact verification PASSED in {v_duration:.2f}s ({pf.metadata.num_rows:,} rows"
+        " verified)."
+    )
     del rg_table, row_feat, pf
     gc.collect()
     time.sleep(0.5)
     return True
 
 
-def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cleanup: bool = False) -> bool:
+def convert_year(
+    base_manifold: Path, year: int, dry_run: bool = False, skip_cleanup: bool = False
+) -> bool:
     """
     Converts a single year's nested .npy structure into a unified Parquet file.
     Validates bit-exact accuracy and purges the old directory upon success.
@@ -104,7 +112,10 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
     temp_parquet = base_manifold / f"ForexUniverse{year}.parquet.tmp"
 
     if target_parquet.exists() and not year_folder.exists():
-        print(f"[SKIP] Year {year} already converted -> {target_parquet.name} ({get_file_size_gb(target_parquet):.2f} GB)")
+        print(
+            f"[SKIP] Year {year} already converted -> {target_parquet.name}"
+            f" ({get_file_size_gb(target_parquet):.2f} GB)"
+        )
         return True
 
     if not year_folder.exists():
@@ -117,7 +128,9 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
     print(f"{'=' * 75}")
 
     # Discover pairs and timeframes
-    pairs_found = sorted([d.name for d in year_folder.iterdir() if d.is_dir() and d.name in EXTENDED_PAIRS])
+    pairs_found = sorted(
+        [d.name for d in year_folder.iterdir() if d.is_dir() and d.name in EXTENDED_PAIRS]
+    )
     if not pairs_found:
         pairs_found = sorted([d.name for d in year_folder.iterdir() if d.is_dir()])
     print(f" [DISCOVERY] Found {len(pairs_found)} pairs for year {year}")
@@ -164,11 +177,22 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
 
                 shard_tasks = []
                 if x_single.exists() and ydir_single.exists() and ymag_single.exists():
-                    shard_tasks.append((x_single, ydir_single, ymag_single, ts_single if ts_single.exists() else None))
+                    shard_tasks.append(
+                        (
+                            x_single,
+                            ydir_single,
+                            ymag_single,
+                            ts_single if ts_single.exists() else None,
+                        )
+                    )
                 else:
                     chunk_files = sorted(
-                        [f for f in tf_path.iterdir() if f.name.startswith("X_chunk") and f.name.endswith(".npy")],
-                        key=lambda x: int(x.name.replace("X_chunk", "").replace(".npy", ""))
+                        [
+                            f
+                            for f in tf_path.iterdir()
+                            if f.name.startswith("X_chunk") and f.name.endswith(".npy")
+                        ],
+                        key=lambda x: int(x.name.replace("X_chunk", "").replace(".npy", "")),
                     )
                     for cf in chunk_files:
                         c_idx = cf.name.replace("X_chunk", "").replace(".npy", "")
@@ -182,7 +206,11 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
                     features = np.load(str(x_f), mmap_mode="r")
                     yd = np.load(str(yd_f), mmap_mode="r")
                     ym = np.load(str(ym_f), mmap_mode="r")
-                    ts = np.load(str(ts_f), mmap_mode="r") if ts_f else np.zeros(len(features), dtype=np.int64)
+                    ts = (
+                        np.load(str(ts_f), mmap_mode="r")
+                        if ts_f
+                        else np.zeros(len(features), dtype=np.int64)
+                    )
 
                     num_samples = len(features)
                     if num_samples == 0:
@@ -240,8 +268,14 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
 
     write_duration = time.time() - t0
     parquet_size_gb = get_file_size_gb(temp_parquet)
-    print(f" [SUCCESS] Written {total_written:,} samples to temporary Parquet in {write_duration:.1f}s")
-    print(f" [METRICS] Size: {initial_size_gb:.2f} GB -> {parquet_size_gb:.2f} GB ({(1 - parquet_size_gb / max(initial_size_gb, 0.001)) * 100:.1f}% reduction)")
+    print(
+        f" [SUCCESS] Written {total_written:,} samples to temporary Parquet in"
+        f" {write_duration:.1f}s"
+    )
+    print(
+        f" [METRICS] Size: {initial_size_gb:.2f} GB -> {parquet_size_gb:.2f} GB"
+        f" ({(1 - parquet_size_gb / max(initial_size_gb, 0.001)) * 100:.1f}% reduction)"
+    )
 
     if not _verify_converted_parquet(temp_parquet, total_written, year):
         return False
@@ -269,22 +303,40 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
 
 def main():
     """Convert legacy .npy Forex shards to yearly Parquet files (CLI entry point)."""
-    default_base = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverse"
+    default_base = (
+        Path(__file__).resolve().parent.parent.parent
+        / "LemGendaryDatasets"
+        / "LemGendizedForexUniverse"
+    )
     if not default_base.exists():
-        legacy_base = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"
+        legacy_base = (
+            Path(__file__).resolve().parent.parent.parent
+            / "LemGendaryDatasets"
+            / "LemGendizedForexUniverseLarge"
+        )
         if legacy_base.exists():
             default_base = legacy_base
 
-    parser = argparse.ArgumentParser(description="LemGendary Forex Manifold Parquet Conversion Engine")
+    parser = argparse.ArgumentParser(
+        description="LemGendary Forex Manifold Parquet Conversion Engine"
+    )
     parser.add_argument(
         "--base_dir",
         default=str(default_base),
         help="Path to LemGendizedForexUniverse directory"
     )
-    parser.add_argument("--year", type=int, default=None, help="Specific year to convert (2019..2026)")
-    parser.add_argument("--all", action="store_true", help="Convert all years 2019..2026 sequentially")
-    parser.add_argument("--dry_run", action="store_true", help="Simulate conversion without writing")
-    parser.add_argument("--skip_cleanup", action="store_true", help="Keep source .npy directories after conversion")
+    parser.add_argument(
+        "--year", type=int, default=None, help="Specific year to convert (2019..2026)"
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Convert all years 2019..2026 sequentially"
+    )
+    parser.add_argument(
+        "--dry_run", action="store_true", help="Simulate conversion without writing"
+    )
+    parser.add_argument(
+        "--skip_cleanup", action="store_true", help="Keep source .npy directories after conversion"
+    )
 
     args = parser.parse_args()
     base_manifold = Path(args.base_dir).resolve()
@@ -314,7 +366,9 @@ def main():
     for yr in years_to_process:
         yr_folder = base_manifold / f"ForexUniverse{yr}"
         pre_size = get_dir_size_gb(yr_folder) if yr_folder.exists() else 0.0
-        success = convert_year(base_manifold, yr, dry_run=args.dry_run, skip_cleanup=args.skip_cleanup)
+        success = convert_year(
+            base_manifold, yr, dry_run=args.dry_run, skip_cleanup=args.skip_cleanup
+        )
         if success:
             success_count += 1
             post_file = base_manifold / f"ForexUniverse{yr}.parquet"

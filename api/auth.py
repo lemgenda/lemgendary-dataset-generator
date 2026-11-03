@@ -58,7 +58,10 @@ async def verify_token(
     if not provided:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API token. Provide via 'X-API-Key' header or 'Authorization: Bearer <token>'",
+            detail=(
+                "Missing API token. Provide via 'X-API-Key' header or 'Authorization: Bearer"
+                " <token>'"
+            ),
             headers={"WWW-Authenticate": "Bearer"},
         )
 

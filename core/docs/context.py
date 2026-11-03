@@ -160,7 +160,7 @@ def _resolve_task(
 
 
 def _format_subtitle(raw_subtitle: str, fallback_cat: str) -> str:
-    """Format and guarantee a subtitle length strictly between 20 and 80 characters for Kaggle API."""
+    """Return ``raw_subtitle`` cut or replaced to fit the Kaggle 20-80 character limit."""
     sub = raw_subtitle.strip().replace("\uFFFD", "-").replace("—", "-").replace("–", "-")
     if not sub:
         sub = f"High-Fidelity Training Manifold for {fallback_cat}"
@@ -239,7 +239,9 @@ def resolve_manifold_context(
             break
     if not model_profile:
         for m_key, m_info in MODELS_META.items():
-            if isinstance(m_info, dict) and m_key.lower() in manifold_name.lower().replace("lemgendized", "").replace("large", ""):
+            if isinstance(m_info, dict) and m_key.lower() in manifold_name.lower().replace(
+                "lemgendized", ""
+            ).replace("large", ""):
                 model_profile = m_info
                 break
 
@@ -250,26 +252,56 @@ def resolve_manifold_context(
     if task == "restoration":
         name_lower = manifold_name.lower()
         if "dehazing" in name_lower or "indoor" in name_lower or "outdoor" in name_lower:
-            objective = "Remove atmospheric haze and smoke to recover high-contrast ground truth scene radiance."
-            desc = "Standardized paired dataset for single-image dehazing and transmission recovery."
+            objective = (
+                "Remove atmospheric haze and smoke to recover high-contrast ground truth scene"
+                " radiance."
+            )
+            desc = (
+                "Standardized paired dataset for single-image dehazing and transmission recovery."
+            )
         elif "deraining" in name_lower:
-            objective = "Remove dense rain streaks and rain accumulation while preserving background details."
+            objective = (
+                "Remove dense rain streaks and rain accumulation while preserving background"
+                " details."
+            )
             desc = "Standardized paired dataset for single-image deraining and streak removal."
         elif "deblurring" in name_lower or "debluring" in name_lower:
-            objective = "Remove motion and optical blur to restore structural sharpness and fine edges."
+            objective = (
+                "Remove motion and optical blur to restore structural sharpness and fine edges."
+            )
             desc = "Standardized paired dataset for single-image deblurring and sharpness recovery."
         elif "denoising" in name_lower:
-            objective = "Eliminate real sensor noise and synthetic additive noise while preserving high-frequency textures."
-            desc = "Standardized paired dataset for single-image denoising and noise-level estimation."
+            objective = (
+                "Eliminate real sensor noise and synthetic additive noise while preserving"
+                " high-frequency textures."
+            )
+            desc = (
+                "Standardized paired dataset for single-image denoising and noise-level estimation."
+            )
         elif "exposure" in name_lower or "lowlight" in name_lower:
-            objective = "Correct extreme under/over-exposure and enhance visual fidelity in low-light environments."
+            objective = (
+                "Correct extreme under/over-exposure and enhance visual fidelity in low-light"
+                " environments."
+            )
             desc = "Standardized paired dataset for exposure correction and low-light enhancement."
         elif "film" in name_lower:
-            objective = "Restore degraded vintage film frames by removing scratches, color fading, and archival dust."
-            desc = "Standardized paired dataset for vintage film restoration and historical frame recovery."
+            objective = (
+                "Restore degraded vintage film frames by removing scratches, color fading, and"
+                " archival dust."
+            )
+            desc = (
+                "Standardized paired dataset for vintage film restoration and historical frame"
+                " recovery."
+            )
         elif "codeformer" in name_lower:
-            objective = "Restore severely degraded facial portraits using codebook lookup and transformer priors."
-            desc = "High-fidelity blind face restoration manifold with synthetic degradation and aligned targets."
+            objective = (
+                "Restore severely degraded facial portraits using codebook lookup and transformer"
+                " priors."
+            )
+            desc = (
+                "High-fidelity blind face restoration manifold with synthetic degradation and"
+                " aligned targets."
+            )
 
     # 3. Title and Subtitle
     raw_title = (
@@ -384,7 +416,9 @@ def resolve_manifold_context(
             logger.debug("Could not read count from dataset_info.yaml: %s", exc)
 
     # If sources is empty or only contains the self-referential compiled manifold name
-    has_only_self = bool(sources and all("manifold" in k.lower() or k == manifold_name for k in sources))
+    has_only_self = bool(
+        sources and all("manifold" in k.lower() or k == manifold_name for k in sources)
+    )
     if (not sources or has_only_self) and unified_entry.get("provenance_sources"):
         prov_list = unified_entry["provenance_sources"]
         sources = {}
@@ -395,27 +429,41 @@ def resolve_manifold_context(
             sources[format_source(p)] = {"train": train_c, "val": val_c, "total": per_src}
 
     # 5. Metadata fields
-    license_name = str(clean_overrides.get("license") or unified_entry.get("license", "CC-BY-NC-4.0"))
+    license_name = str(
+        clean_overrides.get("license") or unified_entry.get("license", "CC-BY-NC-4.0")
+    )
     keywords = list(clean_overrides.get("keywords") or unified_entry.get("keywords") or [
         "computer-vision", "deep-learning", "image", "benchmark", "artificial-intelligence"
     ])
     is_private = bool(clean_overrides.get("is_private") or unified_entry.get("is_private", False))
     update_frequency = str(
-        clean_overrides.get("expected_update_frequency") or unified_entry.get("expected_update_frequency", "never")
+        clean_overrides.get("expected_update_frequency")
+        or unified_entry.get("expected_update_frequency", "never")
     )
     author_name = str(clean_overrides.get("author") or unified_entry.get("author", "Lem Treursic"))
     author_bio = str(
         clean_overrides.get("author_bio")
-        or unified_entry.get("author_bio", "Lead AI Architect & Creator of the LemGendary AI Ecosystem")
+        or unified_entry.get(
+            "author_bio", "Lead AI Architect & Creator of the LemGendary AI Ecosystem"
+        )
     )
     provenance_sources = [
-        str(s) for s in (clean_overrides.get("provenance_sources") or unified_entry.get("provenance_sources") or list(sources.keys()))
+        str(s)
+        for s in (
+            clean_overrides.get("provenance_sources")
+            or unified_entry.get("provenance_sources")
+            or list(sources.keys())
+        )
     ]
     collection_methodology = str(
         clean_overrides.get("collection_methodology")
         or unified_entry.get(
             "collection_methodology",
-            "Curated multi-source ingestion synthesized from public benchmark corpora, processed with deterministic degradation pipelines (noise, motion blur, haze, downsampling) paired with ground truth targets, validated via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset) with pre-indexed splits."
+            "Curated multi-source ingestion synthesized from public benchmark corpora, processed"
+            " with deterministic degradation pipelines (noise, motion blur, haze, downsampling)"
+            " paired with ground truth targets, validated via structural SSIM/PSNR gates, and"
+            " compiled into high-velocity streaming containers (MDS / WebDataset) with pre-indexed"
+            " splits.",
         )
     )
     citations = list(clean_overrides.get("citations") or unified_entry.get("citations") or [

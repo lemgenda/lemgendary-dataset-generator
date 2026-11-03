@@ -49,7 +49,10 @@ def _clean_kaggle_ref(ref: str) -> str:
 @router.get("/status")
 async def get_kaggle_status() -> Dict[str, Any]:
     """Inspect Kaggle authentication and local credential files."""
-    has_env = bool(os.environ.get("KAGGLE_API_TOKEN") or (os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY")))
+    has_env = bool(
+        os.environ.get("KAGGLE_API_TOKEN")
+        or (os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"))
+    )
     token_file = Path(".kaggle_token")
     has_token_file = token_file.exists() and len(token_file.read_text(encoding="utf-8").strip()) > 0
     kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
@@ -69,7 +72,7 @@ async def get_kaggle_status() -> Dict[str, Any]:
 
 @router.get("/registry-datasets", response_model=List[KaggleDatasetRegistryItem])
 async def list_registry_kaggle_datasets() -> List[KaggleDatasetRegistryItem]:
-    """List all production manifolds from unified_data.yaml that can be downloaded/uploaded via Kaggle."""
+    """List the production manifolds in unified_data.yaml that can move through Kaggle."""
     root = _resolve_output_root()
     unified_yaml = Path("unified_data.yaml")
     if not unified_yaml.exists():
@@ -136,7 +139,9 @@ async def download_kaggle_dataset(req: KaggleDownloadRequest) -> JobResponse:
     """Download a manifold or custom dataset directly from Kaggle."""
     clean_id = _clean_kaggle_ref(req.kaggle_ref)
     if not clean_id or "/" not in clean_id:
-        raise ValueError(f"Invalid Kaggle dataset reference: '{req.kaggle_ref}'. Must be 'owner/dataset' or URL.")
+        raise ValueError(
+            f"Invalid Kaggle dataset reference: '{req.kaggle_ref}'. Must be 'owner/dataset' or URL."
+        )
 
     root = _resolve_output_root()
     target_name = req.target_folder
@@ -200,7 +205,11 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
             with open(unified_yaml, "r", encoding="utf-8") as f:
                 ydata = yaml.safe_load(f) or {}
                 for k, v in ydata.get("datasets", {}).items():
-                    if k == req.manifold or v.get("modernized_folder") == manifold_dir.name or v.get("name") == manifold_dir.name:
+                    if (
+                        k == req.manifold
+                        or v.get("modernized_folder") == manifold_dir.name
+                        or v.get("name") == manifold_dir.name
+                    ):
                         repo_id = v.get("kaggle_ref")
                         break
 
@@ -265,7 +274,7 @@ class KaggleMetadataRequest(BaseModel):
 
 @router.post("/update-metadata", response_model=JobResponse)
 async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
-    """Push Kaggle dataset metadata (title, description, license, columns) without re-uploading data."""
+    """Push Kaggle metadata (title, description, license, columns) without re-uploading data."""
     root = _resolve_output_root()
 
     if req.all_datasets:
@@ -288,7 +297,9 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         return job
 
     if not req.manifold:
-        raise HTTPException(status_code=422, detail="Either 'manifold' or 'all_datasets: true' must be provided.")
+        raise HTTPException(
+            status_code=422, detail="Either 'manifold' or 'all_datasets: true' must be provided."
+        )
 
     # Resolve manifold path
     manifold_dir = root / req.manifold
@@ -322,7 +333,10 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
 
     clean_id = _clean_kaggle_ref(repo_id)
     if is_kaggle_large_manifold(clean_id):
-        raise HTTPException(status_code=400, detail=f"Refusing to update metadata for legacy *large manifold: {clean_id}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Refusing to update metadata for legacy *large manifold: {clean_id}",
+        )
 
     cmd = [
         venv_python(),
