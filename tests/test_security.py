@@ -18,8 +18,6 @@ from starlette.websockets import WebSocketDisconnect
 
 from api.auth import API_KEY_HEADER
 from api.security import (
-    ALLOWED_HEADERS,
-    ALLOWED_METHODS,
     ALLOWED_ORIGINS,
     CLIENT_HEADER,
     CLIENT_HEADER_VALUE,
@@ -50,14 +48,10 @@ def _build_app() -> FastAPI:
         await websocket.send_json({"ok": True})
         await websocket.close()
 
-    test_app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(ALLOWED_ORIGINS),
-        allow_credentials=False,
-        allow_methods=list(ALLOWED_METHODS),
-        allow_headers=list(ALLOWED_HEADERS),
-    )
-    test_app.add_middleware(origin_guard_middleware)
+    # Copy the real app's middleware stack. add_middleware() prepends, so walk it
+    # innermost-first to keep the guard outermost, exactly as in the server.
+    for middleware in reversed(server_app.user_middleware):
+        test_app.add_middleware(middleware.cls, *middleware.args, **middleware.kwargs)
     return test_app
 
 

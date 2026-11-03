@@ -20,19 +20,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routes import llm as llm_routes
+from tests.llm_records import chat_record
 
-VALID_RECORD = {
-    "id": "rec_1",
-    "category": "troubleshooting_diagnostics",
-    "messages": [
-        {"role": "system", "content": "System prompt."},
-        {"role": "user", "content": "Help me."},
-        {
-            "role": "assistant",
-            "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation.",
-        },
-    ],
-}
+VALID_RECORD = chat_record("rec_1")
 
 
 def _write_jsonl(path: Path) -> Path:

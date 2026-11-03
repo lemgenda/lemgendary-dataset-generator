@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.47-STABLE` |
+| **Version** | `v16.9.48-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,25 @@
 ---
 
 ## Changelog
+
+### v16.9.48 - LLM Helper and Tool Script Complexity Cleanup
+
+- **Smaller LLM Helper Functions**: the compiler, synthesizer, ingestor,
+  chunker, validator and metadata writer in `tools/llm_helper/` are split
+  into small helpers. Category rules and prompt templates are data tables,
+  file readers are a per-extension table, and `KnowledgeDocument` and
+  `KnowledgeChunk` are dataclasses (`KnowledgeChunk` takes a `ChunkOrigin`,
+  while its old attributes read the same). `generate_llm_metadata` also
+  accepts an `LLMManifoldDescriptor`. Output is unchanged.
+- **Tool Scripts Split Into Steps**: `sources/hf.py`,
+  `tools/shard_json_injector.py`, `tools/txt_to_json.py` and
+  `tools/generate_cli.py` each run a sequence of short helpers. The `run`
+  options of `generate_cli` are keyword-only, as `GenerationService` already
+  passed them, and `create_progress_bar` takes `mininterval` through
+  `**kwargs`. The `too-many-*` findings in these files went from 33 to 0.
+- **Shared Test Records**: the LLM tests build ChatML records with the new
+  `tests/llm_records.py`, which removed the duplicate-code findings between
+  the test modules.
 
 ### v16.9.47 - Docs Context Split; Shared Generator Helpers
 

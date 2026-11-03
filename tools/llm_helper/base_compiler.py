@@ -21,7 +21,7 @@ import yaml
 from .chunker import RecursiveChunker
 from .knowledge_ingestor import KnowledgeIngestor
 from .knowledge_synthesizer import compile_knowledge_corpus
-from .metadata_compiler import generate_llm_metadata
+from .metadata_compiler import LLMManifoldDescriptor, generate_llm_metadata
 from .quality_validator import QualityValidator
 
 logger = logging.getLogger("lemdata.llm.compiler")
@@ -62,98 +62,31 @@ class BaseLLMCompiler:
 
         modernized_folder = cfg.get("modernized_folder", dataset_key)
         target_dir = self.workspace_root / "LemGendaryDatasets" / modernized_folder
-        data_dir = target_dir / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "data").mkdir(parents=True, exist_ok=True)
 
         # 1. Gather records
-        records: list[dict[str, Any]] = []
-        train_records: list[dict[str, Any]] = []
-        val_records: list[dict[str, Any]] = []
-
         if custom_records is not None:
             records = custom_records
         else:
-            # Check generator module in llm_pipeline or fallback to pack dispatcher
-            llm_pipe = cfg.get("llm_pipeline", {})
-            gen_module = llm_pipe.get("generator_module")
-            if gen_module == "tools.llm_helper.knowledge_synthesizer" or dataset_key in (
-                "test_llm",
-                "ai_helper_lemgend",
-            ):
-                knowledge_sources = llm_pipe.get("knowledge_sources", [])
-                system_prompt = llm_pipe.get("system_prompt", "")
-                target_samples = int(llm_pipe.get("target_samples", 525))
-                records = compile_knowledge_corpus(
-                    knowledge_sources=knowledge_sources,
-                    system_prompt=system_prompt,
-                    target_samples=target_samples,
-                    workspace_root=self.workspace_root,
-                )
-            else:
-                raise NotImplementedError(f"No generator module mapped for {dataset_key}")
+            records = self._generate_records(dataset_key, cfg)
 
         # 2. Quality Validation
-        is_valid, issues = self.validator.validate_corpus(records)
-        critical_errors = [iss for iss in issues if iss.severity == "ERROR"]
-        if not is_valid:
-            raise ValueError(
-                f"Corpus validation failed with {len(critical_errors)} critical errors:"
-                f" {critical_errors[:5]}"
-            )
+        self._require_valid(records)
 
-        # 3. Fallback Stratified Partitioning if not using predefined balanced generator
-        if not train_records and not val_records:
-            rng = random.Random(42)
-            by_category: dict[str, list[dict[str, Any]]] = {}
-            for r in records:
-                cat = r.get("category", "default")
-                by_category.setdefault(cat, []).append(r)
-
-            val_split = float(cfg.get("val_split", 0.20) or 0.20)
-            for cat, items in sorted(by_category.items()):
-                shuffled = list(items)
-                rng.shuffle(shuffled)
-                val_count = max(1, int(len(shuffled) * val_split)) if len(shuffled) > 1 else 0
-                val_records.extend(shuffled[:val_count])
-                train_records.extend(shuffled[val_count:])
-
-        train_records.sort(key=lambda x: str(x.get("id", "")))
-        val_records.sort(key=lambda x: str(x.get("id", "")))
+        # 3. Stratified Partitioning
+        train_records, val_records = _stratified_split(
+            records, float(cfg.get("val_split", 0.20) or 0.20)
+        )
 
         # 4. Resolve output filenames
-        train_file_rel = cfg.get("train_file", f"data/{dataset_key}_train.jsonl")
-        val_file_rel = cfg.get("val_file", f"data/{dataset_key}_val.jsonl")
-
-        train_path = target_dir / Path(train_file_rel)
-        val_path = target_dir / Path(val_file_rel)
-        train_path.parent.mkdir(parents=True, exist_ok=True)
-        val_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(train_path, "w", encoding="utf-8") as f:
-            for r in train_records:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-        with open(val_path, "w", encoding="utf-8") as f:
-            for r in val_records:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        train_path = target_dir / Path(cfg.get("train_file", f"data/{dataset_key}_train.jsonl"))
+        val_path = target_dir / Path(cfg.get("val_file", f"data/{dataset_key}_val.jsonl"))
+        _write_jsonl(train_path, train_records)
+        _write_jsonl(val_path, val_records)
 
         # 5. Metadata compilation
-        category = cfg.get("category", "Technical Documentation & AI Assistant Training")
-        classes = [cfg.get("task", "ai_helper")]
-        original_sources = cfg.get("provenance_sources", [
-            "LemGendary AI Documentation Hub",
-            "Master Operations Manuals (GUI, CLI, API)",
-            "Architectural Whitepapers",
-        ])
-
         generate_llm_metadata(
-            manifold_dir=target_dir,
-            dataset_name=modernized_folder,
-            train_records=train_records,
-            val_records=val_records,
-            category=category,
-            classes=classes,
-            original_sources=original_sources,
+            target_dir, modernized_folder, train_records, val_records, _descriptor_for(cfg)
         )
 
         return {
@@ -165,3 +98,71 @@ class BaseLLMCompiler:
             "train_path": str(train_path),
             "val_path": str(val_path),
         }
+
+    def _generate_records(self, dataset_key: str, cfg: dict[str, Any]) -> list[dict[str, Any]]:
+        """Run the generator declared in the manifold's ``llm_pipeline`` block."""
+        llm_pipe = cfg.get("llm_pipeline", {})
+        gen_module = llm_pipe.get("generator_module")
+        if gen_module != "tools.llm_helper.knowledge_synthesizer" and dataset_key not in (
+            "test_llm",
+            "ai_helper_lemgend",
+        ):
+            raise NotImplementedError(f"No generator module mapped for {dataset_key}")
+        return compile_knowledge_corpus(
+            knowledge_sources=llm_pipe.get("knowledge_sources", []),
+            system_prompt=llm_pipe.get("system_prompt", ""),
+            target_samples=int(llm_pipe.get("target_samples", 525)),
+            workspace_root=self.workspace_root,
+        )
+
+    def _require_valid(self, records: list[dict[str, Any]]) -> None:
+        """Raise ValueError when the corpus has any ERROR-severity issue."""
+        is_valid, issues = self.validator.validate_corpus(records)
+        critical_errors = [iss for iss in issues if iss.severity == "ERROR"]
+        if not is_valid:
+            raise ValueError(
+                f"Corpus validation failed with {len(critical_errors)} critical errors:"
+                f" {critical_errors[:5]}"
+            )
+
+
+def _stratified_split(
+    records: list[dict[str, Any]], val_split: float
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Deterministic per-category train/val split (seed 42), each side sorted by id."""
+    rng = random.Random(42)
+    by_category: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        by_category.setdefault(r.get("category", "default"), []).append(r)
+
+    train_records: list[dict[str, Any]] = []
+    val_records: list[dict[str, Any]] = []
+    for _category, items in sorted(by_category.items()):
+        shuffled = list(items)
+        rng.shuffle(shuffled)
+        val_count = max(1, int(len(shuffled) * val_split)) if len(shuffled) > 1 else 0
+        val_records.extend(shuffled[:val_count])
+        train_records.extend(shuffled[val_count:])
+
+    train_records.sort(key=lambda x: str(x.get("id", "")))
+    val_records.sort(key=lambda x: str(x.get("id", "")))
+    return train_records, val_records
+
+
+def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
+
+
+def _descriptor_for(cfg: dict[str, Any]) -> LLMManifoldDescriptor:
+    """Metadata descriptor from the manifold config, with AI-helper defaults."""
+    return LLMManifoldDescriptor(
+        category=cfg.get("category", "Technical Documentation & AI Assistant Training"),
+        classes=[cfg.get("task", "ai_helper")],
+        original_sources=cfg.get("provenance_sources", [
+            "LemGendary AI Documentation Hub",
+            "Master Operations Manuals (GUI, CLI, API)",
+            "Architectural Whitepapers",
+        ]),
+    )

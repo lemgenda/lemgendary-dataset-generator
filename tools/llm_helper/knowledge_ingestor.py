@@ -7,6 +7,8 @@ with deterministic hashing, line preservation, and offline caching.
 from __future__ import annotations
 
 import csv
+from collections.abc import Callable
+from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
@@ -21,25 +23,21 @@ import yaml
 logger = logging.getLogger("lemdata.llm.ingestor")
 
 
+@dataclass(eq=False)
 class KnowledgeDocument:
     """Represents a normalized ingested document unit."""
 
-    def __init__(
-        self,
-        doc_id: str,
-        content: str,
-        source_type: str,
-        source_path: str,
-        canonical_url: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        self.doc_id = doc_id
-        self.content = content
-        self.source_type = source_type
-        self.source_path = source_path
-        self.canonical_url = canonical_url
-        self.metadata = metadata or {}
-        self.content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    doc_id: str
+    content: str
+    source_type: str
+    source_path: str
+    canonical_url: str | None = None
+    metadata: dict[str, Any] | None = None
+    content_hash: str = field(init=False, default="")
+
+    def __post_init__(self) -> None:
+        self.metadata = self.metadata or {}
+        self.content_hash = hashlib.sha256(self.content.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
         """Return the document as a JSON-serialisable dict."""
@@ -52,6 +50,59 @@ class KnowledgeDocument:
             "content_length": len(self.content),
             "metadata": self.metadata,
         }
+
+
+def _read_text(file_path: Path) -> str:
+    return file_path.read_text(encoding="utf-8", errors="replace")
+
+
+def _read_json(file_path: Path) -> str:
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return json.dumps(data, indent=2)
+
+
+def _read_jsonl(file_path: Path) -> str:
+    lines = [
+        line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    return "\n".join(lines)
+
+
+def _read_yaml(file_path: Path) -> str:
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _read_csv(file_path: Path) -> str:
+    with open(file_path, "r", encoding="utf-8", newline="") as f:
+        rows = [", ".join(row) for row in csv.reader(f)]
+    return "\n".join(rows)
+
+
+# Extension -> (reader returning normalised text, source_type label).
+_FILE_READERS: dict[str, tuple[Callable[[Path], str], str]] = {
+    ".md": (_read_text, "markdown"),
+    ".txt": (_read_text, "text"),
+    ".json": (_read_json, "json"),
+    ".jsonl": (_read_jsonl, "json"),
+    ".yaml": (_read_yaml, "yaml"),
+    ".yml": (_read_yaml, "yaml"),
+    ".csv": (_read_csv, "csv"),
+}
+
+
+def _strip_html(html_text: str) -> str:
+    """Basic tag stripping and whitespace collapse for fetched web pages."""
+    clean_text = re.sub(r"<[^>]+>", " ", html_text)
+    return re.sub(r"\s+", " ", clean_text).strip()
+
+
+def _fetch_url_text(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "LemGendary-Knowledge-Ingestor/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return _strip_html(resp.read().decode("utf-8", errors="replace"))
 
 
 class KnowledgeIngestor:
@@ -92,66 +143,23 @@ class KnowledgeIngestor:
         url_prefix: str | None = None,
     ) -> KnowledgeDocument | None:
         ext = file_path.suffix.lower()
-        doc_id = file_path.name
-        canonical_url = f"{url_prefix.rstrip('/')}/{file_path.name}" if url_prefix else None
-
-        try:
-            if ext in (".md", ".txt"):
-                content = file_path.read_text(encoding="utf-8", errors="replace")
-                return KnowledgeDocument(
-                    doc_id=doc_id,
-                    content=content,
-                    source_type="markdown" if ext == ".md" else "text",
-                    source_path=str(file_path),
-                    canonical_url=canonical_url,
-                )
-            if ext in (".json", ".jsonl"):
-                if ext == ".json":
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    content = json.dumps(data, indent=2)
-                else:
-                    lines = [
-                        line.strip()
-                        for line in file_path.read_text(encoding="utf-8").splitlines()
-                        if line.strip()
-                    ]
-                    content = "\n".join(lines)
-                return KnowledgeDocument(
-                    doc_id=doc_id,
-                    content=content,
-                    source_type="json",
-                    source_path=str(file_path),
-                    canonical_url=canonical_url,
-                )
-            if ext in (".yaml", ".yml"):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                content = yaml.safe_dump(data, sort_keys=False)
-                return KnowledgeDocument(
-                    doc_id=doc_id,
-                    content=content,
-                    source_type="yaml",
-                    source_path=str(file_path),
-                    canonical_url=canonical_url,
-                )
-            if ext == ".csv":
-                with open(file_path, "r", encoding="utf-8", newline="") as f:
-                    reader = csv.reader(f)
-                    rows = [", ".join(row) for row in reader]
-                content = "\n".join(rows)
-                return KnowledgeDocument(
-                    doc_id=doc_id,
-                    content=content,
-                    source_type="csv",
-                    source_path=str(file_path),
-                    canonical_url=canonical_url,
-                )
+        reader = _FILE_READERS.get(ext)
+        if reader is None:
             logger.debug("Unsupported extension: %s", ext)
             return None
+        read, source_type = reader
+        try:
+            content = read(file_path)
         except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError, csv.Error) as exc:
             logger.error("Failed reading file %s: %s", file_path, exc)
             return None
+        return KnowledgeDocument(
+            doc_id=file_path.name,
+            content=content,
+            source_type=source_type,
+            source_path=str(file_path),
+            canonical_url=f"{url_prefix.rstrip('/')}/{file_path.name}" if url_prefix else None,
+        )
 
     def ingest_url(
         self,
@@ -166,37 +174,9 @@ class KnowledgeIngestor:
         the refresh fails.
         """
         url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-        cache_file = self.cache_dir / f"{url_hash}.txt"
-
-        content = ""
-        cache_exists = cache_file.exists()
-        cache_fresh = cache_exists and (time.time() - cache_file.stat().st_mtime) < ttl_hours * 3600
-        if cache_fresh:
-            content = cache_file.read_text(encoding="utf-8")
-        else:
-            try:
-                req = urllib.request.Request(
-                    url, headers={"User-Agent": "LemGendary-Knowledge-Ingestor/1.0"}
-                )
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    raw_bytes = resp.read()
-                    html_text = raw_bytes.decode("utf-8", errors="replace")
-                    # Basic tag stripping
-                    clean_text = re.sub(r"<[^>]+>", " ", html_text)
-                    clean_text = re.sub(r"\s+", " ", clean_text).strip()
-                    content = clean_text
-                    cache_file.write_text(content, encoding="utf-8")
-            except (OSError, ValueError) as exc:
-                if not cache_exists:
-                    logger.warning("Remote URL fetch failed for %s (%s). Falling back.", url, exc)
-                    return None
-                logger.warning(
-                    "Remote URL refresh failed for %s (%s). Using stale cache %s.",
-                    url,
-                    exc,
-                    cache_file,
-                )
-                content = cache_file.read_text(encoding="utf-8")
+        content = self._cached_url_text(url, self.cache_dir / f"{url_hash}.txt", ttl_hours)
+        if content is None:
+            return None
 
         parsed = urllib.parse.urlparse(url)
         doc_id = Path(parsed.path).name or f"url_{url_hash}"
@@ -208,3 +188,25 @@ class KnowledgeIngestor:
             canonical_url=url,
             metadata={"tag": tag or "web_resource"},
         )
+
+    @staticmethod
+    def _cached_url_text(url: str, cache_file: Path, ttl_hours: int) -> str | None:
+        """Return fresh cache, else refetch (and cache), else stale cache, else None."""
+        cache_exists = cache_file.exists()
+        if cache_exists and (time.time() - cache_file.stat().st_mtime) < ttl_hours * 3600:
+            return cache_file.read_text(encoding="utf-8")
+        try:
+            content = _fetch_url_text(url)
+            cache_file.write_text(content, encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            if not cache_exists:
+                logger.warning("Remote URL fetch failed for %s (%s). Falling back.", url, exc)
+                return None
+            logger.warning(
+                "Remote URL refresh failed for %s (%s). Using stale cache %s.",
+                url,
+                exc,
+                cache_file,
+            )
+            return cache_file.read_text(encoding="utf-8")
+        return content

@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from tests.llm_records import chat_record
 from tools.llm_helper.chunker import RecursiveChunker
 from tools.llm_helper.knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
 from tools.llm_helper.quality_validator import QualityValidator
@@ -48,20 +49,7 @@ class TestLLMHelper(unittest.TestCase):
         """QualityValidator accepts a valid record and flags rule violations."""
         validator = QualityValidator(zero_emojis=True, enforce_epistemic_tags=True)
 
-        valid_record = {
-            "id": "valid_rec_1",
-            "category": "troubleshooting_diagnostics",
-            "messages": [
-                {"role": "system", "content": "System prompt."},
-                {"role": "user", "content": "Help me."},
-                {
-                    "role": "assistant",
-                    "content": (
-                        "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."
-                    ),
-                },
-            ],
-        }
+        valid_record = chat_record("valid_rec_1")
         issues = validator.validate_record(valid_record)
         self.assertEqual(len(issues), 0)
 

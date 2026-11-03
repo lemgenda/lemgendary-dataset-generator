@@ -17,19 +17,17 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, TypedDict, Unpack
 
 from PIL import Image
 
 from core.lazy_imports import load_model_module
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
-_ROOT = (
-    Path(__file__).resolve().parent.parent
-    if Path(__file__).parent.name == "tools"
-    else Path(__file__).resolve().parent
-)
+# Project root: this module lives in <root>/tools/.
+_ROOT = Path(__file__).resolve().parents[1]
 
 logger = logging.getLogger(__name__)
 
@@ -146,36 +144,31 @@ def _write_mask(manifold: Path, name: str, split: str, mask: Image.Image) -> Non
     mask.save(out, format="PNG", optimize=True)
 
 
+# kind -> writer for one generated value
+_WRITERS: dict[str, Callable[[Path, str, str, Any], None]] = {
+    "label": _write_label,
+    "prompt": lambda manifold, name, split, value: _write_prompt(manifold, name, split, str(value)),
+    "mask": _write_mask,
+}
+
+
 # ─── Runner ─────────────────────────────────────────────────────────────────
-def run(
-    manifold: Path,
-    kind: str,
-    strategy: str,
-    template: str,
-    device: str,
-    sample_limit: int | None,
-    dry_run: bool,
-) -> int:
-    """Run a label, prompt or mask generator over a manifold's images; returns the exit code."""
-    if not manifold.exists():
-        print(f"[ERROR] Manifold not found: {manifold}")
-        return 1
+class RunOptions(TypedDict, total=False):
+    """Optional settings for :func:`run`."""
 
-    print(f"[GENERATE] {manifold.name} | kind={kind} | strategy={strategy}")
+    template: str
+    device: str
+    sample_limit: int | None
+    dry_run: bool
 
-    generator = _load_generator(kind, strategy, template, device)
-    images = list(_iter_images(manifold, sample_limit))
-    print(
-        f"[SCAN] {len(images)} image(s) discovered"
-        + (f" (capped at {sample_limit})" if sample_limit else "")
-    )
 
-    if dry_run:
-        print("[DRY-RUN] Not writing any files.")
-        return 0
-
+def _generate_all(
+    generator: Any, images: list[tuple[Path, str, str]], kind: str, manifold: Path
+) -> tuple[int, int]:
+    """Generate and write one artifact per image; return ``(written, failed)``."""
     written = 0
     failed = 0
+    write = _WRITERS.get(kind)
     for path, name, split in images:
         try:
             with Image.open(path) as img:
@@ -190,17 +183,47 @@ def run(
         if result.value is None:
             continue
 
-        if kind == "label":
-            _write_label(manifold, name, split, result.value)
-        elif kind == "prompt":
-            _write_prompt(manifold, name, split, str(result.value))
-        elif kind == "mask":
-            _write_mask(manifold, name, split, result.value)
+        if write is not None:
+            write(manifold, name, split, result.value)
         written += 1
 
         if written % 500 == 0:
             print(f"  [{written}/{len(images)}] written...")
+    return written, failed
 
+
+def run(
+    manifold: Path,
+    kind: str,
+    strategy: str,
+    **options: Unpack[RunOptions],
+) -> int:
+    """Run a label, prompt or mask generator over a manifold's images; returns the exit code.
+
+    ``options`` defaults: ``template="diffusers-v1"``, ``device="cpu"``,
+    ``sample_limit=None`` (no cap) and ``dry_run=False``.
+    """
+    if not manifold.exists():
+        print(f"[ERROR] Manifold not found: {manifold}")
+        return 1
+
+    print(f"[GENERATE] {manifold.name} | kind={kind} | strategy={strategy}")
+
+    generator = _load_generator(
+        kind, strategy, options.get("template", "diffusers-v1"), options.get("device", "cpu")
+    )
+    sample_limit = options.get("sample_limit")
+    images = list(_iter_images(manifold, sample_limit))
+    print(
+        f"[SCAN] {len(images)} image(s) discovered"
+        + (f" (capped at {sample_limit})" if sample_limit else "")
+    )
+
+    if options.get("dry_run", False):
+        print("[DRY-RUN] Not writing any files.")
+        return 0
+
+    written, failed = _generate_all(generator, images, kind, manifold)
     print()
     print(f"[DONE] written: {written}  failed: {failed}")
     return 0
@@ -237,10 +260,10 @@ def main() -> int:
         Path(args.manifold),
         args.kind,
         strategy,
-        args.template,
-        args.device,
-        args.sample,
-        args.dry_run,
+        template=args.template,
+        device=args.device,
+        sample_limit=args.sample,
+        dry_run=args.dry_run,
     )
 
 

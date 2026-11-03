@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 # Visual progress bar is rendered natively by the GUI telemetry engine
 STANDARD_BAR_FORMAT = "{desc} - {percentage:5.1f}% [{n_fmt}/{total_fmt}, {rate_fmt}{postfix}]"
 
+# Minimum seconds between bar redraws unless the caller passes ``mininterval``.
+DEFAULT_MININTERVAL = 0.25
+
 
 def supports_unicode() -> bool:
     """Detect whether standard output safely supports unicode block characters."""
@@ -47,12 +50,15 @@ def create_progress_bar(
     unit: str = "img",
     ncols: int | None = None,
     ascii_blocks: bool | None = None,
-    mininterval: float = 0.25,
     **kwargs: Any,
 ) -> tqdm:
-    """Create a standardized tqdm progress bar guaranteed to render identically across all tools."""
+    """Create a standardized tqdm progress bar guaranteed to render identically across all tools.
+
+    Any other keyword goes straight to ``tqdm``; ``mininterval`` defaults to
+    :data:`DEFAULT_MININTERVAL` seconds.
+    """
     kwargs.setdefault("bar_format", STANDARD_BAR_FORMAT)
-    kwargs.setdefault("mininterval", mininterval)
+    kwargs.setdefault("mininterval", DEFAULT_MININTERVAL)
     kwargs.setdefault("file", sys.stdout)
 
     if ascii_blocks is None:
