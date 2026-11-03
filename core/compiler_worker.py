@@ -6,7 +6,6 @@ per-sample processors in ``core.sample_processor`` read.
 """
 
 import argparse
-import functools
 import io
 import logging
 import multiprocessing
@@ -26,6 +25,7 @@ from core.compiler_config import CONFIG, DATASETS_META, INPUT_ROOT, get_args, se
 from core.config_schema import ImageFormatPolicy
 from core.error_types import MODEL_LOAD_ERRORS, SAMPLE_PROCESSING_ERRORS
 from core.lazy_imports import load_model_module
+from core.task_taxonomy import resolve_task, taxonomy
 from formats.transcode import ImageTranscoder, KeepFormatError
 from generators import LabelGenerator, MaskGenerator
 from runtime.environment import load_torch
@@ -84,63 +84,21 @@ class WorkerState:
 
 WORKER = WorkerState()
 
-_TASK_PATTERNS: list[tuple[list[str], str]] = [
-    (["diffusion", "vlm", "vision_language"], "diffusion"),
-    (["seg", "mask", "parsenet"], "segmentation"),
-    (["pose", "face"], "pose"),
-    (["nima", "aesthetic", "quality"], "quality"),
-    (["classify", "classification", "authentic", "authenticity"], "classification"),
-    (["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"], "super-resolution"),
-    ([
-        "deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure",
-        "restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet",
-        "upn", "codeformer",
-    ], "restoration"),
-]
-
 
 # ─── Task routing ───────────────────────────────────────────────────────────
-def _task_override(name: str) -> str | None:
-    """The registry task of a dataset key or name: ``task_override``, else ``task``."""
-    for ds_key, ds_cfg in DATASETS_META.items():
-        if ds_key.lower() == name or (ds_cfg.get("name", "").lower() == name):
-            registered = ds_cfg.get("task_override") or ds_cfg.get("task")
-            if registered:
-                return registered
-    return None
-
-
-@functools.cache
-def _heuristic_task(name: str) -> str:
-    """Name-pattern task for a dataset the registry gives no task (logged once per name)."""
-    task = next((t_name for patterns, t_name in _TASK_PATTERNS
-                 if any(k in name for k in patterns)), "detection")
-    logger.info("No registry task for %r; inferred %r from its name", name, task)
-    return task
-
-
 def detect_task(model_dir_name: str | None) -> str:
-    """Route a model key to its task class."""
-    if not model_dir_name:
-        return "quality"
-    name = model_dir_name.lower()
-
-    return _task_override(name) or _heuristic_task(name)
+    """Route a model key to its task: the registry task, else the taxonomy heuristic."""
+    return resolve_task(DATASETS_META, model_dir_name)
 
 
 def _infer_label_strategy(task: str) -> str | None:
-    """Map a task to its default label-generation strategy."""
-    return {
-        "diffusion": "blip_caption",
-        "classification": "clip_zeroshot",
-        "detection": "yolo_detection",
-        "segmentation": "parsenet_segmentation",
-    }.get(task)
+    """Map a task to its default label-generation strategy (task_taxonomy.json)."""
+    return taxonomy().label_strategy(task)
 
 
 def _infer_mask_strategy(task: str) -> str | None:
-    """Map a task to its default mask-generation strategy."""
-    return "parsenet" if task == "segmentation" else None
+    """Map a task to its default mask-generation strategy (task_taxonomy.json)."""
+    return taxonomy().mask_strategy(task)
 
 
 # ─── Worker bootstrap ───────────────────────────────────────────────────────

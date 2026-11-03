@@ -1,0 +1,137 @@
+{
+  "$schema": "./task_taxonomy.schema.json",
+  "schema_version": 1,
+  "heuristic": {
+    "fallback_task": "detection",
+    "unnamed_task": "quality"
+  },
+  "tasks": [
+    {
+      "id": "diffusion",
+      "layout_dir": null,
+      "label_strategy": "blip_caption",
+      "mask_strategy": null,
+      "name_patterns": ["diffusion", "vlm", "vision_language"]
+    },
+    {
+      "id": "segmentation",
+      "layout_dir": "masks",
+      "label_strategy": "parsenet_segmentation",
+      "mask_strategy": "parsenet",
+      "name_patterns": ["seg", "mask", "parsenet"]
+    },
+    {
+      "id": "pose",
+      "layout_dir": "labels",
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": ["pose", "face"]
+    },
+    {
+      "id": "quality",
+      "layout_dir": "labels",
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": ["nima", "aesthetic", "quality"]
+    },
+    {
+      "id": "classification",
+      "layout_dir": "labels",
+      "label_strategy": "clip_zeroshot",
+      "mask_strategy": null,
+      "name_patterns": ["classify", "classification", "authentic", "authenticity"]
+    },
+    {
+      "id": "super-resolution",
+      "layout_dir": "targets",
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": ["sr", "ultrazoom", "x2", "x3", "x4", "x8", "super"]
+    },
+    {
+      "id": "restoration",
+      "layout_dir": "targets",
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": [
+        "deraining", "debluring", "denoising", "dehazing", "lowlight", "exposure",
+        "restorer", "enhance", "restoration", "ffanet", "mirnet", "mprnet", "nafnet",
+        "upn", "codeformer"
+      ]
+    },
+    {
+      "id": "detection",
+      "layout_dir": "labels",
+      "label_strategy": "yolo_detection",
+      "mask_strategy": null,
+      "name_patterns": []
+    },
+    {
+      "id": "yolo",
+      "layout_dir": "labels",
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": []
+    },
+    {
+      "id": "parameter_prediction",
+      "layout_dir": null,
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": []
+    },
+    {
+      "id": "vision",
+      "layout_dir": null,
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": []
+    }
+  ],
+  "documentation_tasks": {
+    "LemGendizedAIHelperLemGend": "ai_helper",
+    "LemGendizedClassificationMaster": "classification",
+    "LemGendizedCodeFormer": "restoration",
+    "LemGendizedFfaNetIndoor": "restoration",
+    "LemGendizedFfaNetOutdoor": "restoration",
+    "LemGendizedFilmRestorer": "restoration",
+    "LemGendizedForexUniverse": "forex",
+    "LemGendizedMirNetExposure": "restoration",
+    "LemGendizedMirNetLowLight": "restoration",
+    "LemGendizedMprNetDeraining": "restoration",
+    "LemGendizedMultitaskRestorationPro": "restoration",
+    "LemGendizedNafNetDebluring": "restoration",
+    "LemGendizedNafNetDenoising": "restoration",
+    "LemGendizedNimaAesthetic": "quality",
+    "LemGendizedNimaAuthenticity": "authenticity",
+    "LemGendizedNimaTechnical": "quality",
+    "LemGendizedParseNet": "segmentation",
+    "LemGendizedRetinaFace": "detection",
+    "LemGendizedUltraZoom": "super-resolution",
+    "LemGendizedUpnV2": "parameter_prediction",
+    "LemGendizedYoloV8n": "detection",
+    "LemGendizedClassificationMasterManifold": "classification",
+    "LemGendizedRetinaFaceMobileNet": "detection",
+    "LemGendizedProfessionalMultitaskRestoration": "restoration",
+    "LemGendizedForexUniverseLarge": "forex",
+    "LemGendizedClassificationMasterManifoldLarge": "classification",
+    "LemGendizedNimaAestheticLarge": "quality",
+    "LemGendizedNimaTechnicalLarge": "quality",
+    "LemGendizedNimaAuthenticityLarge": "authenticity",
+    "LemGendizedUpnV2Large": "parameter_prediction",
+    "LemGendizedFilmRestorerLarge": "restoration",
+    "LemGendizedCodeFormerLarge": "restoration",
+    "LemGendizedParseNetLarge": "segmentation",
+    "LemGendizedRetinaFaceMobileNetLarge": "detection",
+    "LemGendizedFfaNetIndoorLarge": "restoration",
+    "LemGendizedFfaNetOutdoorLarge": "restoration",
+    "LemGendizedMirNetLowLightLarge": "restoration",
+    "LemGendizedMirNetExposureLarge": "restoration",
+    "LemGendizedMprNetDerainingLarge": "restoration",
+    "LemGendizedNafNetDebluringLarge": "restoration",
+    "LemGendizedNafNetDenoisingLarge": "restoration",
+    "LemGendizedUltraZoomLarge": "super-resolution",
+    "LemGendizedYoloV8nLarge": "detection",
+    "LemGendizedProfessionalMultitaskRestorationLarge": "restoration"
+  }
+}

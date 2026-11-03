@@ -36,6 +36,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from core import paths
+from core.task_taxonomy import taxonomy
 
 
 # ─── Ref-level ──────────────────────────────────────────────────────────────
@@ -174,9 +175,11 @@ class DatasetEntry(BaseModel):
     labeling: bool = True
     vetting: bool = True
 
-    # Task routing
+    # Task routing: ids from task_taxonomy.json. ``task_confirmed: false``
+    # marks a task kept from the name heuristic pending owner confirmation.
     task_override: str | None = None
     task: str | None = None
+    task_confirmed: bool = True
 
     # Domain classification
     dataset_type: Literal["vision", "forex", "diffusion", "vlm", "ai_helper", "nlp", "llm"] = (
@@ -233,6 +236,18 @@ class DatasetEntry(BaseModel):
     llm_pipeline: LLMPipelineConfig | None = None
 
 
+def _check_task_ids(key: str, entry: DatasetEntry) -> None:
+    """Raise when ``task`` or ``task_override`` is not a task_taxonomy.json id."""
+    known = taxonomy().task_ids
+    for field_name in ("task", "task_override"):
+        value = getattr(entry, field_name)
+        if value is not None and value not in known:
+            raise ValueError(
+                f"Dataset '{key}': {field_name}='{value}' is not a task id of"
+                f" task_taxonomy.json {list(known)}."
+            )
+
+
 # ─── Root document ──────────────────────────────────────────────────────────
 class UnifiedData(BaseModel):
     """Root model for unified_data.yaml."""
@@ -265,6 +280,7 @@ class UnifiedData(BaseModel):
                     raise ValueError(
                         f"Dataset '{key}': dataset_type='forex' requires 'timeframe_rungs'."
                     )
+            _check_task_ids(key, entry)
             if entry.acquisition_mode == "mt5_terminal" and entry.dataset_type != "forex":
                 raise ValueError(
                     f"Dataset '{key}': acquisition_mode='mt5_terminal' "

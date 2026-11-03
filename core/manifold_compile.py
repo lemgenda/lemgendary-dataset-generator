@@ -65,6 +65,7 @@ from core.compiler_core import (
     remove_empty_dirs,
 )
 from core.doc_generator import generate_dataset_docs
+from core.task_taxonomy import taxonomy
 from runtime.environment import load_torch
 
 # torch is loaded after the runtime env vars are set (see runtime.environment).
@@ -75,20 +76,13 @@ __all__ = [
     "MatlabAnnData",
     "ParquetAnnData",
     "TaskItem",
+    "finish_manifold",
     "parse_compile_args",
     "process_dataset",
 ]
 
 # Above this many tasks a CPU-only run drops labeling and vetting.
 _CPU_GUARD_TASKS = 50000
-
-# Output sub-folders a fresh manifold gets, by task.
-_TASK_DIRS = {
-    "quality": "labels", "classification": "labels", "detection": "labels",
-    "pose": "labels", "yolo": "labels",
-    "segmentation": "masks",
-    "restoration": "targets", "super-resolution": "targets",
-}
 
 
 def _get_training_suite_notebook_generators():
@@ -109,8 +103,9 @@ def _create_layout(output_root: Path, model_config: dict[str, Any], task: str) -
     if output_root.exists() or is_forex(model_config):
         return
     subdirs = ["images"]
-    if task in _TASK_DIRS:
-        subdirs.append(_TASK_DIRS[task])
+    layout_dir = taxonomy().layout_dir(task)
+    if layout_dir:
+        subdirs.append(layout_dir)
     for subdir in subdirs:
         for s in ["train", "val"]:
             (output_root / subdir / s).mkdir(parents=True, exist_ok=True)
@@ -196,19 +191,23 @@ def _compile_samples(args: argparse.Namespace, settings: CompileSettings,
             f" constraint ({settings.min_gb:.2f}GB)."
         )
 
-    outcome = _finish_manifold(args, ctx, conn, affixes)
+    outcome = finish_manifold(args, ctx, conn, affixes)
     executor.shutdown(wait=True)
     return outcome
 
 
-def _finish_manifold(args: argparse.Namespace, ctx: ManifoldContext, conn: Any,
-                     affixes: tuple[str, str]) -> ManifoldOutcome:
-    """Cluster styles, write the index, docs, extra containers and notebooks."""
+def finish_manifold(args: argparse.Namespace, ctx: ManifoldContext, conn: Any,
+                    affixes: tuple[str, str]) -> ManifoldOutcome:
+    """Cluster styles, write the index, docs, extra containers and notebooks.
+
+    The manifold's task id goes into dataset_info.yaml as ``task_type``.
+    """
     pascal_name, output_root = ctx.pascal_name, ctx.output_root
     cluster_styles(conn)
     final_index = write_index(conn, output_root, affixes)
     remove_empty_dirs(output_root)
-    generate_dataset_docs(output_root, final_index, pascal_name)
+    generate_dataset_docs(output_root, final_index, pascal_name,
+                          overrides={"task_type": ctx.task})
     containers_written = write_containers(args, output_root)
     write_manifold_notebooks(ctx.model_key, pascal_name, output_root)
 
@@ -233,7 +232,7 @@ def _compile_manifold(args: argparse.Namespace, settings: CompileSettings,
 
     # ─── FOREX MANIFOLD ────────────────────────────────────────────────────
     if is_forex(model_config):
-        return compile_forex_manifold(model_key, model_config, output_root, full_name)
+        return compile_forex_manifold(model_key, model_config, output_root, full_name, task)
 
     # ─── NON-FOREX MANIFOLDS ──────────────────────────────────────────────
     ctx = ManifoldContext(model_key, model_config, task, pascal_name, output_root,

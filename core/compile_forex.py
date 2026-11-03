@@ -77,8 +77,11 @@ def _write_dataset_info(model_config: dict[str, Any], pascal_name: str,
 
 
 def compile_forex_manifold(model_key: str, model_config: dict[str, Any],
-                           output_root: Path, full_name: str) -> ManifoldOutcome:
-    """Acquire a forex manifold, write its notebooks, info file and docs."""
+                           output_root: Path, full_name: str, task: str) -> ManifoldOutcome:
+    """Acquire a forex manifold, write its notebooks, info file and docs.
+
+    ``task`` is the registry task id, written as ``task_type`` in dataset_info.yaml.
+    """
     pascal_name = model_config.get("name", model_key.replace("_", ""))
     print(f"\n[FOREX MANIFOLD] Compiling Foundation Matrix: {output_root.name}...")
     output_root.mkdir(parents=True, exist_ok=True)
@@ -95,7 +98,9 @@ def compile_forex_manifold(model_key: str, model_config: dict[str, Any],
     settings = _forex_settings(model_config)
     _run_acquisition(full_name, settings, output_root)
     write_forex_notebooks(model_key, pascal_name, output_root)
-    yaml_info = _write_dataset_info(model_config, pascal_name, settings, output_root)
+    yaml_info = _write_dataset_info(
+        model_config, pascal_name, {**settings, "task_type": task}, output_root
+    )
 
     try:
         generate_dataset_docs(

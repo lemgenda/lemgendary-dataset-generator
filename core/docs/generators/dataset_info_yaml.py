@@ -75,6 +75,31 @@ def _instruction_fields(ctx: ManifoldContext) -> dict[str, Any]:
     return {"train_samples": count_lines(train_file), "val_samples": count_lines(val_file)}
 
 
+def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> str | None:
+    """Compiler task id (task_taxonomy.json) of the manifold.
+
+    The compiler passes it as the ``task_type`` override. A docs-only
+    regeneration takes it from the registry entry, else keeps the value of the
+    existing dataset_info.yaml.
+    """
+    if overrides and overrides.get("task_type"):
+        return str(overrides["task_type"])
+    entry = ctx.spec.unified_entry
+    registered = entry.get("task_override") or entry.get("task")
+    if registered:
+        return str(registered)
+    existing = ctx.manifold_path / "dataset_info.yaml"
+    if existing.exists():
+        try:
+            data = yaml.safe_load(existing.read_text(encoding="utf-8")) or {}
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Cannot read task_type from %s: %s", existing, exc)
+            return None
+        if isinstance(data, dict) and data.get("task_type"):
+            return str(data["task_type"])
+    return None
+
+
 def generate_dataset_info_yaml(
     context_or_path: ManifoldContext | str | Path,
     overrides: dict[str, Any] | None = None,
@@ -102,6 +127,7 @@ def generate_dataset_info_yaml(
         "name": manifold_name,
         "count": ctx.lineage.total_samples,
         "task": ctx.task,
+        "task_type": _task_type(ctx, overrides),
         "category": ctx.profile.category,
         "canonical_format": _canonical_format(ctx),
         "original_sources": src_keys,
@@ -110,6 +136,8 @@ def generate_dataset_info_yaml(
         "last_processed": datetime.now(UTC).isoformat(),
     }
 
+    if info_payload["task_type"] is None:
+        del info_payload["task_type"]
     if ctx.task == "forex":
         info_payload.update(_forex_fields(ctx, overrides))
     if ctx.is_llm:

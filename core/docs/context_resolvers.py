@@ -16,13 +16,13 @@ import yaml
 
 from core.docs.context_types import SpecInputs, TaskProfile
 from core.docs.metadata import (
-    MANIFOLD_TASK_MAP,
     MODELS_META,
     TASK_ARCH_BASE,
     TASK_META,
     format_source,
 )
 from core.docs.scanner import scan_forex_manifold
+from core.task_taxonomy import taxonomy
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +141,9 @@ def _explicit_task(
     for candidate in candidates:
         if candidate:
             return str(candidate)
-    if manifold_name in MANIFOLD_TASK_MAP:
-        return MANIFOLD_TASK_MAP[manifold_name]
+    documentation_task = taxonomy().documentation_tasks.get(manifold_name)
+    if documentation_task:
+        return documentation_task
     if unified_entry.get("task"):
         return str(unified_entry["task"])
     return None

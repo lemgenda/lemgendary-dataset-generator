@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.60"
+    "version": "16.9.61"
   },
   "paths": {
     "/api/health": {

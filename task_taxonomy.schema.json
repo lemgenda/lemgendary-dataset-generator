@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LemGendary Task Taxonomy",
+  "description": "Single source of truth for compiler task ids, the output folder each task adds, its default label/mask strategy, the name patterns of the fallback heuristic, and the documentation profile of each manifold folder.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "heuristic", "tasks", "documentation_tasks"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": 1},
+    "heuristic": {
+      "description": "Tasks used when no registry task is set: fallback_task when no name pattern matches, unnamed_task when there is no dataset key at all.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fallback_task", "unnamed_task"],
+      "properties": {
+        "fallback_task": {"$ref": "#/$defs/task_id"},
+        "unnamed_task": {"$ref": "#/$defs/task_id"}
+      }
+    },
+    "tasks": {
+      "description": "Task definitions. The name heuristic tries them in this order; the first task with a pattern contained in the lower-cased dataset key wins.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/task"}
+    },
+    "documentation_tasks": {
+      "description": "Documentation profile key (models_metadata.yaml task_metadata) per manifold folder name. A separate vocabulary from task ids.",
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "task_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "strategy": {"type": ["string", "null"], "minLength": 1},
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layout_dir", "label_strategy", "mask_strategy", "name_patterns"],
+      "properties": {
+        "id": {"$ref": "#/$defs/task_id"},
+        "layout_dir": {
+          "description": "Split folder a fresh manifold gets next to images/ (null: none).",
+          "enum": ["labels", "masks", "targets", null]
+        },
+        "label_strategy": {"$ref": "#/$defs/strategy"},
+        "mask_strategy": {"$ref": "#/$defs/strategy"},
+        "name_patterns": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

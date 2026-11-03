@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from core.task_taxonomy import taxonomy
 
 logger = logging.getLogger(__name__)
 
@@ -57,54 +60,8 @@ if "ai_helper" not in TASK_META:
 
 MODELS_META: dict[str, Any] = _meta_data.get("models_metadata", {})
 
-MANIFOLD_TASK_MAP: dict[str, str] = {
-    # Modern (2026 Canonical Folder Names in LemGendaryDatasets)
-    "LemGendizedAIHelperLemGend": "ai_helper",
-    "LemGendizedClassificationMaster": "classification",
-    "LemGendizedCodeFormer": "restoration",
-    "LemGendizedFfaNetIndoor": "restoration",
-    "LemGendizedFfaNetOutdoor": "restoration",
-    "LemGendizedFilmRestorer": "restoration",
-    "LemGendizedForexUniverse": "forex",
-    "LemGendizedMirNetExposure": "restoration",
-    "LemGendizedMirNetLowLight": "restoration",
-    "LemGendizedMprNetDeraining": "restoration",
-    "LemGendizedMultitaskRestorationPro": "restoration",
-    "LemGendizedNafNetDebluring": "restoration",
-    "LemGendizedNafNetDenoising": "restoration",
-    "LemGendizedNimaAesthetic": "quality",
-    "LemGendizedNimaAuthenticity": "authenticity",
-    "LemGendizedNimaTechnical": "quality",
-    "LemGendizedParseNet": "segmentation",
-    "LemGendizedRetinaFace": "detection",
-    "LemGendizedUltraZoom": "super-resolution",
-    "LemGendizedUpnV2": "parameter_prediction",
-    "LemGendizedYoloV8n": "detection",
-    # Legacy & Aliased Names
-    "LemGendizedClassificationMasterManifold": "classification",
-    "LemGendizedRetinaFaceMobileNet": "detection",
-    "LemGendizedProfessionalMultitaskRestoration": "restoration",
-    "LemGendizedForexUniverseLarge": "forex",
-    "LemGendizedClassificationMasterManifoldLarge": "classification",
-    "LemGendizedNimaAestheticLarge": "quality",
-    "LemGendizedNimaTechnicalLarge": "quality",
-    "LemGendizedNimaAuthenticityLarge": "authenticity",
-    "LemGendizedUpnV2Large": "parameter_prediction",
-    "LemGendizedFilmRestorerLarge": "restoration",
-    "LemGendizedCodeFormerLarge": "restoration",
-    "LemGendizedParseNetLarge": "segmentation",
-    "LemGendizedRetinaFaceMobileNetLarge": "detection",
-    "LemGendizedFfaNetIndoorLarge": "restoration",
-    "LemGendizedFfaNetOutdoorLarge": "restoration",
-    "LemGendizedMirNetLowLightLarge": "restoration",
-    "LemGendizedMirNetExposureLarge": "restoration",
-    "LemGendizedMprNetDerainingLarge": "restoration",
-    "LemGendizedNafNetDebluringLarge": "restoration",
-    "LemGendizedNafNetDenoisingLarge": "restoration",
-    "LemGendizedUltraZoomLarge": "super-resolution",
-    "LemGendizedYoloV8nLarge": "detection",
-    "LemGendizedProfessionalMultitaskRestorationLarge": "restoration",
-}
+# Documentation profile key per manifold folder name (task_taxonomy.json).
+MANIFOLD_TASK_MAP: Mapping[str, str] = taxonomy().documentation_tasks
 
 FOREX_COLUMN_FIELDS: list[dict[str, str]] = [
     {

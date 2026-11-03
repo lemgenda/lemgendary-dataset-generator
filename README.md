@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.60-STABLE` |
+| **Version** | `v16.9.61-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,37 @@
 ---
 
 ## Changelog
+
+### v16.9.61 - Task Taxonomy File and Explicit Registry Tasks
+
+- **`task_taxonomy.json` (new, schema `task_taxonomy.schema.json`)**: the
+  single source of task ids, the split folder each task adds (`layout_dir`),
+  default `label_strategy` and `mask_strategy`, the ordered `name_patterns`
+  of the fallback heuristic (`heuristic.fallback_task`,
+  `heuristic.unnamed_task`) and the documentation profile per manifold
+  folder (`documentation_tasks`).
+- **`core/task_taxonomy.py` (new)**: cached loader
+  (`LEMGENDARY_TASK_TAXONOMY_FILE` overrides the path; a missing or invalid
+  file raises `TaskTaxonomyError` naming it) and `resolve_task`. It replaces
+  `_TASK_PATTERNS` and the label/mask strategy dicts
+  (`core/compiler_worker.py`), `_TASK_DIRS` (`core/manifold_compile.py`) and
+  the literal `MANIFOLD_TASK_MAP` (`core/docs/metadata.py`, now a view of the
+  file). Outputs are unchanged.
+- **Registry**: every `unified_data.yaml` entry sets `task`, generated from
+  what the heuristic returned (verified identical for all 21 entries).
+  `upn_v2` moves from `task_override` to `task`. `load_unified_data` rejects
+  task ids the taxonomy does not define.
+- **Pending owner confirmation** (`task_confirmed: false`):
+  `retinaface_mobilenet` (`pose`), `nima_authenticity` (`quality`),
+  `forex_universe` (`detection`), `ai_helper_lemgend` (`detection`).
+- **`task_type`**: the compiler writes the task id into every manifold's
+  `dataset_info.yaml` (image and forex paths). A docs-only regeneration takes
+  it from the registry entry, else keeps the existing value.
+  `manifold_compile._finish_manifold` is now the public `finish_manifold`.
+- **Tests**: `tests/test_task_taxonomy.py` covers the loader, registry and
+  taxonomy consistency and `task_type` output.
+- **README**: three code-block lines over 80 columns shortened
+  (markdownlint clean).
 
 ### v16.9.60 - Kaggle Owner Read from the Ecosystem File
 
@@ -2202,7 +2233,7 @@ python cli.py config show
 
 # Sidecar API Server (Phase 7)
 python cli.py server start --background    # Launch daemon on 127.0.0.1:8100
-python cli.py server status                # Probe health, uptime, and hardware sensors
+python cli.py server status                # Probe health, uptime and sensors
 python cli.py server stop                  # Gracefully terminate daemon
 
 # Environment Manager passthrough
@@ -2258,7 +2289,7 @@ Environment Manager for LemGendary AI Studio GUI sidecar operation:
 | Option | Action |
 | --- | --- |
 | `1. [COMPILE]` | Build SOTA manifold (Vision, Forex, Restoration) |
-| `2. [REDUCE]` | Create downsampled variants (custom fold/timeframe selection) |
+| `2. [REDUCE]` | Create downsampled variants (fold/timeframe selection) |
 | `3. [SYNC]` | Kaggle push/pull with real-time extraction monitoring |
 | `4. [MODERNIZE]` | Retire `Large` suffix, re-upload, update registry |
 | `Q. [QUIT]` | Exit |
@@ -2336,9 +2367,10 @@ lemgendary-datasets/
 │   ├── regenerate_manifolds_md.py, sync_kaggle_metadata.py
 ├── forex/                         # Encapsulated Forex & MT5 domain (v16.7.0)
 │   ├── schema.py, converter.py, injector.py, bridge.py, pipeline.py
-├── api/                           # REST & WebSocket API sidecar server (Phase 7)
+├── api/                           # REST & WebSocket API sidecar (Phase 7)
 │   ├── server.py, jobs.py, auth.py, events.py, models.py
-│   └── routes/ (health, config, jobs, datasets, sources, kaggle, gates, env, gui)
+│   └── routes/ (health, config, jobs, datasets, sources, kaggle, gates,
+│                env, gui, llm, modernize)
 ├── sources/                       # Fetch backends (Phase 1.2)
 │   ├── hf.py, gh.py, gd.py, kaggle.py
 │   └── base.py

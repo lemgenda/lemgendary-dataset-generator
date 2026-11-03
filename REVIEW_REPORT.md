@@ -850,7 +850,7 @@ findings (D-01 to D-07) were fixed in v16.9.23 to v16.9.27.
 | D-09 `modernize` unreachable | Fixed | `af686ae` (v16.9.26) |
 | D-10 `llm validate` crash | Fixed | `1f51f09` (v16.9.25) |
 | D-11 CWD-relative paths | Fixed | `3c5b577` (v16.9.55) |
-| D-12 registry `task` ignored | Partly fixed | `3c5b577` (v16.9.55) |
+| D-12 registry `task` ignored | Fixed | `3c5b577` (v16.9.55), v16.9.61 |
 | D-13 `archive_manager` fallback | Fixed | `7054808` (v16.9.33), `3c5b577` |
 | D-14 `git clone` exit code | Fixed | `4843416` (v16.9.29) |
 | D-15 Kaggle probe always true | Fixed | `3c5b577` (v16.9.55) |
@@ -866,13 +866,17 @@ Notes:
   the CLI. Unset encoding options stay unset, so presets apply.
 - **D-11**: `core/paths.py` anchors the registry, raw sets, `config.json`,
   output root and server state on the project root.
-- **D-12**: `detect_task` now uses `task_override`, then `task`, then the
-  name heuristic (logged). Deferred: no registry entry sets `task` yet, so
-  `retinaface_mobilenet` (pose), `nima_authenticity` (quality),
-  `forex_universe` and `ai_helper_lemgend` (detection) are still classified
-  by name. Which task each should have is an owner decision; the four task
-  maps (`detect_task`, `MANIFOLD_TASK_MAP`, the training suite's map, the
-  compile layout table) are merged in step L7.
+- **D-12**: `detect_task` uses `task_override`, then `task`, then the name
+  heuristic (logged). In v16.9.61 every `unified_data.yaml` entry sets `task`,
+  and `task_taxonomy.json` is the one source of task ids, layout folders,
+  label/mask strategies, heuristic patterns and documentation tasks (it
+  replaces `_TASK_PATTERNS`, `_TASK_DIRS`, the strategy dicts and
+  `MANIFOLD_TASK_MAP`). The compiler writes `task_type` into each
+  `dataset_info.yaml`. The entries keep the tasks the heuristic gave them;
+  `retinaface_mobilenet` (`pose`), `nima_authenticity` (`quality`),
+  `forex_universe` and `ai_helper_lemgend` (`detection`) carry
+  `task_confirmed: false` until the owner confirms them. The training suite's
+  map moves to `task_type` in its own step.
 - **D-13**: the Python fallback went in v16.9.33; the hub's
   `archive_manager.py` fallback and script-path call went in v16.9.55.
 - **D-15**: the owner handle is one constant in `core/kaggle_identity.py`.
