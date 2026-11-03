@@ -7,6 +7,8 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import yaml
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
@@ -20,7 +22,6 @@ from api.models import (
 )
 from api.routes.datasets import _resolve_output_root
 from core.cli_args import venv_python
-import yaml
 
 logger = logging.getLogger("lemgendary.api.routes.kaggle")
 router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
@@ -340,4 +341,3 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
     loop = asyncio.get_running_loop()
     job_manager.start_job(job.id, loop)
     return job
-

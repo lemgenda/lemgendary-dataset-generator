@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,9 +40,8 @@ def _write_jsonl(path: Path) -> Path:
 
 class TestValidatePathContainment(unittest.TestCase):
     def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        base = Path(tmp.name).resolve()
+        base = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, base)
         self.root = base / "LemGendaryDatasets"
         self.outside_dir = base / "outside"
         self.inside_file = _write_jsonl(self.root / "ai_helper" / "data" / "ai_helper_train.jsonl")

@@ -8,7 +8,7 @@ between local compiled manifolds and remote registries (Kaggle).
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+
 from rich.console import Console
 
 from ._errors import SERVICE_ERRORS

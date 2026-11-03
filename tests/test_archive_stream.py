@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-import shutil
 import tarfile
 import tempfile
 import unittest

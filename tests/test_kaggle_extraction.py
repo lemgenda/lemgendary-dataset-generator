@@ -17,7 +17,7 @@ class TestKaggleExtractionProgress(unittest.TestCase):
     def test_track_kaggle_dataset_status_emits_newline_flush(
         self,
         mock_info: MagicMock,
-        mock_auth: MagicMock,
+        _mock_auth: MagicMock,
     ) -> None:
         """Verify that track_kaggle_dataset_status emits newline-terminated lines with flush."""
         mock_info.return_value = {

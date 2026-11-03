@@ -1,12 +1,12 @@
 # 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
 # (common_sync, archive_manager, etc.) resolve when this file is invoked
 # directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import argparse
 import logging
 import os
-import shutil
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import gdown

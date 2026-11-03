@@ -1,9 +1,6 @@
-import os
 import sys
 import shutil
 import argparse
-import subprocess
-import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
@@ -206,9 +203,9 @@ def main():
     parser.add_argument("--push", action="store_true", help="Alias for --action sync")
     parser.add_argument("--pull", action="store_true", help="Alias for --action get")
     parser.add_argument("--force", action="store_true", help="Force sync operation")
-    
+
     args = parser.parse_args()
-    
+
     # Interactive menu if no action provided
     action = args.action
     if not action:
@@ -228,7 +225,7 @@ def main():
         else:
             print("Invalid choice.")
             sys.exit(1)
-            
+
     prefix = META.get("name_prefix", "LemGendized")
     suffix = META.get("name_suffix", "")
     dataset_keys = list(DATASETS_META.keys())
@@ -236,7 +233,7 @@ def main():
     # Resolve Model/URL
     model = args.model
     repo_id = args.url
-    
+
     if action == "sync" and not model:
         print("\n--- AVAILABLE MANIFOLDS TO SYNC ---")
         for i, k in enumerate(dataset_keys, 1):
@@ -246,7 +243,7 @@ def main():
             folder_path = OUT_PARENT / manifold_folder
             status_tag = "[COMPILED]" if folder_path.exists() else "[NOT COMPILED]"
             print(f" {i:2d}. {k:<35} ({manifold_folder}) {status_tag}")
-        
+
         sel = input("\nEnter selection (number, dataset key, or folder name): ").strip()
         if sel.isdigit() and 1 <= int(sel) <= len(dataset_keys):
             chosen_key = dataset_keys[int(sel) - 1]
@@ -261,7 +258,7 @@ def main():
         for i, k in enumerate(dataset_keys, 1):
             k_ref = get_kaggle_ref(k) or "N/A"
             print(f" {i:2d}. {k:<35} -> {k_ref}")
-        
+
         sel = input("\nEnter selection (number, dataset key, or Kaggle ID): ").strip()
         if sel.isdigit() and 1 <= int(sel) <= len(dataset_keys):
             chosen_key = dataset_keys[int(sel) - 1]
@@ -273,13 +270,13 @@ def main():
         else:
             model = sel
             repo_id = get_kaggle_ref(model)
-        
+
     if not repo_id:
         if model:
             repo_id = get_kaggle_ref(model)
         if not repo_id:
             repo_id = input("Enter Kaggle ID (username/slug): ").strip()
-            
+
     if repo_id and repo_id.startswith("http"):
         # Quick parse of URL
         parts = repo_id.rstrip("/").split("/")
@@ -306,7 +303,7 @@ def main():
     default_user = repo_id.split("/")[0] if repo_id and "/" in repo_id else None
     if not setup_auth(args.user, args.token, default_user):
         sys.exit(1)
-        
+
     if action == "sync":
         action_sync(model, repo_id, no_wait=args.no_wait)
     elif action == "get":

@@ -68,6 +68,15 @@ modernize_app = typer.Typer(help="Dataset modernization queue, transcode, and sc
 llm_app = typer.Typer(help="LLM instruction dataset compilation and quality invariant validation.")
 
 
+def _spawn_detached(cmd: list[str], creationflags: int) -> subprocess.Popen:
+    """Launch a long-lived background process and hand ownership to the caller.
+
+    The process deliberately outlives the CLI invocation (detached API server),
+    so it cannot be scoped to a ``with`` block that would wait for it to exit.
+    """
+    return subprocess.Popen(cmd, creationflags=creationflags, close_fds=True)
+
+
 def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SERVER_PORT) -> bool:
     """Check if the local FastAPI server is healthy and responding."""
     try:
@@ -162,8 +171,8 @@ def version() -> None:
     console.print(f"[dim]Project: {PROJECT_NAME}[/dim]")
 
 
-@app.command()
-def compile(
+@app.command(name="compile")
+def compile_manifold(
     model: str | None = typer.Option(None, "--model", "-m", help="Model key to compile"),
     preset: str | None = typer.Option(None, "--preset", "-p", help="Compiler preset profile name (from presets.yaml)"),
     max_gb: float | None = typer.Option(None, "--max-gb", help="Override max_size_gb"),
@@ -734,11 +743,7 @@ def server_start(
         flags = 0
         if sys.platform == "win32":
             flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-        proc = subprocess.Popen(
-            cmd,
-            creationflags=flags,
-            close_fds=True,
-        )
+        proc = _spawn_detached(cmd, flags)
         time.sleep(1.5)
         if _is_server_available(host, port):
             console.print(

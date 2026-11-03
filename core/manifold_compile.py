@@ -1,32 +1,30 @@
-import os
-import sys
-from pathlib import Path
-
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
 import argparse
+import hashlib
 import json
-import yaml
+import logging
+import os
+import pickle
+import random
 import shutil
-import multiprocessing
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import sqlite3
+import sys
+from concurrent.futures import BrokenExecutor, CancelledError, ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 from typing import Any, cast
 
-from datetime import datetime
-import hashlib
-import random
-from sklearn.cluster import MiniBatchKMeans
-import webdataset as wds
-from webdataset.writer import TarWriter as WdsTarWriter
 import numpy as np
 import pandas as pd
 import requests
 import torch
+import yaml
+from sklearn.cluster import MiniBatchKMeans
 from tqdm import tqdm
+from webdataset.writer import TarWriter as WdsTarWriter
 
-PHYSICAL_INDEX = set()
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from core.compiler_core import (
     CONFIG,
@@ -53,10 +51,8 @@ from core.compiler_core import (
 from core.doc_generator import generate_dataset_docs
 from core.compile_outcome import ManifoldOutcome, finalize_compile
 from core.error_types import DOC_GENERATION_ERRORS, PARQUET_READ_ERRORS
-import logging
-import pickle
-import sqlite3
-from concurrent.futures import BrokenExecutor, CancelledError
+
+PHYSICAL_INDEX = set()
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +61,26 @@ logger = logging.getLogger(__name__)
 #     (callable, *heterogeneous_args)
 # Annotated as tuple[Any, ...] so downstream consumers accept the mix.
 TaskItem = tuple[Any, ...]
+
+# Positions inside a process_parquet_shard task tuple (callable at index 0,
+# then the process_parquet_shard positional arguments in order).
+_SHARD_KEEP_PROB_IDX = 12
+_SHARD_NUM_ROWS_IDX = 13
+
+
+def _count_one(t: TaskItem) -> int:
+    """Return the expected sample count for one task item.
+
+    Parquet shard tasks carry their row count at _SHARD_NUM_ROWS_IDX; every
+    other task produces exactly one output.
+    """
+    if t[0].__name__ == "process_parquet_shard":
+        return int(t[_SHARD_NUM_ROWS_IDX])
+    return 1
+
+
+def _get_count(task_list: list[TaskItem]) -> int:
+    return sum(_count_one(t) for t in task_list)
 
 # 2026: Type aliases for the three parser return shapes, used at cast sites.
 CocoAnnData = tuple[dict[int, dict[str, Any]], dict[int, list[dict[str, Any]]]]
@@ -162,7 +178,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
     if os.name == 'nt':
         import signal
-        def signal_handler(sig, frame):
+        def signal_handler(_sig, _frame):
             print("\n[INTERRUPT] Emergency termination requested. Mission aborted.")
             os._exit(1)
         signal.signal(signal.SIGINT, signal_handler)
@@ -177,27 +193,29 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     shared_root = INPUT_ROOT
     # Pre-load models globally once to prevent multiprocess race conditions on HF cache
     print("[PRE-FLIGHT] Analyzing task requirements...")
-    from models.quality_scorer import QualitySentry
     from models.diffusion import CaptionSentry
     from models.encoder import CLIPManifold
-    from models.detection import AutoLabeler
 
     # Analyze if any target models need AI augmentation
     needs_captioning = False
     needs_styling = False
 
     for model_key in DATASETS_META:
-        if args.model and model_key != args.model: continue
+        if args.model and model_key != args.model:
+            continue
         task = detect_task(model_key)
-        if task == "diffusion": needs_captioning = True
-        if task == "diffusion" or model_key == "nima_aesthetic": needs_styling = True
+        if task == "diffusion":
+            needs_captioning = True
+        if task == "diffusion" or model_key == "nima_aesthetic":
+            needs_styling = True
 
     if needs_captioning and not args.no_vetting:
         print("[PRE-FLIGHT] Caching CaptionSentry (BLIP)...")
         tmp = CaptionSentry(device="cpu")
         del tmp
 
-    if torch.cuda.is_available(): torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     if needs_styling and not args.no_vetting:
         if needs_captioning:
@@ -210,13 +228,14 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     final_workers = args.workers if args.workers else CONFIG.get("num_workers", 4)
 
     if not args.workers and final_workers > 8:
-        print(f"[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
+        print("[RESILIENCE] Capping auto-detected workers to 8 for stability. Use --workers to override.")
         final_workers = 8
 
     # 2026 DPED Optimization: Pre-cache canon paths to avoid O(N) exists() calls
     dped_canon_paths = set()
     for model_key, model_config in DATASETS_META.items():
-        if args.model and model_key != args.model: continue
+        if args.model and model_key != args.model:
+            continue
         for ref_entry in cast("list[dict[str, Any]]", model_config.get("refs", [])):
             if "dped" in ref_entry["ref"].lower():
                 slug = ref_entry["ref"].split("/")[-1].lower()
@@ -243,7 +262,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     ExecutorClass = ThreadPoolExecutor
 
     for model_key, model_config in DATASETS_META.items():
-        if args.model and model_key != args.model: continue
+        if args.model and model_key != args.model:
+            continue
         task = detect_task(model_key)
 
         pascal_name = model_config.get("name", model_key.replace("_", ""))
@@ -255,13 +275,17 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
         if not output_root.exists():
             if model_config.get("dataset_type") != "forex" and model_config.get("acquisition_mode") != "mt5_terminal":
-                for s in ["train", "val"]: (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
+                for s in ["train", "val"]:
+                    (output_root / "images" / s).mkdir(parents=True, exist_ok=True)
                 if task in ["quality", "classification", "detection", "pose", "yolo"]:
-                    for s in ["train", "val"]: (output_root / "labels" / s).mkdir(parents=True, exist_ok=True)
+                    for s in ["train", "val"]:
+                        (output_root / "labels" / s).mkdir(parents=True, exist_ok=True)
                 elif task == "segmentation":
-                    for s in ["train", "val"]: (output_root / "masks" / s).mkdir(parents=True, exist_ok=True)
+                    for s in ["train", "val"]:
+                        (output_root / "masks" / s).mkdir(parents=True, exist_ok=True)
                 elif task in ["restoration", "super-resolution"]:
-                    for s in ["train", "val"]: (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
+                    for s in ["train", "val"]:
+                        (output_root / "targets" / s).mkdir(parents=True, exist_ok=True)
 
         print(f"\n[SOTA v5.0] Commencing compilation for {pascal_name} -> {output_root.name}...")
 
@@ -328,12 +352,11 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             except DOC_GENERATION_ERRORS as e:
                 logger.warning("Documentation engine skipped for %s: %s", pascal_name, e)
 
-            print(f"[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n")
+            print("[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n")
             outcomes.append(ManifoldOutcome(model_key, output_root, samples=0, sample_based=False))
             continue
 
         # ─── NON‑FOREX MANIFOLDS ──────────────────────────────────────────────
-        index = []
         seen_hashes = set()
 
         # 2026 Phase 1.3: Registry lives inside the manifold folder.
@@ -361,7 +384,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             _buf = []
             for split in ["train", "val"]:
                 split_path = img_dir / split
-                if not split_path.exists(): continue
+                if not split_path.exists():
+                    continue
                 try:
                     with os.scandir(str(split_path)) as it:
                         for entry in it:
@@ -439,8 +463,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
                 if m_path.exists():
                     dataset = m_path / "images"
-                    if not dataset.exists(): dataset = m_path / "targets"
-                    if not dataset.exists(): dataset = m_path / "masks"
+                    if not dataset.exists():
+                        dataset = m_path / "targets"
+                    if not dataset.exists():
+                        dataset = m_path / "masks"
 
                     slug = f"compiled_{m_name}"
                     mapping = {
@@ -627,11 +653,13 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                             logger.warning("Skipping corrupted virtual parquet shard %s: %s", pq_path, e)
                             continue
 
-                    if num_rows == 0: continue
+                    if num_rows == 0:
+                        continue
 
-                    task_item: TaskItem = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, None, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
+                    task_item: TaskItem = (process_parquet_shard, pq_path, prefix, c_slug, global_idx, task, fmt, output_root_str, skip_lbl, train_prob, existing_names, existing_on_disk, 1.0, num_rows)
 
-                    if tag == "nsfw": nsfw_tasks.append(task_item)
+                    if tag == "nsfw":
+                        nsfw_tasks.append(task_item)
                     else: sfw_tasks.append(task_item)
 
                     global_idx += num_rows
@@ -654,11 +682,14 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                         p_low = img_path_str.lower()
                         m_low = model_key.lower()
                         if "deraining" not in m_low and "multitask" not in m_low:
-                            if any(k in p_low for k in ["rain", "droplet"]): continue
+                            if any(k in p_low for k in ["rain", "droplet"]):
+                                continue
                         if "denoising" in m_low:
-                            if any(k in p_low for k in ["blur", "haze", "lowlight", "exposure"]): continue
+                            if any(k in p_low for k in ["blur", "haze", "lowlight", "exposure"]):
+                                continue
                         if "debluring" in m_low:
-                            if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]): continue
+                            if any(k in p_low for k in ["noise", "haze", "lowlight", "exposure"]):
+                                continue
 
                     split = "train" if random.random() < train_prob else "val"
 
@@ -698,11 +729,12 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                             specific_ann_data = str(ann_file)
 
                     if task == "diffusion":
-                        task_item: TaskItem = (process_diffusion, img_path, prefix, c_slug, i, split, output_root_str)
+                        task_item: TaskItem = (process_diffusion, img_path, prefix, c_slug, i, split)
                     else:
                         task_item: TaskItem = (process_image, img_path, prefix, c_slug, i, task, fmt, specific_ann_data, split, output_root_str, skip_lbl)
 
-                    if tag == "nsfw": nsfw_tasks.append(task_item)
+                    if tag == "nsfw":
+                        nsfw_tasks.append(task_item)
                     else: sfw_tasks.append(task_item)
 
                 print(f"   -> [{slug}] Discovered {sample_count} source tensors.")
@@ -710,21 +742,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         # 2026 Strategy: Dynamic Ratio Balancing (v5.8)
         target_nsfw_ratio = float(model_config.get("nsfw_ratio", 0))
 
-        def _count_one(t: TaskItem) -> int:
-            """Return the expected sample count for one task item.
-
-            Parquet shard tasks carry their row count at index 14; every other
-            task produces exactly one output.
-            """
-            if t[0].__name__ == "process_parquet_shard":
-                return int(t[14])
-            return 1
-
-        def get_count(task_list: list[TaskItem]) -> int:
-            return sum(_count_one(t) for t in task_list)
-
-        sfw_count = get_count(sfw_tasks)
-        nsfw_count = get_count(nsfw_tasks)
+        sfw_count = _get_count(sfw_tasks)
+        nsfw_count = _get_count(nsfw_tasks)
 
         if target_nsfw_ratio > 0 and nsfw_count > 0:
             max_nsfw = int(sfw_count * target_nsfw_ratio / (1.0 - target_nsfw_ratio))
@@ -736,8 +755,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 for item in nsfw_tasks:
                     if item[0].__name__ == "process_parquet_shard":
                         new_item = list(item)
-                        new_item[13] = nsfw_keep_prob
-                        new_item[14] = int(item[14] * nsfw_keep_prob)
+                        new_item[_SHARD_KEEP_PROB_IDX] = nsfw_keep_prob
+                        new_item[_SHARD_NUM_ROWS_IDX] = int(item[_SHARD_NUM_ROWS_IDX] * nsfw_keep_prob)
                         new_nsfw_tasks.append(tuple(new_item))
                     else:
                         if random.random() <= nsfw_keep_prob:
@@ -797,7 +816,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                 """, batch_entries)
                         if i % 100 == 99:
                             conn.commit()
-                    print(f"[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
+                    print("[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
 
                 remaining_tasks = all_tasks[warmup_limit:]
                 task_batches = [remaining_tasks[i:i + BATCH_SIZE] for i in range(0, len(remaining_tasks), BATCH_SIZE)]
@@ -810,7 +829,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     try:
                         batch = next(batch_iter)
                         futures.add(executor.submit(batch_worker, batch))
-                    except StopIteration: break
+                    except StopIteration:
+                        break
 
                 try:
                     while futures:
@@ -822,8 +842,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                 pbar.update(len(batch_results))
                                 for res in batch_results:
                                     if res:
-                                        if CONFIG["enable_dedup"] and not args.no_hash and res["hash"] in seen_hashes: continue
-                                        if res["hash"]: seen_hashes.add(res["hash"])
+                                        if CONFIG["enable_dedup"] and not args.no_hash and res["hash"] in seen_hashes:
+                                            continue
+                                        if res["hash"]:
+                                            seen_hashes.add(res["hash"])
                                         compiled_bytes += res.get("size", 0)
                                         batch_entries.append((
                                             res["name"], res["source"], res["task"], res["split"], res["hash"],
@@ -832,7 +854,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                         ))
                                         processed_count += 1
                                         if (compiled_bytes / (1024**3)) >= max_gb:
-                                            for f in futures: f.cancel()
+                                            for f in futures:
+                                                f.cancel()
                                             futures.clear()
                                             break
                             except (BrokenExecutor, CancelledError, pickle.PicklingError) as e:
@@ -849,7 +872,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                             try:
                                 batch = next(batch_iter)
                                 futures.add(executor.submit(batch_worker, batch))
-                            except StopIteration: break
+                            except StopIteration:
+                                break
                 except KeyboardInterrupt:
                     os._exit(1)
 
@@ -860,7 +884,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             print(f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold constraint ({min_gb:.2f}GB).")
 
         # STEP 2: Style Clustering
-        print(f"[STYLING] Commencing Style Clustering on all extracted latents...")
+        print("[STYLING] Commencing Style Clustering on all extracted latents...")
         cursor = conn.execute("SELECT id, clip_latent FROM registry WHERE clip_latent IS NOT NULL")
         ids, latents = [], []
         for row in cursor:
@@ -878,10 +902,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 conn.execute("UPDATE registry SET cluster_id = ? WHERE id = ?", (cid, i))
             conn.commit()
         else:
-            print(f"[STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
+            print("[STYLING] No valid style latents found. Skipping clustering (Pure Human Mode).")
 
         # PASS 2: Balanced Interleaving & Sharding per Dataset
-        print(f"[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
+        print("[SHARD] Commencing PASS 2: Multi-Domain Balanced Sharding...")
 
         shard_dir = None
         has_diffusion = conn.execute("SELECT 1 FROM registry WHERE task = 'diffusion' LIMIT 1").fetchone() is not None
@@ -958,8 +982,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 import re
                 resolved_model = re.sub(r'(?<!^)(?=[A-Z])', '_', clean_name).lower()
 
-            if "naf_net" in resolved_model: resolved_model = resolved_model.replace("naf_net", "nafnet")
-            if "upn_v_2" in resolved_model: resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
+            if "naf_net" in resolved_model:
+                resolved_model = resolved_model.replace("naf_net", "nafnet")
+            if "upn_v_2" in resolved_model:
+                resolved_model = resolved_model.replace("upn_v_2", "upn_v2")
 
             gen_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_kaggle_training.ipynb")
             gen_colab_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_colab_training.ipynb")

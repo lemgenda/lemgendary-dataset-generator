@@ -9,8 +9,8 @@ and safe year-by-year disk reclamation.
 
 import argparse
 import gc
-import json
 import logging
+import mmap
 import os
 import shutil
 import sys
@@ -20,7 +20,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA, TIMEFRAME_LOOKBACK, EXTENDED_PAIRS
+from .schema import PARQUET_SCHEMA, TIMEFRAME_LOOKBACK, EXTENDED_PAIRS
 
 ROW_GROUP_SIZE = 5000
 CHUNK_BATCH_SIZE = 20000
@@ -219,10 +219,12 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
                         writer.write_table(table, row_group_size=ROW_GROUP_SIZE)
                         total_written += sub_len
 
+                    # np.load(mmap_mode=...) arrays expose their backing
+                    # mmap.mmap as the public ``.base``; close it explicitly.
                     for arr_obj in [X, yd, ym, ts]:
-                        if hasattr(arr_obj, "_mmap") and arr_obj._mmap is not None:
+                        if isinstance(arr_obj.base, mmap.mmap):
                             try:
-                                arr_obj._mmap.close()
+                                arr_obj.base.close()
                             except (BufferError, OSError, ValueError) as err:
                                 logger.debug("Failed closing mmap on array object: %s", err)
                     del X, yd, ym, ts

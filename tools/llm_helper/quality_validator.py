@@ -56,7 +56,7 @@ class QualityValidator:
             return issues
 
         roles = [m.get("role") for m in messages if isinstance(m, dict)]
-        if roles != ["system", "user", "assistant"] and roles != ["user", "assistant"]:
+        if roles not in (["system", "user", "assistant"], ["user", "assistant"]):
             issues.append(ValidationIssue(rec_id, "messages", f"Unexpected role sequence: {roles}"))
 
         full_text = ""
@@ -108,4 +108,3 @@ class QualityValidator:
         critical_errors = [iss for iss in all_issues if iss.severity == "ERROR"]
         is_valid = len(critical_errors) == 0
         return is_valid, all_issues
-

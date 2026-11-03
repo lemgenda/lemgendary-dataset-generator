@@ -7,7 +7,7 @@ a registry pattern so new sources can be added without editing dispatch.
 
 Public API:
     cache = GroundTruthCaches()
-    cache.load(root=Path("./raw-sets"), model_name="nima_technical")
+    cache.load(root=Path("./raw-sets"))
     cache.ava           # dict[image_num -> 10 vote keys]
     cache.aadb          # dict[filename -> scalar 0-1]
     cache.tid           # dict[lowercased filename -> score 1-10]
@@ -30,7 +30,7 @@ class GroundTruthCaches:
     aadb: dict = field(default_factory=dict)
     tid: dict = field(default_factory=dict)
 
-    def load(self, root: Path, model_name: str = "") -> None:
+    def load(self, root: Path, _model_name: str = "") -> None:
         for loader in _LOADERS:
             try:
                 loader(self, Path(root))
@@ -93,7 +93,7 @@ def _load_koniq(c: GroundTruthCaches, root: Path) -> None:
     for _, row in df.iterrows():
         val = float(cast(Any, row["MOS"])) / 10.0
         c.tid[str(row["image_name"]).lower()] = max(1.0, min(10.0, val))
-    print(f"[GT] KonIQ-10k ratings cached.")
+    print("[GT] KonIQ-10k ratings cached.")
 
 
 @register
@@ -106,7 +106,7 @@ def _load_spaq(c: GroundTruthCaches, root: Path) -> None:
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
         c.tid[str(row["Image name"]).lower()] = 1.0 + float(cast(Any, row["MOS"])) * 0.09
-    print(f"[GT] SPAQ ratings cached.")
+    print("[GT] SPAQ ratings cached.")
 
 
 @register
@@ -114,12 +114,12 @@ def _load_tid2013(c: GroundTruthCaches, root: Path) -> None:
     txt = _find(root, "tid2013", "mos_with_names.txt")
     if not txt:
         return
-    with open(txt) as f:
+    with open(txt, encoding="utf-8") as f:
         for line in f:
             parts = line.split()
             if len(parts) >= 2:
                 c.tid[parts[1].strip().lower()] = float(parts[0]) + 1.0
-    print(f"[GT] TID2013 ratings cached.")
+    print("[GT] TID2013 ratings cached.")
 
 
 @register
@@ -132,7 +132,7 @@ def _load_live(c: GroundTruthCaches, root: Path) -> None:
     for _, row in df.iterrows():
         orig = min(100.0, float(cast(Any, row["dmos"])))
         c.tid[str(row["image_name"]).lower()] = 1.0 + (1.0 - orig / 100.0) * 9.0
-    print(f"[GT] LIVE IQA ratings cached.")
+    print("[GT] LIVE IQA ratings cached.")
 
 
 @register
@@ -144,7 +144,7 @@ def _load_csiq(c: GroundTruthCaches, root: Path) -> None:
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
         c.tid[str(row["image_name"]).lower()] = 1.0 + (1.0 - float(cast(Any, row["dmos"]))) * 9.0
-    print(f"[GT] CSIQ ratings cached.")
+    print("[GT] CSIQ ratings cached.")
 
 
 @register

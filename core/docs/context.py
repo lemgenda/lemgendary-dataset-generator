@@ -83,7 +83,7 @@ def find_unified_entry(manifold_name: str) -> dict[str, Any]:
         if not isinstance(d_info, dict):
             continue
         d_name = str(d_info.get("name", d_key)).lower()
-        if f"lemgendized{d_name}" == name_lower or f"lemgendized{d_name}large" == name_lower:
+        if name_lower in (f"lemgendized{d_name}", f"lemgendized{d_name}large"):
             return d_info
 
     # 3. Normalized key or name match
@@ -92,7 +92,7 @@ def find_unified_entry(manifold_name: str) -> dict[str, Any]:
             continue
         norm_key = d_key.lower().replace("_", "")
         d_name = str(d_info.get("name", d_key)).lower().replace("_", "")
-        if norm_key == norm_target or d_name == norm_target:
+        if norm_target in (norm_key, d_name):
             return d_info
         if norm_key in norm_target or norm_target in norm_key:
             return d_info
@@ -384,7 +384,7 @@ def resolve_manifold_context(
             logger.debug("Could not read count from dataset_info.yaml: %s", exc)
 
     # If sources is empty or only contains the self-referential compiled manifold name
-    has_only_self = bool(sources and all("manifold" in k.lower() or k == manifold_name for k in sources.keys()))
+    has_only_self = bool(sources and all("manifold" in k.lower() or k == manifold_name for k in sources))
     if (not sources or has_only_self) and unified_entry.get("provenance_sources"):
         prov_list = unified_entry["provenance_sources"]
         sources = {}

@@ -12,6 +12,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import time
 from typing import Any
 import urllib.parse
 import urllib.request
@@ -103,7 +104,7 @@ class KnowledgeIngestor:
                     source_path=str(file_path),
                     canonical_url=canonical_url,
                 )
-            elif ext in (".json", ".jsonl"):
+            if ext in (".json", ".jsonl"):
                 if ext == ".json":
                     with open(file_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
@@ -118,7 +119,7 @@ class KnowledgeIngestor:
                     source_path=str(file_path),
                     canonical_url=canonical_url,
                 )
-            elif ext in (".yaml", ".yml"):
+            if ext in (".yaml", ".yml"):
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
                 content = yaml.safe_dump(data, sort_keys=False)
@@ -129,7 +130,7 @@ class KnowledgeIngestor:
                     source_path=str(file_path),
                     canonical_url=canonical_url,
                 )
-            elif ext == ".csv":
+            if ext == ".csv":
                 with open(file_path, "r", encoding="utf-8", newline="") as f:
                     reader = csv.reader(f)
                     rows = [", ".join(row) for row in reader]
@@ -141,9 +142,8 @@ class KnowledgeIngestor:
                     source_path=str(file_path),
                     canonical_url=canonical_url,
                 )
-            else:
-                logger.debug("Unsupported extension: %s", ext)
-                return None
+            logger.debug("Unsupported extension: %s", ext)
+            return None
         except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError, csv.Error) as exc:
             logger.error("Failed reading file %s: %s", file_path, exc)
             return None
@@ -154,12 +154,19 @@ class KnowledgeIngestor:
         tag: str | None = None,
         ttl_hours: int = 168,
     ) -> KnowledgeDocument | None:
-        """Fetch remote URL with caching and clean text normalization."""
+        """Fetch remote URL with caching and clean text normalization.
+
+        A cached copy younger than ``ttl_hours`` is reused; an older one is
+        refreshed from the network, falling back to the stale copy only when
+        the refresh fails.
+        """
         url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
         cache_file = self.cache_dir / f"{url_hash}.txt"
 
         content = ""
-        if cache_file.exists():
+        cache_exists = cache_file.exists()
+        cache_fresh = cache_exists and (time.time() - cache_file.stat().st_mtime) < ttl_hours * 3600
+        if cache_fresh:
             content = cache_file.read_text(encoding="utf-8")
         else:
             try:
@@ -173,8 +180,11 @@ class KnowledgeIngestor:
                     content = clean_text
                     cache_file.write_text(content, encoding="utf-8")
             except (OSError, ValueError) as exc:
-                logger.warning("Remote URL fetch failed for %s (%s). Falling back.", url, exc)
-                return None
+                if not cache_exists:
+                    logger.warning("Remote URL fetch failed for %s (%s). Falling back.", url, exc)
+                    return None
+                logger.warning("Remote URL refresh failed for %s (%s). Using stale cache %s.", url, exc, cache_file)
+                content = cache_file.read_text(encoding="utf-8")
 
         parsed = urllib.parse.urlparse(url)
         doc_id = Path(parsed.path).name or f"url_{url_hash}"
@@ -186,4 +196,3 @@ class KnowledgeIngestor:
             canonical_url=url,
             metadata={"tag": tag or "web_resource"},
         )
-

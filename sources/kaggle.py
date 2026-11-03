@@ -1,3 +1,8 @@
+"""
+LemGendary Kaggle Dataset Manager CLI
+=====================================
+Unified interface for uploading, downloading, extracting, and monitoring Kaggle manifolds.
+"""
 # 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
 # (common_sync, archive_manager, etc.) resolve when this file is invoked
 # directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
@@ -11,15 +16,9 @@ _project_root = os.path.dirname(_script_dir)
 sys.path = [p for p in sys.path if os.path.abspath(p) != _script_dir]
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
-"""
-LemGendary Kaggle Dataset Manager CLI
-=====================================
-Unified interface for uploading, downloading, extracting, and monitoring Kaggle manifolds.
-"""
 
 import argparse
 import logging
-import sys
 from pathlib import Path
 
 import yaml
@@ -28,21 +27,10 @@ logger = logging.getLogger(__name__)
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 from core.common_sync import (
-    CHUNK_SIZE,
-    DatasetVersionInfo,
     setup_kaggle_auth,
-    robust_staging_cleanup,
-    cleanup_temp_archives,
-    get_dataset_version_info,
-    get_dataset_status,
     track_kaggle_dataset_status,
-    copy_with_progress,
-    copy_tree_with_progress,
     perform_dataset_upload,
     perform_dataset_download,
-    push_kaggle_dataset_metadata,
-    ensure_kaggle_dataset_exists,
-    is_kaggle_large_manifold,
 )
 
 

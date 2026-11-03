@@ -127,4 +127,3 @@ class RecursiveChunker:
         for d in docs:
             all_chunks.extend(self.chunk_document(d))
         return all_chunks
-

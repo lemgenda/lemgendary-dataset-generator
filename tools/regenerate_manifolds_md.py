@@ -197,12 +197,10 @@ def _build_matrix(reg: dict, models_meta: dict) -> list[dict]:
         count = _sample_count(folder)
 
         # Match registry entry by name
-        dataset_key = None
         kaggle_ref = ""
-        for key, entry in reg.get("datasets", {}).items():
+        for entry in reg.get("datasets", {}).values():
             slug = entry.get("name", "")
-            if folder.name == f"LemGendized{slug}Large" or folder.name == f"LemGendized{slug}":
-                dataset_key = key
+            if folder.name in (f"LemGendized{slug}Large", f"LemGendized{slug}"):
                 kaggle_ref = entry.get("kaggle_ref", "")
                 break
 
@@ -221,7 +219,7 @@ def _build_matrix(reg: dict, models_meta: dict) -> list[dict]:
 
 
 # ─── Markdown Rendering ─────────────────────────────────────────────────────
-def _render(rows: list[dict], reg: dict) -> str:
+def _render(rows: list[dict]) -> str:
     lines: list[str] = []
     lines.append("# LemGendary Dataset Manifolds Directory & Lineage Matrix")
     lines.append("")
@@ -302,7 +300,7 @@ def main(args: list[str] | argparse.Namespace | None = None) -> int:
         print("[WARN] No manifolds found on disk.")
         return 0
 
-    content = _render(rows, reg)
+    content = _render(rows)
 
     if parsed.check:
         print(f"[CHECK] Would write {len(content)} bytes, {len(rows)} manifolds.")

@@ -33,7 +33,6 @@ from core.docs.generators import (
     generate_kaggle_metadata,
     generate_readme_md,
 )
-from core.docs.metadata import UNIFIED_DATA
 
 logger = logging.getLogger(__name__)
 

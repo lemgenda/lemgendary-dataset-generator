@@ -54,7 +54,7 @@ class _FakeJobManager:
             parameters=parameters,
         )
 
-    def start_job(self, job_id: str, loop: asyncio.AbstractEventLoop) -> None:
+    def start_job(self, job_id: str, _loop: asyncio.AbstractEventLoop) -> None:
         self.started.append(job_id)
 
 
@@ -62,8 +62,8 @@ class _TempRegistryCase(unittest.TestCase):
     """Copies presets.yaml / unified_data.yaml into a temp dir and points the code at them."""
 
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = Path(self._tmp.name)
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
         self.presets_path = self.tmp / "presets.yaml"
         self.unified_path = self.tmp / "unified_data.yaml"
         shutil.copyfile(REAL_PRESETS, self.presets_path)
@@ -85,9 +85,6 @@ class _TempRegistryCase(unittest.TestCase):
         app = FastAPI()
         app.include_router(gui.router)
         self.client = TestClient(app)
-
-    def tearDown(self) -> None:
-        self._tmp.cleanup()
 
     def _post(self, **body: Any):
         payload = {"custom_name": "Unit Test Faces", "sources": ["https://www.kaggle.com/datasets/owner/faces"]}
@@ -191,9 +188,9 @@ class TestRegistryWrite(_TempRegistryCase):
 
 class TestFinalizeCompile(unittest.TestCase):
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self._tmp.name) / "LemGendizedX"
-        self.addCleanup(self._tmp.cleanup)
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        self.root = tmp / "LemGendizedX"
         self.purged: list[Path] = []
 
     def _purge(self, root: Path) -> list[Path]:
@@ -262,8 +259,21 @@ class TestJobStatusPropagation(unittest.TestCase):
             loop = asyncio.new_event_loop()
             runner = threading.Thread(target=loop.run_forever)
             runner.start()
+            # Drive the job through the public start_job entry point, recording
+            # the runner thread it spawns so the test can join it.
+            spawned: list[threading.Thread] = []
+            real_thread = threading.Thread
+
+            def _recording_thread(*, target: Any, **kwargs: Any) -> threading.Thread:
+                thread = real_thread(target=target, **kwargs)
+                spawned.append(thread)
+                return thread
+
             try:
-                manager._execute_job_thread(job.id, loop)
+                with patch("api.jobs.threading.Thread", side_effect=_recording_thread):
+                    manager.start_job(job.id, loop)
+                for thread in spawned:
+                    thread.join(timeout=120)
             finally:
                 loop.call_soon_threadsafe(loop.stop)
                 runner.join()

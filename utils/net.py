@@ -36,7 +36,7 @@ def download_image(url: str, dest_path: str, session=None) -> bool:
                         if chunk:
                             f.write(chunk)
                 return True
-            elif r.status_code == 404:
+            if r.status_code == 404:
                 return False
         except (requests.RequestException, OSError) as exc:
             if attempt == max_retries - 1:

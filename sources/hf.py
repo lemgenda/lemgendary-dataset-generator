@@ -1,16 +1,17 @@
 # 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
 # (common_sync, archive_manager, etc.) resolve when this file is invoked
 # directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
 import tarfile
 import zipfile
-from huggingface_hub import snapshot_download, login
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from huggingface_hub import hf_hub_download, list_repo_files, login, snapshot_download
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
 from tqdm import tqdm
@@ -39,7 +40,7 @@ def main():
     # Auth
     token = None
     if os.path.exists(args.token_file):
-        with open(args.token_file, "r") as f:
+        with open(args.token_file, "r", encoding="utf-8") as f:
             token = f.read().strip()
             if token:
                 login(token=token)
@@ -47,7 +48,6 @@ def main():
 
     # Download (Surgical Mode v2.0)
     print(f"[HF] Starting {args.repo_type} download for {args.repo_id}...")
-    from huggingface_hub import list_repo_files, hf_hub_download
 
     # Sub-Repo Targeting (Syntax: repo_id:filename)
     target_file = None
@@ -64,13 +64,13 @@ def main():
             all_files = list_repo_files(repo_id=repo_id, repo_type=args.repo_type, token=token)
             human_technical_targets = ['spaq.tgz', 'live.tgz', 'csiq.tgz', 'tid2013.tgz']
             targets = [f for f in all_files if f.lower() in human_technical_targets]
-            
+
             if not targets:
-                print(f"[HF] No specific custom/IQA targets found. Falling back to full archives & parquets...")
+                print("[HF] No specific custom/IQA targets found. Falling back to full archives & parquets...")
                 targets = [f for f in all_files if f.endswith(('.tgz', '.tar.gz', '.zip', '.parquet'))]
-        
+
         if not targets:
-            print(f"[HF] No specific targets found. Performing full snapshot download...")
+            print("[HF] No specific targets found. Performing full snapshot download...")
             snapshot_download(
                 repo_id=repo_id,
                 repo_type=args.repo_type,
@@ -88,20 +88,19 @@ def main():
                     dedicated_dir = Path(args.output_dir) / slug
                 else:
                     dedicated_dir = Path(args.output_dir)
-                
+
                 dedicated_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 print(f"  [PULL] {t_file} -> {dedicated_dir}")
-                
+
                 # High-Visibility Download via requests + tqdm (Resumable)
                 try:
-                    from tqdm import tqdm
                     import requests
                     from huggingface_hub import hf_hub_url
-                    
+
                     url = hf_hub_url(repo_id=repo_id, filename=t_file, repo_type=args.repo_type)
                     headers = {"Authorization": f"Bearer {token}"} if token else {}
-                    
+
                     path = dedicated_dir / t_file
                     existing_size = 0
                     if path.exists():
@@ -113,11 +112,11 @@ def main():
                     # If 206 Partial Content, we are resuming
                     total_size = int(response.headers.get('content-length', 0))
                     if response.status_code == 200 and existing_size > 0:
-                        print(f"  [WARN] Server ignored resume request. Overwriting from start.")
+                        print("  [WARN] Server ignored resume request. Overwriting from start.")
                         existing_size = 0
                     elif response.status_code == 206:
                         total_size += existing_size
-                    
+
                     mode = "ab" if existing_size > 0 else "wb"
                     with open(path, mode) as f, tqdm(
                         desc=f"   [DL] {t_file}",
@@ -131,7 +130,7 @@ def main():
                         for data in response.iter_content(chunk_size=1024*1024):
                             size = f.write(data)
                             pbar.update(size)
-                            
+
                     # Auto-Extract to dedicated_dir
                     if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
                         try:
@@ -142,7 +141,6 @@ def main():
                 except _DOWNLOAD_ERRORS as e:
                     logger.warning("Direct HTTP download of %s failed; falling back to hf_hub_download: %s", t_file, e)
                     print(f"  [WARN] Requests failed, falling back to basic HF-Hub: {e}")
-                    from huggingface_hub import hf_hub_download
                     path = hf_hub_download(repo_id=repo_id, filename=t_file, repo_type=args.repo_type, local_dir=dedicated_dir, token=token)
 
         # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
@@ -151,7 +149,7 @@ def main():
             from utils.archive import smart_extract
         except ImportError:
             from archive_manager import smart_extract
-        for root, dirs, files in os.walk(args.output_dir):
+        for root, _dirs, files in os.walk(args.output_dir):
             for f in files:
                 f_path = Path(root) / f
                 if f.endswith(('.tgz', '.tar.gz', '.zip')):

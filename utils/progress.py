@@ -91,4 +91,3 @@ def track_progress(
         for item in iterable:
             yield item
             pbar.update(1)
-

@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw
 
-from .base import GenerationResult
+from .base import GenerationResult, Generator
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 _VALID_STRATEGIES: frozenset[str] = frozenset({"parsenet", "sam", "modnet"})
 
 
-class MaskGenerator:
+class MaskGenerator(Generator):
     """Dispatch a mask generation call to the configured strategy."""
 
     def __init__(
@@ -59,9 +59,9 @@ class MaskGenerator:
         if self.strategy == "parsenet":
             return self._parsenet(img)
         if self.strategy == "sam":
-            return self._sam(img)
+            return self._sam()
         if self.strategy == "modnet":
-            return self._modnet_impl(img)
+            return self._modnet_impl()
         return GenerationResult(kind="mask", value=None, strategy=self.strategy)
 
     # ── ParseNet ────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ class MaskGenerator:
         )
 
     # ── SAM (optional) ──────────────────────────────────────────────────────
-    def _sam(self, img: Image.Image) -> GenerationResult:
+    def _sam(self) -> GenerationResult:
         try:
             importlib.import_module("segment_anything")
         except ImportError as e:
@@ -115,7 +115,7 @@ class MaskGenerator:
         return GenerationResult(kind="mask", value=None, strategy=self.strategy)
 
     # ── MODNet (optional) ───────────────────────────────────────────────────
-    def _modnet_impl(self, img: Image.Image) -> GenerationResult:
+    def _modnet_impl(self) -> GenerationResult:
         try:
             importlib.import_module("modnet")
         except ImportError as e:

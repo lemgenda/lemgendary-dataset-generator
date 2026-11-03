@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 from torchvision import models
 
 class NIMA_Model(nn.Module):
@@ -8,8 +8,8 @@ class NIMA_Model(nn.Module):
     Uses MobileNetV3-Small features and predicts a 10-class distribution of quality scores.
     """
     def __init__(self, backbone="mobilenet_v3_small"):
-        super(NIMA_Model, self).__init__()
-        
+        super().__init__()
+
         # 2026 SOTA Upgrade: Branching backbones for high-precision technical assessment
         if backbone == "efficientnet_v2_s":
             # EfficientNetV2-S offers significantly higher spatial awareness for micro-defects

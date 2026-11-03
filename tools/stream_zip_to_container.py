@@ -19,7 +19,6 @@ from pathlib import Path
 import shutil
 import sys
 import tarfile
-from typing import Any
 import zipfile
 
 from PIL import Image
@@ -242,12 +241,12 @@ def stream_zip_to_webdataset(
 
                                     with tarfile.open(shard_file, "a") as tf:
                                         if transcode_webp:
-                                            def _gen_tgt(stems: list[str]):
+                                            def _gen_tgt(stems: list[str], targets: dict[str, tuple[str, zipfile.ZipInfo]]):
                                                 for stem in stems:
-                                                    tgt_ext, tgt_zinfo = target_map[stem]
+                                                    tgt_ext, tgt_zinfo = targets[stem]
                                                     yield stem, zf.read(tgt_zinfo), tgt_ext
 
-                                            for stem, data, out_ext in pool.map(_worker_tgt, _gen_tgt(matched_stems), chunksize=8):
+                                            for stem, data, out_ext in pool.map(_worker_tgt, _gen_tgt(matched_stems, target_map), chunksize=8):
                                                 ti = tarfile.TarInfo(name=f"{stem}.target{out_ext}")
                                                 ti.size = len(data)
                                                 tf.addfile(ti, io.BytesIO(data))
@@ -417,10 +416,7 @@ def stream_zip_to_mds(
                                     for stem, ext, zinfo in items:
                                         yield stem, zf.read(zinfo), ext
 
-                                for (img_stem, img_data, img_ext), (stem, ext, zinfo) in zip(
-                                    pool.map(_worker_img, _gen_img_mds(img_list), chunksize=8),
-                                    img_list,
-                                ):
+                                for img_stem, img_data, _img_ext in pool.map(_worker_img, _gen_img_mds(img_list), chunksize=8):
                                     tgt_bytes = b""
                                     if img_stem in target_map:
                                         tgt_ext, tgt_zinfo = target_map[img_stem]
@@ -437,7 +433,7 @@ def stream_zip_to_mds(
                                     })
                                     pbar.update(1)
                             else:
-                                for stem, ext, zinfo in img_list:
+                                for stem, _ext, zinfo in img_list:
                                     img_data = zf.read(zinfo)
                                     tgt_bytes = b""
                                     if stem in target_map:
@@ -482,10 +478,7 @@ def stream_zip_to_mds(
                                     for stem, (ext, zinfo) in items:
                                         yield stem, zf.read(zinfo), ext
 
-                                for (stem, data, out_ext), (orig_stem, _) in zip(
-                                    pool.map(_worker_sample, _gen_tgt_mds(tgt_items), chunksize=8),
-                                    tgt_items,
-                                ):
+                                for stem, data, _out_ext in pool.map(_worker_sample, _gen_tgt_mds(tgt_items), chunksize=8):
                                     writer.write({
                                         "image": data,
                                         "target": b"",
@@ -497,7 +490,7 @@ def stream_zip_to_mds(
                                     })
                                     pbar.update(1)
                             else:
-                                for stem, (ext, zinfo) in tgt_items:
+                                for stem, (_ext, zinfo) in tgt_items:
                                     writer.write({
                                         "image": zf.read(zinfo),
                                         "target": b"",

@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+import importlib.util
 import io
+import itertools
 import json
 import logging
 import os
@@ -20,20 +22,16 @@ import shutil
 import struct
 import sys
 import tarfile
-import time
-from typing import Any
+from typing import Any, Iterator
 
 import zstandard as zstd
 
-from PIL import Image
 import yaml
 from tqdm import tqdm
 
 _ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-
-import importlib.util
 
 from core.common_sync import (
     get_dataset_version_info,
@@ -525,6 +523,78 @@ def convert_loose_directory_to_mds(
     return True
 
 
+def _detect_img_ext(b: bytes) -> str:
+    """Sniff the image container from its magic bytes (defaults to webp)."""
+    if b.startswith(b"RIFF") and len(b) > 12 and b[8:12] == b"WEBP":
+        return "webp"
+    if b.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if b.startswith(b"\x89PNG"):
+        return "png"
+    return "webp"
+
+
+def _mds_sample_to_tar_members(fields: dict[str, bytes | None], key: str) -> list[tuple[str, bytes]]:
+    """Map one decoded MDS sample to its WebDataset tar members (name, payload)."""
+    members: list[tuple[str, bytes]] = []
+    for field_name, suffix in (("image", ""), ("target", ".target"), ("mask", ".mask")):
+        payload = fields.get(field_name)
+        if payload:
+            members.append((f"{key}{suffix}.{_detect_img_ext(payload)}", payload))
+
+    meta_dict: dict[str, Any] = {}
+    for meta_key in ("label", "split", "task"):
+        raw = fields.get(meta_key)
+        if raw:
+            meta_dict[meta_key] = raw.decode("utf-8", errors="replace")
+    if meta_dict:
+        members.append((f"{key}.json", json.dumps(meta_dict, ensure_ascii=False).encode("utf-8")))
+    return members
+
+
+def _iter_mds_tar_members(
+    split_mds_dir: Path,
+    shards_meta: list[dict[str, Any]],
+    dctx: zstd.ZstdDecompressor,
+) -> Iterator[list[tuple[str, bytes]]]:
+    """Yield the tar members of every sample in a split's MDS shards, in order."""
+    sample_counter = 0
+    for s_info in shards_meta:
+        columns = s_info["column_names"]
+        num_cols = len(columns)
+
+        mds_file = split_mds_dir / s_info["zip_data"]["basename"]
+        if not mds_file.exists():
+            raise FileNotFoundError(f"MDS shard file not found: {mds_file}")
+
+        raw_data = dctx.decompress(mds_file.read_bytes())
+        shard_samples = struct.unpack("<I", raw_data[:4])[0]
+        sample_offsets = struct.unpack(f"<{shard_samples + 1}I", raw_data[4:4 + (shard_samples + 1) * 4])
+
+        for idx in range(shard_samples):
+            s_bytes = raw_data[sample_offsets[idx]:sample_offsets[idx + 1]]
+            col_sizes = struct.unpack(f"<{num_cols}I", s_bytes[:num_cols * 4])
+
+            offset = num_cols * 4
+            fields: dict[str, bytes | None] = {}
+            for col, sz in zip(columns, col_sizes):
+                fields[col] = s_bytes[offset:offset + sz] if sz > 0 else None
+                offset += sz
+
+            raw_name = fields.get("name")
+            key = raw_name.decode("utf-8") if raw_name else f"sample_{sample_counter:08d}"
+            sample_counter += 1
+            yield _mds_sample_to_tar_members(fields, key)
+
+
+def _add_tar_members(tf: tarfile.TarFile, members: list[tuple[str, bytes]]) -> None:
+    """Append in-memory (name, payload) members to an open tar archive."""
+    for name, payload in members:
+        ti = tarfile.TarInfo(name=name)
+        ti.size = len(payload)
+        tf.addfile(ti, io.BytesIO(payload))
+
+
 def transcode_mds_to_webdataset(
     target_dir: Path,
     shard_size_samples: int = 1000,
@@ -541,16 +611,7 @@ def transcode_mds_to_webdataset(
     shards_dir.mkdir(parents=True, exist_ok=True)
     ext = shard_ext.lstrip(".")
 
-    def _detect_img_ext(b: bytes) -> str:
-        if b.startswith(b"RIFF") and len(b) > 12 and b[8:12] == b"WEBP":
-            return "webp"
-        if b.startswith(b"\xff\xd8\xff"):
-            return "jpg"
-        if b.startswith(b"\x89PNG"):
-            return "png"
-        return "webp"
-
-    splits = ["train", "val", "test"]
+    splits =["train", "val", "test"]
     found_splits = [s for s in splits if (mds_dir / s).exists() and (mds_dir / s / "index.json").exists()]
     if not found_splits:
         if (mds_dir / "index.json").exists():
@@ -576,100 +637,24 @@ def transcode_mds_to_webdataset(
         split_samples_expected = sum(s["samples"] for s in shards_meta)
         print(f"[MDS-TRANSCODE] Split '{split}': {len(shards_meta)} MDS shards, {split_samples_expected:,} samples expected.")
 
-        current_shard_idx = 0
-        samples_in_current_shard = 0
         split_samples_written = 0
-
-        current_shard_path = split_out_dir / f"shard-{current_shard_idx:05d}.{ext}"
-        tf = tarfile.open(current_shard_path, "w")
+        total_shards_in_split = 0
+        samples = _iter_mds_tar_members(split_mds_dir, shards_meta, dctx)
 
         with tqdm(total=split_samples_expected, desc=f"MDS -> WEBDATASET [{split}]", unit="img", dynamic_ncols=True) as pbar:
-            try:
-                for s_info in shards_meta:
-                    columns = s_info["column_names"]
-                    encodings = s_info["column_encodings"]
-                    num_cols = len(columns)
-
-                    mds_basename = s_info["zip_data"]["basename"]
-                    mds_file = split_mds_dir / mds_basename
-                    if not mds_file.exists():
-                        raise FileNotFoundError(f"MDS shard file not found: {mds_file}")
-
-                    raw_data = dctx.decompress(mds_file.read_bytes())
-                    shard_samples = struct.unpack("<I", raw_data[:4])[0]
-                    sample_offsets = struct.unpack(f"<{shard_samples + 1}I", raw_data[4:4 + (shard_samples + 1) * 4])
-
-                    for idx in range(shard_samples):
-                        s_bytes = raw_data[sample_offsets[idx]:sample_offsets[idx + 1]]
-                        col_sizes = struct.unpack(f"<{num_cols}I", s_bytes[:num_cols * 4])
-
-                        offset = num_cols * 4
-                        fields: dict[str, bytes | None] = {}
-                        for col, enc, sz in zip(columns, encodings, col_sizes):
-                            fields[col] = s_bytes[offset:offset + sz] if sz > 0 else None
-                            offset += sz
-
-                        raw_name = fields.get("name")
-                        key = raw_name.decode("utf-8") if raw_name else f"sample_{split_samples_written:08d}"
-
-                        # 1. Main image
-                        img_b = fields.get("image")
-                        if img_b:
-                            c_ext = _detect_img_ext(img_b)
-                            ti = tarfile.TarInfo(name=f"{key}.{c_ext}")
-                            ti.size = len(img_b)
-                            tf.addfile(ti, io.BytesIO(img_b))
-
-                        # 2. Target image
-                        tgt_b = fields.get("target")
-                        if tgt_b:
-                            c_ext = _detect_img_ext(tgt_b)
-                            ti = tarfile.TarInfo(name=f"{key}.target.{c_ext}")
-                            ti.size = len(tgt_b)
-                            tf.addfile(ti, io.BytesIO(tgt_b))
-
-                        # 3. Mask image
-                        msk_b = fields.get("mask")
-                        if msk_b:
-                            c_ext = _detect_img_ext(msk_b)
-                            ti = tarfile.TarInfo(name=f"{key}.mask.{c_ext}")
-                            ti.size = len(msk_b)
-                            tf.addfile(ti, io.BytesIO(msk_b))
-
-                        # 4. JSON metadata
-                        meta_dict: dict[str, Any] = {}
-                        lbl_b = fields.get("label")
-                        if lbl_b:
-                            meta_dict["label"] = lbl_b.decode("utf-8", errors="replace")
-                        splt_b = fields.get("split")
-                        if splt_b:
-                            meta_dict["split"] = splt_b.decode("utf-8", errors="replace")
-                        tsk_b = fields.get("task")
-                        if tsk_b:
-                            meta_dict["task"] = tsk_b.decode("utf-8", errors="replace")
-
-                        if meta_dict:
-                            jb = json.dumps(meta_dict, ensure_ascii=False).encode("utf-8")
-                            ti = tarfile.TarInfo(name=f"{key}.json")
-                            ti.size = len(jb)
-                            tf.addfile(ti, io.BytesIO(jb))
-
-                        samples_in_current_shard += 1
+            # Each shard is written under its own context manager; a shard is
+            # only created once there is at least one sample to put in it.
+            first_members = next(samples, None)
+            while first_members is not None:
+                shard_path = split_out_dir / f"shard-{total_shards_in_split:05d}.{ext}"
+                with tarfile.open(shard_path, "w") as tf:
+                    for members in itertools.chain([first_members], itertools.islice(samples, max(shard_size_samples - 1, 0))):
+                        _add_tar_members(tf, members)
                         split_samples_written += 1
                         pbar.update(1)
+                total_shards_in_split += 1
+                first_members = next(samples, None)
 
-                        if samples_in_current_shard >= shard_size_samples:
-                            tf.close()
-                            current_shard_idx += 1
-                            current_shard_path = split_out_dir / f"shard-{current_shard_idx:05d}.{ext}"
-                            tf = tarfile.open(current_shard_path, "w")
-                            samples_in_current_shard = 0
-            finally:
-                tf.close()
-                if samples_in_current_shard == 0 and current_shard_path.exists() and current_shard_path.stat().st_size == 0:
-                    current_shard_path.unlink()
-
-        total_shards_in_split = current_shard_idx + (1 if samples_in_current_shard > 0 else 0)
         total_samples_all_splits += split_samples_written
         total_shards_all_splits += total_shards_in_split
         print(f"[MDS-TRANSCODE] Split '{split}' complete: {split_samples_written:,} samples -> {total_shards_in_split} shards.")
@@ -733,20 +718,19 @@ def _convert_item(
                 transcode_webp=True,
                 max_workers=workers,
             )
-        else:
-            # Default: webdataset (and fallback for other formats via zip)
-            if fmt not in ("webdataset",):
-                print(f"[NOTICE] Format '{fmt}' does not have a direct zip streaming path. Falling back to WebDataset streaming.")
-            print(f"[ACTION] Streaming legacy zip {it.zip_path.name} into WebDataset shards...")
-            return stream_zip_to_webdataset(
-                zip_path=it.zip_path,
-                target_dir=it.target_dir,
-                shard_size_samples=shard_size,
-                delete_zip=delete_zip,
-                legacy_dir=it.legacy_dir if delete_legacy_dir else None,
-                transcode_webp=True,
-                max_workers=workers,
-            )
+        # Default: webdataset (and fallback for other formats via zip)
+        if fmt not in ("webdataset",):
+            print(f"[NOTICE] Format '{fmt}' does not have a direct zip streaming path. Falling back to WebDataset streaming.")
+        print(f"[ACTION] Streaming legacy zip {it.zip_path.name} into WebDataset shards...")
+        return stream_zip_to_webdataset(
+            zip_path=it.zip_path,
+            target_dir=it.target_dir,
+            shard_size_samples=shard_size,
+            delete_zip=delete_zip,
+            legacy_dir=it.legacy_dir if delete_legacy_dir else None,
+            transcode_webp=True,
+            max_workers=workers,
+        )
 
     # ── From legacy MDS shards ────────────────────────────────────────────────
     if it.has_mds and fmt in ("webdataset", "directory"):
@@ -873,7 +857,7 @@ def push_manifold_to_kaggle(
     # Push metadata & column descriptors
     if meta_path.exists():
         try:
-            print(f"[METADATA] Pushing dataset settings and licensing to Kaggle API...")
+            print("[METADATA] Pushing dataset settings and licensing to Kaggle API...")
             push_kaggle_dataset_metadata(clean_handle, meta_path)
             print(f"[SUCCESS] Kaggle metadata successfully synchronized for {clean_handle}.")
         except (OSError, ValueError, KeyError, RuntimeError, ImportError) as exc:
@@ -1098,7 +1082,7 @@ def run_queue(
             if it.is_containerized and force:
                 print(f"[FORCE] Re-conversion requested for already containerized manifold {it.name}.")
                 if not it.zip_path and not it.has_loose_files and not it.legacy_dir:
-                    print(f"[NOTICE] No source archive or loose files found (purged post-modernization). Preserving existing containerized shards.")
+                    print("[NOTICE] No source archive or loose files found (purged post-modernization). Preserving existing containerized shards.")
                     success_count += 1
                     continue
             ok = _convert_item(

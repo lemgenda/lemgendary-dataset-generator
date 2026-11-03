@@ -14,8 +14,9 @@ Import-order contract
 ---------------------
 Runtime env vars (TORCH_CUDA_ARCH_LIST, CUDA_FORCE_PTX_JIT,
 PYTORCH_CUDA_ALLOC_CONF) must be set before `import torch`, because torch
-reads them at module-import time. bootstrap_runtime() therefore runs between
-the stdlib imports and the heavy imports. The resulting E402 warnings are
+reads them at module-import time. bootstrap_runtime() therefore runs after
+the stdlib and torch-independent third-party imports (numpy, pandas, yaml,
+PIL) and before `import torch`. The resulting E402 warnings are
 declared once in pyproject.toml — never inline.
 
 CLI contract
@@ -35,10 +36,23 @@ Namespace through the initializer::
 
 # ─── Standard library (safe to import anywhere) ─────────────────────────────
 import argparse
+import io
+import json
 import logging
+import multiprocessing
 import os
+import random
+import shutil
+import sqlite3
 import sys
 from pathlib import Path
+from typing import Any, Literal, TypedDict, cast
+
+# ─── Third-party that does not read the torch/CUDA env vars ────────────────
+import numpy as np
+import pandas as pd
+import yaml
+from PIL import Image, ImageFile
 
 logger = logging.getLogger(__name__)
 
@@ -46,24 +60,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from runtime.environment import bootstrap_runtime
+from runtime.environment import bootstrap_runtime, get_device_info
 
 bootstrap_runtime()
 
-# ─── Heavy imports (env vars are now in place) ─────────────────────────────
-import io
-import json
-import multiprocessing
-import random
-import shutil
-import sqlite3
-from typing import Any, Literal, TypedDict, cast
-
-import numpy as np
-import pandas as pd
+# ─── Torch (env vars are now in place) ─────────────────────────────────────
 import torch
-import webdataset as wds
-from PIL import Image, ImageFile
 
 setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 Image.MAX_IMAGE_PIXELS = None
@@ -140,10 +142,10 @@ else:
 
 
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
-import yaml
 
 from core.config_schema import ImageFormatPolicy, UnifiedData, load_unified_data
 from core.error_types import MODEL_LOAD_ERRORS, PARQUET_READ_ERRORS, SAMPLE_PROCESSING_ERRORS
+from core.registry import ensure_registry_schema, initialize_registry
 
 try:
     _manifest_path = ROOT / "unified_data.yaml"
@@ -286,7 +288,6 @@ from utils.image import ensure_srgb, is_black_image
 from utils.math import get_gaussian_probs
 from utils.naming import clean_slug, map_category
 from utils.net import download_image
-from core.registry import ensure_registry_schema, initialize_registry
 from audit.ground_truth import GroundTruthCaches
 from audit.vision_audit import VisionAuditor
 from audit.dedup import ExactHasher, PerceptualHasher
@@ -306,7 +307,6 @@ from degrade import (
     composite,
     parse_profile,
 )
-from runtime.environment import get_device_info
 
 
 # ─── Globals ────────────────────────────────────────────────────────────────
@@ -406,7 +406,7 @@ def init_worker(
         set_args(args)
     a = get_args()
 
-    global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX, _GT_CACHE
+    global SENTRY, CAPTIONER, CLIP_MANIFOLD, DPED_CACHE, PHYSICAL_INDEX
     global AUDITOR, EXACT_HASHER, PERCEPTUAL_HASHER, TRANSCODER
     global LABEL_GEN, MASK_GEN
 
@@ -416,7 +416,6 @@ def init_worker(
         PHYSICAL_INDEX = physical_index
 
     from models.quality_scorer import QualitySentry
-    from models.detection import AutoLabeler
     from models.diffusion import CaptionSentry
     from models.encoder import CLIPManifold
 
@@ -543,7 +542,7 @@ def get_labeler(task: str, device: str = "cuda"):
 
 # ─── Batch worker ───────────────────────────────────────────────────────────
 def process_parquet_shard(
-    pq_path, prefix, c_slug, start_idx, task, fmt, split_fallback,
+    pq_path, prefix, c_slug, start_idx, task, fmt,
     output_root_str, skip_lbl, train_prob, existing_names,
     existing_on_disk, keep_prob, num_rows,
 ):
@@ -584,7 +583,7 @@ def process_parquet_shard(
         row_dict = {k: getattr(row, k) for k in df.columns}
 
         if task == "diffusion":
-            res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split, output_root_str)
+            res = process_diffusion(img_bytes, prefix, c_slug, current_idx, split)
         else:
             res = process_image(img_bytes, prefix, c_slug, current_idx, task, fmt,
                                 row_dict, split, output_root_str, skip_lbl)
@@ -615,7 +614,7 @@ def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
 
 
 # ─── Audit gate shims (Phase 2) ─────────────────────────────────────────────
-def _is_image_valid_for_dataset(img, w, hgt, task, slug) -> bool:
+def _is_image_valid_for_dataset(img, task, slug) -> bool:
     if AUDITOR is None:
         return True
     return AUDITOR.audit_image(img, task, slug).valid
@@ -714,11 +713,8 @@ def process_image(
                 return None
             img = Image.open(io.BytesIO(img_data))
             img_path = Path(f"virtual_{slug}_{idx:09d}.jpg")
-            is_st = False
         else:
-            img_path_str = str(img_input)
-            img_path = Path(img_path_str)
-            is_st = img_path_str.lower().endswith(".safetensors")
+            img_path = Path(str(img_input))
 
         ext = img_path.suffix.lower() if isinstance(img_input, (str, Path)) else ".jpg"
         if ext not in [".jpg", ".jpeg", ".png", ".webp", ".npy"]:
@@ -761,7 +757,7 @@ def process_image(
                         if isinstance(val, bytes):
                             target_img = Image.open(io.BytesIO(val))
                             break
-                        elif isinstance(val, str) and val.endswith((".png", ".jpg", ".jpeg")):
+                        if isinstance(val, str) and val.endswith((".png", ".jpg", ".jpeg")):
                             p = Path(val)
                             if p.exists():
                                 target_img_path = str(p)
@@ -1265,7 +1261,7 @@ def process_image(
         return None
 
 
-def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
+def process_diffusion(img_path, prefix, slug, idx, split):
     """Text-image processor for Diffusion manifolds."""
     try:
         if isinstance(img_path, (bytes, dict)):

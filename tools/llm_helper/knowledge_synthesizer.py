@@ -13,7 +13,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .chunker import RecursiveChunker
 from .knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
 
 logger = logging.getLogger("lemdata.llm.synthesizer")
@@ -187,8 +186,8 @@ def compile_knowledge_corpus(
         by_category.setdefault(r["category"], []).append(r)
 
     # Sort each category deterministically by record ID
-    for cat in by_category:
-        by_category[cat].sort(key=lambda x: str(x["id"]))
+    for cat_records in by_category.values():
+        cat_records.sort(key=lambda x: str(x["id"]))
 
     selected_records: list[dict[str, Any]] = []
     total_cats = len(by_category)
@@ -215,4 +214,3 @@ def compile_knowledge_corpus(
     selected_records.sort(key=lambda x: str(x["id"]))
     logger.info("Compiled %d balanced instruction records.", len(selected_records))
     return selected_records
-

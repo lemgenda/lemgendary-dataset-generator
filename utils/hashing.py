@@ -21,8 +21,7 @@ def compute_hash(img_or_path, no_hash: bool = False):
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
         return h.hexdigest()
-    elif isinstance(img_or_path, bytes):
+    if isinstance(img_or_path, bytes):
         return hashlib.md5(img_or_path).hexdigest()
-    else:
-        # PIL.Image or numpy array with .tobytes()
-        return hashlib.md5(img_or_path.tobytes()).hexdigest()
+    # PIL.Image or numpy array with .tobytes()
+    return hashlib.md5(img_or_path.tobytes()).hexdigest()

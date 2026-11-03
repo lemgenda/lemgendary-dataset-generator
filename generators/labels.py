@@ -21,7 +21,7 @@ from typing import Any
 
 from PIL import Image
 
-from .base import GenerationResult
+from .base import GenerationResult, Generator
 
 
 _VALID_STRATEGIES: frozenset[str] = frozenset({
@@ -33,7 +33,7 @@ _VALID_STRATEGIES: frozenset[str] = frozenset({
 })
 
 
-class LabelGenerator:
+class LabelGenerator(Generator):
     """Dispatches a task to the appropriate loaded model wrapper."""
 
     def __init__(

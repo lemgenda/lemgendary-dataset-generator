@@ -16,7 +16,7 @@ def clean_readme(content: str) -> str:
     cleaned: list[str] = []
     prev_empty = False
     for line in lines:
-        is_empty = (line.strip() == "")
+        is_empty = line.strip() == ""
         if is_empty and prev_empty:
             continue
         cleaned.append(line)

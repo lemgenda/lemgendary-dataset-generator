@@ -166,7 +166,7 @@ class VisionAuditor:
         thumb = img.resize((64, 64), Image.Resampling.NEAREST) if img.size[0] > 64 else img
         gray = np.asarray(thumb.convert("L"))
         black_ratio = float(np.sum(gray < 10) / gray.size)
-        return (black_ratio > (1.0 - self.black_threshold))
+        return black_ratio > (1.0 - self.black_threshold)
 
     # ── Pair audit (restoration / SR / segmentation) ────────────────────────
     def audit_pairs(

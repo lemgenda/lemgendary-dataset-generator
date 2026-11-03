@@ -130,6 +130,26 @@ def _apply_stdio_reconfigure() -> None:
         stderr_reconfigure(encoding="utf-8")
 
 
+def _drop_queued_capability_checks(cuda) -> None:
+    """Adapter over torch.cuda's private lazy-init queue (no public API exists).
+
+    Removes queued ``_check_capability`` / ``_check_cubins`` calls in place so
+    they never run when CUDA lazily initialises. The list object is mutated
+    rather than reassigned, so torch keeps the same reference.
+    """
+    queued = getattr(cuda, "_queued_calls", None)
+    if not isinstance(queued, list):
+        return
+    queued[:] = [
+        c for c in queued
+        if not (
+            isinstance(c, tuple)
+            and len(c) > 0
+            and getattr(c[0], "__name__", "") in ("_check_capability", "_check_cubins")
+        )
+    ]
+
+
 def _apply_torch_patches() -> None:
     """Short-circuit torch.cuda capability checks for P100 compatibility.
 
@@ -147,16 +167,7 @@ def _apply_torch_patches() -> None:
     if cuda is None:
         return
 
-    queued = getattr(cuda, "_queued_calls", None)
-    if isinstance(queued, list):
-        cuda._queued_calls = [
-            c for c in queued
-            if not (
-                isinstance(c, tuple)
-                and len(c) > 0
-                and getattr(c[0], "__name__", "") in ("_check_capability", "_check_cubins")
-            )
-        ]
+    _drop_queued_capability_checks(cuda)
 
     if hasattr(cuda, "_check_capability"):
         setattr(cuda, "_check_capability", lambda *a, **k: None)

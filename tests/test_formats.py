@@ -8,7 +8,6 @@ DirectorySampleSource, and container protocol compliance.
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 import tarfile
 import tempfile

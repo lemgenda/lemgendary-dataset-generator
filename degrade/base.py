@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, Sequence, overload, runtime_checkable
+from typing import Any, Protocol, Sequence, overload, runtime_checkable
 
 import numpy as np
 from PIL import Image
@@ -194,7 +194,7 @@ _INTENSITY_SCALES: dict[str, float] = {
 
 def _build_preset(canonical: str, scale: float) -> CompositeProfile | None:
     """Construct preset profile by canonical alias name."""
-    from .blur import DefocusBlur, GaussianBlur, MotionBlur
+    from .blur import GaussianBlur, MotionBlur
     from .downsample import Downsample
     from .film import ColorFade, FilmGrain, FilmScratches
     from .haze import AtmosphericHaze

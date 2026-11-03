@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import importlib.util
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -64,13 +65,10 @@ def _make_datasets_root(root: Path) -> Path:
 
 class TestModernizationQueueSafety(unittest.TestCase):
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self._tmp.name)
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root)
         self.registry = _make_datasets_root(self.root)
         self.data = self.root / "LemGendaryDatasets"
-
-    def tearDown(self) -> None:
-        self._tmp.cleanup()
 
     def _items(self) -> list[modernization_queue.ManifoldQueueItem]:
         return modernization_queue.load_queue_manifest(self.data, self.registry)
@@ -205,8 +203,8 @@ class TestReduceRoute(unittest.TestCase):
 class TestNonInteractiveReduce(unittest.TestCase):
     def setUp(self) -> None:
         self.mr = _manifold_reduce()
-        self._tmp = tempfile.TemporaryDirectory()
-        self.out = Path(self._tmp.name)
+        self.out = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.out)
         src = self.out / "LemGendizedAlpha" / "images" / "train"
         src.mkdir(parents=True)
         for i in range(8):
@@ -222,7 +220,6 @@ class TestNonInteractiveReduce(unittest.TestCase):
     def tearDown(self) -> None:
         for p in reversed(self.patches):
             p.stop()
-        self._tmp.cleanup()
 
     def test_yes_without_dataset_fails(self) -> None:
         self.assertEqual(self.mr.reduce_dataset(assume_yes=True), 1)

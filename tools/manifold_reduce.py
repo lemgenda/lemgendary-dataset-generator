@@ -4,8 +4,9 @@ import math
 import random
 import shutil
 import sys
-import yaml
 from pathlib import Path
+
+import yaml
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -235,7 +236,7 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
     info = {}
     info_path = source_root / "dataset_info.yaml"
     if info_path.exists():
-        with open(info_path, 'r') as f:
+        with open(info_path, 'r', encoding="utf-8") as f:
             info = yaml.safe_load(f) or {}
             dataset_type = info.get("dataset_type", "quality")
 
@@ -364,7 +365,7 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
                         slug = "unknown"
 
                     task_type = "quality"
-                    for k, v in DATASETS_META.items():
+                    for v in DATASETS_META.values():
                         if v["name"] in source_root.name:
                             task_type = v.get("task", "quality")
                             break
@@ -379,7 +380,6 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
             print("\n[ABORTED] Reduction cancelled by user.")
             return 1
 
-    import json
     with open(target_root / "index.json", "w", encoding="utf-8") as f:
         json.dump(new_index, f, indent=2)
 
@@ -391,7 +391,6 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
 
 
 def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fraction=None, suffix_override=None, dry_run=False):
-    import numpy as np
 
     print(f"\n--- Forex Reduction: {source_root.name} ---")
 
@@ -536,7 +535,7 @@ def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fracti
     # Optionally add an end_date or years field (optional)
     # new_info["years"] = kept_years
 
-    with open(target_root / "dataset_info.yaml", "w") as f:
+    with open(target_root / "dataset_info.yaml", "w", encoding="utf-8") as f:
         yaml.dump(new_info, f, sort_keys=False)
 
     # Copy companion flat files from source.
@@ -569,7 +568,7 @@ def purge_ghost_manifolds():
 
     if ghosts:
         print(f"  [FOUND] {len(ghosts)} ghost folders identified.")
-        print(f"  [ACTION] Ghost purge disabled. Keeping folders intact.")
+        print("  [ACTION] Ghost purge disabled. Keeping folders intact.")
     else:
         print("  [OK] No ghost manifolds detected.")
 

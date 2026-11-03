@@ -229,7 +229,7 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
         ]
         cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
         try:
-            proc = subprocess.run(cmd, creationflags=cflags)
+            proc = subprocess.run(cmd, creationflags=cflags, check=False)
             if proc.returncode == 0:
                 _flatten_common_root(dest_path)
                 if delete_after:
@@ -251,7 +251,7 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
         cmd = [native_tar, "-xf", str(source_archive), "-C", str(dest_path)]
         cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
         try:
-            proc = subprocess.run(cmd, creationflags=cflags)
+            proc = subprocess.run(cmd, creationflags=cflags, check=False)
             if proc.returncode == 0:
                 _flatten_common_root(dest_path)
                 if delete_after:

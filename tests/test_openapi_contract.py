@@ -44,8 +44,8 @@ def _schema_operations(routes: list, prefix: str = "") -> set[tuple[str, str]]:
     return operations
 
 
-@pytest.fixture(scope="module")
-def live_app():
+@pytest.fixture(name="live_app", scope="module")
+def fixture_live_app():
     return create_app()
 
 

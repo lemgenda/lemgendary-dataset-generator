@@ -19,7 +19,7 @@ from pathlib import Path
 import shutil
 from typing import Any
 
-from .base import Sample
+from .base import Sample, Writer
 
 
 # Column schema. All vision manifolds share this shape; task-specific
@@ -36,7 +36,7 @@ _COLUMNS: dict[str, str] = {
 }
 
 
-class MDSWriter:
+class MDSWriter(Writer):
     """MosaicML Streaming writer with Zstd compression."""
 
     def __init__(self) -> None:

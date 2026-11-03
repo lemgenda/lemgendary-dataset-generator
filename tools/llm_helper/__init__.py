@@ -13,4 +13,3 @@ __all__ = [
     "base_compiler",
     "metadata_compiler",
 ]
-

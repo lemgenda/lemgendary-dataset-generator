@@ -6,9 +6,8 @@ import unittest
 import yaml
 
 from core.config_schema import UnifiedData
-from tools.llm_helper.base_compiler import BaseLLMCompiler
 from tools.llm_helper.chunker import KnowledgeChunk, RecursiveChunker
-from tools.llm_helper.knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
+from tools.llm_helper.knowledge_ingestor import KnowledgeIngestor
 from tools.llm_helper.quality_validator import QualityValidator
 
 
@@ -114,4 +113,3 @@ class TestLLMCompilerPipeline(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

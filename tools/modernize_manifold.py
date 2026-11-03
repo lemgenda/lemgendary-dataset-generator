@@ -28,7 +28,6 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Literal
@@ -143,7 +142,7 @@ def _find_dataset_entry(registry: dict, base_name: str, folder_name: str) -> tup
         if entry.get("name", "") == base_name:
             return key, entry
         mod_folder = entry.get("modernized_folder", "")
-        if mod_folder and (mod_folder == folder_name or f"{mod_folder}Large" == folder_name):
+        if mod_folder and folder_name in (mod_folder, f"{mod_folder}Large"):
             return key, entry
     return None, {}
 

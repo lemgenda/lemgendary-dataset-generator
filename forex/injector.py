@@ -7,8 +7,7 @@ inside Apache Parquet files for the Forex Universe manifold.
 Preserves bit-exact tensor payloads, row group chunking, and Zstandard compression.
 """
 
-import json
-import os
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -70,7 +69,7 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
     # Verify temp file schema and read sample
     pf_check = pq.ParquetFile(str(temp_path))
     assert pf_check.metadata.num_rows == total_expected_rows, "Check row count failed"
-    for col_name, desc in COLUMN_DESCRIPTIONS.items():
+    for col_name in COLUMN_DESCRIPTIONS:
         field_meta = pf_check.schema_arrow.field(col_name).metadata
         assert field_meta is not None and b"description" in field_meta, f"Missing description on {col_name}"
     pf_check.close()
@@ -89,9 +88,6 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
     elapsed = time.time() - t0
     print(f"[SUCCESS] {file_path.name}: {total_expected_rows:,} rows processed in {elapsed:.1f}s ({final_size_mb:.2f} MB)")
     return True
-
-
-import argparse
 
 
 def main():

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gc
 import json
+import shutil
 import sys
 import tempfile
 import threading
@@ -55,9 +56,9 @@ class _StubCommandJobManager(JobManager):
 
 class TestAsyncLLMCompileJob(unittest.TestCase):
     def _run_async_compile(self, stub_code: str) -> tuple[_StubCommandJobManager, JobResponse]:
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        manager = _StubCommandJobManager(Path(tmp.name), stub_code)
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        manager = _StubCommandJobManager(tmp, stub_code)
         app = FastAPI()
         app.include_router(llm_routes.router, prefix="/api")
         with patch.object(llm_routes, "job_manager", manager), TestClient(app) as client:

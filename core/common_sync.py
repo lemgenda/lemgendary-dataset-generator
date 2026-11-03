@@ -142,8 +142,8 @@ def setup_kaggle_auth(
         logger.debug("TLS CA certificate bundle check notice: %s", cert_exc)
 
     try:
-        import kagglehub.clients
-        kagglehub.clients.already_printed_version_warning = True
+        from kagglehub import clients as kagglehub_clients
+        kagglehub_clients.already_printed_version_warning = True
     except ImportError as exc:
         logger.debug("Kagglehub warning flag suppression skipped: %s", exc)
 
@@ -605,8 +605,7 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
         for f in files:
             try:
                 mt = os.path.getmtime(os.path.join(root, f))
-                if mt > newest_src_mtime:
-                    newest_src_mtime = mt
+                newest_src_mtime = max(newest_src_mtime, mt)
             except OSError as exc:
                 logger.debug("Failed checking mtime for %s: %s", f, exc)
 
@@ -677,6 +676,21 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
             return False
 
     return True
+
+
+def _kaggle_upload_header_image(api: Any, meta_folder: Path, image_name: str) -> Any:
+    """Adapter over the Kaggle client's private ``_upload_dataset_image_file``.
+
+    The public KaggleApi exposes no header-image upload, so this is the single
+    place that reaches into the private method; a client upgrade that renames
+    it only needs this function updated.
+    """
+    upload = getattr(api, "_upload_dataset_image_file")
+    return upload(
+        metadata_file_path=str(meta_folder),
+        relative_image_file_path=image_name,
+        quiet=True,
+    )
 
 
 def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
@@ -789,11 +803,7 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
 
     if header_img_name and (meta_folder / header_img_name).exists():
         try:
-            cropped_upload = api._upload_dataset_image_file(
-                metadata_file_path=str(meta_folder),
-                relative_image_file_path=header_img_name,
-                quiet=True,
-            )
+            cropped_upload = _kaggle_upload_header_image(api, meta_folder, header_img_name)
             if cropped_upload:
                 settings.image = cropped_upload
                 print(f"[INFO] Uploaded header image {header_img_name} for {clean_handle}")
@@ -1113,7 +1123,7 @@ def perform_dataset_download(
 
         if use_streaming_webdataset:
             print(f"[STREAM] Discovered legacy image matrix in {archive_to_extract.name}.")
-            print(f"[STREAM] Converting directly into modern WebDataset (.tar) shards via in-memory streaming...")
+            print("[STREAM] Converting directly into modern WebDataset (.tar) shards via in-memory streaming...")
             try:
                 from tools.stream_zip_to_container import stream_zip_to_webdataset
                 success = stream_zip_to_webdataset(

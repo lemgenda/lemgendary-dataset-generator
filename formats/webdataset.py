@@ -13,18 +13,16 @@ Phase 4 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 import sys
 from typing import Any
 
-import webdataset as wds
 from webdataset.writer import ShardWriter as WdsShardWriter
 
-from .base import Sample
+from .base import Sample, Writer
 
 
-class WebDatasetWriter:
+class WebDatasetWriter(Writer):
     """WebDataset .tar shard writer, driven by the Sample stream."""
 
     def __init__(self) -> None:

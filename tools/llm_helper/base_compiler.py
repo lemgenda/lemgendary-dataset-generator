@@ -145,9 +145,6 @@ class BaseLLMCompiler:
             category=category,
             classes=classes,
             original_sources=original_sources,
-            title=cfg.get("title", f"LemGendized {dataset_key}"),
-            subtitle=cfg.get("subtitle", "AI Assistant Instruction Dataset"),
-            author=cfg.get("author", "Lem Treursic"),
         )
 
         return {

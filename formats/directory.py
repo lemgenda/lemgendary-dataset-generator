@@ -22,7 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterator
 
-from .base import Sample
+from .base import Sample, Writer
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def purge_loose_layout(root: Path) -> list[Path]:
     return removed
 
 
-class DirectoryWriter:
+class DirectoryWriter(Writer):
     """No-op writer.
 
     The canonical directory layout is always produced by the compile

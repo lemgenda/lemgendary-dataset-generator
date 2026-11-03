@@ -54,7 +54,6 @@ _create_motion_kernel = create_motion_kernel
 
 def _create_disk_kernel(radius: int) -> np.ndarray:
     """Generate 2D normalized circular disk defocus kernel."""
-    size = radius * 2 + 1
     ax = np.arange(-radius, radius + 1)
     xx, yy = np.meshgrid(ax, ax)
     mask = (xx**2 + yy**2) <= (radius**2)

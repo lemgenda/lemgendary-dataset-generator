@@ -10,7 +10,7 @@ GenerationService, MigrationService, SyncService).
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
+from json import dumps, loads
 from pathlib import Path
 import tempfile
 from typing import Any
@@ -39,7 +39,7 @@ class _AsgiResponse:
     headers: list[tuple[bytes, bytes]]
 
     def json(self) -> Any:
-        return json.loads(self.body_bytes.decode("utf-8"))
+        return loads(self.body_bytes.decode("utf-8"))
 
     @property
     def text(self) -> str:
@@ -63,7 +63,7 @@ class InProcessAsgiClient:
         raw_headers: list[tuple[bytes, bytes]] = [(b"host", b"testserver")]
         body_bytes = b""
         if json_body is not None:
-            body_bytes = json.dumps(json_body).encode("utf-8")
+            body_bytes = dumps(json_body).encode("utf-8")
             raw_headers.append((b"content-type", b"application/json"))
         for k, v in (headers or {}).items():
             raw_headers.append((k.lower().encode("utf-8"), v.encode("utf-8")))

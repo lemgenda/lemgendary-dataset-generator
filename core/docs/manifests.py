@@ -26,6 +26,16 @@ from core.docs.generators.kaggle_metadata import (
     introspect_root_resources,
 )
 
+__all__ = [
+    "extract_kaggle_description",
+    "find_dataset_entry",
+    "write_category_txt",
+    "write_classes_txt",
+    "write_dataset_info_yaml",
+    "write_index_json",
+    "write_kaggle_metadata",
+]
+
 # Maintain alias for backward compatibility
 find_dataset_entry = find_unified_entry
 
@@ -45,7 +55,7 @@ def write_category_txt(output_root: Path, category_str: str) -> None:
     generate_category_txt(output_root, category_str=category_str)
 
 
-def write_classes_txt(output_root: Path, task_key: str) -> None:
+def write_classes_txt(output_root: Path) -> None:
     """Write class label mappings to classes.txt."""
     generate_classes_txt(output_root)
 
@@ -53,7 +63,6 @@ def write_classes_txt(output_root: Path, task_key: str) -> None:
 def _introspect_root_resources(
     output_root: Path,
     manifold_name: str,
-    task_key: str,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Introspect files and subdirectories directly in output_root and return Frictionless resource descriptors."""
     ctx = resolve_manifold_context(output_root, pascal_name=manifold_name)
@@ -63,10 +72,7 @@ def _introspect_root_resources(
 def write_kaggle_metadata(
     output_root: Path,
     manifold_name: str,
-    cat_str: str,
     readme_content: str,
-    task_key: str,
-    dataset_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate and write Kaggle Frictionless dataset-metadata.json."""
     ctx = resolve_manifold_context(output_root, pascal_name=manifold_name)

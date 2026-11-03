@@ -20,7 +20,7 @@ from typing import Any
 
 from PIL import Image
 
-from .base import GenerationResult
+from .base import GenerationResult, Generator
 
 
 _TEMPLATES: dict[str, str] = {
@@ -35,7 +35,7 @@ _DEFAULT_LIGHTING = "natural lighting"
 _DEFAULT_CAMERA = "medium shot"
 
 
-class PromptGenerator:
+class PromptGenerator(Generator):
     """Composes captions + style tags into structured prompt strings."""
 
     def __init__(

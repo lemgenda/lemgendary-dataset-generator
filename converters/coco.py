@@ -16,7 +16,7 @@ def parse_coco(
         images_by_id:            mapping of image id -> raw image metadata dict
         annotations_by_image_id: mapping of image id -> list of raw annotation dicts
     """
-    with open(json_path, "r") as f:
+    with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     images: dict[int, dict[str, Any]] = {x["id"]: x for x in data.get("images", [])}
     anns: dict[int, list[dict[str, Any]]] = {}

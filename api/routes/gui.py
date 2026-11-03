@@ -9,12 +9,11 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import ValidationError
 
-from api.auth import verify_token
 from api.jobs import job_manager
 from api.models import (
     ActiveJobsResponse,
@@ -327,7 +326,7 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
-        formats, counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
+        formats, _counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
         jsonl_files = list(entry.glob("*.jsonl")) + list(entry.glob("data/*.jsonl"))
         has_jsonl = bool(jsonl_files)
         if sample_count == 0:
@@ -376,7 +375,7 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
         for r_item in refs:
             if isinstance(r_item, dict) and "ref" in r_item:
                 r_val = str(r_item["ref"])
-                r_name = r_val.split("/")[-1]
+                r_name = r_val.rsplit("/", maxsplit=1)[-1]
                 ref_lookup[r_name.lower()] = r_val
                 ref_lookup[r_val.lower()] = r_val
 
@@ -704,4 +703,3 @@ async def custom_compile(
     job_manager.start_job(job.id, loop)
     logger.info("Dispatched custom compile job %s for custom manifold %s", job.id, pascal_name)
     return job
-

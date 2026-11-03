@@ -28,7 +28,7 @@ import pyarrow.parquet as pq
 import yaml
 
 from . import bridge as mt5_bridge
-from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA
+from .schema import PARQUET_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +343,7 @@ def compute_indicators(df):
         bbu_col = next((c for c in df_ta.columns if 'BBU_' in c.upper()), None)
         bbl_col = next((c for c in df_ta.columns if 'BBL_' in c.upper()), None)
 
-        if rsi_col and macd_col and macds_col and atr_col and bbu_col and bbl_col:
+        if all((rsi_col, macd_col, macds_col, atr_col, bbu_col, bbl_col)):
             df['rsi'] = (np.asarray(df_ta[rsi_col], dtype=np.float64) / 100.0).tolist()
             df['macd'] = (np.asarray(df_ta[macd_col], dtype=np.float64) / (close + 1e-8)).tolist()
             df['macd_signal'] = (np.asarray(df_ta[macds_col], dtype=np.float64) / (close + 1e-8)).tolist()
@@ -628,7 +628,7 @@ def build_windows_and_save_by_year(
     unique_years = np.unique(sample_years)
 
     for year in unique_years:
-        year_mask = (sample_years == year)
+        year_mask = sample_years == year
         year_indices = indices[year_mask]
         year_targets = target_indices[year_mask]
 

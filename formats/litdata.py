@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterator
 
-from .base import Sample
+from .base import Sample, Writer
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 _SHARD_SIZE = 4096
 
 
-class LitDataWriter:
+class LitDataWriter(Writer):
     """LitData writer, sharded via temporary pickle files."""
 
     def __init__(self) -> None:
@@ -126,5 +126,4 @@ def _read_shard(shard_path: str) -> Iterator[dict[str, Any]]:
     """LitData optimize() callable: load one pickle shard and yield each entry."""
     with open(shard_path, "rb") as f:
         entries = pickle.load(f)
-    for entry in entries:
-        yield entry
+    yield from entries

@@ -48,7 +48,7 @@ def introspect_root_resources(
     """Introspect every file and directory in output_root and generate accurate Frictionless descriptors."""
     resources: list[dict[str, Any]] = []
     header_image: str | None = None
-    is_forex = (ctx.task == "forex")
+    is_forex = ctx.task == "forex"
     seen_paths: set[str] = set()
 
     # For Forex manifolds, prioritize annual Parquet data shards at the very top of resources
@@ -104,7 +104,7 @@ def introspect_root_resources(
                         resources.append({"path": sub_rel, "description": sub_desc})
                         seen_paths.add(sub_rel)
                 continue
-            elif dir_name_lower in ["shards", "webdataset"]:
+            if dir_name_lower in ["shards", "webdataset"]:
                 tar_count = sum(1 for _ in p.glob("*.tar"))
                 total_mb = sum(f.stat().st_size for f in p.glob("*.tar")) / (1024 * 1024)
                 if tar_count > 0:

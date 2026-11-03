@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.28-STABLE` |
+| **Version** | `v16.9.29-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,27 @@
 ---
 
 ## Changelog
+
+### v16.9.29 - 30 Pylint Checks Re-Enabled, Their Findings Fixed at the Source
+
+- **`.pylintrc` Disables 30 Fewer Checks (review: ROBOTS.md "Configuration-based suppression")**:
+  - Re-enabled: `unused-import`, `unused-variable`, `unused-argument`, `possibly-unused-variable`, `used-before-assignment`, `reimported`, `ungrouped-imports`, `multiple-imports`, `f-string-without-interpolation`, `redefined-outer-name`, `protected-access`, `subprocess-run-check`, `consider-using-with`, `attribute-defined-outside-init`, `multiple-statements`, `unspecified-encoding`, `trailing-whitespace`, `bad-indentation`, `superfluous-parens`, `no-else-return`, `no-else-break`, `simplifiable-if-expression`, `consider-using-max-builtin`, `use-dict-literal`, `self-assigning-variable`, `consider-using-from-import`, `unnecessary-dunder-call`, `expression-not-assigned`, `not-callable` and `too-many-boolean-expressions`.
+  - About 390 findings were fixed in the code, along with checks that were already enabled but still reported (`missing-final-newline`, `trailing-newlines`, `consider-using-in`, `cell-var-from-loop`, `use-maxsplit-arg` and others). No inline suppressions were added.
+  - Still disabled, as tracked backlog: `line-too-long`, `missing-docstring`, `import-outside-toplevel`, `wrong-import-position`, `wrong-import-order`, `global-statement`, `invalid-name` and the `too-many-*` design checks. `wrong-import-order` has one finding left: `core/compiler_core.py` has to import torch after `bootstrap_runtime()`, and fixing that needs the same entry-point bootstrap refactor as `wrong-import-position`.
+- **Behaviour Fixes the Checks Uncovered**:
+  - `sources/gh.py` now exits non-zero when `git clone` fails.
+  - The modernization-queue cache TTL (`ttl_hours`) is now enforced.
+  - The MDS-to-WebDataset tar writer opens one `with` block per shard and no longer leaves empty trailing shards.
+  - `api/jobs.py` runs the job `Popen` inside `with`.
+- **Interfaces Made Explicit**:
+  - The container writers (`DirectoryWriter`, `LitDataWriter`, `ParquetWriter`, `MDSWriter`, `WebDatasetWriter`) now subclass the `formats.base.Writer` protocol.
+  - The generators (`LabelGenerator`, `MaskGenerator`, `PromptGenerator`) now subclass `generators.base.Generator`.
+- **Private Third-Party Access Isolated**:
+  - Kaggle's `_upload_dataset_image_file` is called only from `core/common_sync._kaggle_upload_header_image`.
+  - torch's `cuda._queued_calls` is touched only by `runtime/environment._drop_queued_capability_checks`.
+- **API and CLI Changes**:
+  - Unused parameters were removed from `generate_llm_metadata` and from internal compiler helpers.
+  - The CLI function `compile` is now `compile_manifold`; the command is still named `compile`.
 
 ### v16.9.28 - No Swallowed Exceptions, Exception-Policy Lint Checks Re-Enabled
 

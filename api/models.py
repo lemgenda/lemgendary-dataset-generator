@@ -278,5 +278,3 @@ class CustomCompileRequest(BaseModel):
         True,
         description="After a successful compile, purge loose images of manifolds packed into a container",
     )
-
-

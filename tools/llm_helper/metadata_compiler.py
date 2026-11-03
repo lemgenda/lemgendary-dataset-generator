@@ -29,9 +29,6 @@ def generate_llm_metadata(
     category: str,
     classes: list[str],
     original_sources: list[str],
-    title: str = "LemGendized LLM Instruction Dataset",
-    subtitle: str = "Instruction Dataset for Causal LLM Fine-Tuning",
-    author: str = "Lem Treursic",
     canonical_format: str = "jsonl",
 ) -> None:
     """Synchronizes all standard root metadata files for an LLM dataset manifold."""
@@ -107,4 +104,3 @@ def generate_llm_metadata(
         json.dump(index_entries, f, indent=2)
 
     logger.info("Generated metadata files for %s (%d records).", dataset_name, total_count)
-

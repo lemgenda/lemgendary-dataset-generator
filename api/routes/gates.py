@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Query, status
 
 from audit.hardlinks import audit_hardlinks

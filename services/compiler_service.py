@@ -7,11 +7,7 @@ programmatically, bridging CLI options, presets, and the core coordinator.
 
 from __future__ import annotations
 
-import argparse
 import logging
-import sys
-from pathlib import Path
-from typing import Any
 
 from rich.console import Console
 
