@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.64-STABLE` |
+| **Version** | `v16.9.65-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,12 @@
 ---
 
 ## Changelog
+
+### v16.9.65 - Test Reads the Port From the Fixture
+
+- `tests/test_ecosystem.py`: the wrongly typed port test stringifies the
+  fixture's own port instead of writing one out, which the env-manager's
+  tightened `ecosystem_ssot` port rule now flags.
 
 ### v16.9.64 - No Drive-Letter Path Examples
 

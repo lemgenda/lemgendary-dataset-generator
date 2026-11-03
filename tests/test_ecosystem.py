@@ -73,7 +73,7 @@ class EcosystemFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bad = Path(tmp) / "ecosystem.json"
             raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
-            raw["services"][1]["port"] = "8100"
+            raw["services"][1]["port"] = str(raw["services"][1]["port"])
             bad.write_text(json.dumps(raw), encoding="utf-8")
             with (
                 patch.dict(os.environ, {ecosystem.ECOSYSTEM_FILE_ENV: str(bad)}),
