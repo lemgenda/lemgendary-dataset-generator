@@ -7,6 +7,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.common_sync import track_kaggle_dataset_status
+from core.ecosystem import ecosystem
+
+OWNER = ecosystem().kaggle_owner
 
 
 class TestKaggleExtractionProgress(unittest.TestCase):
@@ -27,16 +30,16 @@ class TestKaggleExtractionProgress(unittest.TestCase):
 
         captured_stdout = io.StringIO()
         with patch("sys.stdout", captured_stdout):
-            success = track_kaggle_dataset_status("lemtreursi/test_manifold", target_version=2)
+            success = track_kaggle_dataset_status(f"{OWNER}/test_manifold", target_version=2)
 
         self.assertTrue(success)
         output = captured_stdout.getvalue()
-        self.assertIn("KAGGLE EXTRACTION: lemtreursi/test_manifold - 100%", output)
+        self.assertIn(f"KAGGLE EXTRACTION: {OWNER}/test_manifold - 100%", output)
         self.assertIn("[SUCCESS]", output)
 
     def test_jobs_is_progress_detection(self) -> None:
         """Verify api/jobs.py line parsing logic classifies KAGGLE EXTRACTION as progress."""
-        clean_line = "KAGGLE EXTRACTION: lemtreursi/manifold_eurusd_1m - 45% [18s, PROCESSING]"
+        clean_line = f"KAGGLE EXTRACTION: {OWNER}/manifold_eurusd_1m - 45% [18s, PROCESSING]"
         is_progress = (
             "%" in clean_line
             or "EXTRACTING" in clean_line

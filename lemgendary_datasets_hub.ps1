@@ -1142,7 +1142,8 @@ while ($true) {
                 Write-Host "`n[ALL META] Updating Kaggle metadata for ALL datasets in unified_data.yaml..." -ForegroundColor Cyan
                 Write-Host "  (No data re-upload - only title, description, license and column info for each dataset)" -ForegroundColor DarkGray
 
-                & $Vpy -m $kagManagerModule --action metadata --repo_id lemtreursi/placeholder --all-datasets --output_dir $Out
+                $KagOwner = (& $Vpy -c "from core.ecosystem import ecosystem; print(ecosystem().kaggle_owner)").Trim()
+                & $Vpy -m $kagManagerModule --action metadata --repo_id "$KagOwner/placeholder" --all-datasets --output_dir $Out
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "[OK] [ALL META] Metadata updated for all configured datasets!" -ForegroundColor Green
                 } else {

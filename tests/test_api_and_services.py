@@ -26,6 +26,7 @@ from PIL import Image
 
 from api.auth import get_or_create_token
 from api.server import app
+from core.ecosystem import ecosystem
 from services.audit_service import audit_manifold
 from services.compiler_service import run_compile
 from services.degrade_service import run_degrade
@@ -417,7 +418,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             )
 
         with patch("tools.manifold_sync.action_get") as mock_pull:
-            ret = SyncService.pull(url="lemtreursi/lemgendizednimatechnical")
+            ret = SyncService.pull(url=f"{ecosystem().kaggle_owner}/lemgendizednimatechnical")
             self.assertEqual(ret, 0)
             mock_pull.assert_called_once()
 

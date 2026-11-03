@@ -12,7 +12,10 @@ from core.common_sync import (
     perform_dataset_upload,
     push_kaggle_dataset_metadata,
 )
+from core.ecosystem import ecosystem
 from tools.sync_kaggle_metadata import is_large_manifold
+
+OWNER = ecosystem().kaggle_owner
 
 
 class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
@@ -21,18 +24,18 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
     def test_is_large_manifold_identification(self) -> None:
         """Verify detection of legacy *large manifold handles, URLs, and slugs."""
         large_targets = [
-            "https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge",
+            f"https://www.kaggle.com/datasets/{OWNER}/lemgendizedforexuniverselarge",
             (
-                "https://www.kaggle.com/datasets/lemtreursi/"
+                f"https://www.kaggle.com/datasets/{OWNER}/"
                 "lemgendizedclassificationmastermanifoldlarge"
             ),
-            "kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge",
-            "lemtreursi/lemgendizedforexuniverselarge",
-            "lemtreursi/lemgendizedclassificationmastermanifoldlarge",
-            "lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge",
-            "lemtreursi/lemgendizedretinafacemobilenetlarge",
-            "lemtreursi/test_dataset_large",
-            "lemtreursi/test-dataset-large",
+            f"kaggle://{OWNER}/lemgendizedprofessionalmultitaskrestorationlarge",
+            f"{OWNER}/lemgendizedforexuniverselarge",
+            f"{OWNER}/lemgendizedclassificationmastermanifoldlarge",
+            f"{OWNER}/lemgendizedprofessionalmultitaskrestorationlarge",
+            f"{OWNER}/lemgendizedretinafacemobilenetlarge",
+            f"{OWNER}/test_dataset_large",
+            f"{OWNER}/test-dataset-large",
         ]
         for target in large_targets:
             self.assertTrue(
@@ -47,18 +50,18 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
     def test_canonical_manifolds_are_permitted(self) -> None:
         """Verify that canonical production datasets are not flagged as *large."""
         canonical_targets = [
-            "lemtreursi/lemgendizedforexuniverse",
-            "lemtreursi/lemgendizedclassificationmaster",
-            "lemtreursi/lemgendizedmultitaskrestorationpro",
-            "lemtreursi/lemgendizedretinaface",
-            "lemtreursi/lemgendizednimaaesthetic",
-            "lemtreursi/lemgendizedupnv2",
-            "lemtreursi/lemgendizedfilmrestorer",
-            "lemtreursi/lemgendizedcodeformer",
-            "lemtreursi/lemgendizedparsenet",
-            "lemtreursi/lemgendizedffanetindoor",
-            "lemtreursi/lemgendizedmirnetlowlight",
-            "lemtreursi/lemgendizedaihelperlemgend",
+            f"{OWNER}/lemgendizedforexuniverse",
+            f"{OWNER}/lemgendizedclassificationmaster",
+            f"{OWNER}/lemgendizedmultitaskrestorationpro",
+            f"{OWNER}/lemgendizedretinaface",
+            f"{OWNER}/lemgendizednimaaesthetic",
+            f"{OWNER}/lemgendizedupnv2",
+            f"{OWNER}/lemgendizedfilmrestorer",
+            f"{OWNER}/lemgendizedcodeformer",
+            f"{OWNER}/lemgendizedparsenet",
+            f"{OWNER}/lemgendizedffanetindoor",
+            f"{OWNER}/lemgendizedmirnetlowlight",
+            f"{OWNER}/lemgendizedaihelperlemgend",
         ]
         for target in canonical_targets:
             self.assertFalse(
@@ -77,12 +80,12 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
             meta_file.write_text('{"title": "Test Large"}', encoding="utf-8")
 
             res_handle = push_kaggle_dataset_metadata(
-                "lemtreursi/lemgendizedforexuniverselarge", meta_file
+                f"{OWNER}/lemgendizedforexuniverselarge", meta_file
             )
             self.assertFalse(res_handle)
 
             res_url = push_kaggle_dataset_metadata(
-                "https://www.kaggle.com/datasets/lemtreursi/"
+                f"https://www.kaggle.com/datasets/{OWNER}/"
                 "lemgendizedclassificationmastermanifoldlarge",
                 meta_file,
             )
@@ -91,7 +94,7 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
     def test_ensure_kaggle_dataset_exists_rejects_large_manifold(self) -> None:
         """Verify ensure_kaggle_dataset_exists returns False immediately for *large handles."""
         res = ensure_kaggle_dataset_exists(
-            "lemtreursi/lemgendizedforexuniverselarge", title="Forex Large"
+            f"{OWNER}/lemgendizedforexuniverselarge", title="Forex Large"
         )
         self.assertFalse(res)
 
@@ -101,7 +104,7 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
             dummy_dir = Path(td) / "dummy"
             dummy_dir.mkdir()
             res = perform_dataset_upload(
-                dummy_dir, "lemtreursi/lemgendizedforexuniverselarge"
+                dummy_dir, f"{OWNER}/lemgendizedforexuniverselarge"
             )
             self.assertFalse(res)
 

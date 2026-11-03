@@ -26,6 +26,7 @@ from core.docs.context_types import (
     TaskProfile,
 )
 from core.docs.metadata import UNIFIED_DATA
+from core.ecosystem import ecosystem
 
 __all__ = [
     "AuthorInfo",
@@ -53,7 +54,7 @@ _DEFAULT_METHODOLOGY = (
     " compiled into high-velocity streaming containers (MDS / WebDataset) with pre-indexed"
     " splits."
 )
-_DEFAULT_CITATIONS = ["https://github.com/lemtreursi/model-training"]
+_DEFAULT_CITATIONS = [f"https://github.com/{ecosystem().kaggle_owner}/model-training"]
 _DEFAULT_COVERAGE = {
     "temporal": {"start": "2020-01-01", "end": "2026-10-10"},
     "geospatial": "Global Web-Scale Visual Media",

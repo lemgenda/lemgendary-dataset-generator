@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.59-STABLE` |
+| **Version** | `v16.9.60-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,11 @@
 ---
 
 ## Changelog
+
+### v16.9.60 - Kaggle Owner Read from the Ecosystem File
+
+- Tests, `core/docs/context.py` and the hub script build Kaggle owner values from
+  `core/ecosystem.py` instead of literals (clears 31 `ecosystem_ssot` findings).
 
 ### v16.9.59 - Shared Ecosystem File for Port, Kaggle Owner and lem-env
 
