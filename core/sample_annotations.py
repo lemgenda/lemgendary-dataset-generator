@@ -279,6 +279,12 @@ def label_lines(content: LabelContent, width: int, height: int) -> list[str]:
 
 
 def write_label_file(path: Path, lines: list[str]) -> None:
-    """Write label lines, newline-terminated, to ``path`` (an empty list makes an empty file)."""
+    """Write label lines, newline-terminated, to ``path`` (an empty list makes an empty file).
+
+    The split folder is created on demand: only label-task manifolds get
+    ``labels/<split>`` up front, but restoration, segmentation and diffusion
+    manifolds write labels too when auto-labeling finds annotations.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.writelines(line + "\n" for line in lines)

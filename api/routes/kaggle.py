@@ -12,6 +12,7 @@ import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from api.dataset_stats import as_count, read_yaml_mapping
 from api.jobs import job_manager
 from api.models import (
     JobResponse,
@@ -114,16 +115,8 @@ def _sources_kaggle_cmd(action: str, repo_id: str, output_dir: Path) -> list[str
 
 def _local_sample_count(local_path: Path) -> int:
     """Sample count recorded in a manifold's dataset_info.yaml (0 when unknown)."""
-    info_file = local_path / "dataset_info.yaml"
-    if not info_file.exists():
-        return 0
-    try:
-        with open(info_file, "r", encoding="utf-8") as inf:
-            m = yaml.safe_load(inf) or {}
-            return m.get("count") or m.get("total_samples") or 0
-    except (OSError, yaml.YAMLError) as exc:
-        logger.debug("Could not read dataset_info.yaml for %s: %s", local_path, exc)
-        return 0
+    meta = read_yaml_mapping(local_path / "dataset_info.yaml")
+    return as_count(meta.get("count") or meta.get("total_samples"))
 
 
 def _registry_item(

@@ -100,13 +100,24 @@ def configure(argv: list[str] | None = None) -> argparse.Namespace:
     Namespace and re-applies CLI overrides to CONFIG (idempotent for the
     same argv).
     """
-    _CLI.args = build_parser().parse_args(argv)
-    _apply_cli_overrides(_CLI.args)
-    return _CLI.args
+    return install_args(build_parser().parse_args(argv))
 
 
-def set_args(ns: argparse.Namespace) -> None:
-    """Inject a pre-parsed Namespace.
+def install_args(ns: argparse.Namespace) -> argparse.Namespace:
+    """Make ``ns`` the active Namespace and apply its CONFIG overrides.
+
+    For entry points that parse the CLI themselves (``core.manifold_compile``
+    applies preset defaults first, ``CompilerService`` builds argv from typed
+    options): without this call ``get_args()`` raises in the workers and
+    ``--workers`` / ``--image-format`` / strategy flags never reach CONFIG.
+    """
+    _CLI.args = ns
+    _apply_cli_overrides(ns)
+    return ns
+
+
+def set_args(ns: argparse.Namespace | None) -> None:
+    """Inject a pre-parsed Namespace (``None`` clears it) without touching CONFIG.
 
     Used by spawned worker processes (Windows spawn) where sys.argv in the
     child is not the parent's argv. The parent should pass

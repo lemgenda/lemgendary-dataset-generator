@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,15 +37,13 @@ _SAMPLES_DDL = """
             );
         """
 
-_AUDIT_EVENTS_DDL = """
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id INTEGER PRIMARY KEY,
-                sample_name TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                event_data TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """
+# ``audit_events`` comes from core.registry (keyed by ``registry.id``); the
+# event row looks the id up by the sample name the registry row was just
+# written under.
+_AUDIT_EVENT_SQL = """
+    INSERT INTO audit_events (sample_id, event_type, event_data)
+    SELECT id, ?, ? FROM registry WHERE name = ?
+"""
 
 # Both tables share the same column layout for a synthesized sample.
 _UPSERT_SQL = (
@@ -63,18 +62,16 @@ _UPSERT_SQL = (
 
 def init_synthetic_registry(db_path: Path) -> None:
     """Initialize manifold_registry.db schema for synthetic manifold."""
-    initialize_registry(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    initialize_registry(db_path).close()
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute(_SAMPLES_DDL)
-        conn.execute(_AUDIT_EVENTS_DDL)
         conn.commit()
 
 
 def commit_records(db_path: Path, records: list[dict[str, Any]]) -> None:
     """Insert every synthesized sample into ``samples``, ``registry`` and ``audit_events``."""
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         for r in records:
             row = (
                 r["name"],
@@ -88,11 +85,8 @@ def commit_records(db_path: Path, records: list[dict[str, Any]]) -> None:
             for sql in _UPSERT_SQL:
                 conn.execute(sql, row)
             conn.execute(
-                """
-                INSERT INTO audit_events (sample_name, event_type, event_data)
-                VALUES (?, ?, ?)
-                """,
-                (r["name"], "degradation_synthesis", json.dumps(r["label_payload"])),
+                _AUDIT_EVENT_SQL,
+                ("degradation_synthesis", json.dumps(r["label_payload"]), r["name"]),
             )
         conn.commit()
 

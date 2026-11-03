@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, status
 import yaml
 
-from api.dataset_stats import read_yaml_or_empty
+from api.dataset_stats import as_count, read_yaml_mapping
 from api.models import DatasetInfoResponse, DatasetListResponse
 
 logger = logging.getLogger("lemgendary.api.routes.datasets")
@@ -41,23 +41,8 @@ _REGISTRY_DB_MAX_BYTES = 50_000_000
 
 def _read_list_meta(info_file: Path) -> tuple[str, int]:
     """Task and total_samples from a manifold's dataset_info.yaml (defaults if unreadable)."""
-    task = "vision"
-    sample_count = 0
-    if info_file.exists():
-        try:
-            meta = read_yaml_or_empty(info_file)
-            task = meta.get("task", task)
-            sample_count = int(meta.get("total_samples", 0) or 0)
-        except (
-            OSError,
-            UnicodeDecodeError,
-            yaml.YAMLError,
-            AttributeError,
-            TypeError,
-            ValueError,
-        ) as exc:
-            logger.debug("Failed reading %s: %s", info_file, exc)
-    return task, sample_count
+    meta = read_yaml_mapping(info_file)
+    return str(meta.get("task", "vision")), as_count(meta.get("total_samples"))
 
 
 def _scan_manifold_formats(entry: Path) -> tuple[int, List[str]]:

@@ -49,13 +49,18 @@ def _process_shard_row(job: ShardJob, offset: int, row: Any,
     return res or _status_record(name, key.slug, task, "failed")
 
 
-def process_parquet_shard(job: ShardJob) -> list[dict[str, Any]]:
-    """Process an entire Parquet shard as one worker task."""
+def process_parquet_shard(job: ShardJob) -> list[dict[str, Any] | None]:
+    """Process an entire Parquet shard as one worker task.
+
+    An unreadable shard yields one ``None`` per planned row: progress still
+    advances by ``num_rows``, nothing is registered, and the next run retries
+    the shard.
+    """
     try:
         df = pd.read_parquet(job.pq_path)
     except PARQUET_READ_ERRORS as e:
         logger.warning("Skipping corrupted virtual parquet shard %s: %s", job.pq_path, e)
-        return [{"hash": "skipped"}] * job.num_rows
+        return [None] * job.num_rows
     return [_process_shard_row(job, offset, row, df.columns)
             for offset, row in enumerate(df.itertuples())]
 

@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.51-STABLE` |
+| **Version** | `v16.9.52-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,40 @@
 ---
 
 ## Changelog
+
+### v16.9.52 - Seven Compiler Bugs Fixed; One Version String
+
+- **Compile CLI Configured**: `python -m core.manifold_compile` and
+  `CompilerService` never installed their parsed arguments, so the workers
+  raised from `get_args()` and `--workers`, `--image-format` and the
+  strategy flags never reached `CONFIG`. `prepare_compile` now calls the new
+  `compiler_config.install_args()`, and the pool initialiser receives the
+  arguments.
+- **Label Folders Created on Demand**: `write_label_file` creates
+  `labels/<split>`. Restoration, segmentation and diffusion manifolds with
+  auto-labeling on used to lose every labelled sample because the folder
+  did not exist.
+- **Corrupt Parquet Shards**: an unreadable shard yields one `None` per row
+  instead of records without a `name`, which raised `KeyError` in PASS 1.
+  Nothing is registered, so the next run retries the shard.
+- **MT5 Chunked Fallback**: the bar times are tz-aware UTC and the start
+  date was naive, so the fallback always raised `TypeError`. The comparison
+  now uses `dt_from` as a UTC timestamp.
+- **Degrade Registry Commit**: `audit_events` (from `core.registry`) is keyed
+  by `sample_id`; the degrade tool inserted a `sample_name`, so every
+  non-dry-run failed at commit. The event now references the registry row.
+  The tool also closes its SQLite connections.
+- **Malformed `dataset_info.yaml`**: `/api/gui/datasets/with-stats` returned
+  500 for a file that is not a mapping or not UTF-8. The new
+  `read_yaml_mapping` and `as_count` helpers (also used by the datasets and
+  Kaggle routes) log and ignore such files.
+- **Module Entry Points**: package modules import `core`/`tools` absolutely
+  and run only as `python -m pkg.module`. A test now fails if a launcher,
+  route or document runs one by file path.
+- **One Version String**: `core.cli_args.__version__` (API, `cli.py
+  version`, `openapi.json`) was still 16.9.5. It now follows the README, and
+  `tests/test_version_sync.py` keeps the three in step.
+- Regression tests: `tests/test_known_bug_regressions.py`.
 
 ### v16.9.51 - Pylint `too-many-*` Checks Re-enabled
 

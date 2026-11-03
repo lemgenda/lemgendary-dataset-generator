@@ -15,6 +15,7 @@ from typing import Any, cast
 
 from core import presets
 from core.cli_args import build_parser
+from core.compiler_config import install_args
 from core.compiler_core import (
     CONFIG,
     DATASETS_META,
@@ -173,7 +174,12 @@ def _dped_canon_paths(args: argparse.Namespace) -> set[str]:
 
 
 def prepare_compile(args: argparse.Namespace) -> CompileSettings:
-    """Resolve the run's limits, pre-load models, size the pool and cache DPED frames."""
+    """Install the run's CLI args, resolve its limits, pre-load models, size the pool.
+
+    Installing ``args`` first is what makes ``get_args()`` work in the workers
+    and applies the CLI overrides to CONFIG.
+    """
+    install_args(args)
     constraints = META.get("global_constraints", {})
     settings = CompileSettings(
         min_gb=constraints.get("min_size_gb", 0.1),
@@ -208,10 +214,10 @@ def make_executor(args: argparse.Namespace, settings: CompileSettings,
                   existing_on_disk: set[str]) -> ThreadPoolExecutor:
     """Build the manifold's worker pool (workers initialise in-process for I/O-only runs)."""
     if args.no_vetting and args.no_labeling:
-        init_worker(CONFIG, settings.dped_canon_paths, existing_on_disk)
+        init_worker(CONFIG, settings.dped_canon_paths, existing_on_disk, args)
         return ThreadPoolExecutor(max_workers=settings.max_workers)
     return ThreadPoolExecutor(
         max_workers=settings.max_workers,
         initializer=init_worker,
-        initargs=(CONFIG, settings.dped_canon_paths, existing_on_disk),
+        initargs=(CONFIG, settings.dped_canon_paths, existing_on_disk, args),
     )

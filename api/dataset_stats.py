@@ -33,7 +33,7 @@ __all__ = [
     "build_dataset_stats_response",
     "calculate_dataset_file_stats",
     "extract_jsonl_provenance_counts",
-    "read_yaml_or_empty",
+    "read_yaml_mapping",
 ]
 
 logger = logging.getLogger("lemgendary.api.routes.gui.stats")
@@ -41,7 +41,7 @@ logger = logging.getLogger("lemgendary.api.routes.gui.stats")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _GB = 1024**3
 
-_READ_ERRORS = (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError)
+_READ_ERRORS = (OSError, UnicodeDecodeError, yaml.YAMLError)
 
 _SOURCE_TYPE_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("kaggle", "ava", "coco", "div2k", "flickr", "voc"), "KAGGLE"),
@@ -55,10 +55,36 @@ _SOURCE_TYPE_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 )
 
 
-def read_yaml_or_empty(path: Path) -> Any:
-    """Return the parsed YAML document at ``path`` (``{}`` when it is empty)."""
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+def read_yaml_mapping(path: Path) -> dict[str, Any]:
+    """The mapping stored in the YAML file at ``path``.
+
+    Returns ``{}`` (and logs why) when the file is missing, unreadable, not
+    UTF-8, not valid YAML, empty, or holds something other than a mapping, so
+    one malformed ``dataset_info.yaml`` cannot fail a whole catalog request.
+    """
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except _READ_ERRORS as exc:
+        logger.warning("Ignoring unreadable %s: %s", path, exc)
+        return {}
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("Ignoring %s: top level is a %s, not a mapping", path, type(data).__name__)
+        return {}
+    return data
+
+
+def as_count(value: Any) -> int:
+    """A non-negative sample count from a metadata value (0 when it is not a number)."""
+    try:
+        return max(int(value or 0), 0)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring non-numeric sample count %r", value)
+        return 0
 
 
 def _unified_yaml_path() -> Path:
@@ -71,12 +97,7 @@ def _unified_yaml_path() -> Path:
 def _load_folder_index() -> dict[str, tuple[str, dict[str, Any]]]:
     """Map lower-cased manifold folder / dataset names to (registry key, registry entry)."""
     unified_yaml = _unified_yaml_path()
-    registry_datasets: dict[str, Any] = {}
-    if unified_yaml.exists():
-        try:
-            registry_datasets = read_yaml_or_empty(unified_yaml).get("datasets", {})
-        except _READ_ERRORS as exc:
-            logger.debug("Failed reading unified_data.yaml: %s", exc)
+    registry_datasets = read_yaml_mapping(unified_yaml).get("datasets") or {}
 
     folder_to_meta: dict[str, tuple[str, dict[str, Any]]] = {}
     for k, v in registry_datasets.items():
@@ -104,7 +125,7 @@ class _ManifoldMeta:
     """Task, sample count and formats from the registry, overridden by dataset_info.yaml."""
 
     task: str
-    sample_count: Any
+    sample_count: int
     canonical_format: str
     format_val: str
 
@@ -117,31 +138,21 @@ def _read_manifold_meta(info_file: Path, reg_info: dict[str, Any]) -> _ManifoldM
         canonical_format=canonical_format,
         format_val=reg_info.get("container", {}).get("primary") or canonical_format,
     )
-    if not info_file.exists():
-        return result
-    try:
-        meta = read_yaml_or_empty(info_file)
-        result.task = meta.get("task", result.task)
-        result.sample_count = (
-            meta.get("count") or meta.get("total_samples") or meta.get("samples") or 0
-        )
-        if meta.get("canonical_format"):
-            result.canonical_format = meta.get("canonical_format")
-        if meta.get("format"):
-            result.format_val = meta.get("format")
-    except _READ_ERRORS as exc:
-        logger.debug("Failed reading %s: %s", info_file, exc)
+    meta = read_yaml_mapping(info_file)
+    result.task = meta.get("task", result.task)
+    result.sample_count = as_count(
+        meta.get("count") or meta.get("total_samples") or meta.get("samples")
+    )
+    if meta.get("canonical_format"):
+        result.canonical_format = str(meta["canonical_format"])
+    if meta.get("format"):
+        result.format_val = str(meta["format"])
     return result
 
 
-def _read_original_sources(info_file: Path) -> list[str]:
-    if not info_file.exists():
-        return []
-    try:
-        return read_yaml_or_empty(info_file).get("original_sources") or []
-    except (OSError, yaml.YAMLError) as exc:
-        logger.debug("Failed reading original_sources from %s: %s", info_file, exc)
-        return []
+def _read_original_sources(info_file: Path) -> list[Any]:
+    sources = read_yaml_mapping(info_file).get("original_sources") or []
+    return sources if isinstance(sources, list) else [sources]
 
 
 def _count_jsonl_lines(paths: list[Path]) -> int:
@@ -181,7 +192,7 @@ def _match_ref(s_lower: str, ref_lookup: dict[str, str]) -> str | None:
 
 
 def _source_count(
-    s_idx: int, s_name: str, sample_count: Any, provenance_counts: dict[str, int], n_sources: int
+    s_idx: int, s_name: str, sample_count: int, provenance_counts: dict[str, int], n_sources: int
 ) -> int | None:
     """Exact JSONL provenance count, else an even split of ``sample_count`` across sources."""
     if provenance_counts:
@@ -197,7 +208,7 @@ def _source_count(
 def _build_sources(
     raw_sources: list[Any],
     refs: list[Any],
-    sample_count: Any,
+    sample_count: int,
     provenance_counts: dict[str, int],
 ) -> list[DatasetSourceInfo]:
     """Upstream sources with their type, matched registry ref and sample count."""

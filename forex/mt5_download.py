@@ -40,6 +40,15 @@ class _BarRequest:
     dt_from: datetime
     dt_to: datetime
 
+    @property
+    def dt_from_utc(self) -> pd.Timestamp:
+        """``dt_from`` as a UTC timestamp, comparable with the bars' tz-aware ``time``.
+
+        ``dt_from`` stays naive for the MT5 range API; the downloaded bars are
+        converted with ``utc=True``.
+        """
+        return pd.Timestamp(self.dt_from, tz="UTC")
+
 
 def _candidate_symbols(pair):
     """Mapped MT5 name first, then the logical name, then the dynamically resolved one."""
@@ -120,7 +129,7 @@ def _collect_chunks(mt5_symbol, req):
             f"oldest: {oldest_in_chunk.strftime('%Y-%m-%d')}",
             end='\r',
         )
-        if oldest_in_chunk <= req.dt_from:
+        if oldest_in_chunk <= req.dt_from_utc:
             break
     return all_rates
 
@@ -138,7 +147,7 @@ def _fetch_chunked(mt5_symbol, req):
 
     rates = np.concatenate(all_rates)
     df = _rates_to_frame(rates)
-    df = df[df['time'] >= req.dt_from]
+    df = df[df['time'] >= req.dt_from_utc]
     if len(df) == 0:
         print(
             f" [MT5] No bars after filtering from {req.start_date}; using all available"
