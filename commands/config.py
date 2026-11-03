@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import typer
 import yaml
 from rich.table import Table
 
 from commands.common import (
-    PROJECT_ROOT,
     console,
 )
+from core import paths
 from core.config_schema import _cli_validate
 
 logger = logging.getLogger(__name__)
@@ -29,9 +28,7 @@ def config_validate() -> None:
 @config_app.command("show")
 def config_show() -> None:
     """Print unified_data.yaml."""
-    p = PROJECT_ROOT / "unified_data.yaml"
-    if not p.exists():
-        p = Path("./unified_data.yaml")
+    p = paths.UNIFIED_DATA
     if not p.exists():
         console.print("[red]unified_data.yaml not found[/red]")
         raise typer.Exit(code=3)

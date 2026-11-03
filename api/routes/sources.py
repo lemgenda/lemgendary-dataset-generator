@@ -1,15 +1,16 @@
 """Routes that list local raw datasets and their upstream references."""
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import yaml
 from fastapi import APIRouter
 
+from core import paths
+
 logger = logging.getLogger("lemgendary.api.routes.sources")
 router = APIRouter(prefix="/sources", tags=["Sources"])
-_RAW_SETS = Path("raw-sets")
+_RAW_SETS = paths.RAW_SETS
 
 
 @router.get("", response_model=dict[str, Any])
@@ -26,7 +27,7 @@ def list_sources() -> dict[str, Any]:
                 })
 
     configured_datasets: dict[str, Any] = {}
-    config_file = Path("unified_data.yaml")
+    config_file = paths.UNIFIED_DATA
     if config_file.exists():
         try:
             with open(config_file, "r", encoding="utf-8") as f:

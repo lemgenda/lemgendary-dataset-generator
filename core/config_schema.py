@@ -35,6 +35,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core import paths
+
 
 # ─── Ref-level ──────────────────────────────────────────────────────────────
 class UnifiedDataError(ValueError):
@@ -311,18 +313,9 @@ def load_unified_data(path: Path | str) -> UnifiedData:
 # ─── CLI ────────────────────────────────────────────────────────────────────
 def _cli_validate() -> int:
     """CLI entry point for `lemgendary config validate`."""
-    here = Path(__file__).resolve().parent
-    proj_root = here.parent if here.name == "core" else here
-    candidates = [
-        proj_root / "unified_data.yaml",
-        Path("./unified_data.yaml"),
-        proj_root.parent / "lemgendary-datasets" / "unified_data.yaml",
-    ]
-    target = next((p for p in candidates if p.exists()), None)
-    if target is None:
-        print("[ERROR] unified_data.yaml not found in any of:")
-        for c in candidates:
-            print(f"  -> {c}")
+    target = paths.UNIFIED_DATA
+    if not target.exists():
+        print(f"[ERROR] unified_data.yaml not found at {target}")
         return 1
 
     try:

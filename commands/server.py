@@ -6,14 +6,12 @@ import logging
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import psutil
 import requests
 import typer
 from rich.table import Table
 
-from api.server import run_server
 from commands.common import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
@@ -21,7 +19,9 @@ from commands.common import (
     _spawn_detached,
     console,
 )
+from core import paths
 from core.cli_args import venv_python
+from core.lazy_imports import load_api_server
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +75,13 @@ def server_start(
         console.print(
             f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]"
         )
-        run_server(host=host, port=port, reload=reload)
+        load_api_server().run_server(host=host, port=port, reload=reload)
 
 
 @server_app.command("stop")
 def server_stop() -> None:
     """Stop the running background API server."""
-    pid_file = Path(".lgd_server/server.pid")
+    pid_file = paths.pid_file()
     stopped = False
     if pid_file.exists():
         try:

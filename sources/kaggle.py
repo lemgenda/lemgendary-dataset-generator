@@ -22,6 +22,7 @@ from core.common_sync import (
     setup_kaggle_auth,
     track_kaggle_dataset_status,
 )
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
 from tools.sync_kaggle_metadata import sync_metadata
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,7 @@ def main():
         parser.error(f"--output_dir is required when --action is '{args.action}'.")
 
     clean_repo_id = args.repo_id.replace("kaggle://", "")
-    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
+    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else DEFAULT_KAGGLE_OWNER
     setup_kaggle_auth(default_user=owner)
 
     if args.action == "download":

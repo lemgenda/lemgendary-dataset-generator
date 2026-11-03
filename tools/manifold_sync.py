@@ -14,6 +14,7 @@ from core.common_sync import (
     perform_dataset_upload,
     setup_kaggle_auth,
 )
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
 
 ROOT = (
     Path(__file__).resolve().parent.parent
@@ -41,7 +42,7 @@ def setup_auth(
 ) -> bool:
     """Setup Kaggle authentication delegating to core.common_sync SSOT."""
     return setup_kaggle_auth(
-        default_user=default_user or "lemtreursi",
+        default_user=default_user or DEFAULT_KAGGLE_OWNER,
         custom_user=custom_user,
         custom_token=custom_token,
     )
@@ -131,10 +132,10 @@ def action_sync(manifold_name, repo_id=None, no_wait=False):
 
     resolved_repo = repo_id or get_kaggle_ref(manifold_name) or get_kaggle_ref(resolved_folder)
     if not resolved_repo:
-        resolved_repo = f"lemtreursi/{resolved_folder.lower().replace('_', '')}"
+        resolved_repo = f"{DEFAULT_KAGGLE_OWNER}/{resolved_folder.lower().replace('_', '')}"
 
     clean_repo_id = resolved_repo.replace("kaggle://", "")
-    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
+    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else DEFAULT_KAGGLE_OWNER
     setup_auth(default_user=owner)
 
     # Pre-cleanup any dangling staging directories (preserves recent archives for resumption)
@@ -198,7 +199,7 @@ def action_get(repo_id, output_name=None):
     else:
         print(f"[GET] Disk check passed ({free_gb:.2f} GB free).")
 
-    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
+    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else DEFAULT_KAGGLE_OWNER
     setup_auth(default_user=owner)
 
     success = perform_dataset_download(

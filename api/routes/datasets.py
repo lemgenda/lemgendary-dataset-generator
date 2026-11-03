@@ -11,29 +11,16 @@ from fastapi import APIRouter, HTTPException, status
 
 from api.dataset_stats import as_count, read_yaml_mapping
 from api.models import DatasetInfoResponse, DatasetListResponse
+from core import paths
 
 logger = logging.getLogger("lemgendary.api.routes.datasets")
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
 
 def _resolve_output_root() -> Path:
-    config_file = Path("unified_data.yaml")
-    if not config_file.exists():
-        config_file = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-    if config_file.exists():
-        try:
-            with open(config_file, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-                folder = data.get("_registry_metadata", {}).get(
-                    "output_folder_name", "../LemGendaryDatasets"
-                )
-                p = Path(folder)
-                if not p.is_absolute():
-                    p = (config_file.parent / p).resolve()
-                return p
-        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
-            logger.debug("Could not parse output_folder_name from %s: %s", config_file, exc)
-    return (Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets").resolve()
+    """The compiled-manifold folder named by the registry (from the project root)."""
+    meta = read_yaml_mapping(paths.UNIFIED_DATA).get("_registry_metadata") or {}
+    return paths.output_root(meta.get("output_folder_name"))
 
 
 _DIR_FORMATS = {"mds": "mds", "litdata": "litdata", "wds": "wds", "shards": "wds"}

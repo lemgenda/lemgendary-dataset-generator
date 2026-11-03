@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.54-STABLE` |
+| **Version** | `v16.9.55-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,42 @@
 ---
 
 ## Changelog
+
+### v16.9.55 - Review Findings D-08 to D-20 Closed
+
+- **D-08 Compile Options Forwarded**: API compile jobs build their argv with
+  the same option table as the CLI (`services.compiler_service`), so
+  `preset` and `shard_ext` reach the compiler. `CompileJobRequest` encoding
+  fields default to unset, and the CLI no longer fills `webp`/92/95 before
+  routing to the server, so presets are not overridden.
+- **D-11 Paths From the Project Root**: new `core/paths.py` owns the
+  registry, raw-sets, `config.json`, output-root and server-state paths.
+  Routes, commands and the compiler no longer resolve them against the
+  working directory; the modernize queue reads the registry's output folder
+  instead of `../LemGendaryDatasets` from the CWD. `LEMGENDARY_STATE_DIR`
+  relocates the token, PID file and `jobs.db`.
+- **D-12 Registry Task First**: `detect_task` uses `task_override`, then the
+  registry `task` field, and only then the name heuristic (logged once per
+  name).
+- **D-13 Hub Extraction**: the hub runs `python -m utils.archive`; the
+  `archive_manager.py` fallback is gone.
+- **D-15 Kaggle Credentials**: the probe needs a token or key; a username
+  alone is not a credential. The default owner handle lives in
+  `core/kaggle_identity.py` instead of nine literals.
+- **D-16 Unknown Job Status Fails**: the CLI exits 1 when the final job
+  status cannot be read.
+- **D-17 Job Manager**: connections are closed, a job cancelled while
+  pending is not started, and job records store `logs/<id>.log` relative to
+  the state folder.
+- **D-18 Stats Cache**: the scan cache key covers the sub-folders down to
+  the split level and expires after five minutes.
+- **D-19 No Import Side Effects**: importing `api` (or the CLI) no longer
+  builds the server app or opens `jobs.db`; `cli.py server start` loads it
+  on demand. Tests use a temporary state folder (`tests/conftest.py`) and no
+  `C:/` literals.
+- **D-20**: invalid Kaggle download/upload requests return 400/404 instead
+  of 500; mojibake section comment fixed.
+- `openapi.json` regenerated. Tests: `tests/test_review_findings.py`.
 
 ### v16.9.54 - Pylint Clean: No Too-Few-Public-Methods, No Duplicate Code
 

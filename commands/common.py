@@ -15,6 +15,7 @@ from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
 from api.auth import get_or_create_token
+from core import paths
 from services.job_watch import (
     TERMINAL_STATES,
     JobNotFoundError,
@@ -74,10 +75,12 @@ def _stream_job_logs(
             if exit_code is not None:
                 return int(exit_code)
             return 0 if job_info.get("state") == "completed" else 1
+        logger.error("Final status of job %s unavailable: HTTP %s", job_id, resp.status_code)
+        console.print(f"[red]Final job status unavailable (HTTP {resp.status_code}).[/red]")
     except (requests.RequestException, ValueError) as exc:
-        logger.warning("Failed fetching final status for job %s: %s", job_id, exc)
-        console.print(f"[dim]Failed fetching final job status: {exc}[/dim]")
-    return 0
+        logger.error("Failed fetching final status for job %s: %s", job_id, exc)
+        console.print(f"[red]Failed fetching final job status: {exc}[/red]")
+    return 1  # the outcome is unknown, so the command must not report success
 
 
 def route_through_sidecar(endpoint: str, payload: dict) -> None:
@@ -130,9 +133,7 @@ def _run(cmd: list[str]) -> int:
 
 
 def _resolve_manifold_path(model: str) -> Path | None:
-    p = PROJECT_ROOT / "unified_data.yaml"
-    if not p.exists():
-        p = Path("./unified_data.yaml")
+    p = paths.UNIFIED_DATA
     if not p.exists():
         return None
     with open(p, "r", encoding="utf-8") as f:
@@ -162,7 +163,7 @@ def _resolve_target(model: str | None, manifold: str | None) -> Path | None:
     return None
 
 
-# ??? LLM Dataset Sub-Commands ????????????????????????????????????????????????
+# ─── LLM Dataset Sub-Commands ───────────────────────────────────────────────
 DEFAULT_JOB_TIMEOUT_S = 3600.0
 JOB_POLL_INTERVAL_S = 2.0
 

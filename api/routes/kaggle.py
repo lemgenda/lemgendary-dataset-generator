@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dataset_stats import as_count, read_yaml_mapping
@@ -22,8 +22,10 @@ from api.models import (
     KaggleUploadRequest,
 )
 from api.routes.datasets import _resolve_output_root
+from core import paths
 from core.cli_args import venv_python
 from core.common_sync import is_kaggle_large_manifold
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
 
 logger = logging.getLogger("lemgendary.api.routes.kaggle")
 router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
@@ -48,11 +50,8 @@ def _clean_kaggle_ref(ref: str) -> str:
 
 
 def _unified_yaml_path() -> Path:
-    """unified_data.yaml in the working directory, else at the repository root."""
-    unified_yaml = Path("unified_data.yaml")
-    if not unified_yaml.exists():
-        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-    return unified_yaml
+    """unified_data.yaml at the repository root."""
+    return paths.UNIFIED_DATA
 
 
 def _unified_datasets() -> dict[str, Any]:
@@ -199,8 +198,12 @@ async def download_kaggle_dataset(req: KaggleDownloadRequest) -> JobResponse:
     """Download a manifold or custom dataset directly from Kaggle."""
     clean_id = _clean_kaggle_ref(req.kaggle_ref)
     if not clean_id or "/" not in clean_id:
-        raise ValueError(
-            f"Invalid Kaggle dataset reference: '{req.kaggle_ref}'. Must be 'owner/dataset' or URL."
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Invalid Kaggle dataset reference: '{req.kaggle_ref}'."
+                " Must be 'owner/dataset' or URL."
+            ),
         )
 
     root = _resolve_output_root()
@@ -227,12 +230,15 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
     root = _resolve_output_root()
     manifold_dir = _resolve_manifold_dir(root, req.manifold)
     if not manifold_dir.exists():
-        raise ValueError(f"Local manifold '{req.manifold}' not found under {root}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Local manifold '{req.manifold}' not found under {root}",
+        )
 
     repo_id = (
         req.kaggle_ref
         or _registry_kaggle_ref(req.manifold, manifold_dir, match_name=True)
-        or f"lemtreursi/{manifold_dir.name.lower()}"
+        or f"{DEFAULT_KAGGLE_OWNER}/{manifold_dir.name.lower()}"
     )
     clean_id = _clean_kaggle_ref(repo_id)
 
@@ -278,7 +284,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
 
     if req.all_datasets:
         # --repo_id is a required arg, overridden by --all-datasets
-        cmd = _sources_kaggle_cmd("metadata", "lemtreursi/placeholder", root)
+        cmd = _sources_kaggle_cmd("metadata", f"{DEFAULT_KAGGLE_OWNER}/placeholder", root)
         cmd.insert(cmd.index("--output_dir"), "--all-datasets")
         return _start_sync_job(cmd, {"action": "metadata", "all_datasets": True})
 
@@ -291,7 +297,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
     repo_id = (
         req.kaggle_ref
         or _registry_kaggle_ref(req.manifold, manifold_dir, match_name=False)
-        or f"lemtreursi/{manifold_dir.name.lower()}"
+        or f"{DEFAULT_KAGGLE_OWNER}/{manifold_dir.name.lower()}"
     )
     clean_id = _clean_kaggle_ref(repo_id)
     if is_kaggle_large_manifold(clean_id):

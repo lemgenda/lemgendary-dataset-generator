@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from core.doc_generator import generate_dataset_docs
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
 from formats.base import parse_also_format
 from tools import manifold_sync, migrate_manifold_format
 from tools.modernize.common import YAML_UPDATE_ERRORS, merge_into_yaml
@@ -35,7 +36,7 @@ def _regen_docs(item: dict) -> bool:
 
 # ─── Kaggle Re-upload ───────────────────────────────────────────────────────
 def _compute_new_kaggle_ref(item: dict) -> str:
-    owner = "lemtreursi"
+    owner = DEFAULT_KAGGLE_OWNER
     old_ref = item.get("old_kaggle_ref") or ""
     if old_ref.startswith("kaggle://"):
         parts = old_ref[len("kaggle://"):].split("/")

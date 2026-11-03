@@ -46,13 +46,19 @@ class CompileJobRequest(BaseModel):
     no_labeling: bool = Field(False, description="Bypass YOLO auto-labeling")
     no_hash: bool = Field(False, description="Bypass deduplication hash")
     image_format: str | None = Field(
-        "webp", description="Target image format (webp, jpeg, png, keep)"
+        None,
+        description="Target image format (webp, jpeg, png, keep); unset uses the preset or config",
     )
-    image_quality: int | None = Field(92, description="Target image quality (1-100)")
+    image_quality: int | None = Field(
+        None, description="Target image quality (1-100); unset uses the preset or config"
+    )
     target_quality: int | None = Field(
-        95, description="Target quality for restoration ground truth"
+        None,
+        description="Target quality for restoration ground truth; unset uses the preset or config",
     )
-    mask_format: str | None = Field("webp-lossless", description="Target mask format")
+    mask_format: str | None = Field(
+        None, description="Target mask format; unset uses the preset or config"
+    )
     also_format: str | None = Field(
         None, description="Comma-separated container formats (mds, litdata, wds, parquet)"
     )

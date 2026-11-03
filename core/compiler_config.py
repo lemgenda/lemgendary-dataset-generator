@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from core import paths
 from core.cli_args import build_parser
 from core.config_schema import UnifiedData, load_unified_data
 
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─── Config ─────────────────────────────────────────────────────────────────
-CONFIG_PATH = Path("./config.json")
+CONFIG_PATH = paths.CONFIG_JSON
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "train_split": 0.8,
@@ -58,9 +59,7 @@ ROOT = (
 )
 
 try:
-    _manifest_path = ROOT / "unified_data.yaml"
-    if not _manifest_path.exists():
-        _manifest_path = Path("./unified_data.yaml")
+    _manifest_path = paths.UNIFIED_DATA
     _UNIFIED: UnifiedData = load_unified_data(_manifest_path)
     YAML_DATA: dict[str, Any] = _UNIFIED.to_legacy_dict()
 except FileNotFoundError as e:
@@ -170,8 +169,8 @@ def _apply_cli_overrides(ns: argparse.Namespace) -> None:
 
 # Static paths. None of these depend on CLI args — they were already
 # constants before the refactor.
-INPUT_ROOT = Path("./raw-sets")
-OUT_PARENT = Path(META.get("output_folder_name", "../LemGendaryDatasets"))
+INPUT_ROOT = paths.RAW_SETS
+OUT_PARENT = paths.output_root(META.get("output_folder_name"))
 CATEGORY_MAP_PATH = ROOT / "converters" / "category_map.json"
 if not CATEGORY_MAP_PATH.exists():
     CATEGORY_MAP_PATH = ROOT / "category_map.json"

@@ -9,6 +9,8 @@ import sqlite3
 import subprocess
 import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -22,11 +24,11 @@ from api.job_stream import (
     utc_now_iso,
 )
 from api.models import JobResponse, JobState, JobType
+from core import paths
 
 logger = logging.getLogger("lemgendary.api.jobs")
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_DB_DIR = _PROJECT_ROOT / ".lgd_server"
+_DB_DIR = paths.state_dir()
 _DB_PATH = _DB_DIR / "jobs.db"
 _LOGS_DIR = _DB_DIR / "logs"
 
@@ -41,10 +43,29 @@ class JobManager:
         self._lock = threading.Lock()
         self._init_storage()
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        """A connection that commits on success, rolls back on error and is always closed."""
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    def _log_path(self, stored: str) -> Path:
+        """Resolve a stored log path (relative to the state dir; old rows are absolute)."""
+        path = Path(stored)
+        return path if path.is_absolute() else self.db_path.parent / path
+
+    def _stored_log_path(self, job_id: str) -> str:
+        """The log path recorded for a job: relative to the state dir when possible."""
+        log_file = self.logs_dir / f"{job_id}.log"
+        try:
+            return log_file.relative_to(self.db_path.parent).as_posix()
+        except ValueError:
+            return str(log_file)
 
     def _init_storage(self) -> None:
         """Create database tables, logs directory, and perform restart interruption recovery."""
@@ -101,7 +122,7 @@ class JobManager:
         """Register a new job in pending state and return the job descriptor."""
         job_id = str(uuid.uuid4())
         created_at = utc_now_iso()
-        log_file_rel = str(self.logs_dir / f"{job_id}.log")
+        log_file_rel = self._stored_log_path(job_id)
 
         with self._get_connection() as conn:
             conn.execute(
@@ -160,15 +181,19 @@ class JobManager:
             claimed = ClaimedJob(
                 job_id=job_id,
                 command=json.loads(row["command"]),
-                log_file=Path(row["log_file"]),
+                log_file=self._log_path(row["log_file"]),
                 started_at=utc_now_iso(),
                 job_type=row["job_type"],
             )
-            conn.execute(
-                "UPDATE jobs SET state = ?, started_at = ? WHERE id = ?",
-                (JobState.RUNNING.value, claimed.started_at, job_id),
-            )
-            conn.commit()
+            # Only a still-pending job is claimed: one cancelled meanwhile stays cancelled.
+            updated = conn.execute(
+                "UPDATE jobs SET state = ?, started_at = ? WHERE id = ? AND state = ?",
+                (JobState.RUNNING.value, claimed.started_at, job_id, JobState.PENDING.value),
+            ).rowcount
+        if not updated:
+            logger.info("Job %s is no longer pending (cancelled before start); not running it",
+                        job_id)
+            return None
         return claimed
 
     def _execute_job_thread(self, job_id: str, loop: asyncio.AbstractEventLoop) -> None:
@@ -204,7 +229,7 @@ class JobManager:
                     errors="replace",
                     bufsize=1,
                     env=subprocess_env(),
-                    cwd=str(_PROJECT_ROOT),
+                    cwd=str(paths.PROJECT_ROOT),
                     creationflags=creation_flags(),
                 ) as proc,
             ):
@@ -341,7 +366,7 @@ class JobManager:
 
     def get_log_content(self, job_id: str, tail_lines: int | None = None) -> str:
         """Read log file content from disk."""
-        log_file = self.logs_dir / f"{job_id}.log"
+        log_file = self._log_path(self._stored_log_path(job_id))
         if not log_file.exists():
             return ""
         try:

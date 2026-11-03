@@ -7,7 +7,7 @@ a registry pattern so new sources can be added without editing dispatch.
 
 Public API:
     cache = GroundTruthCaches()
-    cache.load(root=Path("./raw-sets"))
+    cache.load(root=core.paths.RAW_SETS)
     cache.ava           # dict[image_num -> 10 vote keys]
     cache.aadb          # dict[filename -> scalar 0-1]
     cache.tid           # dict[lowercased filename -> score 1-10]

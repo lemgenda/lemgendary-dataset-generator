@@ -6,6 +6,7 @@ per-sample processors in ``core.sample_processor`` read.
 """
 
 import argparse
+import functools
 import io
 import logging
 import multiprocessing
@@ -100,13 +101,22 @@ _TASK_PATTERNS: list[tuple[list[str], str]] = [
 
 # ─── Task routing ───────────────────────────────────────────────────────────
 def _task_override(name: str) -> str | None:
-    """Return the registry's ``task_override`` for a dataset key or name, if any."""
+    """The registry task of a dataset key or name: ``task_override``, else ``task``."""
     for ds_key, ds_cfg in DATASETS_META.items():
         if ds_key.lower() == name or (ds_cfg.get("name", "").lower() == name):
-            override = ds_cfg.get("task_override")
-            if override:
-                return override
+            registered = ds_cfg.get("task_override") or ds_cfg.get("task")
+            if registered:
+                return registered
     return None
+
+
+@functools.cache
+def _heuristic_task(name: str) -> str:
+    """Name-pattern task for a dataset the registry gives no task (logged once per name)."""
+    task = next((t_name for patterns, t_name in _TASK_PATTERNS
+                 if any(k in name for k in patterns)), "detection")
+    logger.info("No registry task for %r; inferred %r from its name", name, task)
+    return task
 
 
 def detect_task(model_dir_name: str | None) -> str:
@@ -115,14 +125,7 @@ def detect_task(model_dir_name: str | None) -> str:
         return "quality"
     name = model_dir_name.lower()
 
-    override = _task_override(name)
-    if override:
-        return override
-
-    for patterns, t_name in _TASK_PATTERNS:
-        if any(k in name for k in patterns):
-            return t_name
-    return "detection"
+    return _task_override(name) or _heuristic_task(name)
 
 
 def _infer_label_strategy(task: str) -> str | None:

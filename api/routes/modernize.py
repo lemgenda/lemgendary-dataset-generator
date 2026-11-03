@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, fields
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
@@ -12,6 +11,8 @@ from pydantic import BaseModel, Field
 
 from api.jobs import job_manager, submit_job
 from api.models import JobResponse, JobType
+from api.routes.datasets import _resolve_output_root
+from core import paths
 from core.cli_args import venv_python
 from services.doc_service import DocService
 from tools.modernization_queue import build_queue_args, load_queue_manifest
@@ -140,10 +141,8 @@ def build_reduce_command(req: ManifoldReduceRequest) -> list[str]:
 @router.get("/queue", response_model=list[QueueItemResponse])
 async def get_modernization_queue() -> list[QueueItemResponse]:
     """Scan and retrieve real-time modernization status queue across all manifolds."""
-    root = Path("../LemGendaryDatasets").resolve()
-    unified_yaml = Path("unified_data.yaml").resolve()
-    if not unified_yaml.exists():
-        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+    root = _resolve_output_root()
+    unified_yaml = paths.UNIFIED_DATA
 
     items = load_queue_manifest(root, unified_yaml) if unified_yaml.exists() else []
     return [_queue_item_response(it) for it in items]

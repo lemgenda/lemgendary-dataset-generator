@@ -8,21 +8,14 @@ from typing import Any
 import yaml
 from fastapi import APIRouter, HTTPException, status
 
+from core import paths
 from core.config_schema import load_unified_data
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
 
 
 def _resolve_config_path() -> Path:
-    candidates = [
-        Path("unified_data.yaml"),
-        Path(__file__).resolve().parent.parent.parent / "unified_data.yaml",
-        Path.cwd() / "lemgendary-datasets" / "unified_data.yaml",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return candidates[0]
+    return paths.UNIFIED_DATA
 
 
 @router.get("", response_model=dict[str, Any])

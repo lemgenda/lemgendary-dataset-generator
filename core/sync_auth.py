@@ -17,11 +17,11 @@ import certifi
 from kagglehub import clients as kagglehub_clients
 
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
 from core.lazy_imports import load_kaggle_api
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_KAGGLE_OWNER = "lemtreursi"
 
 
 def normalize_kaggle_handle(repo_id: str) -> str:

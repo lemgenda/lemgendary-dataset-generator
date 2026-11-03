@@ -21,12 +21,13 @@ from core.common_sync import (
     setup_kaggle_auth,
 )
 from core.docs.context import find_unified_entry
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
 from core.lazy_imports import load_kaggle_api
 from tools.manifold_sync import ROOT, resolve_kaggle_ref, resolve_manifold_folder
 
 logger = logging.getLogger(__name__)
 
-_OWNER = "lemtreursi"
+_OWNER = DEFAULT_KAGGLE_OWNER
 _SYNC_ERRORS = (OSError, ValueError, KeyError, AttributeError, RuntimeError, ImportError)
 
 

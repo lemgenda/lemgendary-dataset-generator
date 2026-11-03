@@ -22,6 +22,8 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,21 +41,19 @@ def read_token_file(filename: str) -> str | None:
     return content or None
 
 
-def load_kaggle_credentials(default_username: str = "lemtreursi") -> bool:
+def load_kaggle_credentials(default_username: str = DEFAULT_KAGGLE_OWNER) -> bool:
     """
     Populate KAGGLE_USERNAME / KAGGLE_KEY / KAGGLE_API_TOKEN from env or
-    .kaggle_token. Returns True if any credential is available.
+    .kaggle_token. Returns True only when a secret (API token or key) is
+    available; a username alone (including the default owner) is not a
+    credential.
     """
     token = read_token_file(".kaggle_token")
     if token and "KAGGLE_API_TOKEN" not in os.environ:
         os.environ["KAGGLE_API_TOKEN"] = token
     if "KAGGLE_USERNAME" not in os.environ and default_username:
         os.environ["KAGGLE_USERNAME"] = default_username
-    return bool(
-        os.environ.get("KAGGLE_API_TOKEN")
-        or os.environ.get("KAGGLE_KEY")
-        or os.environ.get("KAGGLE_USERNAME")
-    )
+    return bool(os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY"))
 
 
 def load_hf_credentials() -> bool:

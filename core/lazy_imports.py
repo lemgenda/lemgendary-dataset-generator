@@ -79,6 +79,11 @@ def load_forex_module(name: str) -> ModuleType:
     return importlib.import_module(f"forex.{name}")
 
 
+def load_api_server() -> ModuleType:
+    """Return ``api.server`` (builds the app, its routers and the job manager)."""
+    return importlib.import_module("api.server")
+
+
 def load_manifold_compile() -> ModuleType:
     """Return ``core.manifold_compile`` (imports pandas, sklearn and webdataset)."""
     bootstrap_runtime()

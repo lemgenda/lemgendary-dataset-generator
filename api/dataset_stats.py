@@ -27,6 +27,7 @@ from api.models import (
     DatasetSourceInfo,
     DatasetStatsListResponse,
 )
+from core import paths
 
 __all__ = [
     "DatasetFileStats",
@@ -38,7 +39,6 @@ __all__ = [
 
 logger = logging.getLogger("lemgendary.api.routes.gui.stats")
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _GB = 1024**3
 
 _READ_ERRORS = (OSError, UnicodeDecodeError, yaml.YAMLError)
@@ -88,10 +88,7 @@ def as_count(value: Any) -> int:
 
 
 def _unified_yaml_path() -> Path:
-    unified_yaml = Path("unified_data.yaml")
-    if not unified_yaml.exists():
-        unified_yaml = _PROJECT_ROOT / "unified_data.yaml"
-    return unified_yaml
+    return paths.UNIFIED_DATA
 
 
 def _load_folder_index() -> dict[str, tuple[str, dict[str, Any]]]:
@@ -155,9 +152,9 @@ def _read_original_sources(info_file: Path) -> list[Any]:
     return sources if isinstance(sources, list) else [sources]
 
 
-def _count_jsonl_lines(paths: list[Path]) -> int:
+def _count_jsonl_lines(jsonl_paths: list[Path]) -> int:
     total = 0
-    for jf in paths:
+    for jf in jsonl_paths:
         try:
             with open(jf, "r", encoding="utf-8") as jf_in:
                 total += sum(1 for line in jf_in if line.strip())

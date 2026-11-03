@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.54"
+    "version": "16.9.55"
   },
   "paths": {
     "/api/health": {
@@ -1632,8 +1632,7 @@
               }
             ],
             "title": "Image Format",
-            "description": "Target image format (webp, jpeg, png, keep)",
-            "default": "webp"
+            "description": "Target image format (webp, jpeg, png, keep); unset uses the preset or config"
           },
           "image_quality": {
             "anyOf": [
@@ -1645,8 +1644,7 @@
               }
             ],
             "title": "Image Quality",
-            "description": "Target image quality (1-100)",
-            "default": 92
+            "description": "Target image quality (1-100); unset uses the preset or config"
           },
           "target_quality": {
             "anyOf": [
@@ -1658,8 +1656,7 @@
               }
             ],
             "title": "Target Quality",
-            "description": "Target quality for restoration ground truth",
-            "default": 95
+            "description": "Target quality for restoration ground truth; unset uses the preset or config"
           },
           "mask_format": {
             "anyOf": [
@@ -1671,8 +1668,7 @@
               }
             ],
             "title": "Mask Format",
-            "description": "Target mask format",
-            "default": "webp-lossless"
+            "description": "Target mask format; unset uses the preset or config"
           },
           "also_format": {
             "anyOf": [

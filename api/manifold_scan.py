@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from api.models import DatasetFormatStats
 
@@ -90,7 +91,27 @@ class _ScanTally:
     shards_count: int = 0
 
 
-_STATS_CACHE: dict[str, tuple[float, DatasetFileStats]] = {}
+# Cached scans: key -> (directory signature, scan time, stats). A scan is
+# reused while no directory down to the split level changed and it is younger
+# than the TTL (in-place file rewrites do not touch directory mtimes).
+_STATS_CACHE: dict[str, tuple[tuple[Any, ...], float, DatasetFileStats]] = {}
+_STATS_CACHE_TTL_S = 300.0
+_SIGNATURE_DEPTH = 2
+
+
+def _dir_signature(path: Path, depth: int = _SIGNATURE_DEPTH) -> tuple[Any, ...]:
+    """mtimes of ``path`` and its sub-directories down to ``depth`` levels (sorted by path)."""
+    try:
+        signature: list[Any] = [path.stat().st_mtime_ns]
+        if depth > 0:
+            with os.scandir(path) as entries:
+                for entry in sorted(entries, key=lambda e: e.name):
+                    if entry.is_dir(follow_symlinks=False):
+                        signature.append((entry.name, _dir_signature(Path(entry.path), depth - 1)))
+    except OSError as exc:
+        logger.debug("Cannot stat %s for the scan cache: %s", path, exc)
+        return ()
+    return tuple(signature)
 
 def _ext(fname: str) -> str:
     return fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
@@ -212,16 +233,12 @@ def _scan_loose_dirs(tally: _ScanTally, manifold_path: Path) -> None:
 
 def calculate_dataset_file_stats(manifold_path: Path) -> DatasetFileStats:
     """Fast scan of manifold directory with container prioritization and mtime caching."""
-    try:
-        current_mtime = manifold_path.stat().st_mtime
-    except OSError:
-        current_mtime = 0.0
-
+    signature = _dir_signature(manifold_path)
     cache_key = str(manifold_path.resolve())
-    if cache_key in _STATS_CACHE:
-        cached_mtime, cached_val = _STATS_CACHE[cache_key]
-        if cached_mtime == current_mtime:
-            return cached_val
+    cached = _STATS_CACHE.get(cache_key)
+    if (cached is not None and signature and cached[0] == signature
+            and time.monotonic() - cached[1] < _STATS_CACHE_TTL_S):
+        return cached[2]
 
     tally = _ScanTally()
     _scan_containers(tally, manifold_path)
@@ -240,7 +257,7 @@ def calculate_dataset_file_stats(manifold_path: Path) -> DatasetFileStats:
         hardlink_ratio=0.0,
         shards_count=tally.shards_count,
     )
-    _STATS_CACHE[cache_key] = (current_mtime, result)
+    _STATS_CACHE[cache_key] = (signature, time.monotonic(), result)
     return result
 
 

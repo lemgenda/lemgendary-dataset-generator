@@ -33,6 +33,8 @@ from services.generation_service import run_generation
 from services.migration_service import MigrationService
 from services.sync_service import SyncService
 
+# A path that does not exist on any machine (no absolute literals in tests).
+_MISSING_DIR = Path(tempfile.gettempdir()) / "lgd_missing_dir_does_not_exist_999"
 
 @dataclass
 class _AsgiResponse:
@@ -236,7 +238,7 @@ class TestApiRoutes(unittest.TestCase):
             self.assertIn("verdict", data)
             self.assertIn("hardlink_pct", data)
 
-        resp_err = self.client.get("/api/gates/hardlinks?path=C:/invalid_nonexistent_dir_999")
+        resp_err = self.client.get(f"/api/gates/hardlinks?path={_MISSING_DIR.as_posix()}")
         self.assertEqual(resp_err.status_code, 404)
 
     def test_protected_config_and_jobs_endpoints(self) -> None:
@@ -282,7 +284,7 @@ class TestAuditManifold(unittest.TestCase):
 
     def test_audit_manifold_nonexistent(self) -> None:
         """Auditing a missing manifold returns 1."""
-        ret = audit_manifold(Path("C:/does_not_exist_xyz_dir_999"), as_json=True)
+        ret = audit_manifold(_MISSING_DIR, as_json=True)
         self.assertEqual(ret, 1)
 
     def test_audit_manifold_valid_directory(self) -> None:
@@ -328,7 +330,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
         """MigrationService.transcode_images calls the image-format migration."""
         with patch("tools.migrate_manifold_image_format.run", return_value=0) as mock_run:
             ret = MigrationService.transcode_images(
-                manifold_path=Path("C:/test_manifold"),
+                manifold_path=_MISSING_DIR / "test_manifold",
                 dry_run=True,
             )
             self.assertEqual(ret, 0)
@@ -381,7 +383,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
         """run_generation calls generate_cli.run."""
         with patch("tools.generate_cli.run", return_value=0) as mock_gen:
             ret = run_generation(
-                manifold=Path("C:/test_manifold"),
+                manifold=_MISSING_DIR / "test_manifold",
                 kind="label",
                 strategy="blip_caption",
                 dry_run=True,

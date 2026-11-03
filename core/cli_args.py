@@ -28,7 +28,7 @@ from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.54"
+__version__ = "16.9.55"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────

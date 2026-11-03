@@ -7,7 +7,6 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import uvicorn
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
@@ -33,10 +32,11 @@ from api.security import (
     ALLOWED_ORIGINS,
     origin_guard_middleware,
 )
+from core import paths
 from core.cli_args import __version__
 
 logger = logging.getLogger("lemgendary.api.server")
-_PID_FILE = Path(".lgd_server/server.pid")
+_PID_FILE = paths.pid_file()
 
 
 @asynccontextmanager

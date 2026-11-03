@@ -118,12 +118,6 @@ $UnpackSB = {
     $z = Join-Path $sharedPath ($dn + '.zip')
 
     try {
-        $projRoot = Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent
-        $ArchMgr = Join-Path $projRoot 'utils\archive.py'
-        if (!(Test-Path $ArchMgr)) {
-            $ArchMgr = Join-Path $projRoot 'archive_manager.py'
-        }
-
         # If the zip is missing, it means HF or Kaggle messed up. But HF emits COMPLETED so it bypasses this!
         if (!(Test-Path $z)) {
             Write-Output "NOTIFICATION:Zip not found for extraction: $dn"
@@ -131,7 +125,7 @@ $UnpackSB = {
             return
         }
 
-        & $vpy $ArchMgr --zip $z --dest $fold --action extract 2>&1
+        & $vpy -m utils.archive --zip $z --dest $fold --action extract 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Output "NOTIFICATION:Extraction Finished & Zip Deleted: $dn"
             Write-Output "RESULT:COMPLETED"

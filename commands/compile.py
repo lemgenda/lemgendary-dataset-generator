@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import unittest
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
@@ -132,24 +132,13 @@ class CompileOptions:
     no_server: NoServerOpt = False
 
 
-def _sidecar_compile_payload(values: dict[str, Any]) -> dict[str, Any]:
-    """Compile job payload for the API, with the encoding defaults filled in."""
-    images = {
-        "image_format": values["image_format"] or "webp",
-        "image_quality": values["image_quality"] or 92,
-        "target_quality": values["target_quality"] or 95,
-        "mask_format": values["mask_format"] or "webp-lossless",
-    }
-    return {**values, **images}
-
-
 @options_command(CompileOptions)
 def compile_manifold(opts: CompileOptions) -> None:
     """Compile a manifold from raw sources (delegates to services.run_compile or the API)."""
     values = flat_values(opts)
     values.pop("no_server")
     if not opts.no_server and _is_server_available():
-        route_through_sidecar("compile", _sidecar_compile_payload(values))
+        route_through_sidecar("compile", values)  # unset options stay None (preset fills them)
 
     code = run_compile(**values)
     raise typer.Exit(code=code)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import (
     APIRouter,
@@ -26,6 +26,7 @@ from api.models import (
     JobType,
 )
 from core.cli_args import venv_python
+from services.compiler_service import CompileOptions, build_compile_args
 
 logger = logging.getLogger("lemgendary.api.routes.jobs")
 
@@ -70,43 +71,12 @@ async def get_job_logs(job_id: str, tail: int | None = Query(None, ge=1)) -> dic
     return {"job_id": job_id, "logs": content}
 
 
-# (request field, CLI flag, kind) in argv order. "value": pass the value when truthy;
-# "number": pass str(value) when not None; "switch": bare flag when truthy.
-_COMPILE_FLAGS: tuple[tuple[str, str, str], ...] = (
-    ("model", "--model", "value"),
-    ("max_gb", "--max_gb", "number"),
-    ("suffix", "--suffix", "value"),
-    ("workers", "--workers", "number"),
-    ("no_vetting", "--no-vetting", "switch"),
-    ("no_labeling", "--no-labeling", "switch"),
-    ("no_hash", "--no-hash", "switch"),
-    ("image_format", "--image-format", "value"),
-    ("image_quality", "--image-quality", "number"),
-    ("target_quality", "--target-quality", "number"),
-    ("mask_format", "--mask-format", "value"),
-    ("also_format", "--also-format", "value"),
-    ("force_duplicate", "--force-duplicate", "switch"),
-    ("accept_space_loss", "--accept-space-loss", "switch"),
-    ("label_strategy", "--label-strategy", "value"),
-    ("prompt_strategy", "--prompt-strategy", "value"),
-    ("mask_strategy", "--mask-strategy", "value"),
-)
-
-
-def _compile_flag_args(value: Any, flag: str, kind: str) -> list[Any]:
-    if kind == "number":
-        return [flag, str(value)] if value is not None else []
-    if not value:
-        return []
-    return [flag] if kind == "switch" else [flag, value]
-
-
 def _compile_command(req: CompileJobRequest) -> list[Any]:
     """``core.manifold_compile`` argv for a compile job request."""
-    cmd: list[Any] = [venv_python(), "-m", "core.manifold_compile"]
-    for field_name, flag, kind in _COMPILE_FLAGS:
-        cmd.extend(_compile_flag_args(getattr(req, field_name), flag, kind))
-    return cmd
+    # Same option-to-flag table as the in-process CLI path (services.run_compile),
+    # so every request field (preset and shard_ext included) is forwarded.
+    options = cast(CompileOptions, req.model_dump())
+    return [venv_python(), "-m", "core.manifold_compile", *build_compile_args(options)]
 
 
 @router.post("/compile", response_model=JobResponse)
