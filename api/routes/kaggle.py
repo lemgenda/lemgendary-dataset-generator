@@ -46,6 +46,110 @@ def _clean_kaggle_ref(ref: str) -> str:
     return cleaned
 
 
+def _unified_yaml_path() -> Path:
+    """unified_data.yaml in the working directory, else at the repository root."""
+    unified_yaml = Path("unified_data.yaml")
+    if not unified_yaml.exists():
+        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+    return unified_yaml
+
+
+def _unified_datasets() -> dict[str, Any]:
+    """The ``datasets`` mapping of unified_data.yaml ({} when the file is absent)."""
+    unified_yaml = _unified_yaml_path()
+    if not unified_yaml.exists():
+        return {}
+    with open(unified_yaml, "r", encoding="utf-8") as f:
+        ydata = yaml.safe_load(f) or {}
+    return ydata.get("datasets", {})
+
+
+def _resolve_manifold_dir(root: Path, manifold: str) -> Path:
+    """Local manifold folder for a folder name or registry key (modernized_folder)."""
+    manifold_dir = root / manifold
+    if manifold_dir.exists():
+        return manifold_dir
+    datasets = _unified_datasets()
+    if manifold in datasets:
+        mod_f = datasets[manifold].get("modernized_folder")
+        if mod_f and (root / mod_f).exists():
+            return root / mod_f
+    return manifold_dir
+
+
+def _registry_kaggle_ref(manifold: str, manifold_dir: Path, match_name: bool) -> str | None:
+    """Kaggle ref of the registry entry matching the key, folder (or slug if ``match_name``)."""
+    for k, v in _unified_datasets().items():
+        if (
+            k == manifold
+            or v.get("modernized_folder") == manifold_dir.name
+            or (match_name and v.get("name") == manifold_dir.name)
+        ):
+            return v.get("kaggle_ref")
+    return None
+
+
+def _start_sync_job(cmd: list[str], parameters: dict[str, Any]) -> JobResponse:
+    """Create and start a SYNC job for ``cmd``."""
+    job = job_manager.create_job(
+        job_type=JobType.SYNC,
+        command=cmd,
+        parameters=parameters,
+    )
+    job_manager.start_job(job.id, asyncio.get_running_loop())
+    return job
+
+
+def _sources_kaggle_cmd(action: str, repo_id: str, output_dir: Path) -> list[str]:
+    """``python -m sources.kaggle`` command line for one action."""
+    return [
+        venv_python(),
+        "-u",
+        "-m", "sources.kaggle",
+        "--action", action,
+        "--repo_id", repo_id,
+        "--output_dir", str(output_dir),
+    ]
+
+
+def _local_sample_count(local_path: Path) -> int:
+    """Sample count recorded in a manifold's dataset_info.yaml (0 when unknown)."""
+    info_file = local_path / "dataset_info.yaml"
+    if not info_file.exists():
+        return 0
+    try:
+        with open(info_file, "r", encoding="utf-8") as inf:
+            m = yaml.safe_load(inf) or {}
+            return m.get("count") or m.get("total_samples") or 0
+    except (OSError, yaml.YAMLError) as exc:
+        logger.debug("Could not read dataset_info.yaml for %s: %s", local_path, exc)
+        return 0
+
+
+def _registry_item(
+    key: str, entry: dict[str, Any], root: Path, naming: tuple[str, str]
+) -> KaggleDatasetRegistryItem:
+    """Registry listing row for one unified_data.yaml entry with a kaggle_ref."""
+    prefix, suffix = naming
+    kaggle_ref = entry.get("kaggle_ref", "")
+    slug = entry.get("name", "")
+    mod_folder = entry.get("modernized_folder") or f"{prefix}{slug}{suffix}"
+    local_path = root / mod_folder
+    is_present = local_path.exists() and local_path.is_dir()
+    return KaggleDatasetRegistryItem(
+        key=key,
+        title=entry.get("title", key),
+        name=slug,
+        modernized_folder=mod_folder,
+        kaggle_ref=kaggle_ref,
+        clean_repo_id=_clean_kaggle_ref(kaggle_ref),
+        is_local_present=is_present,
+        canonical_format=entry.get("canonical_format", "webdataset"),
+        sample_count=_local_sample_count(local_path) if is_present else 0,
+        size_gb=0.0,
+    )
+
+
 @router.get("/status")
 async def get_kaggle_status() -> Dict[str, Any]:
     """Inspect Kaggle authentication and local credential files."""
@@ -74,9 +178,7 @@ async def get_kaggle_status() -> Dict[str, Any]:
 async def list_registry_kaggle_datasets() -> List[KaggleDatasetRegistryItem]:
     """List the production manifolds in unified_data.yaml that can move through Kaggle."""
     root = _resolve_output_root()
-    unified_yaml = Path("unified_data.yaml")
-    if not unified_yaml.exists():
-        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+    unified_yaml = _unified_yaml_path()
 
     items: List[KaggleDatasetRegistryItem] = []
     if not unified_yaml.exists():
@@ -87,49 +189,14 @@ async def list_registry_kaggle_datasets() -> List[KaggleDatasetRegistryItem]:
             ydata = yaml.safe_load(f) or {}
             datasets_meta = ydata.get("datasets", {})
             meta = ydata.get("_registry_metadata", {})
-            prefix = meta.get("name_prefix", "LemGendized")
-            suffix = meta.get("name_suffix", "")
+            naming = (meta.get("name_prefix", "LemGendized"), meta.get("name_suffix", ""))
     except (OSError, yaml.YAMLError) as exc:
         logger.warning("Could not parse %s for Kaggle registry listing: %s", unified_yaml, exc)
         return items
 
     for k, v in datasets_meta.items():
-        kaggle_ref = v.get("kaggle_ref", "")
-        if not kaggle_ref:
-            continue
-
-        clean_id = _clean_kaggle_ref(kaggle_ref)
-        slug = v.get("name", "")
-        mod_folder = v.get("modernized_folder") or f"{prefix}{slug}{suffix}"
-        local_path = root / mod_folder
-        is_present = local_path.exists() and local_path.is_dir()
-
-        sample_count = 0
-        size_gb = 0.0
-        if is_present:
-            info_file = local_path / "dataset_info.yaml"
-            if info_file.exists():
-                try:
-                    with open(info_file, "r", encoding="utf-8") as inf:
-                        m = yaml.safe_load(inf) or {}
-                        sample_count = m.get("count") or m.get("total_samples") or 0
-                except (OSError, yaml.YAMLError) as exc:
-                    logger.debug("Could not read dataset_info.yaml for %s: %s", local_path, exc)
-
-        items.append(
-            KaggleDatasetRegistryItem(
-                key=k,
-                title=v.get("title", k),
-                name=slug,
-                modernized_folder=mod_folder,
-                kaggle_ref=kaggle_ref,
-                clean_repo_id=clean_id,
-                is_local_present=is_present,
-                canonical_format=v.get("canonical_format", "webdataset"),
-                sample_count=sample_count,
-                size_gb=round(size_gb, 2),
-            )
-        )
+        if v.get("kaggle_ref", ""):
+            items.append(_registry_item(k, v, root, naming))
 
     return items
 
@@ -150,98 +217,45 @@ async def download_kaggle_dataset(req: KaggleDownloadRequest) -> JobResponse:
         target_name = slug if slug.startswith("LemGendized") else f"LemGendized{slug}"
 
     target_dir = root / target_name
-    cmd = [
-        venv_python(),
-        "-u",
-        "-m", "sources.kaggle",
-        "--action", "download",
-        "--repo_id", clean_id,
-        "--output_dir", str(target_dir),
-    ]
-
-    job = job_manager.create_job(
-        job_type=JobType.SYNC,
-        command=cmd,
-        parameters={
+    return _start_sync_job(
+        _sources_kaggle_cmd("download", clean_id, target_dir),
+        {
             "action": "download",
             "repo_id": clean_id,
             "target_dir": str(target_dir),
             "force": req.force,
         },
     )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
 
 
 @router.post("/upload", response_model=JobResponse)
 async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
     """Zip and push a local compiled manifold to Kaggle."""
     root = _resolve_output_root()
-    manifold_dir = root / req.manifold
-    if not manifold_dir.exists():
-        # Try checking if manifold is a key
-        unified_yaml = Path("unified_data.yaml")
-        if not unified_yaml.exists():
-            unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-        if unified_yaml.exists():
-            with open(unified_yaml, "r", encoding="utf-8") as f:
-                ydata = yaml.safe_load(f) or {}
-                if req.manifold in ydata.get("datasets", {}):
-                    mod_f = ydata["datasets"][req.manifold].get("modernized_folder")
-                    if mod_f and (root / mod_f).exists():
-                        manifold_dir = root / mod_f
-
+    manifold_dir = _resolve_manifold_dir(root, req.manifold)
     if not manifold_dir.exists():
         raise ValueError(f"Local manifold '{req.manifold}' not found under {root}")
 
-    repo_id = req.kaggle_ref
-    if not repo_id:
-        # Lookup in unified_data.yaml
-        unified_yaml = Path("unified_data.yaml")
-        if not unified_yaml.exists():
-            unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-        if unified_yaml.exists():
-            with open(unified_yaml, "r", encoding="utf-8") as f:
-                ydata = yaml.safe_load(f) or {}
-                for k, v in ydata.get("datasets", {}).items():
-                    if (
-                        k == req.manifold
-                        or v.get("modernized_folder") == manifold_dir.name
-                        or v.get("name") == manifold_dir.name
-                    ):
-                        repo_id = v.get("kaggle_ref")
-                        break
-
-    if not repo_id:
-        repo_id = f"lemtreursi/{manifold_dir.name.lower()}"
-
+    repo_id = (
+        req.kaggle_ref
+        or _registry_kaggle_ref(req.manifold, manifold_dir, match_name=True)
+        or f"lemtreursi/{manifold_dir.name.lower()}"
+    )
     clean_id = _clean_kaggle_ref(repo_id)
 
-    cmd = [
-        venv_python(),
-        "-u",
-        "-m", "sources.kaggle",
-        "--action", "upload",
-        "--repo_id", clean_id,
-        "--output_dir", str(manifold_dir),
-    ]
+    cmd = _sources_kaggle_cmd("upload", clean_id, manifold_dir)
     if req.no_wait:
         cmd.append("--no-wait")
 
-    job = job_manager.create_job(
-        job_type=JobType.SYNC,
-        command=cmd,
-        parameters={
+    return _start_sync_job(
+        cmd,
+        {
             "action": "upload",
             "repo_id": clean_id,
             "output_dir": str(manifold_dir),
             "no_wait": req.no_wait,
         },
     )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
 
 
 @router.post("/sync", response_model=JobResponse)
@@ -251,15 +265,7 @@ async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
     cmd = [venv_python(), "-u", "-m", "tools.manifold_sync", "--action", action]
     if req.manifold:
         cmd.extend(["--model", req.manifold])
-
-    job = job_manager.create_job(
-        job_type=JobType.SYNC,
-        command=cmd,
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    return _start_sync_job(cmd, req.model_dump())
 
 
 class KaggleMetadataRequest(BaseModel):
@@ -278,59 +284,22 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
     root = _resolve_output_root()
 
     if req.all_datasets:
-        cmd = [
-            venv_python(),
-            "-u",
-            "-m", "sources.kaggle",
-            "--action", "metadata",
-            "--repo_id", "lemtreursi/placeholder",   # required arg, overridden by --all-datasets
-            "--all-datasets",
-            "--output_dir", str(root),
-        ]
-        job = job_manager.create_job(
-            job_type=JobType.SYNC,
-            command=cmd,
-            parameters={"action": "metadata", "all_datasets": True},
-        )
-        loop = asyncio.get_running_loop()
-        job_manager.start_job(job.id, loop)
-        return job
+        # --repo_id is a required arg, overridden by --all-datasets
+        cmd = _sources_kaggle_cmd("metadata", "lemtreursi/placeholder", root)
+        cmd.insert(cmd.index("--output_dir"), "--all-datasets")
+        return _start_sync_job(cmd, {"action": "metadata", "all_datasets": True})
 
     if not req.manifold:
         raise HTTPException(
             status_code=422, detail="Either 'manifold' or 'all_datasets: true' must be provided."
         )
 
-    # Resolve manifold path
-    manifold_dir = root / req.manifold
-    if not manifold_dir.exists():
-        unified_yaml = Path("unified_data.yaml")
-        if not unified_yaml.exists():
-            unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-        if unified_yaml.exists():
-            with open(unified_yaml, "r", encoding="utf-8") as f:
-                ydata = yaml.safe_load(f) or {}
-                if req.manifold in ydata.get("datasets", {}):
-                    mod_f = ydata["datasets"][req.manifold].get("modernized_folder")
-                    if mod_f and (root / mod_f).exists():
-                        manifold_dir = root / mod_f
-
-    repo_id = req.kaggle_ref
-    if not repo_id:
-        unified_yaml = Path("unified_data.yaml")
-        if not unified_yaml.exists():
-            unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
-        if unified_yaml.exists():
-            with open(unified_yaml, "r", encoding="utf-8") as f:
-                ydata = yaml.safe_load(f) or {}
-                for k, v in ydata.get("datasets", {}).items():
-                    if k == req.manifold or v.get("modernized_folder") == manifold_dir.name:
-                        repo_id = v.get("kaggle_ref")
-                        break
-
-    if not repo_id:
-        repo_id = f"lemtreursi/{manifold_dir.name.lower()}"
-
+    manifold_dir = _resolve_manifold_dir(root, req.manifold)
+    repo_id = (
+        req.kaggle_ref
+        or _registry_kaggle_ref(req.manifold, manifold_dir, match_name=False)
+        or f"lemtreursi/{manifold_dir.name.lower()}"
+    )
     clean_id = _clean_kaggle_ref(repo_id)
     if is_kaggle_large_manifold(clean_id):
         raise HTTPException(
@@ -338,20 +307,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
             detail=f"Refusing to update metadata for legacy *large manifold: {clean_id}",
         )
 
-    cmd = [
-        venv_python(),
-        "-u",
-        "-m", "sources.kaggle",
-        "--action", "metadata",
-        "--repo_id", clean_id,
-        "--output_dir", str(manifold_dir),
-    ]
-
-    job = job_manager.create_job(
-        job_type=JobType.SYNC,
-        command=cmd,
-        parameters={"action": "metadata", "repo_id": clean_id, "output_dir": str(manifold_dir)},
+    return _start_sync_job(
+        _sources_kaggle_cmd("metadata", clean_id, manifold_dir),
+        {"action": "metadata", "repo_id": clean_id, "output_dir": str(manifold_dir)},
     )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job

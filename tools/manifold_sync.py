@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from core.common_sync import (
+    DownloadRequest,
     cleanup_temp_archives,
     perform_dataset_download,
     perform_dataset_upload,
@@ -73,18 +74,23 @@ def resolve_kaggle_ref(manifold_id: str) -> str | None:
     return get_kaggle_ref(manifold_id)
 
 
-def get_kaggle_ref(manifold_id: str | None) -> str | None:
-    """Retrieve kaggle ref from yaml with multi-variant matching."""
-    if not manifold_id:
-        return None
-    target_clean = manifold_id.strip()
-    norm_target = (
-        target_clean.lower()
+def _normalized_id(value: str) -> str:
+    """Lower-case ID with separators and the LemGendized / large affixes removed."""
+    return (
+        value.lower()
         .replace("_", "")
         .replace("-", "")
         .replace("lemgendized", "")
         .replace("large", "")
     )
+
+
+def get_kaggle_ref(manifold_id: str | None) -> str | None:
+    """Retrieve kaggle ref from yaml with multi-variant matching."""
+    if not manifold_id:
+        return None
+    target_clean = manifold_id.strip()
+    norm_target = _normalized_id(target_clean)
     prefix = META.get("name_prefix", "LemGendized")
     suffix = META.get("name_suffix", "")
 
@@ -107,21 +113,7 @@ def get_kaggle_ref(manifold_id: str | None) -> str | None:
             return clean_ref
 
         # 4. Normalized fuzzy match
-        norm_k = (
-            k.lower()
-            .replace("_", "")
-            .replace("-", "")
-            .replace("lemgendized", "")
-            .replace("large", "")
-        )
-        norm_slug = (
-            slug_name.lower()
-            .replace("_", "")
-            .replace("-", "")
-            .replace("lemgendized", "")
-            .replace("large", "")
-        )
-        if norm_target in [norm_k, norm_slug]:
+        if norm_target in [_normalized_id(k), _normalized_id(slug_name)]:
             return clean_ref
 
     return None
@@ -164,12 +156,12 @@ def action_get(repo_id, output_name=None):
     slug = clean_repo_id.split("/")[-1]
     if not output_name:
         output_name = slug
-        prefix = META.get("name_prefix", "LemGendized")
-        suffix = META.get("name_suffix", "")
         for _, v in DATASETS_META.items():
             ref = v.get("kaggle_ref", "")
             if clean_repo_id.lower() in ref.lower():
-                output_name = v.get("modernized_folder") or f"{prefix}{v.get('name', '')}{suffix}"
+                output_name = v.get("modernized_folder") or _compiled_folder_name(
+                    v.get("name", "")
+                )
                 break
 
     dest_dir = OUT_PARENT / output_name
@@ -210,20 +202,27 @@ def action_get(repo_id, output_name=None):
     setup_auth(default_user=owner)
 
     success = perform_dataset_download(
-        clean_repo_id=clean_repo_id,
-        target_dir=dest_dir,
-        root_datasets_dir=OUT_PARENT,
-        manifold_name=output_name,
-        slug=slug,
-        is_competition=False
+        DownloadRequest(
+            clean_repo_id=clean_repo_id,
+            target_dir=dest_dir,
+            root_datasets_dir=OUT_PARENT,
+            manifold_name=output_name,
+            slug=slug,
+            is_competition=False,
+        )
     )
     if not success:
         sys.exit(1)
 
 
 
-def main():
-    """Parse the CLI arguments and run the sync or get action."""
+def _compiled_folder_name(slug: str) -> str:
+    """Compiled manifold folder name for a registry slug (registry prefix + slug + suffix)."""
+    return f"{META.get('name_prefix', 'LemGendized')}{slug}{META.get('name_suffix', '')}"
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """CLI definition for the sync manager."""
     parser = argparse.ArgumentParser(description="LemGendary Manifold Sync Manager")
     parser.add_argument("--action", choices=["sync", "get"], help="Action to perform")
     parser.add_argument(
@@ -240,73 +239,107 @@ def main():
     parser.add_argument("--push", action="store_true", help="Alias for --action sync")
     parser.add_argument("--pull", action="store_true", help="Alias for --action get")
     parser.add_argument("--force", action="store_true", help="Force sync operation")
+    return parser
 
-    args = parser.parse_args()
 
-    # Interactive menu if no action provided
-    action = args.action
-    if not action:
-        if args.push:
-            action = "sync"
-        elif args.pull:
-            action = "get"
-    if not action:
-        print("\n=== LemGendary Sync Manager ===")
-        print("1. [SYNC] Zip & Upload local manifold to Kaggle")
-        print("2. [GET]  Download & Extract manifold from Kaggle")
-        choice = input("Select operation (1/2): ").strip()
-        if choice == '1':
-            action = "sync"
-        elif choice == '2':
-            action = "get"
-        else:
-            print("Invalid choice.")
-            sys.exit(1)
+def _resolve_action(args: argparse.Namespace) -> str:
+    """Action from --action / --push / --pull, else an interactive menu."""
+    if args.action:
+        return args.action
+    if args.push:
+        return "sync"
+    if args.pull:
+        return "get"
+    print("\n=== LemGendary Sync Manager ===")
+    print("1. [SYNC] Zip & Upload local manifold to Kaggle")
+    print("2. [GET]  Download & Extract manifold from Kaggle")
+    choice = input("Select operation (1/2): ").strip()
+    if choice == '1':
+        return "sync"
+    if choice == '2':
+        return "get"
+    print("Invalid choice.")
+    sys.exit(1)
 
-    prefix = META.get("name_prefix", "LemGendized")
-    suffix = META.get("name_suffix", "")
+
+def _selected_key(sel: str, dataset_keys: list[str]) -> str | None:
+    """Registry key for a 1-based menu number, or None when ``sel`` is not one."""
+    if sel.isdigit() and 1 <= int(sel) <= len(dataset_keys):
+        return dataset_keys[int(sel) - 1]
+    return None
+
+
+def _target_for_key(key: str) -> tuple[str, str | None]:
+    """(compiled folder name, Kaggle ref) for a registry key."""
+    return _compiled_folder_name(DATASETS_META[key].get("name", "")), get_kaggle_ref(key)
+
+
+def _pick_sync_target(repo_id: str | None) -> tuple[str, str | None]:
+    """Interactive choice of a local manifold to upload."""
     dataset_keys = list(DATASETS_META.keys())
+    print("\n--- AVAILABLE MANIFOLDS TO SYNC ---")
+    for i, k in enumerate(dataset_keys, 1):
+        manifold_folder = DATASETS_META[k].get("modernized_folder") or _compiled_folder_name(
+            DATASETS_META[k].get("name", "")
+        )
+        status_tag = "[COMPILED]" if (OUT_PARENT / manifold_folder).exists() else "[NOT COMPILED]"
+        print(f" {i:2d}. {k:<35} ({manifold_folder}) {status_tag}")
 
-    # Resolve Model/URL
-    model = args.model
-    repo_id = args.url
+    sel = input("\nEnter selection (number, dataset key, or folder name): ").strip()
+    chosen_key = _selected_key(sel, dataset_keys)
+    if chosen_key:
+        return _target_for_key(chosen_key)
+    return sel, repo_id
 
+
+def _pick_get_target() -> tuple[str | None, str | None]:
+    """Interactive choice of a Kaggle manifold to download."""
+    dataset_keys = list(DATASETS_META.keys())
+    print("\n--- AVAILABLE MANIFOLDS ON KAGGLE ---")
+    for i, k in enumerate(dataset_keys, 1):
+        k_ref = get_kaggle_ref(k) or "N/A"
+        print(f" {i:2d}. {k:<35} -> {k_ref}")
+
+    sel = input("\nEnter selection (number, dataset key, or Kaggle ID): ").strip()
+    chosen_key = _selected_key(sel, dataset_keys)
+    if chosen_key:
+        return _target_for_key(chosen_key)
+    if "/" in sel:
+        return None, sel
+    return sel, get_kaggle_ref(sel)
+
+
+def _match_compiled_folder(model: str) -> str:
+    """Map a registry key or slug (any case) to its compiled folder name."""
+    for k, v in DATASETS_META.items():
+        slug = v.get("name", "")
+        compiled = _compiled_folder_name(slug)
+        if model in [k, slug, compiled] or model.lower() in [
+            k.lower(),
+            slug.lower(),
+            compiled.lower(),
+        ]:
+            return compiled
+    return model
+
+
+def _model_from_repo(repo_id: str) -> str | None:
+    """Compiled folder name of the registry entry whose Kaggle ref matches ``repo_id``."""
+    for k, v in DATASETS_META.items():
+        k_ref = get_kaggle_ref(k)
+        if k_ref and k_ref.lower() in repo_id.lower():
+            return _compiled_folder_name(v.get("name", ""))
+    return None
+
+
+def _resolve_targets(
+    action: str, model: str | None, repo_id: str | None
+) -> tuple[str | None, str | None]:
+    """Fill in the manifold folder and Kaggle ID from the registry or interactive prompts."""
     if action == "sync" and not model:
-        print("\n--- AVAILABLE MANIFOLDS TO SYNC ---")
-        for i, k in enumerate(dataset_keys, 1):
-            slug = DATASETS_META[k].get("name", "")
-            mod_folder = DATASETS_META[k].get("modernized_folder")
-            manifold_folder = mod_folder or f"{prefix}{slug}{suffix}"
-            folder_path = OUT_PARENT / manifold_folder
-            status_tag = "[COMPILED]" if folder_path.exists() else "[NOT COMPILED]"
-            print(f" {i:2d}. {k:<35} ({manifold_folder}) {status_tag}")
-
-        sel = input("\nEnter selection (number, dataset key, or folder name): ").strip()
-        if sel.isdigit() and 1 <= int(sel) <= len(dataset_keys):
-            chosen_key = dataset_keys[int(sel) - 1]
-            chosen_slug = DATASETS_META[chosen_key].get("name", "")
-            model = f"{prefix}{chosen_slug}{suffix}"
-            repo_id = get_kaggle_ref(chosen_key)
-        else:
-            model = sel
-
+        model, repo_id = _pick_sync_target(repo_id)
     if action == "get" and not repo_id and not model:
-        print("\n--- AVAILABLE MANIFOLDS ON KAGGLE ---")
-        for i, k in enumerate(dataset_keys, 1):
-            k_ref = get_kaggle_ref(k) or "N/A"
-            print(f" {i:2d}. {k:<35} -> {k_ref}")
-
-        sel = input("\nEnter selection (number, dataset key, or Kaggle ID): ").strip()
-        if sel.isdigit() and 1 <= int(sel) <= len(dataset_keys):
-            chosen_key = dataset_keys[int(sel) - 1]
-            chosen_slug = DATASETS_META[chosen_key].get("name", "")
-            model = f"{prefix}{chosen_slug}{suffix}"
-            repo_id = get_kaggle_ref(chosen_key)
-        elif "/" in sel:
-            repo_id = sel
-        else:
-            model = sel
-            repo_id = get_kaggle_ref(model)
+        model, repo_id = _pick_get_target()
 
     if not repo_id:
         if model:
@@ -321,24 +354,17 @@ def main():
 
     # Auto-resolve model directory name if a key, slug, or repo_id was given
     if model and not (OUT_PARENT / model).exists():
-        for k, v in DATASETS_META.items():
-            slug = v.get("name", "")
-            compiled = f"{prefix}{slug}{suffix}"
-            if model in [k, slug, compiled] or model.lower() in [
-                k.lower(),
-                slug.lower(),
-                compiled.lower(),
-            ]:
-                model = compiled
-                break
-
+        model = _match_compiled_folder(model)
     if not model and repo_id:
-        for k, v in DATASETS_META.items():
-            k_ref = get_kaggle_ref(k)
-            if k_ref and k_ref.lower() in repo_id.lower():
-                slug = v.get("name", "")
-                model = f"{prefix}{slug}{suffix}"
-                break
+        model = _model_from_repo(repo_id) or model
+    return model, repo_id
+
+
+def main():
+    """Parse the CLI arguments and run the sync or get action."""
+    args = _build_parser().parse_args()
+    action = _resolve_action(args)
+    model, repo_id = _resolve_targets(action, args.model, args.url)
 
     # Setup Auth
     default_user = repo_id.split("/")[0] if repo_id and "/" in repo_id else None

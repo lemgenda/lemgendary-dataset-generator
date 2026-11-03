@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.42-STABLE` |
+| **Version** | `v16.9.43-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,23 @@
 ---
 
 ## Changelog
+
+### v16.9.43 - `core/common_sync.py` Split Into Sync Modules
+
+- **`core/common_sync.py` Is Now a Facade** (1325 lines to 67): the Kaggle
+  sync core lives in `core/sync_auth.py` (credentials, handle helpers, large
+  manifold safeguard), `sync_transfer.py`, `sync_remote.py`,
+  `sync_tracking.py`, `sync_metadata.py`, `sync_metadata_settings.py`,
+  `sync_upload.py` and `sync_download.py`. Every public name is still
+  importable from `core.common_sync`; tests patch the module where a name now
+  lives.
+- **`DownloadRequest`**: `perform_dataset_download` takes one request object.
+  `tools/manifold_sync.py` and `sources/kaggle.py` are updated.
+- **Smaller Kaggle CLIs and Routes**: `manifold_sync.main`, `sync_metadata`
+  and the `/kaggle` upload and metadata routes are split into helpers, and
+  the routes start jobs through `api.jobs.submit_job`. CLI flags and the API
+  are unchanged. The `too-many-*` findings in these files went from 35 to 0.
+- `tests/test_kaggle_extraction.py` patches `core.sync_tracking`.
 
 ### v16.9.42 - Desktop GUI Routes Split; Job Runner Cleanup
 

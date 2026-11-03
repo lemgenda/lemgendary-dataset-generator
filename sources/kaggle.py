@@ -17,6 +17,7 @@ import yaml
 
 from tools.sync_kaggle_metadata import sync_metadata
 from core.common_sync import (
+    DownloadRequest,
     setup_kaggle_auth,
     track_kaggle_dataset_status,
     perform_dataset_upload,
@@ -95,12 +96,14 @@ def main():
             clean_repo_id, args.output_dir
         )
         success = perform_dataset_download(
-            clean_repo_id=clean_repo_id,
-            target_dir=target_dir,
-            root_datasets_dir=root_datasets_dir,
-            manifold_name=manifold_name,
-            slug=slug,
-            is_competition=args.is_competition
+            DownloadRequest(
+                clean_repo_id=clean_repo_id,
+                target_dir=target_dir,
+                root_datasets_dir=root_datasets_dir,
+                manifold_name=manifold_name,
+                slug=slug,
+                is_competition=args.is_competition,
+            )
         )
         if not success:
             sys.exit(1)

@@ -12,8 +12,8 @@ from core.common_sync import track_kaggle_dataset_status
 class TestKaggleExtractionProgress(unittest.TestCase):
     """Verifies that Kaggle extraction logs are properly formatted for pipe consumers."""
 
-    @patch("core.common_sync.setup_kaggle_auth")
-    @patch("core.common_sync.get_dataset_version_info")
+    @patch("core.sync_tracking.setup_kaggle_auth")
+    @patch("core.sync_tracking.get_dataset_version_info")
     def test_track_kaggle_dataset_status_emits_newline_flush(
         self,
         mock_info: MagicMock,
