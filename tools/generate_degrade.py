@@ -9,7 +9,7 @@ parameter descriptors into labels/<split>/<name>.json, and logging provenance to
 the manifold registry database.
 
 Usage:
-    python generate_degrade.py --source raw-sets/div2k --profile motion-blur+iso-noise \
+    python -m tools.generate_degrade --source raw-sets/div2k --profile motion-blur+iso-noise \
                                --intensity medium --output LemGendizedNafNetDebluringSynthetic \
                                --pairs 50000 --seed 42
 """
@@ -27,10 +27,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Literal, cast
-
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 from PIL import Image
 from tqdm import tqdm

@@ -7,9 +7,9 @@ Runs label / prompt / mask generation over an existing manifold and writes
 the artifacts alongside the directory layout.
 
 Usage:
-    python generate_cli.py --manifold <path> --kind label  --strategy blip_caption
-    python generate_cli.py --manifold <path> --kind prompt --template diffusers-v1
-    python generate_cli.py --manifold <path> --kind mask   --strategy parsenet
+    python -m tools.generate_cli --manifold <path> --kind label  --strategy blip_caption
+    python -m tools.generate_cli --manifold <path> --kind prompt --template diffusers-v1
+    python -m tools.generate_cli --manifold <path> --kind mask   --strategy parsenet
 """
 
 from __future__ import annotations
@@ -20,13 +20,11 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
 from PIL import Image
 
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
+
+_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 
 logger = logging.getLogger(__name__)
 

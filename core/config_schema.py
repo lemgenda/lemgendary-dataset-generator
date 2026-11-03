@@ -23,7 +23,7 @@ Usage:
     legacy = data.to_legacy_dict()
 
 CLI:
-    python config_schema.py         # validates ./unified_data.yaml
+    python -m core.config_schema    # validates ./unified_data.yaml
 """
 
 from __future__ import annotations

@@ -1,5 +1,8 @@
 $Env:PYTHONUTF8 = "1"
 $Env:PYTHONUNBUFFERED = "1"
+# Entry points run as modules (`python -m pkg.module`), so the project root
+# must be importable from any working directory, Start-Job children included.
+$Env:PYTHONPATH = $PSScriptRoot
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
@@ -12,11 +15,11 @@ if (-not (Test-Path $Vpy)) {
 }
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
 $Raw = Join-Path $PSScriptRoot 'raw-sets'
-# 2026 Phase 1.2: managers relocated to sources/ package.
-$hfManagerPath = Join-Path $PSScriptRoot 'sources\hf.py'
-$ghManagerPath = Join-Path $PSScriptRoot 'sources\gh.py'
-$kagManagerPath = Join-Path $PSScriptRoot 'sources\kaggle.py'
-$gdManagerPath = Join-Path $PSScriptRoot 'sources\gd.py'
+# Source managers live in the sources/ package and run as modules.
+$hfManagerModule = 'sources.hf'
+$ghManagerModule = 'sources.gh'
+$kagManagerModule = 'sources.kaggle'
+$gdManagerModule = 'sources.gd'
 
 $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
 if (Test-Path $TokenPath) {
@@ -33,9 +36,9 @@ $DownloadSB = {
 
     Write-Output "STATUS:KAG-PULLING"
     if ($isC) {
-        & $vpy $kagManager --repo_id $ref --output_dir $fold --is_competition
+        & $vpy -m $kagManager --repo_id $ref --output_dir $fold --is_competition
     } else {
-        & $vpy $kagManager --repo_id $ref --output_dir $fold
+        & $vpy -m $kagManager --repo_id $ref --output_dir $fold
     }
 
     $z = Join-Path $sharedPath ($dn + '.zip')
@@ -64,7 +67,7 @@ $HuggingFaceSB = {
     $outFold = Join-Path $sharedPath $dn
 
     Write-Output "STATUS:HF-PULLING"
-    & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
+    & $vpy -m $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
 
     if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
          Write-Output "RESULT:COMPLETED"
@@ -80,7 +83,7 @@ $GHSourceSB = {
     $outFold = Join-Path $sharedPath $dn
 
     Write-Output "STATUS:GH-CLONING"
-    & $vpy $ghManager --repo_url $repoId --output_dir $outFold 2>&1
+    & $vpy -m $ghManager --repo_url $repoId --output_dir $outFold 2>&1
 
     if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
          Write-Output "RESULT:COMPLETED"
@@ -96,7 +99,7 @@ $GDriveSB = {
     $outFold = Join-Path $sharedPath $dn
 
     Write-Output "STATUS:GD-PULLING"
-    & $vpy $gdManager --repo_id $repoId --output_dir $outFold 2>&1
+    & $vpy -m $gdManager --repo_id $repoId --output_dir $outFold 2>&1
 
     $z = Join-Path $sharedPath ($dn + '.zip')
     if (Test-Path $z) {
@@ -193,7 +196,7 @@ Initialize-Environment
 # 2026 Phase 1.7: Load runtime env contract from Environment Manager SSOT.
 # Env vars are set in the parent PowerShell session so that every child
 # subprocess spawned by this script inherits them via normal process
-# inheritance (this covers `& $Vpy manifold_compile.py ...`). Start-Job
+# inheritance (this covers `& $Vpy -m core.manifold_compile ...`). Start-Job
 # runspaces do not inherit process env, but fetcher jobs do not require
 # any of these vars — only the compiler path does, and that path uses a
 # direct subprocess.
@@ -585,16 +588,16 @@ function Start-Acquisition {
                     $NextDl.ProgressId = $BaseId + $i
                     $NextDl.Status = 'Starting DL'
                     if ($NextDl.Ref -match 'hf://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerModule).Id
                     } elseif ($NextDl.Ref -match 'gh://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $GHSourceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $ghManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $GHSourceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $ghManagerModule).Id
                     } elseif ($NextDl.Ref -match 'kaggle://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerModule).Id
                     } elseif ($NextDl.Ref -match 'gdrive://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $GDriveSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $gdManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $GDriveSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $gdManagerModule).Id
                     } else {
                         # Legacy fallback
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerModule).Id
                     }
                 }
             }
@@ -875,7 +878,7 @@ while ($true) {
 
         foreach ($tm in $TargetModels) {
             Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
-            & $Vpy core\manifold_compile.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
+            & $Vpy -m core.manifold_compile --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
 
             # Post-Compile Verification
             $OutFolder = Join-Path (Get-Location) $OutFolderName
@@ -889,11 +892,10 @@ while ($true) {
         }
         # 2026: Finalized Global Cleanup (Moved outside loop to prevent I/O collisions)
         Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
-        & $Vpy core\manifold_compile.py --cleanup
+        & $Vpy -m core.manifold_compile --cleanup
     }
     elseif ($I -eq '2') {
-        $ReduceScript = if (Test-Path 'tools\manifold_reduce.py') { 'tools\manifold_reduce.py' } else { 'manifold_reduce.py' }
-        & $Vpy $ReduceScript --reduce
+        & $Vpy -m tools.manifold_reduce --reduce
     }
     elseif ($I -eq '3') {
         while ($true) {
@@ -966,7 +968,7 @@ while ($true) {
 
                     if ($KagHandle) {
                         Write-Host "`n[SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
-                        & $Vpy $kagManagerPath --action upload --repo_id $KagHandle --output_dir $ManifoldPath
+                        & $Vpy -m $kagManagerModule --action upload --repo_id $KagHandle --output_dir $ManifoldPath
                         if ($LASTEXITCODE -eq 0) {
                             Write-Host "[OK] [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
                         } else {
@@ -1069,7 +1071,7 @@ while ($true) {
                     Write-Host "  Target: $TargetHandle" -ForegroundColor Gray
                     Write-Host "  Destination: $DestPath" -ForegroundColor Gray
 
-                    & $Vpy $kagManagerPath --action download --repo_id $TargetHandle --output_dir $DestPath
+                    & $Vpy -m $kagManagerModule --action download --repo_id $TargetHandle --output_dir $DestPath
                     if ($LASTEXITCODE -eq 0) {
                         Write-Host "[OK] [GET] Manifold successfully acquired from Kaggle!" -ForegroundColor Green
                     } else {
@@ -1135,7 +1137,7 @@ while ($true) {
                 Write-Host "  Manifold: $MetaManifold" -ForegroundColor Gray
                 Write-Host "  (No data re-upload - only title, description, license and column info)" -ForegroundColor DarkGray
 
-                & $Vpy $kagManagerPath --action metadata --repo_id $KagHandle --output_dir $MetaManifold
+                & $Vpy -m $kagManagerModule --action metadata --repo_id $KagHandle --output_dir $MetaManifold
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "[OK] [META] Kaggle metadata updated successfully for $KagHandle!" -ForegroundColor Green
                 } else {
@@ -1147,7 +1149,7 @@ while ($true) {
                 Write-Host "`n[ALL META] Updating Kaggle metadata for ALL datasets in unified_data.yaml..." -ForegroundColor Cyan
                 Write-Host "  (No data re-upload - only title, description, license and column info for each dataset)" -ForegroundColor DarkGray
 
-                & $Vpy $kagManagerPath --action metadata --repo_id lemtreursi/placeholder --all-datasets --output_dir $Out
+                & $Vpy -m $kagManagerModule --action metadata --repo_id lemtreursi/placeholder --all-datasets --output_dir $Out
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "[OK] [ALL META] Metadata updated for all configured datasets!" -ForegroundColor Green
                 } else {
@@ -1178,7 +1180,7 @@ while ($true) {
 
             if ($ModChoice -eq '1') {
                 if (Test-Path $QueueScript) {
-                    & $Vpy $QueueScript --list
+                    & $Vpy -m tools.modernization_queue --list
                 } else {
                     Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
                 }
@@ -1187,7 +1189,7 @@ while ($true) {
             elseif ($ModChoice -eq '2') {
                 if (Test-Path $QueueScript) {
                     Write-Host "`n[MODERNIZE] Scanning dataset modernization states..." -ForegroundColor Cyan
-                    & $Vpy $QueueScript --list
+                    & $Vpy -m tools.modernization_queue --list
                     $TargetSet = Read-Host "`nEnter dataset key(s) to modernize (e.g. nafnet_debluring, or 'b' to cancel)"
                     if ($TargetSet -match '^[bB]') { continue }
                     if ($TargetSet) {
@@ -1198,7 +1200,7 @@ while ($true) {
                         $PurgeChoice = Read-Host "Purge source archives and loose images post-conversion? (Y/N, default: Y)"
                         $PurgeFlag = if ($PurgeChoice -match '^[nN]') { '--keep-zip' } else { '--purge-loose' }
                         Write-Host "`n[START] Launching modernization for: $TargetSet..." -ForegroundColor Green
-                        & $Vpy $QueueScript --datasets $TargetSet --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
+                        & $Vpy -m tools.modernization_queue --datasets $TargetSet --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
                         Read-Host "`nPress Enter to return"
                     }
                 } else {
@@ -1215,7 +1217,7 @@ while ($true) {
                     if (-not $MdsShardMb) { $MdsShardMb = '512' }
                     $PurgeChoice = Read-Host "Purge source archives and loose images post-conversion? (Y/N, default: Y)"
                     $PurgeFlag = if ($PurgeChoice -match '^[nN]') { '--keep-zip' } else { '--purge-loose' }
-                    & $Vpy $QueueScript --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
+                    & $Vpy -m tools.modernization_queue --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
                     Read-Host "`nPress Enter to return"
                 } else {
                     Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
@@ -1228,7 +1230,7 @@ while ($true) {
                     $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
                 }
                 if (Test-Path $ModernizeScript) {
-                    & $Vpy $ModernizeScript
+                    & $Vpy -m tools.modernize_manifold
                 } else {
                     Write-Host "[ERROR] modernize_manifold.py not found at $ModernizeScript" -ForegroundColor Red
                 }

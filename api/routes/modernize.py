@@ -73,7 +73,7 @@ class ManifoldReduceRequest(BaseModel):
 
 def build_modernize_command(req: ModernizeRunRequest) -> list[str]:
     """Build the modernization queue command; shares its argument contract with the CLI."""
-    return [venv_python(), "tools/modernization_queue.py"] + build_queue_args(
+    return [venv_python(), "-m", "tools.modernization_queue"] + build_queue_args(
         datasets=req.target_datasets(),
         workers=req.workers or 12,
         mds_shard_mb=req.mds_shard_mb or 512,
@@ -99,7 +99,7 @@ def build_reduce_command(req: ManifoldReduceRequest) -> list[str]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A manifold (`manifold` or `dataset_key`) is required for reduction.",
         )
-    cmd = [venv_python(), "tools/manifold_reduce.py", "--reduce", "--yes", "--dataset", target]
+    cmd = [venv_python(), "-m", "tools.manifold_reduce", "--reduce", "--yes", "--dataset", target]
     fraction = scale_to_fraction(req.scale)
     if fraction is not None:
         cmd.extend(["--fraction", str(fraction)])

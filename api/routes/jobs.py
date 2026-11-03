@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
@@ -67,7 +66,7 @@ async def get_job_logs(job_id: str, tail: Optional[int] = Query(None, ge=1)) -> 
 @router.post("/compile", response_model=JobResponse)
 async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
     """Submit a manifold compile job."""
-    cmd = [venv_python(), "core/manifold_compile.py"]
+    cmd = [venv_python(), "-m", "core.manifold_compile"]
     if req.model:
         cmd.extend(["--model", req.model])
     if req.max_gb is not None:
@@ -115,9 +114,8 @@ async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
 
 @router.post("/degrade", response_model=JobResponse)
 async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
-    degrade_script = "tools/generate_degrade.py" if (Path(__file__).resolve().parent.parent.parent / "tools" / "generate_degrade.py").exists() else "generate_degrade.py"
     cmd = [
-        venv_python(), degrade_script,
+        venv_python(), "-m", "tools.generate_degrade",
         "--source", req.source,
         "--output", req.output,
         "--profile", req.profile,

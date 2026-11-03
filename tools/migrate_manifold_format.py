@@ -11,10 +11,10 @@ Non-destructive: the source directory layout is never removed. Pass
 which requires the `--i-know-what-im-doing` flag.
 
 Usage:
-    python migrate_manifold_format.py --manifold <path> --to mds
-    python migrate_manifold_format.py --manifold <path> --to mds,litdata
-    python migrate_manifold_format.py --manifold <path> --to mds --dry-run
-    python migrate_manifold_format.py --manifold <path> --to mds --verify
+    python -m tools.migrate_manifold_format --manifold <path> --to mds
+    python -m tools.migrate_manifold_format --manifold <path> --to mds,litdata
+    python -m tools.migrate_manifold_format --manifold <path> --to mds --dry-run
+    python -m tools.migrate_manifold_format --manifold <path> --to mds --verify
 """
 
 from __future__ import annotations
@@ -24,10 +24,6 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 from audit.hardlinks import audit_hardlinks
 from formats.base import make_writer, parse_also_format

@@ -11,11 +11,9 @@ import argparse
 from pathlib import Path
 import sys
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
 from core.docs.context import ManifoldContext, resolve_manifold_context
+
+_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def generate_category_txt(

@@ -29,10 +29,6 @@ import zstandard as zstd
 import yaml
 from tqdm import tqdm
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
 from formats.mds import LOOSE_MDS_COLUMNS
 from core.common_sync import (
     get_dataset_version_info,
@@ -40,6 +36,8 @@ from core.common_sync import (
     setup_kaggle_auth,
     track_kaggle_dataset_status,
 )
+
+_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 
 # Load stream_zip_to_container dynamically to bypass tools/__init__.py bulk imports
 _stream_tool_path = _ROOT / "tools" / "stream_zip_to_container.py"

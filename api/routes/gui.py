@@ -547,7 +547,7 @@ async def quick_compile(
 
     cmd = [
         venv_python(),
-        "core/manifold_compile.py",
+        "-m", "core.manifold_compile",
         "--model", req.model,
         "--preset", req.preset,
     ]
@@ -677,7 +677,7 @@ async def custom_compile(
 
     cmd = [
         venv_python(),
-        "core/manifold_compile.py",
+        "-m", "core.manifold_compile",
         "--model", model_key,
         "--preset", preset_name,
     ]

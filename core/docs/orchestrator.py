@@ -15,12 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-import sys
 from typing import Any
-
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
 
 from core.docs.context import resolve_manifold_context
 from core.error_types import DOC_GENERATION_ERRORS

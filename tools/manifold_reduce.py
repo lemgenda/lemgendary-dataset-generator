@@ -9,11 +9,6 @@ from pathlib import Path
 import yaml
 from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
-
-ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from core.compiler_core import (
     CONFIG,
@@ -22,6 +17,8 @@ from core.compiler_core import (
     remove_empty_dirs,
 )
 from core.doc_generator import generate_dataset_docs
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Phase 0: Data-presence helper ──────────────────────────────────────────

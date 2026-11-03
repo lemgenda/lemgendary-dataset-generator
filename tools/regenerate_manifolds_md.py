@@ -10,8 +10,8 @@ Rebuilds manifolds.md from:
 Scope: regenerates the master matrix and per-manifold spec sections.
 
 Usage:
-    python regenerate_manifolds_md.py
-    python regenerate_manifolds_md.py --check    # dry-run, print diff summary
+    python -m tools.regenerate_manifolds_md
+    python -m tools.regenerate_manifolds_md --check    # dry-run, print diff summary
 """
 
 from __future__ import annotations
@@ -23,9 +23,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_YAML = ROOT / "unified_data.yaml"
@@ -152,7 +153,6 @@ def _format_domain(task: str) -> str:
     return "Image Manipulation & Restoration"
 
 
-
 def _format_storage(manifold_path: Path) -> str:
     if list(manifold_path.glob("*.parquet")):
         return "Parquet (Annual Shards)"
@@ -167,7 +167,6 @@ def _format_storage(manifold_path: Path) -> str:
     if (manifold_path / "targets").exists():
         return "Directory Pair (images/, targets/)"
     return "Directory Pair (images/, labels/)"
-
 
 
 def _bound_models(models_meta: dict, manifold_name: str) -> list[str]:

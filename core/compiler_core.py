@@ -13,11 +13,10 @@ in manifold_compile.py keep working unchanged.
 Import-order contract
 ---------------------
 Runtime env vars (TORCH_CUDA_ARCH_LIST, CUDA_FORCE_PTX_JIT,
-PYTORCH_CUDA_ALLOC_CONF) must be set before `import torch`, because torch
-reads them at module-import time. bootstrap_runtime() therefore runs after
-the stdlib and torch-independent third-party imports (numpy, pandas, yaml,
-PIL) and before `import torch`. The resulting E402 warnings are
-declared once in pyproject.toml — never inline.
+PYTORCH_CUDA_ALLOC_CONF) must be set before torch is imported, because torch
+reads them when it loads. This module therefore never imports torch
+directly: it takes it from runtime.environment.load_torch(), which applies
+the environment first.
 
 CLI contract
 ------------
@@ -55,18 +54,51 @@ import pandas as pd
 import yaml
 from PIL import Image, ImageFile
 
+# ─── First party (none of these import torch at module level) ──────────────
+from converters import (
+    detect_annotations,
+    parse_coco,
+    parse_matlab,
+    parse_parquet,
+    parse_safetensors,
+    parse_xml,
+    parse_yolo,
+)
+from utils.fs import get_dir_size, remove_empty_dirs
+from utils.geometry import convert_bbox_xywh_to_yolo, normalize_points
+from utils.hashing import compute_hash
+from utils.image import ensure_srgb, is_black_image
+from utils.math import get_gaussian_probs
+from utils.naming import clean_slug, map_category
+from utils.net import download_image
+from audit.ground_truth import GroundTruthCaches
+from audit.vision_audit import VisionAuditor
+from audit.dedup import ExactHasher, PerceptualHasher
+from audit.reject_log import RejectLog
+from formats.base import Sample, Writer, make_writer, parse_also_format
+from formats.transcode import ImageTranscoder, KeepFormatError
+from formats.webdataset import ShardWriter, WebDatasetWriter
+from formats.mds import MDSWriter
+from formats.litdata import LitDataWriter
+from formats.parquet import ParquetWriter
+from formats.directory import DirectorySampleSource, DirectoryWriter
+from generators import GenerationResult, LabelGenerator, MaskGenerator, PromptGenerator
+from degrade import (
+    CompositeProfile,
+    DegradationProfile,
+    DynamicDegrader,
+    composite,
+    parse_profile,
+)
+from core.config_schema import ImageFormatPolicy, UnifiedData, load_unified_data
+from core.error_types import MODEL_LOAD_ERRORS, PARQUET_READ_ERRORS, SAMPLE_PROCESSING_ERRORS
+from core.registry import ensure_registry_schema, initialize_registry
+from runtime.environment import bootstrap_runtime, get_device_info, load_torch
+
+# ─── Torch, loaded after the runtime env vars are in place ─────────────────
+torch = load_torch()
+
 logger = logging.getLogger(__name__)
-
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
-from runtime.environment import bootstrap_runtime, get_device_info
-
-bootstrap_runtime()
-
-# ─── Torch (env vars are now in place) ─────────────────────────────────────
-import torch
 
 setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 Image.MAX_IMAGE_PIXELS = None
@@ -144,10 +176,6 @@ else:
 
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
 
-from core.config_schema import ImageFormatPolicy, UnifiedData, load_unified_data
-from core.error_types import MODEL_LOAD_ERRORS, PARQUET_READ_ERRORS, SAMPLE_PROCESSING_ERRORS
-from core.registry import ensure_registry_schema, initialize_registry
-
 try:
     _manifest_path = ROOT / "unified_data.yaml"
     if not _manifest_path.exists():
@@ -161,7 +189,7 @@ except (ValueError, yaml.YAMLError) as e:
     logger.error("unified_data.yaml failed schema validation: %s", e)
     print("[FATAL] unified_data.yaml failed schema validation:")
     print(f"  {type(e).__name__}: {e}")
-    print("[REMEDY] Run `python config_schema.py` to see detailed field diagnostics.")
+    print("[REMEDY] Run `python -m core.config_schema` to see detailed field diagnostics.")
     sys.exit(2)
 
 META: dict[str, Any] = YAML_DATA.get("_registry_metadata", {})
@@ -277,42 +305,6 @@ else:
 DATASETS_META: dict[str, Any] = YAML_DATA.get("datasets", {})
 
 
-# ─── Package re-exports ────────────────────────────────────────────────────
-from converters import (
-    detect_annotations,
-    parse_coco,
-    parse_matlab,
-    parse_parquet,
-    parse_safetensors,
-    parse_xml,
-    parse_yolo,
-)
-from utils.fs import get_dir_size, remove_empty_dirs
-from utils.geometry import convert_bbox_xywh_to_yolo, normalize_points
-from utils.hashing import compute_hash
-from utils.image import ensure_srgb, is_black_image
-from utils.math import get_gaussian_probs
-from utils.naming import clean_slug, map_category
-from utils.net import download_image
-from audit.ground_truth import GroundTruthCaches
-from audit.vision_audit import VisionAuditor
-from audit.dedup import ExactHasher, PerceptualHasher
-from audit.reject_log import RejectLog
-from formats.base import Sample, Writer, make_writer, parse_also_format
-from formats.transcode import ImageTranscoder, KeepFormatError
-from formats.webdataset import ShardWriter, WebDatasetWriter
-from formats.mds import MDSWriter
-from formats.litdata import LitDataWriter
-from formats.parquet import ParquetWriter
-from formats.directory import DirectorySampleSource, DirectoryWriter
-from generators import GenerationResult, LabelGenerator, MaskGenerator, PromptGenerator
-from degrade import (
-    CompositeProfile,
-    DegradationProfile,
-    DynamicDegrader,
-    composite,
-    parse_profile,
-)
 
 
 # ─── Per-process worker state ───────────────────────────────────────────────

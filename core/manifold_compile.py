@@ -16,16 +16,12 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import requests
-import torch
 import yaml
 from sklearn.cluster import MiniBatchKMeans
 from tqdm import tqdm
 from webdataset.writer import TarWriter as WdsTarWriter
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
+from core.cli_args import build_parser
 from core.compiler_core import (
     CONFIG,
     DATASETS_META,
@@ -51,6 +47,10 @@ from core.compiler_core import (
 from core.doc_generator import generate_dataset_docs
 from core.compile_outcome import ManifoldOutcome, finalize_compile
 from core.error_types import DOC_GENERATION_ERRORS, PARQUET_READ_ERRORS
+from runtime.environment import load_torch
+
+# torch is loaded after the runtime env vars are set (see runtime.environment).
+torch = load_torch()
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,6 @@ def _require_ann_path(ann_path: Path | None) -> Path:
 # 2026 Phase 1.5: Parser is the SSOT from cli_args.py. This module previously
 # declared its own parser that had to stay manually in sync with
 # compiler_core.py's. Both now share `build_parser()`.
-from core.cli_args import build_parser
 
 def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
     """Parse compile CLI arguments cleanly without top-level module side-effects."""

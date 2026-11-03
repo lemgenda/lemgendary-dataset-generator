@@ -15,10 +15,10 @@ Safety & Architecture:
     - name_suffix in unified_data.yaml is updated only when all eligible sets are modernized.
 
 Usage:
-    python tools/modernize_manifold.py                                   # interactive selection
-    python tools/modernize_manifold.py --dry-run                         # preview plan
-    python tools/modernize_manifold.py --all --yes                       # batch creation
-    python tools/modernize_manifold.py --datasets yolov8n --also-format webdataset
+    python -m tools.modernize_manifold                                   # interactive selection
+    python -m tools.modernize_manifold --dry-run                         # preview plan
+    python -m tools.modernize_manifold --all --yes                       # batch creation
+    python -m tools.modernize_manifold --datasets yolov8n --also-format webdataset
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ from typing import Literal
 from PIL import Image
 import yaml
 
+from core.config_schema import ImageFormatPolicy
+from formats.transcode import ImageTranscoder
+
 try:
     from tqdm import tqdm
 except ImportError:
@@ -44,14 +47,8 @@ logger = logging.getLogger(__name__)
 
 # ─── Paths ──────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from core.config_schema import ImageFormatPolicy
-from formats.transcode import ImageTranscoder
 
 REGISTRY_YAML = ROOT / "unified_data.yaml"
-MANIFOLD_SYNC = ROOT / "tools" / "manifold_sync.py" if (ROOT / "tools" / "manifold_sync.py").exists() else ROOT / "manifold_sync.py"
 VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 
 LEGACY_SUFFIX = "Large"

@@ -1,6 +1,7 @@
-# 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
-# (common_sync, archive_manager, etc.) resolve when this file is invoked
-# directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
+"""Hugging Face source: download a dataset repository or single file.
+
+Run from the project root as ``python -m sources.hf``.
+"""
 import argparse
 import logging
 import os
@@ -8,8 +9,6 @@ import sys
 import tarfile
 import zipfile
 from pathlib import Path
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from huggingface_hub import hf_hub_download, list_repo_files, login, snapshot_download
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell

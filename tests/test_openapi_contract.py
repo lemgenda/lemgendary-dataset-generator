@@ -2,7 +2,7 @@
 LemGendary Dataset Compiler: frozen ``openapi.json`` matches the live app.
 
 Fails when a route, schema or version changes without regenerating the
-contract. Regenerate with ``python tools/export_openapi.py``.
+contract. Regenerate with ``python -m tools.export_openapi``.
 """
 
 from __future__ import annotations
@@ -11,14 +11,12 @@ import json
 
 import pytest
 
-pytest.importorskip("fastapi", reason="fastapi is not installed; the API app cannot be built in this environment")
-
 try:
-    from api.server import create_app
-except ImportError as exc:  # heavy optional deps of a route module are missing
-    pytest.skip(f"api.server cannot be imported in this environment: {exc}", allow_module_level=True)
+    from fastapi.routing import APIRoute
 
-from fastapi.routing import APIRoute
+    from api.server import create_app
+except ImportError as exc:  # fastapi or a heavy optional dep of a route module is missing
+    pytest.skip(f"the API app cannot be built in this environment: {exc}", allow_module_level=True)
 
 from tools.export_openapi import OPENAPI_FILE, render_openapi
 
@@ -52,7 +50,7 @@ def fixture_live_app():
 def test_openapi_json_matches_live_app(live_app) -> None:
     committed = OPENAPI_FILE.read_text(encoding="utf-8")
     assert committed == render_openapi(live_app.openapi()), (
-        "openapi.json drifted from the app; run: python tools/export_openapi.py"
+        "openapi.json drifted from the app; run: python -m tools.export_openapi"
     )
 
 

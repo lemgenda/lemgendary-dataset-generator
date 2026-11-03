@@ -11,10 +11,6 @@ import argparse
 from pathlib import Path
 import sys
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
 from core.docs.context import ManifoldContext, resolve_manifold_context
 from core.docs.metadata import MODELS_META
 from core.docs.scanner import scan_forex_manifold
@@ -25,6 +21,8 @@ from core.docs.templates import (
     render_forex_readme,
     render_standard_readme,
 )
+
+_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def generate_readme_md(

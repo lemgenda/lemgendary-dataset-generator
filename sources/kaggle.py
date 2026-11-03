@@ -2,29 +2,17 @@
 LemGendary Kaggle Dataset Manager CLI
 =====================================
 Unified interface for uploading, downloading, extracting, and monitoring Kaggle manifolds.
+
+Run from the project root as ``python -m sources.kaggle``. Running it as a
+module keeps ``sources/`` off ``sys.path``, so this file cannot shadow the
+PyPI ``kaggle`` package.
 """
-# 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
-# (common_sync, archive_manager, etc.) resolve when this file is invoked
-# directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
-# Also prune the script directory (sources/) from sys.path to prevent sources/kaggle.py
-# from shadowing the installed PyPI 'kaggle' package.
-import os
-import sys
-
-_script_dir = os.path.dirname(os.path.abspath(__file__))
-_project_root = os.path.dirname(_script_dir)
-sys.path = [p for p in sys.path if os.path.abspath(p) != _script_dir]
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 import yaml
-
-logger = logging.getLogger(__name__)
-logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 from core.common_sync import (
     setup_kaggle_auth,
@@ -32,6 +20,9 @@ from core.common_sync import (
     perform_dataset_upload,
     perform_dataset_download,
 )
+
+logger = logging.getLogger(__name__)
+logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 
 def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, Path, str, str]:

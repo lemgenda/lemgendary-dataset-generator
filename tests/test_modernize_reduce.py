@@ -145,7 +145,7 @@ class TestModernizeRoute(unittest.TestCase):
     def test_gui_payload_fields_reach_the_command(self) -> None:
         req = ModernizeRunRequest(dataset="alpha", dry_run=True, force=True, workers=3)
         cmd = build_modernize_command(req)
-        self.assertEqual(cmd[1], "tools/modernization_queue.py")
+        self.assertEqual(cmd[1:3], ["-m", "tools.modernization_queue"])
         self.assertEqual(cmd.count("--datasets"), 1)
         self.assertEqual(cmd[cmd.index("--datasets") + 1], "alpha")
         self.assertIn("--dry-run", cmd)

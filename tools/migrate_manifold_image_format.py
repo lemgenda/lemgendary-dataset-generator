@@ -20,8 +20,8 @@ unaffected. The registry's `img_format` column records the actual byte
 format.
 
 Usage:
-    python migrate_manifold_image_format.py --manifold <path>
-    python migrate_manifold_image_format.py --manifold <path> --dry-run
+    python -m tools.migrate_manifold_image_format --manifold <path>
+    python -m tools.migrate_manifold_image_format --manifold <path> --dry-run
 """
 
 from __future__ import annotations
@@ -34,10 +34,6 @@ from pathlib import Path
 from typing import Iterable, Iterator, Literal
 
 from PIL import Image
-
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 from core.config_schema import ImageFormatPolicy
 from formats.transcode import ImageTranscoder

@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.30-STABLE` |
+| **Version** | `v16.9.31-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,19 @@
 ---
 
 ## Changelog
+
+### v16.9.31 - Scripts Run as Modules, `sys.path` Edits Removed, Import-Position Checks Re-Enabled
+
+- **`.pylintrc` Disables Two Fewer Checks**: `wrong-import-position` (83 findings) and `wrong-import-order` (1 finding) are enabled again and every finding was fixed in code.
+- **Entry Points Run as Modules**:
+  - 33 modules no longer insert the project root into `sys.path` before their imports. Scripts are run as `python -m <package>.<module>` from the project root, or with the project root on `PYTHONPATH`.
+  - The API job routes (`compile`, `degrade`, Kaggle download/upload/sync/metadata, `modernize`, `reduce`) and the GUI compile routes now start `python -m core.manifold_compile`, `python -m sources.kaggle`, `python -m tools.manifold_sync` and so on, with the project root as working directory.
+  - `lemgendary_datasets_hub.ps1` sets `PYTHONPATH` to its own folder and starts every fetcher, the compiler, the reducer, the modernization queue and the modernizer with `-m`. Running `sources.kaggle` as a module also removes the need to drop `sources/` from `sys.path` to stop it shadowing the PyPI `kaggle` package.
+  - `sources/__init__.py` no longer imports all four fetchers, so `python -m sources.gh` does not load the Hugging Face, Google Drive and Kaggle clients.
+  - Usage strings in module docstrings and the README's direct-script section now show the `-m` form. The README section had also listed files at paths that no longer exist (`manifold_compile.py`, `migrate_registry.py` and others at the repo root).
+- **Single torch Import Site**: `runtime.environment.load_torch()` applies the runtime environment and then returns torch. `core/compiler_core.py` and `core/manifold_compile.py` take torch from it, so all of `compiler_core`'s imports now sit at the top of the module.
+- **Bug Fix**: `core/manifold_compile.py` imported torch at the top, before `compiler_core` had run `bootstrap_runtime()`. When the compiler was the entry point, torch therefore loaded before `TORCH_CUDA_ARCH_LIST`, `CUDA_FORCE_PTX_JIT` and `PYTORCH_CUDA_ALLOC_CONF` were set.
+- **Dead Code**: the unused `MANIFOLD_SYNC` path constant in `tools/modernize_manifold.py` was removed, along with seven imports that were only needed for the removed `sys.path` lines.
 
 ### v16.9.30 - Module Globals Replaced by State Objects, `invalid-name` and `global-statement` Re-Enabled
 
@@ -744,34 +757,33 @@ The Dataset Compiler Suite exposes a high-throughput REST and WebSocket service 
 
 ### Direct Script Access (Advanced)
 
-Every underlying script remains invocable directly for automation and pipelines:
+Every underlying script remains invocable directly for automation and pipelines. Run them as modules from the project root (or with the project root on `PYTHONPATH`); the scripts no longer edit `sys.path` themselves:
 
 ```bash
 # Core compiler
-python manifold_compile.py --model nima_aesthetic --max_gb 50 --also-format mds
-python manifold_reduce.py --reduce --max_gb 10
+python -m core.manifold_compile --model nima_aesthetic --max_gb 50 --also-format mds
+python -m tools.manifold_reduce --reduce --max_gb 10
 
 # Retroactive migrations
-python migrate_manifold_image_format.py --manifold ../LemGendaryDatasets/LemGendizedNimaTechnical --image-format webp
-python migrate_manifold_format.py --manifold ../LemGendaryDatasets/LemGendizedNimaTechnical --to mds --verify
-python migrate_registry.py --dry-run
+python -m tools.migrate_manifold_image_format --manifold ../LemGendaryDatasets/LemGendizedNimaTechnical --image-format webp
+python -m tools.migrate_manifold_format --manifold ../LemGendaryDatasets/LemGendizedNimaTechnical --to mds --verify
 
 # Smart generation runner
-python generate_cli.py --manifold ../LemGendaryDatasets/LemGendizedNimaAesthetic --kind label --strategy blip_caption
+python -m tools.generate_cli --manifold ../LemGendaryDatasets/LemGendizedNimaAesthetic --kind label --strategy blip_caption
 
 # Kaggle sync (underlying)
-python manifold_sync.py --action sync --model nima_aesthetic
-python manifold_sync.py --action get --url username/slug
-python sources/kaggle.py --action upload --repo_id username/dataset --output_dir <path>
-python sources/kaggle.py --action download --repo_id username/dataset --output_dir <path>
-python sources/kaggle.py --action status --repo_id username/dataset
+python -m tools.manifold_sync --action sync --model nima_aesthetic
+python -m tools.manifold_sync --action get --url username/slug
+python -m sources.kaggle --action upload --repo_id username/dataset --output_dir <path>
+python -m sources.kaggle --action download --repo_id username/dataset --output_dir <path>
+python -m sources.kaggle --action status --repo_id username/dataset
 
 # Documentation
-python doc_generator.py --all
-python regenerate_manifolds_md.py
+python -m core.doc_generator --all
+python -m tools.regenerate_manifolds_md
 
 # Config schema validation
-python config_schema.py
+python -m core.config_schema
 ```
 
 ### Hardware Resilience

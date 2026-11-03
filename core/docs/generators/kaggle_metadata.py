@@ -17,12 +17,10 @@ import sys
 from typing import Any
 from PIL import Image
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
 from core.docs.context import ManifoldContext, resolve_manifold_context
 from core.docs.metadata import FOREX_COLUMN_FIELDS
+
+_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 logger = logging.getLogger(__name__)
 

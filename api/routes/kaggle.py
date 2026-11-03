@@ -146,7 +146,7 @@ async def download_kaggle_dataset(req: KaggleDownloadRequest) -> JobResponse:
     cmd = [
         venv_python(),
         "-u",
-        "sources/kaggle.py",
+        "-m", "sources.kaggle",
         "--action", "download",
         "--repo_id", clean_id,
         "--output_dir", str(target_dir),
@@ -210,7 +210,7 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
     cmd = [
         venv_python(),
         "-u",
-        "sources/kaggle.py",
+        "-m", "sources.kaggle",
         "--action", "upload",
         "--repo_id", clean_id,
         "--output_dir", str(manifold_dir),
@@ -235,9 +235,8 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
 
 @router.post("/sync", response_model=JobResponse)
 async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
-    sync_script = "tools/manifold_sync.py" if (Path(__file__).resolve().parent.parent.parent / "tools" / "manifold_sync.py").exists() else "manifold_sync.py"
     action = "get" if req.pull and not req.push else "sync"
-    cmd = [venv_python(), "-u", sync_script, "--action", action]
+    cmd = [venv_python(), "-u", "-m", "tools.manifold_sync", "--action", action]
     if req.manifold:
         cmd.extend(["--model", req.manifold])
 
@@ -269,7 +268,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         cmd = [
             venv_python(),
             "-u",
-            "sources/kaggle.py",
+            "-m", "sources.kaggle",
             "--action", "metadata",
             "--repo_id", "lemtreursi/placeholder",   # required arg, overridden by --all-datasets
             "--all-datasets",
@@ -327,7 +326,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
     cmd = [
         venv_python(),
         "-u",
-        "sources/kaggle.py",
+        "-m", "sources.kaggle",
         "--action", "metadata",
         "--repo_id", clean_id,
         "--output_dir", str(manifold_dir),

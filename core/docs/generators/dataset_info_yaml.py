@@ -15,12 +15,10 @@ import sys
 from typing import Any
 import yaml
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
 from core.docs.context import ManifoldContext, resolve_manifold_context
 from core.docs.scanner import scan_forex_manifold
+
+_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 logger = logging.getLogger(__name__)
 

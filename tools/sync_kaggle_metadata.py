@@ -15,11 +15,9 @@ import logging
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
 from core.common_sync import is_kaggle_large_manifold, push_kaggle_dataset_metadata
+
+_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 
 logger = logging.getLogger(__name__)
 

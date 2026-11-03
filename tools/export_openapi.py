@@ -2,8 +2,8 @@
 
 Usage (from the project root)::
 
-    python tools/export_openapi.py            # rewrite openapi.json
-    python tools/export_openapi.py --check    # exit 1 if openapi.json drifted
+    python -m tools.export_openapi          # rewrite openapi.json
+    python -m tools.export_openapi --check  # exit 1 if openapi.json drifted
 
 The output is deterministic: the app's own key order, 2-space indent, UTF-8,
 LF line endings and a trailing newline. ``tests/test_openapi_contract.py``
@@ -29,8 +29,6 @@ def render_openapi(schema: dict[str, Any]) -> str:
 
 def build_schema() -> dict[str, Any]:
     """Build the OpenAPI schema from the live app object."""
-    if str(PROJECT_ROOT) not in sys.path:
-        sys.path.insert(0, str(PROJECT_ROOT))
     from api.server import create_app
 
     return create_app().openapi()
@@ -45,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         current = OPENAPI_FILE.read_text(encoding="utf-8") if OPENAPI_FILE.exists() else ""
         if current != rendered:
-            print("openapi.json is out of date; run: python tools/export_openapi.py", file=sys.stderr)
+            print("openapi.json is out of date; run: python -m tools.export_openapi", file=sys.stderr)
             return 1
         print("openapi.json is up to date.")
         return 0

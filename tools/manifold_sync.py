@@ -4,9 +4,6 @@ import argparse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 # Load dataset registry directly from YAML
 OUT_PARENT = (ROOT.parent / "LemGendaryDatasets").resolve()
 DATASETS_META = {}

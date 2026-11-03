@@ -23,10 +23,12 @@ effect beyond the first invocation.
 from __future__ import annotations
 
 import functools
+import importlib
 import logging
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +158,7 @@ def _apply_torch_patches() -> None:
     torch is not importable.
     """
     try:
-        import torch
+        torch = _import_torch()
     except ImportError as exc:
         logger.debug("torch not importable; skipping CUDA patches: %s", exc)
         return
@@ -200,10 +202,27 @@ def bootstrap_runtime() -> None:
     _apply_torch_patches()
 
 
+def _import_torch() -> ModuleType:
+    """Import torch. The only import site of torch in the compiler."""
+    return importlib.import_module("torch")
+
+
+def load_torch() -> ModuleType:
+    """Return the torch module, applying the runtime environment before its first import.
+
+    torch reads TORCH_CUDA_ARCH_LIST, CUDA_FORCE_PTX_JIT and
+    PYTORCH_CUDA_ALLOC_CONF when it loads, so every module that needs torch
+    gets it from here instead of importing it directly. Raises ImportError
+    if torch is not installed.
+    """
+    bootstrap_runtime()
+    return _import_torch()
+
+
 def get_device_info() -> str:
     """Return a human-readable description of the active compute device."""
     try:
-        import torch
+        torch = load_torch()
         if torch.cuda.is_available():
             return f"CUDA ({torch.cuda.get_device_name(0)})"
     except (ImportError, OSError, RuntimeError, AssertionError) as exc:

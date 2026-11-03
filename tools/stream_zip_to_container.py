@@ -26,10 +26,6 @@ import yaml
 from formats.mds import LOOSE_MDS_COLUMNS
 from utils.progress import create_progress_bar
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
 logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
