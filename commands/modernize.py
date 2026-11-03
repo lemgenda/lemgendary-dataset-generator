@@ -14,10 +14,8 @@ from commands.common import (
     console,
 )
 from commands.options import flat_values, options_command
-from services import (
-    DocService,
-    MigrationService,
-)
+from services.doc_service import DocService
+from services.migration_service import MigrationService
 from tools.modernization_queue import load_queue_manifest
 
 logger = logging.getLogger(__name__)

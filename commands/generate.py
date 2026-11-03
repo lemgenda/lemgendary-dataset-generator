@@ -23,10 +23,8 @@ from commands.options import (
     require_target,
 )
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
-from services import (
-    run_degrade,
-    run_generation,
-)
+from services.degrade_service import run_degrade
+from services.generation_service import run_generation
 
 logger = logging.getLogger(__name__)
 

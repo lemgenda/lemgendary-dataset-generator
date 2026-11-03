@@ -13,9 +13,10 @@ from api.jobs import job_manager, submit_job
 from api.models import JobResponse, JobType
 from api.routes.datasets import _resolve_output_root
 from core import paths
-from core.cli_args import venv_python
 from services.doc_service import DocService
-from tools.modernization_queue import build_queue_args, load_queue_manifest
+from services.invocation import ServiceInvocation
+from services.migration_service import queue_invocation, reduce_invocation
+from tools.modernization_queue import load_queue_manifest
 from tools.modernize.queue_items import (
     API_LABEL_STYLE,
     ManifoldQueueItem,
@@ -97,9 +98,9 @@ class ManifoldReduceRequest(BaseModel):
     dry_run: bool = Field(False, description="Report the plan only: nothing is written")
 
 
-def build_modernize_command(req: ModernizeRunRequest) -> list[str]:
-    """Build the modernization queue command; shares its argument contract with the CLI."""
-    return [venv_python(), "-m", "tools.modernization_queue"] + build_queue_args(
+def build_modernize_command(req: ModernizeRunRequest) -> ServiceInvocation:
+    """The modernization queue job; shares its argument contract with the CLI."""
+    return queue_invocation(
         datasets=req.target_datasets(),
         workers=req.workers or 12,
         mds_shard_mb=req.mds_shard_mb or 512,
@@ -117,25 +118,22 @@ def scale_to_fraction(scale: float | None) -> float | None:
     return scale if scale <= 1 else 1.0 / scale
 
 
-def build_reduce_command(req: ManifoldReduceRequest) -> list[str]:
-    """Build a non-interactive reduce command using only arguments the tool supports."""
+def build_reduce_command(req: ManifoldReduceRequest) -> ServiceInvocation:
+    """A non-interactive reduce job (``yes``) with the options the reduce service takes."""
     target = req.manifold or req.dataset_key
     if not target:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A manifold (`manifold` or `dataset_key`) is required for reduction.",
         )
-    cmd = [venv_python(), "-m", "tools.manifold_reduce", "--reduce", "--yes", "--dataset", target]
-    fraction = scale_to_fraction(req.scale)
-    if fraction is not None:
-        cmd.extend(["--fraction", str(fraction)])
-    if req.max_gb is not None:
-        cmd.extend(["--max-gb", str(req.max_gb)])
-    if req.suffix:
-        cmd.extend(["--suffix", req.suffix])
-    if req.dry_run:
-        cmd.append("--dry-run")
-    return cmd
+    return reduce_invocation(
+        dataset=target,
+        fraction=scale_to_fraction(req.scale),
+        max_gb=req.max_gb,
+        suffix=req.suffix or None,
+        yes=True,
+        dry_run=req.dry_run,
+    )
 
 
 @router.get("/queue", response_model=list[QueueItemResponse])

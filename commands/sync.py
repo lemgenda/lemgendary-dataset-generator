@@ -9,9 +9,7 @@ import typer
 from commands.common import (
     console,
 )
-from services import (
-    SyncService,
-)
+from services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 sync_app = typer.Typer(help="Kaggle dataset sync (push / pull / metadata).")

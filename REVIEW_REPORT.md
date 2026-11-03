@@ -891,6 +891,24 @@ Also closed in step L10:
 - Ruff 259 to 0 (`da9871c`, v16.9.53) and pylint 0 findings with no
   disabled checks (`135aedd`, v16.9.54).
 
+Closed in step L9 (v16.9.57):
+
+- **CLI and API share the service layer** (Weaknesses, first item). API
+  jobs no longer build argv for repository scripts. Each long-running job
+  runs a service module as its own process (`python -m
+  services.compiler_service`, `degrade_service`, `llm_service`,
+  `migration_service queue|reduce`, `sync_service kaggle|manifold`). The
+  arguments come from the option table that the module's `main` parses
+  (`services/invocation.py`), and its `main` calls the same function the CLI
+  calls in-process. `api/jobs.py` picks the interpreter and is the only
+  place in the API that spawns a process. The exception is
+  `POST /jobs/generic`, which runs the command it is given. Short
+  operations (the synchronous LLM compile, validation, registry and
+  catalog reads) run in-process. `cli.py llm compile` is no longer started
+  as a script.
+- The hub (`lemgendary_datasets_hub.ps1`) is still a separate orchestration
+  path, and the `lem-env` shell-out is left for step L7.
+
 Left for step L7 (cross-repository duplication):
 
 - Port 8100, defined in this repo (`api/server.py`, `commands/common.py`),

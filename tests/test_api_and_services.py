@@ -16,8 +16,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from json import dumps, loads
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import urlsplit
 
 import yaml
@@ -305,26 +306,41 @@ class TestAuditManifold(unittest.TestCase):
 class TestAllServicesOrchestration(unittest.TestCase):
     """Test all 7 service facade layers for in-process dispatch."""
 
+    @staticmethod
+    def _fake_manifold_compile(**process: Any) -> SimpleNamespace:
+        """A stand-in for ``core.manifold_compile`` (whose import needs torch and sklearn)."""
+        return SimpleNamespace(
+            parse_compile_args=MagicMock(return_value=SimpleNamespace(cleanup=False)),
+            process_dataset=MagicMock(**process),
+            finalize_compile=MagicMock(return_value=0),
+        )
+
     def test_compiler_service_dry_dispatch(self) -> None:
-        """run_compile passes its options to process_dataset."""
-        with patch("core.manifold_compile.process_dataset") as mock_proc:
-            mock_proc.return_value = None
+        """run_compile parses its options as compile arguments and finalizes the outcomes."""
+        fake = self._fake_manifold_compile(return_value=["outcome"])
+        with patch("services.compiler_service.load_manifold_compile", return_value=fake):
             ret = run_compile(
                 preset="restoration-hardlinked",
                 no_vetting=True,
                 no_labeling=True,
                 no_hash=True,
             )
-            self.assertEqual(ret, 0)
-            self.assertTrue(mock_proc.called)
+        self.assertEqual(ret, 0)
+        fake.parse_compile_args.assert_called_once_with(
+            ["--preset", "restoration-hardlinked", "--no-vetting", "--no-labeling", "--no-hash"]
+        )
+        fake.process_dataset.assert_called_once()
+        fake.finalize_compile.assert_called_once_with(["outcome"], purge_loose=False)
 
     def test_compiler_service_handles_error(self) -> None:
         """run_compile returns 1 when process_dataset raises."""
-        with patch("core.manifold_compile.process_dataset", side_effect=RuntimeError("Test error")):
+        fake = self._fake_manifold_compile(side_effect=RuntimeError("Test error"))
+        with patch("services.compiler_service.load_manifold_compile", return_value=fake):
             ret = run_compile(
                 preset="restoration-hardlinked",
             )
-            self.assertEqual(ret, 1)
+        self.assertEqual(ret, 1)
+        fake.finalize_compile.assert_not_called()
 
     def test_migration_service_transcode_dispatch(self) -> None:
         """MigrationService.transcode_images calls the image-format migration."""

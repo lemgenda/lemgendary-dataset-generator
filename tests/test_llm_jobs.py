@@ -100,8 +100,10 @@ class TestAsyncLLMCompileJob(unittest.TestCase):
         self.assertEqual(job.job_type, JobType.LLM)
         requested = manager.requested[0]
         self.assertEqual(requested["job_type"], JobType.LLM)
-        self.assertIn("--no-server", requested["command"])
-        self.assertEqual(requested["command"][1:4], ["cli.py", "llm", "compile"])
+        self.assertEqual(
+            requested["command"][1:],
+            ["-u", "-m", "services.llm_service", "--dataset", "test_llm"],
+        )
         self.assertIn("stub compile ok", manager.get_log_content(job.id))
 
     def test_async_job_failure_is_reported_as_failed(self) -> None:
@@ -117,13 +119,14 @@ class TestAsyncLLMCompileJob(unittest.TestCase):
         app.include_router(llm_routes.router, prefix="/api")
         compiler = MagicMock()
         compiler.return_value.compile_manifold.return_value = {"total_records": 2}
-        with patch.object(llm_routes, "BaseLLMCompiler", compiler), TestClient(app) as client:
+        target = "tools.llm_helper.base_compiler.BaseLLMCompiler"
+        with patch(target, compiler), TestClient(app) as client:
             ok = client.post("/api/llm/compile", json={"dataset_key": "test_llm"})
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.json()["details"], {"total_records": 2})
 
         compiler.return_value.compile_manifold.side_effect = KeyError("test_llm")
-        with patch.object(llm_routes, "BaseLLMCompiler", compiler), TestClient(app) as client, \
+        with patch(target, compiler), TestClient(app) as client, \
                 self.assertLogs("api.routes.llm", level="ERROR") as logs:
             bad = client.post("/api/llm/compile", json={"dataset_key": "test_llm"})
         self.assertEqual(bad.status_code, 400)

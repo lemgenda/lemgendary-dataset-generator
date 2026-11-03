@@ -9,7 +9,6 @@ from typing import Annotated
 
 import requests
 import typer
-import yaml
 
 from api.auth import get_or_create_token
 from commands.common import (
@@ -20,7 +19,7 @@ from commands.common import (
     _wait_for_sidecar_job,
     console,
 )
-from tools.llm_helper import base_compiler
+from services.llm_service import LLM_COMPILE_ERRORS, compile_llm_manifold, summary_lines
 from tools.llm_helper.quality_validator import QualityValidator
 
 logger = logging.getLogger(__name__)
@@ -72,32 +71,17 @@ def llm_compile(
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Executing in-process...[/yellow]")
 
+    console.print(f"[bold cyan]Compiling LLM manifold '{dataset}'...[/bold cyan]")
     try:
-        compiler = base_compiler.BaseLLMCompiler()
-        console.print(f"[bold cyan]Compiling LLM manifold '{dataset}'...[/bold cyan]")
-        res = compiler.compile_manifold(dataset)
-        console.print(f"[bold green]Successfully compiled {dataset}:[/bold green]")
-        console.print(f"  Total records: {res.get('total_records')}")
-        console.print(
-            f"  Train shard:   {res.get('train_path')} ({res.get('train_count')} samples)"
-        )
-        console.print(f"  Val shard:     {res.get('val_path')} ({res.get('val_count')} samples)")
-        return
-    except typer.Exit:
-        raise
-    except (
-        KeyError,
-        ValueError,
-        NotImplementedError,
-        OSError,
-        ImportError,
-        RuntimeError,
-        yaml.YAMLError,
-    ) as exc:
+        res = compile_llm_manifold(dataset)
+    except LLM_COMPILE_ERRORS as exc:
         logger.error("LLM compilation failed for dataset %s: %s", dataset, exc)
         console.print(f"[bold red]LLM compilation error:[/bold red] {exc}")
         console.print_exception()
         raise typer.Exit(1) from exc
+    console.print(f"[bold green]Successfully compiled {dataset}:[/bold green]")
+    for line in summary_lines(res):
+        console.print(line)
 
 
 @llm_app.command("validate")

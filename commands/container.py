@@ -14,9 +14,7 @@ from commands.options import (
     options_command,
     require_target,
 )
-from services import (
-    MigrationService,
-)
+from services.migration_service import MigrationService
 
 logger = logging.getLogger(__name__)
 format_app = typer.Typer(help="Container-format writes (MDS / LitData / WebDataset / Parquet).")

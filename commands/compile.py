@@ -23,11 +23,9 @@ from commands.options import (
     require_target,
 )
 from core.cli_args import PROJECT_NAME, __version__
-from services import (
-    MigrationService,
-    audit_manifold,
-    run_compile,
-)
+from services.audit_service import audit_manifold
+from services.compiler_service import run_compile
+from services.migration_service import MigrationService
 
 logger = logging.getLogger(__name__)
 

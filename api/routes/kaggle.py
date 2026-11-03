@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from pathlib import Path
@@ -13,7 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.dataset_stats import as_count, read_yaml_mapping
-from api.jobs import job_manager
+from api.jobs import job_manager, submit_job
 from api.models import (
     JobResponse,
     JobType,
@@ -23,9 +22,10 @@ from api.models import (
 )
 from api.routes.datasets import _resolve_output_root
 from core import paths
-from core.cli_args import venv_python
 from core.common_sync import is_kaggle_large_manifold
 from core.kaggle_identity import DEFAULT_KAGGLE_OWNER
+from services.invocation import ServiceInvocation
+from services.sync_service import kaggle_invocation, manifold_sync_invocation
 
 logger = logging.getLogger("lemgendary.api.routes.kaggle")
 router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
@@ -89,27 +89,9 @@ def _registry_kaggle_ref(manifold: str, manifold_dir: Path, match_name: bool) ->
     return None
 
 
-def _start_sync_job(cmd: list[str], parameters: dict[str, Any]) -> JobResponse:
-    """Create and start a SYNC job for ``cmd``."""
-    job = job_manager.create_job(
-        job_type=JobType.SYNC,
-        command=cmd,
-        parameters=parameters,
-    )
-    job_manager.start_job(job.id, asyncio.get_running_loop())
-    return job
-
-
-def _sources_kaggle_cmd(action: str, repo_id: str, output_dir: Path) -> list[str]:
-    """``python -m sources.kaggle`` command line for one action."""
-    return [
-        venv_python(),
-        "-u",
-        "-m", "sources.kaggle",
-        "--action", action,
-        "--repo_id", repo_id,
-        "--output_dir", str(output_dir),
-    ]
+def _start_sync_job(work: ServiceInvocation, parameters: dict[str, Any]) -> JobResponse:
+    """Create and start a SYNC job running ``work``."""
+    return submit_job(job_manager, JobType.SYNC, work, parameters)
 
 
 def _local_sample_count(local_path: Path) -> int:
@@ -214,7 +196,7 @@ async def download_kaggle_dataset(req: KaggleDownloadRequest) -> JobResponse:
 
     target_dir = root / target_name
     return _start_sync_job(
-        _sources_kaggle_cmd("download", clean_id, target_dir),
+        kaggle_invocation(action="download", repo_id=clean_id, output_dir=str(target_dir)),
         {
             "action": "download",
             "repo_id": clean_id,
@@ -242,12 +224,11 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
     )
     clean_id = _clean_kaggle_ref(repo_id)
 
-    cmd = _sources_kaggle_cmd("upload", clean_id, manifold_dir)
-    if req.no_wait:
-        cmd.append("--no-wait")
-
+    work = kaggle_invocation(
+        action="upload", repo_id=clean_id, output_dir=str(manifold_dir), no_wait=req.no_wait
+    )
     return _start_sync_job(
-        cmd,
+        work,
         {
             "action": "upload",
             "repo_id": clean_id,
@@ -259,12 +240,11 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
 
 @router.post("/sync", response_model=JobResponse)
 async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
-    """Start a Kaggle push (sync) or pull (get) job through tools.manifold_sync."""
+    """Start a Kaggle push (sync) or pull (get) job through SyncService.sync_manifold."""
     action = "get" if req.pull and not req.push else "sync"
-    cmd = [venv_python(), "-u", "-m", "tools.manifold_sync", "--action", action]
-    if req.manifold:
-        cmd.extend(["--model", req.manifold])
-    return _start_sync_job(cmd, req.model_dump())
+    return _start_sync_job(
+        manifold_sync_invocation(action=action, model=req.manifold), req.model_dump()
+    )
 
 
 class KaggleMetadataRequest(BaseModel):
@@ -283,10 +263,14 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
     root = _resolve_output_root()
 
     if req.all_datasets:
-        # --repo_id is a required arg, overridden by --all-datasets
-        cmd = _sources_kaggle_cmd("metadata", f"{DEFAULT_KAGGLE_OWNER}/placeholder", root)
-        cmd.insert(cmd.index("--output_dir"), "--all-datasets")
-        return _start_sync_job(cmd, {"action": "metadata", "all_datasets": True})
+        # repo_id is required by the request type and ignored with all_datasets
+        work = kaggle_invocation(
+            action="metadata",
+            repo_id=f"{DEFAULT_KAGGLE_OWNER}/placeholder",
+            output_dir=str(root),
+            all_datasets=True,
+        )
+        return _start_sync_job(work, {"action": "metadata", "all_datasets": True})
 
     if not req.manifold:
         raise HTTPException(
@@ -307,6 +291,6 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         )
 
     return _start_sync_job(
-        _sources_kaggle_cmd("metadata", clean_id, manifold_dir),
+        kaggle_invocation(action="metadata", repo_id=clean_id, output_dir=str(manifold_dir)),
         {"action": "metadata", "repo_id": clean_id, "output_dir": str(manifold_dir)},
     )

@@ -361,21 +361,48 @@ def _resolve_targets(
     return model, repo_id
 
 
+def run_sync_action(
+    action: str, model: str | None = None, repo_id: str | None = None, no_wait: bool = False
+) -> int:
+    """Authenticate and run a ``sync`` (push) or ``get`` (pull) of one manifold.
+
+    A missing manifold or Kaggle ID is resolved from the registry (prompting
+    when it cannot be). Returns 1 when authentication fails, else 0;
+    ``action_sync`` exits with 1 when the upload fails.
+    """
+    model, repo_id = _resolve_targets(action, model, repo_id)
+    return _run_resolved(action, model, repo_id, no_wait=no_wait)
+
+
+def _run_resolved(
+    action: str,
+    model: str | None,
+    repo_id: str | None,
+    *,
+    credentials: tuple[str | None, str | None] = (None, None),
+    no_wait: bool = False,
+) -> int:
+    default_user = repo_id.split("/")[0] if repo_id and "/" in repo_id else None
+    if not setup_auth(credentials[0], credentials[1], default_user):
+        return 1
+    if action == "sync":
+        action_sync(model, repo_id, no_wait=no_wait)
+    elif action == "get":
+        action_get(repo_id, model)
+    return 0
+
+
 def main():
     """Parse the CLI arguments and run the sync or get action."""
     args = _build_parser().parse_args()
     action = _resolve_action(args)
     model, repo_id = _resolve_targets(action, args.model, args.url)
+    code = _run_resolved(
+        action, model, repo_id, credentials=(args.user, args.token), no_wait=args.no_wait
+    )
+    if code != 0:
+        sys.exit(code)
 
-    # Setup Auth
-    default_user = repo_id.split("/")[0] if repo_id and "/" in repo_id else None
-    if not setup_auth(args.user, args.token, default_user):
-        sys.exit(1)
-
-    if action == "sync":
-        action_sync(model, repo_id, no_wait=args.no_wait)
-    elif action == "get":
-        action_get(repo_id, model)
 
 if __name__ == "__main__":
     main()

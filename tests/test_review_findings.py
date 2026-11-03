@@ -43,15 +43,19 @@ class TestCompileOptionsForwarded(unittest.TestCase):
 
     def test_preset_and_shard_ext_reach_the_compiler(self) -> None:
         """The job argv carries --preset and --shard-ext."""
-        argv = _compile_command(CompileJobRequest(
+        invocation = _compile_command(CompileJobRequest(
             model="nima_aesthetic", preset="quality-vision", shard_ext="tar",
         ))
+        self.assertEqual(invocation.module, "services.compiler_service")
+        argv = invocation.args
         self.assertIn("--preset", argv)
         self.assertEqual(argv[argv.index("--shard-ext") + 1], "tar")
 
     def test_unset_image_options_do_not_override_the_preset(self) -> None:
         """No encoding flag is sent unless the caller set it."""
-        argv = _compile_command(CompileJobRequest(model="nima_aesthetic", preset="quality-vision"))
+        argv = _compile_command(
+            CompileJobRequest(model="nima_aesthetic", preset="quality-vision")
+        ).args
         for flag in ("--image-format", "--image-quality", "--target-quality", "--mask-format"):
             self.assertNotIn(flag, argv)
 

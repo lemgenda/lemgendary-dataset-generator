@@ -1,6 +1,6 @@
 """Request-to-job translation for the desktop GUI compile endpoints.
 
-Builds the ``core.manifold_compile`` command lines for ``/gui/quick-compile`` and
+Builds the ``services.compiler_service`` invocations for ``/gui/quick-compile`` and
 ``/gui/custom-compile``, normalises custom-manifold source URLs into registry
 refs and validates / persists the custom manifold, raising the HTTP errors the
 routes return.
@@ -17,7 +17,8 @@ from pydantic import ValidationError
 
 from api.models import CustomCompileRequest, QuickCompileRequest
 from core import presets, unified_registry
-from core.cli_args import venv_python
+from services.compiler_service import compile_invocation
+from services.invocation import ServiceInvocation
 
 __all__ = [
     "CustomManifoldNames",
@@ -43,18 +44,11 @@ _REPO_URL_RULES: tuple[tuple[str, str, bool], ...] = (
 )
 
 
-def _compile_command(model: str, preset: str) -> list[str]:
-    return [venv_python(), "-m", "core.manifold_compile", "--model", model, "--preset", preset]
-
-
-def quick_compile_command(req: QuickCompileRequest) -> list[str]:
-    """``core.manifold_compile`` argv for a preset-driven quick compile."""
-    cmd = _compile_command(req.model, req.preset)
-    if req.max_gb is not None:
-        cmd.extend(["--max_gb", str(req.max_gb)])
-    if req.workers is not None:
-        cmd.extend(["--workers", str(req.workers)])
-    return cmd
+def quick_compile_command(req: QuickCompileRequest) -> ServiceInvocation:
+    """``services.compiler_service`` invocation for a preset-driven quick compile."""
+    return compile_invocation(
+        {"model": req.model, "preset": req.preset, "max_gb": req.max_gb, "workers": req.workers}
+    )
 
 
 def resolve_custom_preset(requested: str | None) -> str:
@@ -151,12 +145,13 @@ def build_custom_entry(
     }
 
 
-def custom_compile_command(model_key: str, preset_name: str, purge_loose_images: bool) -> list[str]:
-    """``core.manifold_compile`` argv for a freshly registered custom manifold."""
-    cmd = _compile_command(model_key, preset_name)
-    if purge_loose_images:
-        cmd.append("--cleanup")
-    return cmd
+def custom_compile_command(
+    model_key: str, preset_name: str, purge_loose_images: bool
+) -> ServiceInvocation:
+    """``services.compiler_service`` invocation for a freshly registered custom manifold."""
+    return compile_invocation(
+        {"model": model_key, "preset": preset_name, "cleanup": purge_loose_images}
+    )
 
 
 def custom_compile_parameters(

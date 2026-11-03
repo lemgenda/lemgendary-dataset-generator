@@ -6,11 +6,18 @@ image format transcoding, and manifold name modernization.
 
 Every method keeps its keyword-argument call style; the options are gathered
 into small frozen dataclasses (one per concern) before dispatch.
+
+The CLI calls :class:`MigrationService` in-process. API jobs run the
+modernization queue and reductions as ``python -m services.migration_service
+queue|reduce ...`` (see :func:`queue_invocation`, :func:`reduce_invocation`),
+which :func:`main` dispatches to the same methods.
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
+import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -28,6 +35,15 @@ from tools import (
 )
 
 from ._errors import SERVICE_ERRORS
+from .invocation import (
+    Flag,
+    FlagTable,
+    ServiceInvocation,
+    add_flags,
+    dispatch,
+    flag_args,
+    parsed_options,
+)
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -162,6 +178,21 @@ class ReduceOptions:
         }
 
 
+REDUCE_FLAGS: FlagTable = (
+    Flag("dataset", "--dataset", "text"),
+    Flag("fraction", "--fraction", "float"),
+    Flag("max_gb", "--max-gb", "float"),
+    Flag("suffix", "--suffix", "text"),
+    Flag("yes", "--yes", "switch"),
+    Flag("dry_run", "--dry-run", "switch"),
+)
+
+
+def _run_queue_args(args: list[str]) -> int:
+    """Run the modernization queue with ready-built queue arguments."""
+    return _guarded("Modernization queue", lambda: modernization_queue.main(args))
+
+
 class MigrationService:
     """Encapsulates manifold transformation and format migration workflows."""
 
@@ -233,10 +264,43 @@ class MigrationService:
         options workers, push_kaggle, dry_run, force and purge_source.
         """
 
-        def _run() -> int:
-            args = modernization_queue.build_queue_args(
-                datasets=dataset.split(",") if dataset else None, **options
-            )
-            return modernization_queue.main(args)
+        args = modernization_queue.build_queue_args(
+            datasets=dataset.split(",") if dataset else None, **options
+        )
+        return _run_queue_args(args)
 
-        return _guarded("Modernization queue", _run)
+
+def queue_invocation(datasets: list[str] | None = None, **options: Any) -> ServiceInvocation:
+    """The isolated-process form of a modernization queue run.
+
+    ``options`` are those of :meth:`MigrationService.run_modernization_queue`.
+    """
+    args = modernization_queue.build_queue_args(datasets=datasets, **options)
+    return ServiceInvocation(__name__, ("queue", *args))
+
+
+def reduce_invocation(**options: Any) -> ServiceInvocation:
+    """The isolated-process form of ``MigrationService.reduce_manifolds(**options)``."""
+    opts = _options(options, ReduceOptions)
+    return ServiceInvocation(__name__, ("reduce", *flag_args(asdict(opts), REDUCE_FLAGS)))
+
+
+def _reduce_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser()
+    ns = add_flags(parser, REDUCE_FLAGS).parse_args(argv)
+    return MigrationService.reduce_manifolds(**parsed_options(ns, REDUCE_FLAGS))
+
+
+_SUBCOMMANDS: dict[str, Callable[[list[str]], int]] = {
+    "queue": _run_queue_args,
+    "reduce": _reduce_main,
+}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Process entry point: ``python -m services.migration_service queue|reduce [args]``."""
+    return dispatch(_SUBCOMMANDS, argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

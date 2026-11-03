@@ -1,4 +1,9 @@
-"""Persistent SQLite-backed job queue and asynchronous process executor."""
+"""Persistent SQLite-backed job queue and asynchronous process executor.
+
+The job manager is the one place in the API that spawns processes. Routes
+describe service work as a :class:`services.invocation.ServiceInvocation`;
+:func:`job_command` turns it into the argv of this project's interpreter.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +30,8 @@ from api.job_stream import (
 )
 from api.models import JobResponse, JobState, JobType
 from core import paths
+from core.cli_args import venv_python
+from services.invocation import ServiceInvocation
 
 logger = logging.getLogger("lemgendary.api.jobs")
 
@@ -403,17 +410,28 @@ class JobManager:
         )
 
 
+def job_command(work: ServiceInvocation | list[str]) -> list[str]:
+    """The argv a job runs: a service entry point on the project interpreter, or a raw command.
+
+    Raw commands come only from ``POST /jobs/generic``; every other route
+    submits a :class:`ServiceInvocation`.
+    """
+    if isinstance(work, ServiceInvocation):
+        return work.argv(venv_python())
+    return list(work)
+
+
 def submit_job(
     jobs: JobManager,
     job_type: JobType,
-    command: list[str],
+    work: ServiceInvocation | list[str],
     parameters: dict[str, Any],
 ) -> JobResponse:
     """Register a job on ``jobs`` and start it on the running event loop.
 
     Must be called from a coroutine (route handler); returns the pending job.
     """
-    job = jobs.create_job(job_type=job_type, command=command, parameters=parameters)
+    job = jobs.create_job(job_type=job_type, command=job_command(work), parameters=parameters)
     jobs.start_job(job.id, asyncio.get_running_loop())
     return job
 

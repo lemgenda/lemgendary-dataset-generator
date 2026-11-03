@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.56-STABLE` |
+| **Version** | `v16.9.57-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,39 @@
 ---
 
 ## Changelog
+
+### v16.9.57 - API Jobs Run Service Entry Points
+
+- **One Service Layer for CLI and API**: API jobs no longer start
+  `core.manifold_compile`, `tools.generate_degrade`, `cli.py llm compile`,
+  `tools.modernization_queue`, `tools.manifold_reduce`, `sources.kaggle` or
+  `tools.manifold_sync` as scripts. Each job runs a service module as its
+  own process: `services.compiler_service`, `services.degrade_service`,
+  `services.llm_service` (new), `services.migration_service queue|reduce`
+  or `services.sync_service kaggle|manifold`. Each module's `main(argv)`
+  calls the same function the CLI calls in-process.
+- **Typed Argument Contract**: `services/invocation.py` holds
+  `ServiceInvocation` (module plus arguments) and the `Flag` option tables.
+  A job's arguments and the parser in the service's `main` come from the
+  same table. `tests/test_service_invocations.py` checks every round trip.
+- **Job Manager Spawns**: routes describe the work as a `ServiceInvocation`;
+  `api.jobs.job_command` picks the project interpreter and `JobManager` is
+  the only place in the API that starts a process (`POST /jobs/generic`
+  still runs the command it is given).
+- **Compile Exit Code**: `run_compile` (CLI) now returns the
+  `finalize_compile` result, as the API job did: exit 1 when nothing was
+  compiled or a manifold produced no samples. It also accepts `cleanup`,
+  which `/gui/custom-compile` uses for `purge_loose_images`.
+- **Service Package Imports**: `services/__init__.py` no longer imports
+  every service, so `python -m services.<module>` loads the module once.
+  Commands import from the service modules.
+- **Extracted Run Functions**: `sources.kaggle.run_kaggle_action`
+  (`KaggleRequest`) and `tools.manifold_sync.run_sync_action` hold the
+  logic that was inside their `main`.
+- **Tests Without the Heavy Stack**: the `run_compile` and reduce-route tests
+  replace the `core.manifold_compile` / `tools.manifold_reduce` loaders
+  instead of importing them, so they no longer fail where scikit-learn or
+  torch is missing.
 
 ### v16.9.56 - Review Report Remediation Status
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import cast
 
 from fastapi import (
     APIRouter,
@@ -25,8 +25,9 @@ from api.models import (
     JobState,
     JobType,
 )
-from core.cli_args import venv_python
-from services.compiler_service import CompileOptions, build_compile_args
+from services.compiler_service import CompileOptions, compile_invocation
+from services.degrade_service import DegradeOptions, degrade_invocation
+from services.invocation import ServiceInvocation
 
 logger = logging.getLogger("lemgendary.api.routes.jobs")
 
@@ -71,12 +72,11 @@ async def get_job_logs(job_id: str, tail: int | None = Query(None, ge=1)) -> dic
     return {"job_id": job_id, "logs": content}
 
 
-def _compile_command(req: CompileJobRequest) -> list[Any]:
-    """``core.manifold_compile`` argv for a compile job request."""
-    # Same option-to-flag table as the in-process CLI path (services.run_compile),
-    # so every request field (preset and shard_ext included) is forwarded.
-    options = cast(CompileOptions, req.model_dump())
-    return [venv_python(), "-m", "core.manifold_compile", *build_compile_args(options)]
+def _compile_command(req: CompileJobRequest) -> ServiceInvocation:
+    """``services.compiler_service`` invocation for a compile job request."""
+    # Same option table as the in-process CLI path (services.run_compile), so
+    # every request field (preset and shard_ext included) is forwarded.
+    return compile_invocation(cast(CompileOptions, req.model_dump()))
 
 
 @router.post("/compile", response_model=JobResponse)
@@ -88,24 +88,9 @@ async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
 @router.post("/degrade", response_model=JobResponse)
 async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
     """Start a degradation job that synthesises a paired manifold from a clean source."""
-    cmd = [
-        venv_python(), "-m", "tools.generate_degrade",
-        "--source", req.source,
-        "--output", req.output,
-        "--profile", req.profile,
-        "--intensity", req.intensity,
-        "--val-split", str(req.val_split),
-        "--seed", str(req.seed),
-        "--image-format", req.image_format,
-    ]
-    if req.pairs is not None:
-        cmd.extend(["--pairs", str(req.pairs)])
-    if req.workers is not None:
-        cmd.extend(["--workers", str(req.workers)])
-    if req.dry_run:
-        cmd.append("--dry-run")
-
-    return submit_job(job_manager, JobType.DEGRADE, cmd, req.model_dump())
+    options = cast(DegradeOptions, req.model_dump(exclude={"source", "output"}))
+    invocation = degrade_invocation(req.source, req.output, options)
+    return submit_job(job_manager, JobType.DEGRADE, invocation, req.model_dump())
 
 
 @router.post("/generic", response_model=JobResponse)

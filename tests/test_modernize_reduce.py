@@ -12,7 +12,8 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import yaml
 from fastapi import HTTPException
@@ -26,6 +27,7 @@ from api.routes.modernize import (
     build_modernize_command,
     build_reduce_command,
 )
+from services import migration_service
 from services.migration_service import MigrationService
 from tools import modernization_queue
 from tools.modernize import queue_runner
@@ -166,8 +168,10 @@ class TestModernizeRoute(unittest.TestCase):
     def test_gui_payload_fields_reach_the_command(self) -> None:
         """GUI payload fields reach the queue command."""
         req = ModernizeRunRequest(dataset="alpha", dry_run=True, force=True, workers=3)
-        cmd = build_modernize_command(req)
-        self.assertEqual(cmd[1:3], ["-m", "tools.modernization_queue"])
+        invocation = build_modernize_command(req)
+        self.assertEqual(invocation.module, "services.migration_service")
+        self.assertEqual(invocation.args[0], "queue")
+        cmd = list(invocation.args)
         self.assertEqual(cmd.count("--datasets"), 1)
         self.assertEqual(cmd[cmd.index("--datasets") + 1], "alpha")
         self.assertIn("--dry-run", cmd)
@@ -176,7 +180,7 @@ class TestModernizeRoute(unittest.TestCase):
 
     def test_datasets_list_is_joined_once(self) -> None:
         """The datasets list and the single dataset are joined into one --datasets value."""
-        cmd = build_modernize_command(ModernizeRunRequest(datasets=["a", "b"], dataset="a"))
+        cmd = build_modernize_command(ModernizeRunRequest(datasets=["a", "b"], dataset="a")).args
         self.assertEqual(cmd.count("--datasets"), 1)
         self.assertEqual(cmd[cmd.index("--datasets") + 1], "a,b")
 
@@ -198,7 +202,12 @@ class TestReduceRoute(unittest.TestCase):
     """The reduce route builds a non-interactive reduce command."""
     def test_gui_payload_builds_supported_non_interactive_command(self) -> None:
         """The GUI payload becomes a --dataset/--fraction/--yes command."""
-        cmd = build_reduce_command(ManifoldReduceRequest(manifold="LemGendizedAlpha", scale=0.25))
+        invocation = build_reduce_command(
+            ManifoldReduceRequest(manifold="LemGendizedAlpha", scale=0.25)
+        )
+        self.assertEqual(invocation.module, "services.migration_service")
+        self.assertEqual(invocation.args[0], "reduce")
+        cmd = invocation.args
         self.assertNotIn("--model", cmd)
         self.assertNotIn("--scale", cmd)
         self.assertIn("--yes", cmd)
@@ -207,7 +216,9 @@ class TestReduceRoute(unittest.TestCase):
 
     def test_scale_factor_maps_to_fraction(self) -> None:
         """A scale factor above 1 becomes the fraction 1/scale."""
-        cmd = build_reduce_command(ManifoldReduceRequest(dataset_key="LemGendizedAlpha", scale=4))
+        cmd = build_reduce_command(
+            ManifoldReduceRequest(dataset_key="LemGendizedAlpha", scale=4)
+        ).args
         self.assertEqual(float(cmd[cmd.index("--fraction") + 1]), 0.25)
 
     def test_missing_manifold_is_rejected(self) -> None:
@@ -216,21 +227,23 @@ class TestReduceRoute(unittest.TestCase):
             build_reduce_command(ManifoldReduceRequest())
         self.assertEqual(ctx.exception.status_code, 400)
 
-    @requires_reduce_deps
-    def test_command_is_accepted_by_tool_parser(self) -> None:
-        """The tool's real argparse accepts the route's arguments; no input() may be called."""
-        manifold_reduce = _manifold_reduce()
-        cmd = build_reduce_command(
+    def test_command_is_accepted_by_the_service_entry_point(self) -> None:
+        """The reduce entry point parses the route's arguments; no input() may be called."""
+        invocation = build_reduce_command(
             ManifoldReduceRequest(manifold="LemGendizedAlpha", scale=0.5, dry_run=True)
         )
-        with patch.object(manifold_reduce, "reduce_dataset", return_value=0) as reduce_fn, \
-                patch("builtins.input", side_effect=AssertionError("input() called")):
-            self.assertEqual(manifold_reduce.main(cmd[3:]), 0)
-        kwargs = reduce_fn.call_args.kwargs
+        fake_reduce = SimpleNamespace(reduce_dataset=MagicMock(return_value=0))
+        with (
+            patch.object(migration_service, "load_manifold_reduce", return_value=fake_reduce),
+            patch("builtins.input", side_effect=AssertionError("input() called")),
+        ):
+            self.assertEqual(migration_service.main(list(invocation.args)), 0)
+        kwargs = fake_reduce.reduce_dataset.call_args.kwargs
         self.assertEqual(kwargs["dataset"], "LemGendizedAlpha")
         self.assertTrue(kwargs["assume_yes"])
         self.assertTrue(kwargs["dry_run"])
         self.assertEqual(kwargs["fraction"], 0.5)
+        self.assertIsNone(kwargs["max_gb_override"])
 
 
 @requires_reduce_deps

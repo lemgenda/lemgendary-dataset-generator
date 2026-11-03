@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.56"
+    "version": "16.9.57"
   },
   "paths": {
     "/api/health": {
@@ -520,7 +520,7 @@
           "Kaggle"
         ],
         "summary": "Trigger Kaggle Sync",
-        "description": "Start a Kaggle push (sync) or pull (get) job through tools.manifold_sync.",
+        "description": "Start a Kaggle push (sync) or pull (get) job through SyncService.sync_manifold.",
         "operationId": "trigger_kaggle_sync_api_kaggle_sync_post",
         "requestBody": {
           "content": {

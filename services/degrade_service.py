@@ -1,13 +1,17 @@
 """
-DegradeService — In-process degradation synthesis service.
+DegradeService — degradation synthesis service and its process entry point.
 
 Single Responsibility: Coordinate and invoke synthetic restoration manifold
-generation programmatically without subprocess spawning.
+generation programmatically. The CLI calls :func:`run_degrade` in-process;
+an API job runs ``python -m services.degrade_service`` with the arguments of
+:func:`degrade_invocation`, which :func:`main` parses with the same table.
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
+import sys
 from typing import TypedDict, Unpack, cast
 
 from rich.console import Console
@@ -15,13 +19,21 @@ from rich.console import Console
 from tools import generate_degrade
 
 from ._errors import SERVICE_ERRORS
+from .invocation import (
+    Flag,
+    FlagTable,
+    ServiceInvocation,
+    add_flags,
+    flag_args,
+    parsed_options,
+)
 
 console = Console()
 logger = logging.getLogger(__name__)
 
 
 class DegradeOptions(TypedDict, total=False):
-    """Optional settings for :meth:`DegradeService.run_degrade`."""
+    """Optional settings for :func:`run_degrade`."""
 
     profile: str
     intensity: str
@@ -31,6 +43,18 @@ class DegradeOptions(TypedDict, total=False):
     image_format: str
     workers: int | None
     dry_run: bool
+
+
+DEGRADE_FLAGS: FlagTable = (
+    Flag("profile", "--profile", "text"),
+    Flag("intensity", "--intensity", "text"),
+    Flag("pairs", "--pairs", "int"),
+    Flag("val_split", "--val-split", "float"),
+    Flag("seed", "--seed", "int"),
+    Flag("image_format", "--image-format", "text"),
+    Flag("workers", "--workers", "int"),
+    Flag("dry_run", "--dry-run", "switch"),
+)
 
 
 def run_degrade(
@@ -66,3 +90,27 @@ def run_degrade(
         logger.exception("Degradation synthesis error")
         console.print(f"[bold red]Degradation synthesis error:[/bold red] {exc}")
         return 1
+
+
+def degrade_invocation(source: str, output: str, options: DegradeOptions) -> ServiceInvocation:
+    """The isolated-process form of ``run_degrade(source, output, **options)``."""
+    args = ["--source", source, "--output", output, *flag_args(options, DEGRADE_FLAGS)]
+    return ServiceInvocation(__name__, tuple(args))
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--output", required=True)
+    return add_flags(parser, DEGRADE_FLAGS)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Process entry point: ``python -m services.degrade_service --source S --output O ...``."""
+    ns = _parser().parse_args(argv)
+    options = cast(DegradeOptions, parsed_options(ns, DEGRADE_FLAGS))
+    return run_degrade(ns.source, ns.output, **options)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

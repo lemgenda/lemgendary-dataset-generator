@@ -6,9 +6,7 @@ import logging
 
 import typer
 
-from services import (
-    DocService,
-)
+from services.doc_service import DocService
 
 logger = logging.getLogger(__name__)
 docs_app = typer.Typer(help="Documentation regeneration.")
