@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.36-STABLE` |
+| **Version** | `v16.9.37-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,38 @@
 ---
 
 ## Changelog
+
+### v16.9.37 - `core/compiler_core.py` Split Into Config, Worker and Sample Modules
+
+- **`core/compiler_core.py` Is Now a Facade** (1392 lines to 158): it
+  re-exports the same 71 names in `__all__`, so `core.manifold_compile`,
+  `tools.manifold_reduce` and every other `from core.compiler_core import`
+  keep working. The implementation moved to:
+  - `core/compiler_config.py` (174): `CONFIG`, `unified_data.yaml` metadata,
+    paths, the category map and the CLI state (`configure`, `get_args`,
+    `set_args`).
+  - `core/compiler_worker.py` (344): the per-process `WORKER` state,
+    `detect_task`, `init_worker` (now five helpers: process setup, audit
+    primitives, generation labeler, quality sentry, vision models and
+    generators) and the Phase 3 image writer.
+  - `core/sample_targets.py` (152): the restoration target lookup (annotation
+    row, sharp siblings, split ancestors, renamed files, DPED to Canon).
+  - `core/sample_scoring.py` (136): NIMA scores from AVA, AADB, LAION and
+    TID2013 ground truth, authenticity path keywords and the QualitySentry.
+  - `core/sample_annotations.py` (284): one parser per annotation format in a
+    registry (COCO, Parquet, MATLAB, VOC XML, YOLO, NPZ landmarks,
+    safetensors tags) and the label-file writer.
+  - `core/sample_processor.py` (489): `process_image` (599 lines before, now
+    a short pipeline over these modules), `process_diffusion`,
+    `process_parquet_shard` and `batch_worker`.
+- **Behaviour Unchanged**: an old-versus-new harness ran both versions over
+  29 samples (path, bytes and Parquet-cell inputs; every target lookup
+  route; every annotation format; quality, authenticity, classification,
+  pose, segmentation and diffusion tasks) and got identical records and
+  byte-identical output trees. The only visible difference is that a failed
+  in-memory sample is logged as `virtual_<slug>_<idx>` instead of `Unknown`.
+- PIL's truncated-image and pixel-limit settings now live in
+  `core/compiler_worker.py`, which every worker process imports.
 
 ### v16.9.36 - Markdown Wrapped to 80 Columns, markdownlint Clean
 
