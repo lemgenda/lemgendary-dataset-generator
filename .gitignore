@@ -27,7 +27,6 @@ typings/
 
 # Local Tooling & Linters
 pyrightconfig.json
-.markdownlint.json
 
 # IDEs & Editors
 .vscode/

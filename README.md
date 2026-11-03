@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.38-STABLE` |
+| **Version** | `v16.9.39-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,13 @@
 ---
 
 ## Changelog
+
+### v16.9.39 - Markdownlint Config Tracked in the Repo
+
+- **`.markdownlint.json` Is Committed**: ROBOTS.md requires every Markdown
+  document to pass `markdownlint`, so the rule set is part of the project,
+  not local tooling. The file was removed from `.gitignore` and is now
+  tracked. It is identical to the one in `lemgendary-docs`.
 
 ### v16.9.38 - `cli.py` Split Into One Typer Module per Command Group
 
