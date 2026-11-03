@@ -88,13 +88,6 @@ class DegradeJobRequest(BaseModel):
     dry_run: bool = Field(False, description="Simulate without writing files")
 
 
-class GenericJobRequest(BaseModel):
-    """Request body for a job that runs an arbitrary command."""
-    job_type: JobType = Field(JobType.CUSTOM, description="Type of job to execute")
-    command: list[str] = Field(..., description="Command and argument list")
-    parameters: dict[str, Any] = Field(default_factory=dict, description="Metadata dictionary")
-
-
 class JobResponse(BaseModel):
     """A background job and its current state."""
     id: str = Field(..., description="Unique job identifier (UUID)")

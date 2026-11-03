@@ -410,21 +410,15 @@ class JobManager:
         )
 
 
-def job_command(work: ServiceInvocation | list[str]) -> list[str]:
-    """The argv a job runs: a service entry point on the project interpreter, or a raw command.
-
-    Raw commands come only from ``POST /jobs/generic``; every other route
-    submits a :class:`ServiceInvocation`.
-    """
-    if isinstance(work, ServiceInvocation):
-        return work.argv(venv_python())
-    return list(work)
+def job_command(work: ServiceInvocation) -> list[str]:
+    """The argv a job runs: a service entry point on the project interpreter."""
+    return work.argv(venv_python())
 
 
 def submit_job(
     jobs: JobManager,
     job_type: JobType,
-    work: ServiceInvocation | list[str],
+    work: ServiceInvocation,
     parameters: dict[str, Any],
 ) -> JobResponse:
     """Register a job on ``jobs`` and start it on the running event loop.

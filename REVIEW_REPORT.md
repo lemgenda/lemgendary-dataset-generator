@@ -551,7 +551,7 @@ These are listed by location:
     - `utils/archive.py:181,186,193`
 - **Absolute paths:**
   - `utils/archive.py:148`
-  - `tests/test_api_and_services.py:214,257,299,340` (`C:/...`)
+  - `tests/test_api_and_services.py:214,257,299,340` (drive-letter literals)
   - `../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md:289` and its HTML
     counterpart at line 726
 - **Library code calls `sys.exit` or `os._exit`:**
@@ -901,8 +901,8 @@ Closed in step L9 (v16.9.57):
   arguments come from the option table that the module's `main` parses
   (`services/invocation.py`), and its `main` calls the same function the CLI
   calls in-process. `api/jobs.py` picks the interpreter and is the only
-  place in the API that spawns a process. The exception is
-  `POST /jobs/generic`, which runs the command it is given. Short
+  place in the API that spawns a process. `POST /jobs/generic`,
+  which ran the command it was given, was removed in v16.9.58. Short
   operations (the synchronous LLM compile, validation, registry and
   catalog reads) run in-process. `cli.py llm compile` is no longer started
   as a script.

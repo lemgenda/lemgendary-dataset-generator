@@ -56,10 +56,6 @@ class TestJobCommand(unittest.TestCase):
             argv, [venv_python(), "-u", "-m", "services.llm_service", "--dataset", "x"]
         )
 
-    def test_raw_command_is_kept(self) -> None:
-        """A generic job's command list is run as given."""
-        self.assertEqual(job_command(["echo", "hi"]), ["echo", "hi"])
-
     def test_every_invocation_module_has_a_main(self) -> None:
         """Each service module an API job runs exposes ``main(argv)``."""
         invocations = (

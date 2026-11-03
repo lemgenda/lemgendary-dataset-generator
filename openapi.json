@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.57"
+    "version": "16.9.58"
   },
   "paths": {
     "/api/health": {
@@ -1248,56 +1248,6 @@
         ]
       }
     },
-    "/api/jobs/generic": {
-      "post": {
-        "tags": [
-          "Jobs"
-        ],
-        "summary": "Submit Generic Job",
-        "description": "Submit a generic job command.",
-        "operationId": "submit_generic_job_api_jobs_generic_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenericJobRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/jobs/{job_id}/cancel": {
       "post": {
         "tags": [
@@ -2376,35 +2326,6 @@
         ],
         "title": "FullHealthResponse",
         "description": "Liveness response with host hardware details."
-      },
-      "GenericJobRequest": {
-        "properties": {
-          "job_type": {
-            "$ref": "#/components/schemas/JobType",
-            "description": "Type of job to execute",
-            "default": "custom"
-          },
-          "command": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Command",
-            "description": "Command and argument list"
-          },
-          "parameters": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Parameters",
-            "description": "Metadata dictionary"
-          }
-        },
-        "type": "object",
-        "required": [
-          "command"
-        ],
-        "title": "GenericJobRequest",
-        "description": "Request body for a job that runs an arbitrary command."
       },
       "GuiStateResponse": {
         "properties": {

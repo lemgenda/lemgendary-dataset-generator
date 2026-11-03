@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.57-STABLE` |
+| **Version** | `v16.9.58-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,18 @@
 ---
 
 ## Changelog
+
+### v16.9.58 - Remove Arbitrary-Command Job Endpoint
+
+- **`POST /jobs/generic` removed**: it ran any command list it was given and
+  had no caller in the API, CLI, GUI or hub. `api.jobs.job_command` and
+  `submit_job` now accept only a typed `ServiceInvocation`. `openapi.json`
+  regenerated.
+- **Hub registry load**: `lemgendary_datasets_hub.ps1` passes the registry
+  path to Python as an argument instead of embedding it in the `-c` source,
+  so a path with quotes or backslashes cannot break the load.
+- **Absolute-path gate**: `REVIEW_REPORT.md` no longer spells out a drive
+  letter path; this repository has none left.
 
 ### v16.9.57 - API Jobs Run Service Entry Points
 
@@ -40,8 +52,7 @@
   same table. `tests/test_service_invocations.py` checks every round trip.
 - **Job Manager Spawns**: routes describe the work as a `ServiceInvocation`;
   `api.jobs.job_command` picks the project interpreter and `JobManager` is
-  the only place in the API that starts a process (`POST /jobs/generic`
-  still runs the command it is given).
+  the only place in the API that starts a process.
 - **Compile Exit Code**: `run_compile` (CLI) now returns the
   `finalize_compile` result, as the API job did: exit 1 when nothing was
   compiled or a manifold produced no samples. It also accepts `cleanup`,

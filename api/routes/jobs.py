@@ -19,7 +19,6 @@ from api.jobs import job_manager, submit_job
 from api.models import (
     CompileJobRequest,
     DegradeJobRequest,
-    GenericJobRequest,
     JobListResponse,
     JobResponse,
     JobState,
@@ -91,12 +90,6 @@ async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
     options = cast(DegradeOptions, req.model_dump(exclude={"source", "output"}))
     invocation = degrade_invocation(req.source, req.output, options)
     return submit_job(job_manager, JobType.DEGRADE, invocation, req.model_dump())
-
-
-@router.post("/generic", response_model=JobResponse)
-async def submit_generic_job(req: GenericJobRequest) -> JobResponse:
-    """Submit a generic job command."""
-    return submit_job(job_manager, req.job_type, req.command, req.parameters)
 
 
 @router.post("/{job_id}/cancel")

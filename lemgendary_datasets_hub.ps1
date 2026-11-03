@@ -242,8 +242,7 @@ Import-RuntimeEnv -VpyPath $Vpy -YamlPath $RuntimeEnvYaml
 
 function Get-RegData {
     if (!(test-path $Reg)) { Write-Host '  [ERROR] unified_data.yaml missing!' -Fore Red; return $null }
-    $RegFixed = $Reg.Replace('\', '/')
-    $YJ = & $Vpy -c "import yaml, json, sys; print(json.dumps(yaml.safe_load(open('$RegFixed'))))"
+    $YJ = & $Vpy -c "import yaml, json, sys; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8'))))" $Reg
     if (!$YJ) { Write-Host '  [ERROR] Manifest load failed!' -Fore Red; return $null }
     return $YJ | ConvertFrom-Json
 }
