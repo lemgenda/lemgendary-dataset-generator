@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
 from api.events import manager
-from api.jobs import job_manager
+from api.jobs import job_manager, submit_job
 from api.models import (
     CompileJobRequest,
     DegradeJobRequest,
@@ -63,53 +62,49 @@ async def get_job_logs(job_id: str, tail: Optional[int] = Query(None, ge=1)) -> 
     return {"job_id": job_id, "logs": content}
 
 
+# (request field, CLI flag, kind) in argv order. "value": pass the value when truthy;
+# "number": pass str(value) when not None; "switch": bare flag when truthy.
+_COMPILE_FLAGS: tuple[tuple[str, str, str], ...] = (
+    ("model", "--model", "value"),
+    ("max_gb", "--max_gb", "number"),
+    ("suffix", "--suffix", "value"),
+    ("workers", "--workers", "number"),
+    ("no_vetting", "--no-vetting", "switch"),
+    ("no_labeling", "--no-labeling", "switch"),
+    ("no_hash", "--no-hash", "switch"),
+    ("image_format", "--image-format", "value"),
+    ("image_quality", "--image-quality", "number"),
+    ("target_quality", "--target-quality", "number"),
+    ("mask_format", "--mask-format", "value"),
+    ("also_format", "--also-format", "value"),
+    ("force_duplicate", "--force-duplicate", "switch"),
+    ("accept_space_loss", "--accept-space-loss", "switch"),
+    ("label_strategy", "--label-strategy", "value"),
+    ("prompt_strategy", "--prompt-strategy", "value"),
+    ("mask_strategy", "--mask-strategy", "value"),
+)
+
+
+def _compile_flag_args(value: Any, flag: str, kind: str) -> list[Any]:
+    if kind == "number":
+        return [flag, str(value)] if value is not None else []
+    if not value:
+        return []
+    return [flag] if kind == "switch" else [flag, value]
+
+
+def _compile_command(req: CompileJobRequest) -> list[Any]:
+    """``core.manifold_compile`` argv for a compile job request."""
+    cmd: list[Any] = [venv_python(), "-m", "core.manifold_compile"]
+    for field_name, flag, kind in _COMPILE_FLAGS:
+        cmd.extend(_compile_flag_args(getattr(req, field_name), flag, kind))
+    return cmd
+
+
 @router.post("/compile", response_model=JobResponse)
 async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
     """Submit a manifold compile job."""
-    cmd = [venv_python(), "-m", "core.manifold_compile"]
-    if req.model:
-        cmd.extend(["--model", req.model])
-    if req.max_gb is not None:
-        cmd.extend(["--max_gb", str(req.max_gb)])
-    if req.suffix:
-        cmd.extend(["--suffix", req.suffix])
-    if req.workers is not None:
-        cmd.extend(["--workers", str(req.workers)])
-    if req.no_vetting:
-        cmd.append("--no-vetting")
-    if req.no_labeling:
-        cmd.append("--no-labeling")
-    if req.no_hash:
-        cmd.append("--no-hash")
-    if req.image_format:
-        cmd.extend(["--image-format", req.image_format])
-    if req.image_quality is not None:
-        cmd.extend(["--image-quality", str(req.image_quality)])
-    if req.target_quality is not None:
-        cmd.extend(["--target-quality", str(req.target_quality)])
-    if req.mask_format:
-        cmd.extend(["--mask-format", req.mask_format])
-    if req.also_format:
-        cmd.extend(["--also-format", req.also_format])
-    if req.force_duplicate:
-        cmd.append("--force-duplicate")
-    if req.accept_space_loss:
-        cmd.append("--accept-space-loss")
-    if req.label_strategy:
-        cmd.extend(["--label-strategy", req.label_strategy])
-    if req.prompt_strategy:
-        cmd.extend(["--prompt-strategy", req.prompt_strategy])
-    if req.mask_strategy:
-        cmd.extend(["--mask-strategy", req.mask_strategy])
-
-    job = job_manager.create_job(
-        job_type=JobType.COMPILE,
-        command=cmd,
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    return submit_job(job_manager, JobType.COMPILE, _compile_command(req), req.model_dump())
 
 
 @router.post("/degrade", response_model=JobResponse)
@@ -132,27 +127,13 @@ async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
     if req.dry_run:
         cmd.append("--dry-run")
 
-    job = job_manager.create_job(
-        job_type=JobType.DEGRADE,
-        command=cmd,
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    return submit_job(job_manager, JobType.DEGRADE, cmd, req.model_dump())
 
 
 @router.post("/generic", response_model=JobResponse)
 async def submit_generic_job(req: GenericJobRequest) -> JobResponse:
     """Submit a generic job command."""
-    job = job_manager.create_job(
-        job_type=req.job_type,
-        command=req.command,
-        parameters=req.parameters,
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    return submit_job(job_manager, req.job_type, req.command, req.parameters)
 
 
 @router.post("/{job_id}/cancel")

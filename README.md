@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.41-STABLE` |
+| **Version** | `v16.9.42-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,23 @@
 ---
 
 ## Changelog
+
+### v16.9.42 - Desktop GUI Routes Split; Job Runner Cleanup
+
+- **Desktop GUI Routes Split**: `api/routes/gui.py` (767 lines to 245) now
+  holds only thin route handlers. Folder scanning moved to
+  `api/manifold_scan.py`, catalog assembly to `api/dataset_stats.py` and
+  compile-request handling to `api/gui_compile.py`, all using lookup tables
+  instead of long `if` chains. The HTTP API and `openapi.json` are unchanged,
+  and responses match the previous version on the same folders.
+- **Job Runner Cleanup**: the job worker thread in `api/jobs.py` is split
+  into claim, run and finalize steps, with log and event broadcasting in
+  `api/job_stream.py`. A new `submit_job` helper replaces the repeated
+  create-and-start code in the job routes. `/jobs/compile` builds its command
+  from a flag table, and `/datasets` scanning is split into helpers. The
+  `too-many-*` findings in these files went from 20 to 0.
+- The moved stats and compile helpers log under the child loggers
+  `lemgendary.api.routes.gui.stats` and `.gui.compile`.
 
 ### v16.9.41 - Typed CLI Option Groups; `commands/` Path Fix
 

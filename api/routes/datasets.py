@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, status
 import yaml
 
+from api.dataset_stats import read_yaml_or_empty
 from api.models import DatasetInfoResponse, DatasetListResponse
 
 logger = logging.getLogger("lemgendary.api.routes.datasets")
@@ -34,97 +35,104 @@ def _resolve_output_root() -> Path:
     return (Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets").resolve()
 
 
+_DIR_FORMATS = {"mds": "mds", "litdata": "litdata", "wds": "wds", "shards": "wds"}
+_REGISTRY_DB_MAX_BYTES = 50_000_000
+
+
+def _read_list_meta(info_file: Path) -> tuple[str, int]:
+    """Task and total_samples from a manifold's dataset_info.yaml (defaults if unreadable)."""
+    task = "vision"
+    sample_count = 0
+    if info_file.exists():
+        try:
+            meta = read_yaml_or_empty(info_file)
+            task = meta.get("task", task)
+            sample_count = int(meta.get("total_samples", 0) or 0)
+        except (
+            OSError,
+            UnicodeDecodeError,
+            yaml.YAMLError,
+            AttributeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            logger.debug("Failed reading %s: %s", info_file, exc)
+    return task, sample_count
+
+
+def _scan_manifold_formats(entry: Path) -> tuple[int, List[str]]:
+    """Root-level byte size and the container formats present in a manifold folder."""
+    formats: List[str] = ["directory"]
+    size_bytes = 0
+    has_parquet = False
+    has_jsonl = False
+    try:
+        for item in os.scandir(entry):
+            if item.is_file():
+                fname = item.name.lower()
+                has_parquet = has_parquet or fname.endswith(".parquet")
+                has_jsonl = has_jsonl or fname.endswith(".jsonl")
+                try:
+                    size_bytes += item.stat().st_size
+                except OSError as stat_exc:
+                    logger.debug("Failed stat on %s: %s", item.path, stat_exc)
+            elif item.is_dir():
+                dir_format = _DIR_FORMATS.get(item.name)
+                if dir_format and dir_format not in formats:
+                    formats.append(dir_format)
+    except OSError as exc:
+        logger.debug("Failed scanning manifold directory %s: %s", entry, exc)
+
+    if has_parquet:
+        formats.append("parquet")
+    if has_jsonl:
+        formats.append("jsonl")
+    return size_bytes, formats
+
+
+def _registry_db_sample_count(entry: Path) -> int:
+    """Highest registry rowid of a (reasonably small) manifold_registry.db, else 0."""
+    db_file = entry / "manifold_registry.db"
+    try:
+        if db_file.exists() and db_file.stat().st_size < _REGISTRY_DB_MAX_BYTES:
+            with sqlite3.connect(db_file, timeout=0.5) as conn:
+                row = conn.execute("SELECT MAX(rowid) FROM registry").fetchone()
+                if row and row[0]:
+                    return int(row[0])
+    except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+        logger.debug("Failed reading registry DB %s: %s", db_file, exc)
+    return 0
+
+
+def _dataset_info(entry: Path) -> DatasetInfoResponse:
+    task, sample_count = _read_list_meta(entry / "dataset_info.yaml")
+    size_bytes, formats = _scan_manifold_formats(entry)
+    if sample_count == 0:
+        sample_count = _registry_db_sample_count(entry)
+    return DatasetInfoResponse(
+        name=entry.name,
+        path=str(entry),
+        task=task,
+        sample_count=sample_count,
+        size_bytes=size_bytes,
+        formats=formats,
+        has_hardlinks=False,
+        hardlink_ratio=0.0,
+    )
+
+
 @router.get("", response_model=DatasetListResponse)
 async def list_datasets() -> DatasetListResponse:
     """List compiled dataset manifolds found in output storage root."""
     root = _resolve_output_root()
-    datasets: List[DatasetInfoResponse] = []
-
     if not root.exists():
         return DatasetListResponse(datasets=[], total=0)
 
-    for entry in root.iterdir():
-        if not entry.is_dir() or entry.name.startswith("."):
-            continue
-
-        info_file = entry / "dataset_info.yaml"
-        sample_count = 0
-        task = "vision"
-        formats: List[str] = ["directory"]
-
-        if info_file.exists():
-            try:
-                with open(info_file, "r", encoding="utf-8") as f:
-                    meta = yaml.safe_load(f) or {}
-                    task = meta.get("task", task)
-                    sample_count = int(meta.get("total_samples", 0) or 0)
-            except (
-                OSError,
-                UnicodeDecodeError,
-                yaml.YAMLError,
-                AttributeError,
-                TypeError,
-                ValueError,
-            ) as exc:
-                logger.debug("Failed reading %s: %s", info_file, exc)
-
-        size_bytes = 0
-        has_parquet = False
-        has_jsonl = False
-
-        try:
-            for item in os.scandir(entry):
-                if item.is_file():
-                    fname = item.name.lower()
-                    if fname.endswith(".parquet"):
-                        has_parquet = True
-                    elif fname.endswith(".jsonl"):
-                        has_jsonl = True
-                    try:
-                        size_bytes += item.stat().st_size
-                    except OSError as stat_exc:
-                        logger.debug("Failed stat on %s: %s", item.path, stat_exc)
-                elif item.is_dir():
-                    dname = item.name
-                    if dname == "mds":
-                        formats.append("mds")
-                    elif dname == "litdata":
-                        formats.append("litdata")
-                    elif dname in ("wds", "shards"):
-                        if "wds" not in formats:
-                            formats.append("wds")
-        except OSError as exc:
-            logger.debug("Failed scanning manifold directory %s: %s", entry, exc)
-
-        if has_parquet:
-            formats.append("parquet")
-        if has_jsonl:
-            formats.append("jsonl")
-
-        if sample_count == 0:
-            db_file = entry / "manifold_registry.db"
-            try:
-                if db_file.exists() and db_file.stat().st_size < 50_000_000:
-                    with sqlite3.connect(db_file, timeout=0.5) as conn:
-                        row = conn.execute("SELECT MAX(rowid) FROM registry").fetchone()
-                        if row and row[0]:
-                            sample_count = int(row[0])
-            except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
-                logger.debug("Failed reading registry DB %s: %s", db_file, exc)
-
-        datasets.append(
-            DatasetInfoResponse(
-                name=entry.name,
-                path=str(entry),
-                task=task,
-                sample_count=sample_count,
-                size_bytes=size_bytes,
-                formats=formats,
-                has_hardlinks=False,
-                hardlink_ratio=0.0,
-            )
-        )
-
+    datasets: List[DatasetInfoResponse] = [
+        _dataset_info(entry)
+        for entry in root.iterdir()
+        if entry.is_dir() and not entry.name.startswith(".")
+    ]
     return DatasetListResponse(datasets=datasets, total=len(datasets))
 
 
