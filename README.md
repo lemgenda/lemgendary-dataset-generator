@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.40-STABLE` |
+| **Version** | `v16.9.41-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,25 @@
 ---
 
 ## Changelog
+
+### v16.9.41 - Typed CLI Option Groups; `commands/` Path Fix
+
+- **Typed CLI Option Groups**: commands with many options (`compile`,
+  `transcode`, `label`, `prompt`, `mask`, `degrade`, `format write/migrate`,
+  `modernize manifolds/run/reduce`) now declare their options once as frozen
+  dataclasses with shared `Annotated` aliases in `commands/options.py`.
+  `options_command` turns them into the signature Typer reads, so `--help`
+  and option parsing are unchanged (all 46 help screens compared). The
+  `too-many-*` findings in `commands/` went from 23 to 0, and the
+  `container`/`generate` duplicate-code finding is gone.
+- **Shared Target Resolution**: `require_target` replaces the repeated
+  `--model`/`--manifold` resolve-or-exit code in each command.
+- **Project Root Restored** (regression from v16.9.38): after the move into
+  `commands/`, `Path(__file__)` pointed at the package instead of the
+  project. `modernize queue`, `config show`, `test`, `forex convert`, the
+  manifold path resolver and the external-command working directory now use
+  `commands.common.PROJECT_ROOT` (the project folder), as in the old
+  `cli.py`.
 
 ### v16.9.40 - Converter, Generator and Degrade Complexity Cleanup
 

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
-from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.table import Table
 
 from commands.common import (
+    PROJECT_ROOT,
     console,
 )
+from commands.options import flat_values, options_command
 from services import (
     DocService,
     MigrationService,
@@ -24,45 +27,68 @@ modernize_app = typer.Typer(help="Dataset modernization queue, transcode, and sc
 # ─── modernize manifolds (Phase 1.6 / Modernization) ────────────────────────
 # Registered on the `modernize` sub-app: a top-level `modernize` command would be
 # shadowed by the sub-app of the same name and never be reachable.
-@modernize_app.command("manifolds")
-def modernize_manifolds(
-    all_: bool = typer.Option(False, "--all", help="Select all eligible manifolds"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation gate"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show plan, do not modify anything"),
-    datasets: str | None = typer.Option(
-        None, "--datasets", help="Comma-separated folder names or dataset keys"
-    ),
-    skip_kaggle: bool = typer.Option(False, "--skip-kaggle", help="Skip Kaggle re-upload"),
-    image_format: str = typer.Option(
-        "webp", "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"
-    ),
-    image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
-    also_format: str | None = typer.Option(
-        None,
-        "--also-format",
-        help=(
-            "Optional container format to convert dataset into (e.g., webdataset, mds, litdata,"
-            " parquet)"
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ModernizeSelection:
+    """Which manifolds to modernize, confirmation and Kaggle handling."""
+
+    all_: Annotated[bool, typer.Option("--all", help="Select all eligible manifolds")] = False
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation gate")] = False
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show plan, do not modify anything")
+    ] = False
+    datasets: Annotated[
+        str | None,
+        typer.Option("--datasets", help="Comma-separated folder names or dataset keys"),
+    ] = None
+    skip_kaggle: Annotated[
+        bool, typer.Option("--skip-kaggle", help="Skip Kaggle re-upload")
+    ] = False
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ModernizeConversion:
+    """Transcode and container-conversion settings for ``modernize manifolds``."""
+
+    image_format: Annotated[
+        str,
+        typer.Option(
+            "--image-format", help="Transcode images during modernize (webp/jpeg/png/keep)"
         ),
-    ),
-    skip_transcode: bool = typer.Option(False, "--skip-transcode", help="Skip WebP transcoding"),
-    skip_container: bool = typer.Option(
-        False, "--skip-container", help="Skip container format conversion"
-    ),
-) -> None:
+    ] = "webp"
+    image_quality: Annotated[
+        int, typer.Option("--image-quality", help="Quality for images (1-100)")
+    ] = 92
+    also_format: Annotated[
+        str | None,
+        typer.Option(
+            "--also-format",
+            help=(
+                "Optional container format to convert dataset into (e.g., webdataset, mds,"
+                " litdata, parquet)"
+            ),
+        ),
+    ] = None
+    skip_transcode: Annotated[
+        bool, typer.Option("--skip-transcode", help="Skip WebP transcoding")
+    ] = False
+    skip_container: Annotated[
+        bool, typer.Option("--skip-container", help="Skip container format conversion")
+    ] = False
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ModernizeManifoldsOptions:
+    """Options of ``modernize manifolds``."""
+
+    selection: ModernizeSelection
+    conversion: ModernizeConversion
+
+
+@modernize_app.command("manifolds")
+@options_command(ModernizeManifoldsOptions)
+def modernize_manifolds(opts: ModernizeManifoldsOptions) -> None:
     """Modernize manifolds: retire the legacy suffix, transcode to WebP, write containers."""
-    code = MigrationService.modernize_manifolds(
-        all_=all_,
-        yes=yes,
-        dry_run=dry_run,
-        datasets=datasets,
-        skip_kaggle=skip_kaggle,
-        image_format=image_format,
-        image_quality=image_quality,
-        also_format=also_format,
-        skip_transcode=skip_transcode,
-        skip_container=skip_container,
-    )
+    code = MigrationService.modernize_manifolds(**flat_values(opts))
     raise typer.Exit(code=code)
 
 
@@ -70,8 +96,8 @@ def modernize_manifolds(
 @modernize_app.command("queue")
 def modernize_queue() -> None:
     """Display modernization queue status and pending conversions."""
-    datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
-    registry_yaml = Path(__file__).resolve().parent / "unified_data.yaml"
+    datasets_root = PROJECT_ROOT.parent / "LemGendaryDatasets"
+    registry_yaml = PROJECT_ROOT / "unified_data.yaml"
     items = load_queue_manifest(datasets_root.resolve(), registry_yaml.resolve())
 
     table = Table(title="LemGendary Dataset Modernization Queue")
@@ -105,60 +131,70 @@ def modernize_queue() -> None:
     console.print(table)
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ModernizeRunOptions:
+    """Options of ``modernize run`` (mirrors POST /api/modernize/run)."""
+
+    dataset: Annotated[
+        str | None, typer.Option("--dataset", "-d", help="Specific dataset key to modernize")
+    ] = None
+    workers: Annotated[
+        int | None, typer.Option("--workers", "-w", help="Worker threads for WebP transcoding")
+    ] = None
+    push_kaggle: Annotated[
+        bool, typer.Option("--push-kaggle", help="Push to Kaggle after conversion")
+    ] = False
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Preview plan without executing conversions")
+    ] = False
+    force: Annotated[bool, typer.Option("--force", help="Force re-conversion")] = False
+    purge_source: Annotated[
+        bool,
+        typer.Option(
+            "--purge-source",
+            help="Delete zip, legacy folder and loose images after a successful conversion",
+        ),
+    ] = False
+
+
 @modernize_app.command("run")
-def modernize_run(
-    dataset: str | None = typer.Option(
-        None, "--dataset", "-d", help="Specific dataset key to modernize"
-    ),
-    workers: int | None = typer.Option(
-        None, "--workers", "-w", help="Worker threads for WebP transcoding"
-    ),
-    push_kaggle: bool = typer.Option(
-        False, "--push-kaggle", help="Push to Kaggle after conversion"
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Preview plan without executing conversions"
-    ),
-    force: bool = typer.Option(False, "--force", help="Force re-conversion"),
-    purge_source: bool = typer.Option(
-        False,
-        "--purge-source",
-        help="Delete zip, legacy folder and loose images after a successful conversion",
-    ),
-) -> None:
+@options_command(ModernizeRunOptions)
+def modernize_run(opts: ModernizeRunOptions) -> None:
     """Run batch modernization queue conversion (same service as POST /api/modernize/run)."""
-    code = MigrationService.run_modernization_queue(
-        dataset=dataset,
-        workers=workers,
-        push_kaggle=push_kaggle,
-        dry_run=dry_run,
-        force=force,
-        purge_source=purge_source,
-    )
+    code = MigrationService.run_modernization_queue(**flat_values(opts))
     raise typer.Exit(code=code)
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ModernizeReduceOptions:
+    """Options of ``modernize reduce`` / top-level ``reduce``."""
+
+    dataset: Annotated[
+        str | None, typer.Option("--dataset", "-d", help="Manifold folder name to reduce")
+    ] = None
+    fraction: Annotated[
+        float | None, typer.Option("--fraction", help="Share of samples to keep, in (0, 1]")
+    ] = None
+    max_gb: Annotated[
+        float | None, typer.Option("--max-gb", help="Target max size for reduced variant")
+    ] = None
+    suffix: Annotated[
+        str | None,
+        typer.Option("--suffix", help="Suffix for the reduced manifold (default: Reduced)"),
+    ] = None
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Do not prompt; requires --dataset")
+    ] = False
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Report the plan only; write nothing")
+    ] = False
+
+
 @modernize_app.command("reduce")
-def modernize_reduce(
-    dataset: str | None = typer.Option(
-        None, "--dataset", "-d", help="Manifold folder name to reduce"
-    ),
-    fraction: float | None = typer.Option(
-        None, "--fraction", help="Share of samples to keep, in (0, 1]"
-    ),
-    max_gb: float | None = typer.Option(
-        None, "--max-gb", help="Target max size for reduced variant"
-    ),
-    suffix: str | None = typer.Option(
-        None, "--suffix", help="Suffix for the reduced manifold (default: Reduced)"
-    ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Do not prompt; requires --dataset"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Report the plan only; write nothing"),
-) -> None:
+@options_command(ModernizeReduceOptions)
+def modernize_reduce(opts: ModernizeReduceOptions) -> None:
     """Create a downsampled manifold variant (interactive unless --yes)."""
-    code = MigrationService.reduce_manifolds(
-        max_gb=max_gb, suffix=suffix, dataset=dataset, fraction=fraction, yes=yes, dry_run=dry_run
-    )
+    code = MigrationService.reduce_manifolds(**flat_values(opts))
     raise typer.Exit(code=code)
 
 

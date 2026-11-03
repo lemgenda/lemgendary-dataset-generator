@@ -26,11 +26,11 @@ from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 import cli
-from commands import common as cli_common
-from commands import llm as cli_llm
 from api.jobs import JobManager
 from api.models import JobResponse, JobState, JobType
 from api.routes import llm as llm_routes
+from commands import common as cli_common
+from commands import llm as cli_llm
 from services.job_watch import JobNotFoundError, JobStatusError, wait_for_job
 
 VALID_RECORD = {

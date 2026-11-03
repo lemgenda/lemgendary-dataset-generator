@@ -112,12 +112,17 @@ def route_through_sidecar(endpoint: str, payload: dict) -> None:
         )
 
 
+#: Repository root (the parent of this ``commands`` package); paths that the
+#: monolithic ``cli.py`` resolved from its own directory resolve from here.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
 # ─── Helpers ────────────────────────────────────────────────────────────────
 def _run(cmd: list[str]) -> int:
     """Run an external CLI command, print the command, and return its exit code."""
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
     try:
-        result = subprocess.run(cmd, check=False, cwd=str(Path(__file__).resolve().parent))
+        result = subprocess.run(cmd, check=False, cwd=str(PROJECT_ROOT))
         return result.returncode
     except FileNotFoundError as e:
         console.print(f"[red]Command not found:[/red] {e}")
@@ -125,7 +130,7 @@ def _run(cmd: list[str]) -> int:
 
 
 def _resolve_manifold_path(model: str) -> Path | None:
-    p = Path(__file__).resolve().parent / "unified_data.yaml"
+    p = PROJECT_ROOT / "unified_data.yaml"
     if not p.exists():
         p = Path("./unified_data.yaml")
     if not p.exists():
@@ -141,7 +146,7 @@ def _resolve_manifold_path(model: str) -> Path | None:
     suffix = meta.get("name_suffix", "")
     out = Path(meta.get("output_folder_name", "../LemGendaryDatasets"))
     if not out.is_absolute():
-        out = (Path(__file__).resolve().parent / out).resolve()
+        out = (PROJECT_ROOT / out).resolve()
     mod_folder = entry.get("modernized_folder") or f"{prefix}{name}{suffix}"
     return out / mod_folder
 

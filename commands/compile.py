@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import unittest
-from pathlib import Path
+from typing import Annotated, Any
 
 import typer
 
 from commands.common import (
+    PROJECT_ROOT,
     _is_server_available,
-    _resolve_target,
     console,
     route_through_sidecar,
+)
+from commands.options import (
+    NoServerOpt,
+    TargetOptions,
+    flat_values,
+    options_command,
+    require_target,
 )
 from core.cli_args import PROJECT_NAME, __version__
 from services import (
@@ -31,114 +39,153 @@ def version() -> None:
     console.print(f"[dim]Project: {PROJECT_NAME}[/dim]")
 
 
-def compile_manifold(
-    model: str | None = typer.Option(None, "--model", "-m", help="Model key to compile"),
-    preset: str | None = typer.Option(
-        None, "--preset", "-p", help="Compiler preset profile name (from presets.yaml)"
-    ),
-    max_gb: float | None = typer.Option(None, "--max-gb", help="Override max_size_gb"),
-    suffix: str | None = typer.Option(None, "--suffix", help="Manifold name suffix override"),
-    workers: int | None = typer.Option(None, "--workers", help="Parallel worker count"),
-    no_vetting: bool = typer.Option(False, "--no-vetting", help="Disable NIMA quality gate"),
-    no_labeling: bool = typer.Option(False, "--no-labeling", help="Disable YOLO auto-labeling"),
-    no_hash: bool = typer.Option(False, "--no-hash", help="Disable deduplication hash"),
-    image_format: str | None = typer.Option(
-        None, "--image-format", help="webp | jpeg | png | keep"
-    ),
-    image_quality: int | None = typer.Option(None, "--image-quality"),
-    target_quality: int | None = typer.Option(None, "--target-quality"),
-    mask_format: str | None = typer.Option(None, "--mask-format", help="webp-lossless | png"),
-    also_format: str | None = typer.Option(
-        None, "--also-format", help="Comma-separated container formats (mds,litdata,...)"
-    ),
-    force_duplicate: bool = typer.Option(False, "--force-duplicate"),
-    accept_space_loss: bool = typer.Option(False, "--accept-space-loss"),
-    label_strategy: str | None = typer.Option(None, "--label-strategy"),
-    prompt_strategy: str | None = typer.Option(None, "--prompt-strategy"),
-    mask_strategy: str | None = typer.Option(None, "--mask-strategy"),
-    shard_ext: str = typer.Option(
-        "data", "--shard-ext", help="WebDataset shard file extension without dot (default: 'data')"
-    ),
-    no_server: bool = typer.Option(
-        False, "--no-server", help="Bypass API server and execute in-process"
-    ),
-) -> None:
-    """Compile a manifold from raw sources (delegates to CompilerService or API)."""
-    if not no_server and _is_server_available():
-        payload = {
-            "model": model,
-            "preset": preset,
-            "max_gb": max_gb,
-            "suffix": suffix,
-            "workers": workers,
-            "no_vetting": no_vetting,
-            "no_labeling": no_labeling,
-            "no_hash": no_hash,
-            "image_format": image_format or "webp",
-            "image_quality": image_quality or 92,
-            "target_quality": target_quality or 95,
-            "mask_format": mask_format or "webp-lossless",
-            "also_format": also_format,
-            "shard_ext": shard_ext,
-            "force_duplicate": force_duplicate,
-            "accept_space_loss": accept_space_loss,
-            "label_strategy": label_strategy,
-            "prompt_strategy": prompt_strategy,
-            "mask_strategy": mask_strategy,
-        }
-        route_through_sidecar("compile", payload)
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CompileSelection:
+    """Which model to compile, with preset, size cap, name suffix and workers."""
 
-    code = CompilerService.run_compile(
-        model=model,
-        preset=preset,
-        max_gb=max_gb,
-        suffix=suffix,
-        workers=workers,
-        no_vetting=no_vetting,
-        no_labeling=no_labeling,
-        no_hash=no_hash,
-        image_format=image_format,
-        image_quality=image_quality,
-        target_quality=target_quality,
-        mask_format=mask_format,
-        also_format=also_format,
-        shard_ext=shard_ext,
-        force_duplicate=force_duplicate,
-        accept_space_loss=accept_space_loss,
-        label_strategy=label_strategy,
-        prompt_strategy=prompt_strategy,
-        mask_strategy=mask_strategy,
+    model: Annotated[str | None, typer.Option("--model", "-m", help="Model key to compile")] = (
+        None
     )
+    preset: Annotated[
+        str | None,
+        typer.Option(
+            "--preset", "-p", help="Compiler preset profile name (from presets.yaml)"
+        ),
+    ] = None
+    max_gb: Annotated[float | None, typer.Option("--max-gb", help="Override max_size_gb")] = None
+    suffix: Annotated[
+        str | None, typer.Option("--suffix", help="Manifold name suffix override")
+    ] = None
+    workers: Annotated[int | None, typer.Option("--workers", help="Parallel worker count")] = (
+        None
+    )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CompileGates:
+    """Switches that disable the vetting, labeling and dedup-hash stages."""
+
+    no_vetting: Annotated[
+        bool, typer.Option("--no-vetting", help="Disable NIMA quality gate")
+    ] = False
+    no_labeling: Annotated[
+        bool, typer.Option("--no-labeling", help="Disable YOLO auto-labeling")
+    ] = False
+    no_hash: Annotated[bool, typer.Option("--no-hash", help="Disable deduplication hash")] = (
+        False
+    )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CompileImageOptions:
+    """Image / target / mask encoding overrides (``None`` = preset or default)."""
+
+    image_format: Annotated[
+        str | None, typer.Option("--image-format", help="webp | jpeg | png | keep")
+    ] = None
+    image_quality: Annotated[int | None, typer.Option("--image-quality")] = None
+    target_quality: Annotated[int | None, typer.Option("--target-quality")] = None
+    mask_format: Annotated[
+        str | None, typer.Option("--mask-format", help="webp-lossless | png")
+    ] = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CompileContainerOptions:
+    """Extra container formats and the hardlink-fraction overrides."""
+
+    also_format: Annotated[
+        str | None,
+        typer.Option(
+            "--also-format", help="Comma-separated container formats (mds,litdata,...)"
+        ),
+    ] = None
+    force_duplicate: Annotated[bool, typer.Option("--force-duplicate")] = False
+    accept_space_loss: Annotated[bool, typer.Option("--accept-space-loss")] = False
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CompileStrategies:
+    """Smart-generation strategy overrides."""
+
+    label_strategy: Annotated[str | None, typer.Option("--label-strategy")] = None
+    prompt_strategy: Annotated[str | None, typer.Option("--prompt-strategy")] = None
+    mask_strategy: Annotated[str | None, typer.Option("--mask-strategy")] = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CompileOptions:
+    """Options of the ``compile`` command."""
+
+    selection: CompileSelection
+    gates: CompileGates
+    images: CompileImageOptions
+    containers: CompileContainerOptions
+    strategies: CompileStrategies
+    shard_ext: Annotated[
+        str,
+        typer.Option(
+            "--shard-ext",
+            help="WebDataset shard file extension without dot (default: 'data')",
+        ),
+    ] = "data"
+    no_server: NoServerOpt = False
+
+
+def _sidecar_compile_payload(values: dict[str, Any]) -> dict[str, Any]:
+    """Compile job payload for the API, with the encoding defaults filled in."""
+    images = {
+        "image_format": values["image_format"] or "webp",
+        "image_quality": values["image_quality"] or 92,
+        "target_quality": values["target_quality"] or 95,
+        "mask_format": values["mask_format"] or "webp-lossless",
+    }
+    return {**values, **images}
+
+
+@options_command(CompileOptions)
+def compile_manifold(opts: CompileOptions) -> None:
+    """Compile a manifold from raw sources (delegates to CompilerService or API)."""
+    values = flat_values(opts)
+    values.pop("no_server")
+    if not opts.no_server and _is_server_available():
+        route_through_sidecar("compile", _sidecar_compile_payload(values))
+
+    code = CompilerService.run_compile(**values)
     raise typer.Exit(code=code)
 
 
 # ─── transcode (Phase 3) ────────────────────────────────────────────────────
-def transcode(
-    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(
-        None, "--manifold", help="Direct path to a manifold folder"
-    ),
-    image_format: str = typer.Option(
-        "webp", "--image-format", help="Output format (webp/jpeg/png/keep)"
-    ),
-    image_quality: int = typer.Option(92, "--image-quality", help="Quality for images (1-100)"),
-    target_quality: int = typer.Option(95, "--target-quality", help="Quality for targets (1-100)"),
-    mask_format: str = typer.Option(
-        "webp-lossless", "--mask-format", help="Mask format (webp-lossless/png)"
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
-) -> None:
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class TranscodeOptions:
+    """Options of the ``transcode`` command."""
+
+    target: TargetOptions
+    image_format: Annotated[
+        str, typer.Option("--image-format", help="Output format (webp/jpeg/png/keep)")
+    ] = "webp"
+    image_quality: Annotated[
+        int, typer.Option("--image-quality", help="Quality for images (1-100)")
+    ] = 92
+    target_quality: Annotated[
+        int, typer.Option("--target-quality", help="Quality for targets (1-100)")
+    ] = 95
+    mask_format: Annotated[
+        str, typer.Option("--mask-format", help="Mask format (webp-lossless/png)")
+    ] = "webp-lossless"
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Preview without writing")] = False
+
+
+@options_command(TranscodeOptions)
+def transcode(opts: TranscodeOptions) -> None:
     """Retroactively transcode an existing manifold's images, in place."""
-    target = _resolve_target(model, manifold)
-    if target is None:
-        raise typer.Exit(code=1)
     code = MigrationService.transcode_images(
-        manifold_path=target,
-        image_format=image_format,
-        image_quality=image_quality,
-        target_quality=target_quality,
-        mask_format=mask_format,
-        dry_run=dry_run,
+        manifold_path=require_target(opts.target),
+        image_format=opts.image_format,
+        image_quality=opts.image_quality,
+        target_quality=opts.target_quality,
+        mask_format=opts.mask_format,
+        dry_run=opts.dry_run,
     )
     raise typer.Exit(code=code)
 
@@ -153,11 +200,8 @@ def audit(
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> None:
     """Full image audit pass (resolution, black-frame, dedup, hardlinks)."""
-    target = _resolve_target(model, manifold)
-    if target is None:
-        raise typer.Exit(code=1)
     code = AuditService.audit_manifold(
-        manifold_path=target,
+        manifold_path=require_target(TargetOptions(model=model, manifold=manifold)),
         sample=sample,
         as_json=as_json,
     )
@@ -172,7 +216,7 @@ def test_datasets(
     ),
 ) -> None:
     """Run full test suite for the Dataset Compiler Suite in-process using unittest."""
-    project_root = Path(__file__).resolve().parent
+    project_root = PROJECT_ROOT
     tests_dir = project_root / "tests"
     console.print(
         f"[bold cyan]Running LemGendary Dataset Compiler tests in {tests_dir}...[/bold cyan]"

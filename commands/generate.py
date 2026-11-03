@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+from typing import Annotated
 
 import typer
 
 from commands.common import (
     _is_server_available,
-    _resolve_target,
     route_through_sidecar,
+)
+from commands.options import (
+    DeviceOpt,
+    DryRunOpt,
+    NoServerOpt,
+    SampleOpt,
+    TargetOptions,
+    flat_values,
+    options_command,
+    require_target,
 )
 from services import (
     DegradeService,
@@ -20,137 +31,153 @@ logger = logging.getLogger(__name__)
 
 
 # ─── smart generation (Phase 5) ─────────────────────────────────────────────
-def label(
-    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(
-        None, "--manifold", help="Direct path to a manifold folder"
-    ),
-    strategy: str = typer.Option(
-        "blip_caption",
-        "--strategy",
-        help="blip_caption | clip_zeroshot | yolo_detection | parsenet_segmentation | nima_quality",
-    ),
-    device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
-    sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
-    dry_run: bool = typer.Option(False, "--dry-run"),
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class GenerationRunOptions:
+    """Execution options shared by ``label`` / ``prompt`` / ``mask``."""
+
+    device: DeviceOpt = "cpu"
+    sample: SampleOpt = None
+    dry_run: DryRunOpt = False
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class LabelOptions:
+    """Options of the ``label`` command."""
+
+    target: TargetOptions
+    strategy: Annotated[
+        str,
+        typer.Option(
+            "--strategy",
+            help=(
+                "blip_caption | clip_zeroshot | yolo_detection | parsenet_segmentation"
+                " | nima_quality"
+            ),
+        ),
+    ] = "blip_caption"
+    run: GenerationRunOptions
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PromptOptions:
+    """Options of the ``prompt`` command."""
+
+    target: TargetOptions
+    template: Annotated[
+        str, typer.Option("--template", help="diffusers-v1 | sd-v1 | flux-v1 | minimal")
+    ] = "diffusers-v1"
+    run: GenerationRunOptions
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class MaskOptions:
+    """Options of the ``mask`` command."""
+
+    target: TargetOptions
+    strategy: Annotated[str, typer.Option("--strategy", help="parsenet | sam | modnet")] = (
+        "parsenet"
+    )
+    run: GenerationRunOptions
+
+
+def _generate(
+    target: TargetOptions, kind: str, strategy: str, run: GenerationRunOptions, **extra: str
 ) -> None:
+    """Resolve the manifold, run one GenerationService pass and exit with its code."""
+    manifold = require_target(target)
+    code = GenerationService.generate(
+        manifold=manifold,
+        kind=kind,
+        strategy=strategy,
+        **extra,
+        device=run.device,
+        sample=run.sample,
+        dry_run=run.dry_run,
+    )
+    raise typer.Exit(code=code)
+
+
+@options_command(LabelOptions)
+def label(opts: LabelOptions) -> None:
     """Generate labels for an existing manifold."""
-    target = _resolve_target(model, manifold)
-    if target is None:
-        raise typer.Exit(code=1)
-    code = GenerationService.generate(
-        manifold=target,
-        kind="label",
-        strategy=strategy,
-        device=device,
-        sample=sample,
-        dry_run=dry_run,
-    )
-    raise typer.Exit(code=code)
+    _generate(opts.target, "label", opts.strategy, opts.run)
 
 
-def prompt(
-    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(
-        None, "--manifold", help="Direct path to a manifold folder"
-    ),
-    template: str = typer.Option(
-        "diffusers-v1", "--template", help="diffusers-v1 | sd-v1 | flux-v1 | minimal"
-    ),
-    device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
-    sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
-    dry_run: bool = typer.Option(False, "--dry-run"),
-) -> None:
+@options_command(PromptOptions)
+def prompt(opts: PromptOptions) -> None:
     """Generate structured prompts for diffusion manifolds."""
-    target = _resolve_target(model, manifold)
-    if target is None:
-        raise typer.Exit(code=1)
-    code = GenerationService.generate(
-        manifold=target,
-        kind="prompt",
-        strategy=template,
-        template=template,
-        device=device,
-        sample=sample,
-        dry_run=dry_run,
-    )
-    raise typer.Exit(code=code)
+    _generate(opts.target, "prompt", opts.template, opts.run, template=opts.template)
 
 
-def mask(
-    model: str | None = typer.Option(None, "--model", "-m", help="Registry key"),
-    manifold: str | None = typer.Option(
-        None, "--manifold", help="Direct path to a manifold folder"
-    ),
-    strategy: str = typer.Option("parsenet", "--strategy", help="parsenet | sam | modnet"),
-    device: str = typer.Option("cpu", "--device", help="cpu | cuda | cuda:N"),
-    sample: int | None = typer.Option(None, "--sample", help="Cap the image scan"),
-    dry_run: bool = typer.Option(False, "--dry-run"),
-) -> None:
+@options_command(MaskOptions)
+def mask(opts: MaskOptions) -> None:
     """Generate masks for a segmentation manifold."""
-    target = _resolve_target(model, manifold)
-    if target is None:
-        raise typer.Exit(code=1)
-    code = GenerationService.generate(
-        manifold=target,
-        kind="mask",
-        strategy=strategy,
-        device=device,
-        sample=sample,
-        dry_run=dry_run,
-    )
-    raise typer.Exit(code=code)
+    _generate(opts.target, "mask", opts.strategy, opts.run)
 
 
 # ─── degradation engine (Phase 6) ───────────────────────────────────────────
-def degrade(
-    source: str = typer.Option(
-        ..., "--source", "-s", help="Source clean dataset directory or manifold name"
-    ),
-    output: str = typer.Option(..., "--output", "-o", help="Target synthetic manifold name"),
-    profile: str = typer.Option(
-        "motion-blur+iso-noise",
-        "--profile",
-        "-p",
-        help="Degradation profile expression or preset alias",
-    ),
-    intensity: str = typer.Option("medium", "--intensity", help="low | medium | high"),
-    pairs: int | None = typer.Option(None, "--pairs", help="Max sample pairs to synthesize"),
-    val_split: float = typer.Option(0.12, "--val-split", help="Validation split ratio"),
-    seed: int = typer.Option(42, "--seed", help="Deterministic RNG seed"),
-    image_format: str = typer.Option("webp", "--image-format", help="webp | jpeg | png"),
-    workers: int | None = typer.Option(None, "--workers", "-w", help="Worker thread count"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview plan without writing"),
-    no_server: bool = typer.Option(
-        False, "--no-server", help="Bypass API server and execute in-process"
-    ),
-) -> None:
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class DegradeSpec:
+    """What to degrade: source, output manifold and degradation profile."""
+
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source", "-s", help="Source clean dataset directory or manifold name"
+        ),
+    ]
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Target synthetic manifold name")
+    ]
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile", "-p", help="Degradation profile expression or preset alias"
+        ),
+    ] = "motion-blur+iso-noise"
+    intensity: Annotated[str, typer.Option("--intensity", help="low | medium | high")] = (
+        "medium"
+    )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class DegradeSampling:
+    """How many pairs to synthesize, the split, RNG seed, output format and workers."""
+
+    pairs: Annotated[
+        int | None, typer.Option("--pairs", help="Max sample pairs to synthesize")
+    ] = None
+    val_split: Annotated[float, typer.Option("--val-split", help="Validation split ratio")] = (
+        0.12
+    )
+    seed: Annotated[int, typer.Option("--seed", help="Deterministic RNG seed")] = 42
+    image_format: Annotated[
+        str, typer.Option("--image-format", help="webp | jpeg | png")
+    ] = "webp"
+    workers: Annotated[
+        int | None, typer.Option("--workers", "-w", help="Worker thread count")
+    ] = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class DegradeOptions:
+    """Options of the ``degrade`` command (flattened, also the sidecar job payload)."""
+
+    spec: DegradeSpec
+    sampling: DegradeSampling
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Preview plan without writing")
+    ] = False
+    no_server: NoServerOpt = False
+
+
+@options_command(DegradeOptions)
+def degrade(opts: DegradeOptions) -> None:
     """Compiler-time degradation synthesis (blur, noise, haze, rain, jpeg, film)."""
-    if not no_server and _is_server_available():
-        payload = {
-            "source": source,
-            "output": output,
-            "profile": profile,
-            "intensity": intensity,
-            "pairs": pairs,
-            "val_split": val_split,
-            "seed": seed,
-            "image_format": image_format,
-            "workers": workers,
-            "dry_run": dry_run,
-        }
+    payload = flat_values(opts)
+    payload.pop("no_server")
+    if not opts.no_server and _is_server_available():
         route_through_sidecar("degrade", payload)
 
-    code = DegradeService.run_degrade(
-        source=source,
-        output=output,
-        profile=profile,
-        intensity=intensity,
-        pairs=pairs,
-        val_split=val_split,
-        seed=seed,
-        image_format=image_format,
-        workers=workers,
-        dry_run=dry_run,
-    )
+    code = DegradeService.run_degrade(**payload)
     raise typer.Exit(code=code)

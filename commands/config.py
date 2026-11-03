@@ -10,6 +10,7 @@ import yaml
 from rich.table import Table
 
 from commands.common import (
+    PROJECT_ROOT,
     console,
 )
 from core.config_schema import _cli_validate
@@ -28,7 +29,7 @@ def config_validate() -> None:
 @config_app.command("show")
 def config_show() -> None:
     """Print unified_data.yaml."""
-    p = Path(__file__).resolve().parent / "unified_data.yaml"
+    p = PROJECT_ROOT / "unified_data.yaml"
     if not p.exists():
         p = Path("./unified_data.yaml")
     if not p.exists():

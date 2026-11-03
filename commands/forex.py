@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import typer
 
 from commands.common import (
+    PROJECT_ROOT,
     console,
 )
 from core.lazy_imports import load_forex_module
@@ -29,7 +29,7 @@ def forex_convert(
     ),
 ) -> None:
     """Convert raw .npy Forex manifolds into unified Apache Parquet files."""
-    datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
+    datasets_root = PROJECT_ROOT.parent / "LemGendaryDatasets"
     base_manifold = (datasets_root / "LemGendizedForexUniverse").resolve()
     if not base_manifold.exists() and (datasets_root / "LemGendizedForexUniverseLarge").exists():
         base_manifold = (datasets_root / "LemGendizedForexUniverseLarge").resolve()

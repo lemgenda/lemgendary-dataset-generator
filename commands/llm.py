@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Annotated
 
 import requests
 import typer
@@ -101,9 +102,9 @@ def llm_compile(
 
 @llm_app.command("validate")
 def llm_validate(
-    file_path: Path = typer.Option(
-        ..., "--file", "-f", help="Path to .jsonl dataset file to validate"
-    ),
+    file_path: Annotated[
+        Path, typer.Option("--file", "-f", help="Path to .jsonl dataset file to validate")
+    ],
 ) -> None:
     """Run QualityValidator on an LLM dataset JSONL file for 4 quality invariants."""
     if not file_path.exists():
