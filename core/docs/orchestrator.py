@@ -82,7 +82,7 @@ def generate_dataset_docs(
     # 7. dataset-metadata.json (Kaggle API metadata)
     generate_kaggle_metadata(ctx, readme_content=readme_content)
 
-    return ctx.total_samples
+    return ctx.lineage.total_samples
 
 
 def regenerate_all_docs(

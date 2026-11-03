@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.46-STABLE` |
+| **Version** | `v16.9.47-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,24 @@
 ---
 
 ## Changelog
+
+### v16.9.47 - Docs Context Split; Shared Generator Helpers
+
+- **Docs Context Split**: `ManifoldContext` now groups its 29 fields into
+  identity, profile, listing, lineage, inventory and spec records
+  (`core/docs/context_types.py`). Task, profile and source-tally rules moved
+  to `core/docs/context_resolvers.py`. `manifold_path`, `manifold_name`,
+  `slug`, `task` and the new `is_llm` stay available as properties.
+- **Shared Generator Helpers**: the new `core/docs/generators/common.py`
+  holds the context coercion, JSONL split discovery and the
+  `--manifold`/`--all` CLI driver that all seven generators use. This removed
+  the eight duplicate-code findings between the generators.
+- **Template Parameter Objects**: `render_forex_readme`,
+  `render_standard_readme` and `build_structure_text` take small dataclasses.
+  Metric rows, structure entries and resource descriptions use rule tables.
+  The `too-many-*` findings in `core/docs/` went from 36 to 0, and generated
+  documents are byte-identical to the previous version (1218 files over
+  about 50 manifolds).
 
 ### v16.9.46 - Reduce and Degrade Tools Split; Service Option Objects
 

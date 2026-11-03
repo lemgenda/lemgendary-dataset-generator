@@ -27,13 +27,9 @@ from core.docs.generators.kaggle_metadata import (
 )
 
 __all__ = [
-    "extract_kaggle_description",
-    "find_dataset_entry",
-    "write_category_txt",
-    "write_classes_txt",
-    "write_dataset_info_yaml",
-    "write_index_json",
-    "write_kaggle_metadata",
+    "extract_kaggle_description", "find_dataset_entry",
+    "write_category_txt", "write_classes_txt", "write_dataset_info_yaml",
+    "write_index_json", "write_kaggle_metadata",
 ]
 
 # Maintain alias for backward compatibility

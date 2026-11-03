@@ -7,6 +7,7 @@ to gather shard inventory, pair distributions, and temporal sample counts.
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 import logging
 from typing import Any
@@ -19,121 +20,126 @@ from core.lazy_imports import load_parquet
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _ForexScan:
+    """Accumulates shard details and per-year/pair/timeframe sample counts."""
+
+    result: dict[str, Any] = field(
+        default_factory=lambda: {
+            "years": [],
+            "pairs": [],
+            "timeframes": [],
+            "samples_per_year": {},
+            "samples_per_pair": {},
+            "samples_per_tf": {},
+            "details": [],
+        }
+    )
+    years: set[int] = field(default_factory=set)
+    pairs: set[str] = field(default_factory=set)
+    timeframes: set[int] = field(default_factory=set)
+
+    def add(self, year: int, pair: str, tf: int, count: int) -> None:
+        """Record ``count`` samples for one (year, pair, timeframe) shard."""
+        self.result["details"].append(
+            {"year": year, "pair": pair, "timeframe": tf, "count": count}
+        )
+        for key, value in (
+            ("samples_per_year", year),
+            ("samples_per_pair", pair),
+            ("samples_per_tf", tf),
+        ):
+            self.result[key][value] = self.result[key].get(value, 0) + count
+
+    def finish(self) -> dict[str, Any]:
+        """Return the scan result with sorted year, pair and timeframe lists."""
+        self.result["years"] = sorted(self.years)
+        self.result["pairs"] = sorted(self.pairs)
+        self.result["timeframes"] = sorted(self.timeframes)
+        return self.result
+
+
+def _year_suffix(path: Path, stem: str) -> int | None:
+    """Return the year encoded after 'ForexUniverse' in ``stem``, or None."""
+    try:
+        return int(stem.replace("ForexUniverse", ""))
+    except ValueError:
+        logger.debug("Ignoring %s: no year suffix", path.name)
+        return None
+
+
+def _scan_parquet_file(scan: _ForexScan, pq_file: Path, year: int) -> None:
+    """Count samples per (pair, timeframe) in one unified yearly Parquet file."""
+    try:
+        pq = load_parquet()
+        pf = pq.ParquetFile(str(pq_file))
+        tbl = pf.read(columns=["pair", "timeframe"])
+        p_arr = tbl["pair"].to_numpy(zero_copy_only=False)
+        tf_arr = tbl["timeframe"].to_numpy()
+
+        counts = Counter(zip(p_arr, tf_arr))
+        for (pair, tf), count in counts.items():
+            scan.pairs.add(str(pair))
+            scan.timeframes.add(int(tf))
+            scan.add(year, str(pair), int(tf), int(count))
+    except (*PARQUET_READ_ERRORS, KeyError) as e:
+        logger.warning("Error scanning %s: %s", pq_file.name, e)
+
+
+def _count_npy_samples(tf_dir: Path) -> int:
+    """Sum the leading dimension of every X*.npy array in a timeframe folder."""
+    total_samples = 0
+    for npy_file in tf_dir.glob("X*.npy"):
+        try:
+            arr = np.load(npy_file, mmap_mode="r")
+            total_samples += arr.shape[0]
+        except (OSError, ValueError) as exc:
+            logger.warning("Could not load npy file %s: %s", npy_file, exc)
+    return total_samples
+
+
+def _scan_pair_dir(scan: _ForexScan, pair_dir: Path, year: int) -> None:
+    """Scan the numeric timeframe folders of one legacy pair directory."""
+    pair = pair_dir.name
+    scan.pairs.add(pair)
+    for tf_dir in pair_dir.iterdir():
+        if not tf_dir.is_dir():
+            continue
+        try:
+            tf = int(tf_dir.name)
+        except ValueError:
+            logger.debug("Ignoring %s: timeframe folder is not numeric", tf_dir)
+            continue
+        scan.timeframes.add(tf)
+
+        total_samples = _count_npy_samples(tf_dir)
+        if total_samples > 0:
+            scan.add(year, pair, tf, total_samples)
+
+
 def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
     """Scan root_path for Forex Parquet shards or legacy directory chunks."""
-    result: dict[str, Any] = {
-        "years": [],
-        "pairs": [],
-        "timeframes": [],
-        "samples_per_year": {},
-        "samples_per_pair": {},
-        "samples_per_tf": {},
-        "details": [],
-    }
-
-    year_set: set[int] = set()
-    pair_set: set[str] = set()
-    tf_set: set[int] = set()
+    scan = _ForexScan()
 
     # 1. Scan unified Parquet files first (ForexUniverseYYYY.parquet)
     for pq_file in sorted(root_path.glob("ForexUniverse*.parquet")):
-        year_str = pq_file.stem.replace("ForexUniverse", "")
-        try:
-            year = int(year_str)
-        except ValueError:
-            logger.debug("Ignoring %s: no year suffix", pq_file.name)
+        year = _year_suffix(pq_file, pq_file.stem)
+        if year is None:
             continue
-        year_set.add(year)
-
-        try:
-            pq = load_parquet()
-            pf = pq.ParquetFile(str(pq_file))
-            tbl = pf.read(columns=["pair", "timeframe"])
-            p_arr = tbl["pair"].to_numpy(zero_copy_only=False)
-            tf_arr = tbl["timeframe"].to_numpy()
-
-            counts = Counter(zip(p_arr, tf_arr))
-            for (pair, tf), count in counts.items():
-                pair_set.add(str(pair))
-                tf_set.add(int(tf))
-                entry = {
-                    "year": year,
-                    "pair": str(pair),
-                    "timeframe": int(tf),
-                    "count": int(count),
-                }
-                result["details"].append(entry)
-                result["samples_per_year"][year] = result["samples_per_year"].get(year, 0) + int(
-                    count
-                )
-                result["samples_per_pair"][str(pair)] = result["samples_per_pair"].get(
-                    str(pair), 0
-                ) + int(count)
-                result["samples_per_tf"][int(tf)] = result["samples_per_tf"].get(int(tf), 0) + int(
-                    count
-                )
-        except (*PARQUET_READ_ERRORS, KeyError) as e:
-            logger.warning("Error scanning %s: %s", pq_file.name, e)
+        scan.years.add(year)
+        _scan_parquet_file(scan, pq_file, year)
 
     # 2. Scan legacy directories if not already scanned as Parquet
     for chunk_dir in root_path.glob("ForexUniverse*"):
         if not chunk_dir.is_dir():
             continue
-        year_str = chunk_dir.name.replace("ForexUniverse", "")
-        try:
-            year = int(year_str)
-        except ValueError:
-            logger.debug("Ignoring %s: no year suffix", chunk_dir.name)
+        year = _year_suffix(chunk_dir, chunk_dir.name)
+        if year is None or year in scan.years:
             continue
-
-        if year in year_set:
-            continue
-        year_set.add(year)
+        scan.years.add(year)
 
         for pair_dir in chunk_dir.iterdir():
-            if not pair_dir.is_dir():
-                continue
-            pair = pair_dir.name
-            pair_set.add(pair)
+            if pair_dir.is_dir():
+                _scan_pair_dir(scan, pair_dir, year)
 
-            for tf_dir in pair_dir.iterdir():
-                if not tf_dir.is_dir():
-                    continue
-                tf_str = tf_dir.name
-                try:
-                    tf = int(tf_str)
-                except ValueError:
-                    logger.debug("Ignoring %s: timeframe folder is not numeric", tf_dir)
-                    continue
-                tf_set.add(tf)
-
-                total_samples = 0
-                for npy_file in tf_dir.glob("X*.npy"):
-                    try:
-                        arr = np.load(npy_file, mmap_mode="r")
-                        total_samples += arr.shape[0]
-                    except (OSError, ValueError) as exc:
-                        logger.warning("Could not load npy file %s: %s", npy_file, exc)
-
-                if total_samples > 0:
-                    entry = {
-                        "year": year,
-                        "pair": pair,
-                        "timeframe": tf,
-                        "count": total_samples,
-                    }
-                    result["details"].append(entry)
-                    result["samples_per_year"][year] = (
-                        result["samples_per_year"].get(year, 0) + total_samples
-                    )
-                    result["samples_per_pair"][pair] = (
-                        result["samples_per_pair"].get(pair, 0) + total_samples
-                    )
-                    result["samples_per_tf"][tf] = (
-                        result["samples_per_tf"].get(tf, 0) + total_samples
-                    )
-
-    result["years"] = sorted(year_set)
-    result["pairs"] = sorted(pair_set)
-    result["timeframes"] = sorted(tf_set)
-    return result
+    return scan.finish()
