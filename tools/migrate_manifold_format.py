@@ -22,13 +22,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from audit.hardlinks import audit_hardlinks
 from formats.base import parse_also_format
-from formats.factory import make_writer
 from formats.directory import DirectorySampleSource, purge_loose_layout
+from formats.factory import make_writer
 
 
 def _load_index(root: Path) -> list[dict[str, Any]]:
@@ -73,36 +74,19 @@ def _check_hardlink_gate(
     return False
 
 
-def migrate_manifold(
-    root: Path,
-    formats: list[str],
-    *,
-    dry_run: bool = False,
-    verify: bool = False,
-    force_duplicate: bool = False,
-    accept_space_loss: bool = False,
-    purge_source: bool = False,
-) -> int:
-    """Write an existing manifold into the given container formats; returns the exit code."""
-    if not root.exists():
-        print(f"[ERROR] Manifold not found: {root}")
-        return 1
+@dataclass(frozen=True)
+class MigrationFlags:
+    """Behaviour switches for `migrate_manifold` (all default to off)."""
 
-    print(f"[MIGRATE] {root.name} -> {', '.join(formats)}")
+    dry_run: bool = False
+    verify: bool = False
+    force_duplicate: bool = False
+    accept_space_loss: bool = False
+    purge_source: bool = False
 
-    # Hardlink gate — only matters when a container is in the target list.
-    non_directory = [f for f in formats if f != "directory"]
-    if non_directory:
-        if not _check_hardlink_gate(root, force_duplicate, accept_space_loss):
-            return 1
 
-    index = _load_index(root)
-    print(f"[SCAN] {len(index)} entries in index.json")
-
-    if dry_run:
-        print("[DRY-RUN] Not writing any files.")
-        return 0
-
+def _stream_into_writers(root: Path, index: list[dict[str, Any]], formats: list[str]) -> None:
+    """Stream every indexed sample through one writer per requested format."""
     source = DirectorySampleSource(root, index)
     writers = [make_writer(fmt) for fmt in formats]
     for w in writers:
@@ -122,18 +106,58 @@ def migrate_manifold(
 
     print(f"[DONE] wrote {written} samples across {len(writers)} container(s)")
 
-    if verify:
+
+def _after_write(root: Path, flags: MigrationFlags, has_containers: bool) -> None:
+    """Print the verify notice and purge the loose layout when requested."""
+    if flags.verify:
         print("[VERIFY] Round-trip verification is not implemented in Phase 4;")
         print("         readers land in the training suite as a separate release.")
         print("         Compare directory counts to container counts manually.")
 
-    if purge_source and non_directory:
-        if not accept_space_loss:
-            print("[SKIP] --purge-source ignored without --accept-space-loss")
-        else:
-            print("[PURGE] Removing source directory layout (images/, labels/, targets/, masks/)")
-            purge_loose_layout(root)
+    if not (flags.purge_source and has_containers):
+        return
+    if not flags.accept_space_loss:
+        print("[SKIP] --purge-source ignored without --accept-space-loss")
+        return
+    print("[PURGE] Removing source directory layout (images/, labels/, targets/, masks/)")
+    purge_loose_layout(root)
 
+
+def migrate_manifold(
+    root: Path,
+    formats: list[str],
+    flags: MigrationFlags | None = None,
+    **overrides: bool,
+) -> int:
+    """Write an existing manifold into the given container formats; returns the exit code.
+
+    Switches come from `flags` (a `MigrationFlags`); the legacy keyword
+    arguments (`dry_run`, `verify`, `force_duplicate`, `accept_space_loss`,
+    `purge_source`) are still accepted and override it.
+    """
+    opts = replace(flags or MigrationFlags(), **overrides)
+    if not root.exists():
+        print(f"[ERROR] Manifold not found: {root}")
+        return 1
+
+    print(f"[MIGRATE] {root.name} -> {', '.join(formats)}")
+
+    # Hardlink gate — only matters when a container is in the target list.
+    non_directory = [f for f in formats if f != "directory"]
+    if non_directory and not _check_hardlink_gate(
+        root, opts.force_duplicate, opts.accept_space_loss
+    ):
+        return 1
+
+    index = _load_index(root)
+    print(f"[SCAN] {len(index)} entries in index.json")
+
+    if opts.dry_run:
+        print("[DRY-RUN] Not writing any files.")
+        return 0
+
+    _stream_into_writers(root, index, formats)
+    _after_write(root, opts, bool(non_directory))
     return 0
 
 
@@ -166,15 +190,14 @@ def main() -> int:
         print("[ERROR] --to must specify at least one format.")
         return 1
 
-    return migrate_manifold(
-        root,
-        formats,
+    flags = MigrationFlags(
         dry_run=args.dry_run,
         verify=args.verify,
         force_duplicate=args.force_duplicate,
         accept_space_loss=args.accept_space_loss,
         purge_source=args.purge_source,
     )
+    return migrate_manifold(root, formats, flags)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.44-STABLE` |
+| **Version** | `v16.9.45-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,28 @@
 ---
 
 ## Changelog
+
+### v16.9.45 - Zip Streamer and Archive Utilities Split
+
+- **Zip Streamer Split Into Focused Modules**
+  (`tools/stream_zip_to_container.py`, 714 lines to 114): the module keeps
+  its CLI and re-exports every old name.
+  - `tools/zip_stream_common.py`: `ZipStreamOptions`, zip member layout,
+    transcode workers and cleanup. `zip_stream_webdataset.py` and
+    `zip_stream_mds.py` hold the two streamers, which take one options object
+    and still accept the old keyword arguments.
+  - `utils/container_stream.py`: WebP transcode, worker count, MDS writer and
+    record, and `dataset_info.yaml` format stamping, for reuse by the
+    modernization queue.
+- **`--no-webp` Shard Names Fixed**: shards no longer come out as
+  `shard-00000..png`; they use the `.data` / `.tar` names.
+- **`utils/archive.py` Split** (508 lines to 142): `archive_io.py`,
+  `archive_create.py` and `archive_extract.py`. 7-Zip is located through
+  `%ProgramFiles%` instead of hardcoded paths.
+- **Migration Tools**: `migrate_manifold` takes a `MigrationFlags` options
+  object, and `image_policy_from_args` builds the image policy from CLI
+  arguments. The `too-many-*` findings in these files went from 24 to 0 and
+  duplicate-code findings from 9 to 1.
 
 ### v16.9.44 - `forex/pipeline.py` Split Into Focused Modules
 
