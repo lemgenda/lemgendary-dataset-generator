@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import unittest
 import json
 import logging
 import subprocess
@@ -1117,7 +1118,6 @@ def test_datasets(
     pattern: str = typer.Option("test_*.py", "--pattern", "-p", help="Test file pattern to execute"),
 ) -> None:
     """Run full test suite for the Dataset Compiler Suite in-process using unittest."""
-    import unittest
     project_root = Path(__file__).resolve().parent
     tests_dir = project_root / "tests"
     console.print(f"[bold cyan]Running LemGendary Dataset Compiler tests in {tests_dir}...[/bold cyan]")

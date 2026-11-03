@@ -34,6 +34,7 @@ Namespace through the initializer::
 """
 
 # ─── Standard library (safe to import anywhere) ─────────────────────────────
+import signal
 import argparse
 import io
 import json
@@ -418,7 +419,6 @@ def init_worker(
 
     # Workers ignore SIGINT to prevent traceback noise (subprocesses only).
     if os.name == "nt" and multiprocessing.current_process().name != "MainProcess":
-        import signal
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)

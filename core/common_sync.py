@@ -5,6 +5,10 @@ Centralized Kaggle authentication, archive staging, status tracking,
 and resilient transfer utilities shared across dataset managers.
 """
 
+import gc
+import re
+import socket
+import tempfile
 import importlib
 import json
 import logging
@@ -166,7 +170,6 @@ def setup_kaggle_auth(
 
 def robust_staging_cleanup(staging_dir: Path, target_zip: Path | None = None, max_retries: int = 5) -> bool:
     """Robustly purge staging archive and directory on Windows with GC and retry backoff."""
-    import gc
     gc.collect()
     time.sleep(0.5)
 
@@ -515,7 +518,6 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
 
     print(f"[INIT] Dataset '{clean_repo_id}' not found on Kaggle. Creating empty public placeholder...")
 
-    import tempfile
     with tempfile.TemporaryDirectory() as td:
         tmp_dir = Path(td)
 
@@ -907,7 +909,6 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
 
     req.settings = settings
 
-    import re
     client = api.build_kaggle_client()
 
     try:
@@ -1004,7 +1005,6 @@ def _fetch_remote_archive(
         sys.path = [p for p in sys.path if not (os.path.basename(os.path.normpath(p)) == "sources" and os.path.exists(os.path.join(p, "kaggle.py")))]
         if "kaggle" in sys.modules and not hasattr(sys.modules["kaggle"], "api"):
             del sys.modules["kaggle"]
-        import socket
         socket.setdefaulttimeout(60.0)
 
 

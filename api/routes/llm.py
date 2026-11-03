@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unittest
 import asyncio
 import json
 import logging
@@ -154,7 +155,6 @@ class DatasetTestSuiteRequest(BaseModel):
 @router.post("/test-suite")
 def run_dataset_tests(req: DatasetTestSuiteRequest) -> dict[str, Any]:
     """Execute dataset test suite in-process and return structured test outcome."""
-    import unittest
     project_root = Path(__file__).resolve().parent.parent.parent
     tests_dir = project_root / "tests"
     loader = unittest.TestLoader()

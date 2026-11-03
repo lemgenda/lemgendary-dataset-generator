@@ -1,3 +1,5 @@
+from collections import defaultdict
+import argparse
 import json
 import logging
 import math
@@ -291,7 +293,6 @@ def _reduce_one(source_root, max_gb_override, suffix_override, fraction, interac
         if not all_imgs:
             continue
 
-        from collections import defaultdict
         images_by_slug = defaultdict(list)
         for img in all_imgs:
             try:
@@ -572,7 +573,6 @@ def purge_ghost_manifolds():
 
 def main(argv=None):
     """Command-line entry point; returns an exit code."""
-    import argparse
 
     parser = argparse.ArgumentParser(description="Manifold downsampling and scale reduction")
     parser.add_argument("--reduce", action="store_true", help="Run dataset reduction flow (default action)")

@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.31-STABLE` |
+| **Version** | `v16.9.32-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,11 @@
 ---
 
 ## Changelog
+
+### v16.9.32 - Standard-Library Imports Moved to Module Level
+
+- **`import-outside-toplevel` Findings Down From 154 to 134**: 20 function-level imports of standard-library modules (`re`, `json`, `signal`, `socket`, `gc`, `tempfile`, `argparse`, `unittest`, `collections`, `concurrent.futures`, `importlib.util`, `os`) now sit in their module's top-level import block, in `api/jobs.py`, `api/routes/gui.py`, `api/routes/llm.py`, `cli.py`, `core/common_sync.py`, `core/compiler_core.py`, `core/manifold_compile.py`, `formats/webdataset.py`, `models/detection.py`, `sources/kaggle.py`, `tools/manifold_reduce.py` and `tests/test_formats.py`.
+- The check stays disabled until the remaining findings, lazy imports of heavy dependencies and internal modules, are moved behind one loader function per dependency.
 
 ### v16.9.31 - Scripts Run as Modules, `sys.path` Edits Removed, Import-Position Checks Re-Enabled
 

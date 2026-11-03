@@ -13,6 +13,7 @@ Phase 4 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 from typing import Any
@@ -58,7 +59,6 @@ class WebDatasetWriter(Writer):
         if sample.label:
             row["txt"] = sample.label.encode("utf-8")
         if sample.metadata:
-            import json
             row["json"] = json.dumps(sample.metadata).encode("utf-8")
         self._sink.write(row)
 

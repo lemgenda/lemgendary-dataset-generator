@@ -7,6 +7,7 @@ Run from the project root as ``python -m sources.kaggle``. Running it as a
 module keeps ``sources/`` off ``sys.path``, so this file cannot shadow the
 PyPI ``kaggle`` package.
 """
+import socket
 import argparse
 import logging
 import sys
@@ -59,7 +60,6 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
 
 def main():
     """Main CLI entrypoint for Kaggle dataset operations."""
-    import socket
     socket.setdefaulttimeout(60.0)
     parser = argparse.ArgumentParser(description="LemGendary Kaggle Manager")
     parser.add_argument("--repo_id", required=True, help="Kaggle dataset handle or URL")

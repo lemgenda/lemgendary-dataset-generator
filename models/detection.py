@@ -1,3 +1,4 @@
+import os
 from typing import Any, cast
 import torch
 from ultralytics import YOLO
@@ -12,7 +13,6 @@ class AutoLabeler:
         self.mode = mode # 'detection', 'segmentation', 'pose'
         self.face_detector = None  # lazily created by _predict_face_landmarks
 
-        import os
         base_dir = os.path.dirname(__file__)
 
         # Determine model path based on task
@@ -64,7 +64,6 @@ class AutoLabeler:
         import mediapipe as mp
         from mediapipe.tasks import python
         from mediapipe.tasks.python import vision
-        import os
 
         # Initialize detector lazily
         if self.face_detector is None:

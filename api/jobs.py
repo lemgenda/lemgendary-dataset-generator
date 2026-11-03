@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import asyncio
 import datetime
 import json
@@ -224,7 +225,6 @@ class JobManager:
 
                         # Strip outdated ASCII progress bars; the modern GUI progress tracker renders the bar
                         if is_progress:
-                            import re
                             clean_line = re.sub(r"(\|[ █━─\-=#]+?\||\[[ █━─\-=#]+?\])", "", clean_line)
                             clean_line = re.sub(r"\s{2,}", " ", clean_line).strip()
 

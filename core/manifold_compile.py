@@ -5,10 +5,12 @@ import logging
 import os
 import pickle
 import random
+import re
 import shutil
+import signal
 import sqlite3
 import sys
-from concurrent.futures import BrokenExecutor, CancelledError, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, BrokenExecutor, CancelledError, ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -169,7 +171,6 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
     # 2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)
     if os.name == 'nt':
-        import signal
         def signal_handler(_sig, _frame):
             print("\n[INTERRUPT] Emergency termination requested. Mission aborted.")
             os._exit(1)
@@ -770,7 +771,6 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 args.no_labeling = True
                 args.no_vetting = True
 
-        from concurrent.futures import wait, FIRST_COMPLETED
         desc_label = "[PASS 1] Extraction & Vetting" if not args.no_vetting and task in ["quality", "classification"] else "[PASS 1] Extraction & Processing"
 
         if not args.finalize:
@@ -969,7 +969,6 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
             resolved_model = model_key
             if not resolved_model:
                 clean_name = pascal_name.replace("LemGendized", "").replace("KaggleReady", "").replace("Large", "").replace("Mini", "")
-                import re
                 resolved_model = re.sub(r'(?<!^)(?=[A-Z])', '_', clean_name).lower()
 
             if "naf_net" in resolved_model:

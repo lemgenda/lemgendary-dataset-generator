@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+import json
 import asyncio
 import datetime
 import logging
@@ -185,8 +187,6 @@ def _calculate_dataset_file_stats(manifold_path: Path) -> tuple[DatasetFormatSta
 
 def _extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
     """Parse JSONL datasets and return exact sample count per SSOT provenance source."""
-    from collections import Counter
-    import json
 
     counts: Counter[str] = Counter()
     jsonl_files = list(manifold_dir.glob("*.jsonl")) + list(manifold_dir.glob("data/*.jsonl"))

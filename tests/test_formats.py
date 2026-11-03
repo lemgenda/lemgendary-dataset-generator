@@ -8,6 +8,7 @@ DirectorySampleSource, and container protocol compliance.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 import tarfile
 import tempfile
@@ -294,7 +295,6 @@ class TestMDSWriter(unittest.TestCase):
     """Test MDSWriter lifecycle, Windows relative path routing, and idempotency."""
 
     def test_mds_writer_lifecycle_and_idempotency(self) -> None:
-        import importlib.util
 
         if importlib.util.find_spec("streaming") is None:
             self.skipTest("mosaicml-streaming not installed")
