@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.61-STABLE` |
+| **Version** | `v16.9.62-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,23 @@
 ---
 
 ## Changelog
+
+### v16.9.62 - Hub Script Passes PSScriptAnalyzer
+
+- `lemgendary_datasets_hub.ps1` had 162 PSScriptAnalyzer warnings (the
+  env-manager gate did not run before env-manager v16.9.53). All are fixed at
+  the source:
+  - `Write-Host` (135 calls) is replaced by `Write-Ui`, which writes to the
+    information stream and colours the line with ANSI codes. The in-place
+    progress redraw writes through `$Host.UI.Write`.
+  - `$global:LogBuffer` and `$global:CudaReady` are script-scoped.
+  - The menu number parse uses `[int]::TryParse` instead of an empty
+    `catch`; the stats and `dataset-metadata.json` reads log a warning on
+    failure.
+  - `Show-Stats` is `Show-Stat`, `Test-MissingDatasets` is
+    `Test-MissingDataset`, and `Start-Acquisition` supports
+    `ShouldProcess`.
+  - Comment rules use ASCII dashes (plain ASCII file, no BOM needed).
 
 ### v16.9.61 - Task Taxonomy File and Explicit Registry Tasks
 
