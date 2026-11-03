@@ -83,7 +83,7 @@ def prepare_mds_split_dir(split_mds_dir: Path) -> str:
     """Wipe and recreate an MDS split folder; return the `out` string for MDSWriter.
 
     mosaicml-streaming parses `out` with urllib.parse.urlparse, so an absolute
-    Windows path (C:\\...) is mistaken for a URL scheme; a relative path routes
+    Windows drive-letter path is mistaken for a URL scheme; a relative path routes
     to LocalUploader. Falls back to the absolute path when no relative path
     exists (different drive). The folder is wiped first because LocalUploader
     refuses non-empty output directories from interrupted runs.

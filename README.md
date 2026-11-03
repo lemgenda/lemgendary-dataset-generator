@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.63-STABLE` |
+| **Version** | `v16.9.64-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,13 @@
 ---
 
 ## Changelog
+
+### v16.9.64 - No Drive-Letter Path Examples
+
+- The absolute-path gate flagged five example Windows paths written out in
+  comments and docs (`formats/mds.py`, `utils/container_stream.py`, two older
+  README changelog entries, `REVIEW_REPORT.md`). They now say "drive-letter
+  path" instead of spelling one out.
 
 ### v16.9.63 - Registry YAML Passes yamllint
 
@@ -1486,7 +1493,7 @@ Engine Hardening.*
 
 - **`formats/mds.py` — Core MDSWriter Cloud Scheme & Retry Fix** — Fixed
   `ValueError: Invalid Cloud provider prefix: c.` and `FileExistsError` in
-  `MDSWriter.open()`. On Windows, passing an absolute path `C:\...` caused
+  `MDSWriter.open()`. On Windows, passing an absolute drive-letter path caused
   `mosaicml-streaming`'s URL parser to identify `c` as an unknown cloud provider
   scheme. Output directories are now converted to relative paths via
   `os.path.relpath()` and existing non-empty directories from interrupted runs
@@ -1508,7 +1515,7 @@ Engine Hardening.*
   `ValueError: Invalid Cloud provider prefix: c.` raised when packing loose
   directories into MDS shards on Windows. The `mosaicml-streaming` library
   parses the `out` argument with `urllib.parse.urlparse`, which misinterprets a
-  Windows absolute path (`C:\...`) as a URL with scheme `c`. Fix: `out` is now
+  Windows drive-letter path as a URL with scheme `c`. Fix: `out` is now
   derived via `os.path.relpath(split_mds_dir)`, producing a relative path whose
   empty URL scheme correctly routes to `LocalUploader`. Affected manifolds:
   `classification_master_manifold`, `professional_multitask_restoration`.

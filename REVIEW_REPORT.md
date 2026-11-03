@@ -522,7 +522,7 @@ These are listed by location:
 - `core/compiler_core.py:156`: the remedy text names `python config_schema.py`.
   The file is at `core/config_schema.py`.
 - `cli.py:947`: mojibake in a section comment (`# ???`).
-- `utils/archive.py:148`: hard-coded `C:\Program Files\7-Zip` paths. Use
+- `utils/archive.py:148`: hard-coded 7-Zip install paths under Program Files. Use
   `shutil.which` plus a configured path.
 - `core/manifold_compile.py:326`: unused `index` (ruff F841).
 - `core/manifold_compile.py:761`: redefined `pbar` (ruff F811).

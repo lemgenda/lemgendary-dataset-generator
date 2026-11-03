@@ -68,7 +68,7 @@ class MDSWriter(Writer):
         mds_writer_cls = streaming.MDSWriter
         self._out_dir = Path(output_root) / "mds"
         # mosaicml-streaming parses `out` with urllib.parse.urlparse to detect cloud vs
-        # local paths. On Windows, an absolute path such as C:\... is parsed as scheme 'c'
+        # local paths. On Windows, an absolute drive-letter path is parsed as scheme 'c'
         # which is not a recognised cloud provider prefix, causing ValueError. Using a
         # relative path produces an empty scheme and correctly routes to LocalUploader.
         try:
