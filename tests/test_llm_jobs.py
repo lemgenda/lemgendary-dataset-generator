@@ -20,11 +20,14 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 import cli
+from commands import common as cli_common
+from commands import llm as cli_llm
 from api.jobs import JobManager
 from api.models import JobResponse, JobState, JobType
 from api.routes import llm as llm_routes
@@ -212,15 +215,15 @@ class TestCliLLMCompilePolling(unittest.TestCase):
             return _response(200, next(states, job_states[-1]))
 
         with (
-            patch.object(cli, "_is_server_available", return_value=True),
-            patch.object(cli, "get_or_create_token", return_value="token"),
-            patch.object(cli, "JOB_POLL_INTERVAL_S", 0.01),
+            patch.object(cli_llm, "_is_server_available", return_value=True),
+            patch.object(cli_llm, "get_or_create_token", return_value="token"),
+            patch.object(cli_common, "JOB_POLL_INTERVAL_S", 0.01),
             patch.object(
-                cli.requests,
+                requests,
                 "post",
                 return_value=_response(200, {"status": "enqueued", "job_id": "job-1"}),
             ),
-            patch.object(cli.requests, "get", side_effect=fake_get),
+            patch.object(requests, "get", side_effect=fake_get),
         ):
             return CliRunner().invoke(cli.app, ["llm", "compile", "--dataset", "test_llm", *extra])
 

@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.37-STABLE` |
+| **Version** | `v16.9.38-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,28 @@
 ---
 
 ## Changelog
+
+### v16.9.38 - `cli.py` Split Into One Typer Module per Command Group
+
+- **`cli.py` Only Assembles the App** (1280 lines to 67): every command group
+  lives in its own module of the new `commands/` package, which defines the
+  group's `typer.Typer` sub-app. `cli.py` registers the top-level commands
+  and adds the sub-apps under the same names as before.
+  - `commands/compile.py` (`version`, `compile`, `transcode`, `audit`,
+    `test`), `commands/generate.py` (`label`, `prompt`, `mask`, `degrade`).
+  - `commands/env.py`, `sync.py`, `docs.py`, `config.py`, `container.py`
+    (the `format` group), `presets.py`, `server.py`, `forex.py`,
+    `modernize.py` (also the top-level `reduce` alias) and `llm.py`.
+  - `commands/common.py`: the shared console, the sidecar availability probe,
+    job log streaming and polling, and the manifold path resolvers.
+- **One Sidecar Submit Helper**: `compile` and `degrade` each carried a copy
+  of the "post the job to the API sidecar, stream its logs, fall back
+  in-process" block. Both now call `commands.common.route_through_sidecar`.
+- **Unchanged Interface**: `python cli.py` and `cli.app` work as before. The
+  sorted `--help` output of the root app and all ten groups matches the
+  previous version line for line, apart from the script name.
+- `tests/test_llm_jobs.py` patches the sidecar probe, token and poll interval
+  in `commands.llm` and `commands.common`, where they now live.
 
 ### v16.9.37 - `core/compiler_core.py` Split Into Config, Worker and Sample Modules
 
