@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class JobState(str, Enum):
+    """Lifecycle state of a background job."""
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -17,6 +18,7 @@ class JobState(str, Enum):
 
 
 class JobType(str, Enum):
+    """Category of work a background job performs."""
     COMPILE = "compile"
     DEGRADE = "degrade"
     REDUCE = "reduce"
@@ -31,6 +33,7 @@ class JobType(str, Enum):
 
 
 class CompileJobRequest(BaseModel):
+    """Request body for a dataset compile job."""
     model: Optional[str] = Field(None, description="Dataset/model key in unified_data.yaml")
     preset: Optional[str] = Field(None, description="Compiler preset profile name from presets.yaml")
     max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
@@ -54,6 +57,7 @@ class CompileJobRequest(BaseModel):
 
 
 class DegradeJobRequest(BaseModel):
+    """Request body for a degradation (synthetic pair) job."""
     source: str = Field(..., description="Source clean dataset path or registered manifold name")
     output: str = Field(..., description="Destination synthetic manifold folder name")
     profile: str = Field("motion-blur+iso-noise", description="Degradation profile expression or preset alias")
@@ -67,12 +71,14 @@ class DegradeJobRequest(BaseModel):
 
 
 class GenericJobRequest(BaseModel):
+    """Request body for a job that runs an arbitrary command."""
     job_type: JobType = Field(JobType.CUSTOM, description="Type of job to execute")
     command: List[str] = Field(..., description="Command and argument list")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Metadata dictionary")
 
 
 class JobResponse(BaseModel):
+    """A background job and its current state."""
     id: str = Field(..., description="Unique job identifier (UUID)")
     job_type: JobType = Field(..., description="Job category")
     state: JobState = Field(..., description="Current job lifecycle state")
@@ -86,11 +92,13 @@ class JobResponse(BaseModel):
 
 
 class JobListResponse(BaseModel):
+    """A list of jobs with their total count."""
     jobs: List[JobResponse]
     total: int
 
 
 class HealthResponse(BaseModel):
+    """Basic liveness response."""
     status: str = "ok"
     service: str = "LemGendary Dataset Compiler API"
     version: str
@@ -99,6 +107,7 @@ class HealthResponse(BaseModel):
 
 
 class HardwareInfo(BaseModel):
+    """Host CPU, memory and CUDA details."""
     cpu_count: int
     ram_total_gb: float
     ram_available_gb: float
@@ -108,6 +117,7 @@ class HardwareInfo(BaseModel):
 
 
 class FullHealthResponse(BaseModel):
+    """Liveness response with host hardware details."""
     status: str
     service: str
     version: str
@@ -117,6 +127,7 @@ class FullHealthResponse(BaseModel):
 
 
 class DatasetInfoResponse(BaseModel):
+    """Summary of one compiled dataset on disk."""
     name: str
     path: str
     task: str
@@ -128,17 +139,20 @@ class DatasetInfoResponse(BaseModel):
 
 
 class DatasetListResponse(BaseModel):
+    """A list of compiled datasets with their total count."""
     datasets: List[DatasetInfoResponse]
     total: int
 
 
 class EnvPassthroughResponse(BaseModel):
+    """Result of a command passed through to the environment manager."""
     status: str
     returncode: int
     output: str
 
 
 class DatasetFormatStats(BaseModel):
+    """Per-format file counts for a dataset."""
     webp: int = 0
     jpg: int = 0
     png: int = 0
@@ -147,6 +161,7 @@ class DatasetFormatStats(BaseModel):
 
 
 class DatasetSourceInfo(BaseModel):
+    """One upstream source a dataset was compiled from."""
     name: str
     ref: Optional[str] = None
     count: Optional[int] = None
@@ -154,6 +169,7 @@ class DatasetSourceInfo(BaseModel):
 
 
 class DatasetDetailStats(BaseModel):
+    """Detailed statistics for one compiled dataset."""
     name: str
     key: Optional[str] = None
     display_name: Optional[str] = None
@@ -174,6 +190,7 @@ class DatasetDetailStats(BaseModel):
 
 
 class DatasetStatsListResponse(BaseModel):
+    """Detailed statistics for all compiled datasets with size totals."""
     datasets: List[DatasetDetailStats]
     total: int
     total_size_bytes: int
@@ -181,6 +198,7 @@ class DatasetStatsListResponse(BaseModel):
 
 
 class ActiveJobTelemetry(BaseModel):
+    """Progress telemetry for one running job."""
     id: str
     job_type: str
     state: str
@@ -195,11 +213,13 @@ class ActiveJobTelemetry(BaseModel):
 
 
 class ActiveJobsResponse(BaseModel):
+    """The running jobs with their count."""
     active_jobs: List[ActiveJobTelemetry]
     count: int
 
 
 class CompilerPresetModel(BaseModel):
+    """A compiler preset as exposed by the API."""
     name: str
     title: str
     description: str
@@ -216,11 +236,13 @@ class CompilerPresetModel(BaseModel):
 
 
 class PresetListResponse(BaseModel):
+    """All compiler presets keyed by name."""
     presets: Dict[str, CompilerPresetModel]
     total: int
 
 
 class QuickCompileRequest(BaseModel):
+    """Request body for compiling a dataset with a preset."""
     model: str = Field(..., description="Dataset or model key in unified_data.yaml")
     preset: str = Field("quality-vision", description="Preset name from presets.yaml")
     max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
@@ -228,6 +250,7 @@ class QuickCompileRequest(BaseModel):
 
 
 class GuiStateResponse(BaseModel):
+    """Dashboard summary for the GUI."""
     service: str = "LemGendary Dataset Compiler API"
     version: str
     uptime_seconds: float
@@ -240,6 +263,7 @@ class GuiStateResponse(BaseModel):
 
 
 class KaggleDatasetRegistryItem(BaseModel):
+    """A Kaggle-published dataset from the unified registry."""
     key: str
     title: str
     name: str
@@ -253,18 +277,21 @@ class KaggleDatasetRegistryItem(BaseModel):
 
 
 class KaggleDownloadRequest(BaseModel):
+    """Request body for downloading a Kaggle dataset."""
     kaggle_ref: str = Field(..., description="Kaggle dataset handle, kaggle:// URI, or URL")
     target_folder: Optional[str] = Field(None, description="Destination folder name under datasets root")
     force: bool = Field(False, description="Force overwrite existing folder")
 
 
 class KaggleUploadRequest(BaseModel):
+    """Request body for uploading a manifold to Kaggle."""
     manifold: str = Field(..., description="Local manifold folder name or registry key")
     kaggle_ref: Optional[str] = Field(None, description="Optional target Kaggle dataset handle")
     no_wait: bool = Field(True, description="Do not wait for server-side extraction verification")
 
 
 class CustomCompileRequest(BaseModel):
+    """Request body for compiling a custom multi-source dataset."""
     custom_name: str = Field(..., description="Unique dataset manifold name (e.g. CustomFaceEnhance)")
     task: str = Field("vision", description="Task type (restoration, segmentation, detection, quality, vision)")
     preset: str | None = Field(

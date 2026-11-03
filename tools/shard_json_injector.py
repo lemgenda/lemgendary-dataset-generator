@@ -1,3 +1,5 @@
+"""Add the per-image JSON labels to the NIMA manifolds' WebDataset shards."""
+
 import io
 import logging
 import os
@@ -9,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def process_shards():
+    """Rewrite each NIMA manifold shard with the matching JSON label added to every image."""
     base_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
 
     models = [

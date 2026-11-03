@@ -218,6 +218,7 @@ def migrate_manifold(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for the image-format migration."""
     parser = argparse.ArgumentParser(
         description="Retroactive image-format migration"
     )
@@ -240,6 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
+    """Transcode a manifold's images to the requested format; returns the exit code."""
     manifold = Path(args.manifold)
     if not manifold.exists():
         print(f"[ERROR] Manifold not found: {manifold}")
@@ -255,6 +257,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Parse the CLI arguments and run the image-format migration."""
     parser = build_parser()
     args = parser.parse_args()
     return run(args)

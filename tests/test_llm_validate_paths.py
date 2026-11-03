@@ -39,6 +39,7 @@ def _write_jsonl(path: Path) -> Path:
 
 
 class TestValidatePathContainment(unittest.TestCase):
+    """The validate route only reads files inside the dataset root."""
     def setUp(self) -> None:
         base = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, base)
@@ -59,46 +60,56 @@ class TestValidatePathContainment(unittest.TestCase):
         return self.client.post("/api/llm/validate", json={"file_path": file_path})
 
     def test_relative_path_inside_root_is_validated(self) -> None:
+        """A relative path inside the root is validated."""
         resp = self._validate("ai_helper/data/ai_helper_train.jsonl")
         self.assertEqual(resp.status_code, 200, resp.text)
         self.assertEqual(resp.json()["total_records"], 1)
 
     def test_absolute_path_inside_root_is_still_accepted(self) -> None:
+        """An absolute path inside the root is accepted."""
         resp = self._validate(str(self.inside_file))
         self.assertEqual(resp.status_code, 200, resp.text)
         self.assertEqual(resp.json()["total_records"], 1)
 
     def test_dotdot_traversal_is_refused(self) -> None:
+        """A ../ path that leaves the root is refused with 403."""
         resp = self._validate("../outside/secret.jsonl")
         self.assertEqual(resp.status_code, 403)
         self.assertIn("outside the dataset root", resp.json()["detail"])
 
     def test_traversal_through_a_subfolder_is_refused(self) -> None:
+        """A path that climbs out through a subfolder is refused."""
         resp = self._validate("ai_helper/../../outside/secret.jsonl")
         self.assertEqual(resp.status_code, 403)
 
     def test_absolute_path_outside_root_is_refused(self) -> None:
+        """An absolute path outside the root is refused."""
         resp = self._validate(str(self.outside_file))
         self.assertEqual(resp.status_code, 403)
 
     def test_sibling_folder_sharing_the_root_prefix_is_refused(self) -> None:
+        """A sibling folder whose name starts with the root's name is refused."""
         sibling = _write_jsonl(self.root.parent / (self.root.name + "Evil") / "x.jsonl")
         resp = self._validate(str(sibling))
         self.assertEqual(resp.status_code, 403)
 
     def test_missing_file_inside_root_is_404(self) -> None:
+        """A missing file inside the root returns 404."""
         resp = self._validate("ai_helper/data/missing.jsonl")
         self.assertEqual(resp.status_code, 404)
 
     def test_missing_file_outside_root_is_403_not_404(self) -> None:
+        """A missing file outside the root returns 403, so its existence is not revealed."""
         resp = self._validate(str(self.outside_dir / "missing.jsonl"))
         self.assertEqual(resp.status_code, 403)
 
     def test_directory_inside_root_is_404(self) -> None:
+        """A directory inside the root returns 404."""
         resp = self._validate("ai_helper")
         self.assertEqual(resp.status_code, 404)
 
     def test_symlink_escaping_the_root_is_refused(self) -> None:
+        """A symlink inside the root that points outside it is refused."""
         link = self.root / "ai_helper" / "escape.jsonl"
         try:
             os.symlink(self.outside_file, link)
@@ -108,6 +119,7 @@ class TestValidatePathContainment(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_inline_records_need_no_path(self) -> None:
+        """Inline records are validated without a file path."""
         resp = self.client.post("/api/llm/validate", json={"records": [VALID_RECORD]})
         self.assertEqual(resp.status_code, 200, resp.text)
 

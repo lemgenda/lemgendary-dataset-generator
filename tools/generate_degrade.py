@@ -341,6 +341,7 @@ Every sample in `images/` has its clean ground truth in `targets/` and exact par
 
 
 def main() -> None:
+    """Synthesise a degraded manifold from a clean source (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary Dataset Compiler — Degradation Synthesizer")
     parser.add_argument("--source", "-s", required=True, help="Clean source dataset directory or manifold name")
     parser.add_argument("--output", "-o", required=True, help="Target manifold name or directory")

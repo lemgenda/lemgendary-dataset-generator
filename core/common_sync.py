@@ -111,6 +111,7 @@ def copy_tree_with_progress(src_dir, dst_dir):
 
 
 class DatasetVersionInfo(TypedDict):
+    """Current and latest version numbers of a Kaggle dataset, with each version's status."""
     current_version: int
     latest_version: int
     versions: dict[int, str]

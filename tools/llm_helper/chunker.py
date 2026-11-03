@@ -36,6 +36,7 @@ class KnowledgeChunk:
         self.sha256 = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the chunk as a JSON-serialisable dict."""
         return {
             "chunk_id": self.chunk_id,
             "doc_id": self.doc_id,

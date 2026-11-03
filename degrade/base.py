@@ -112,6 +112,7 @@ class DynamicDegrader:
         self._rng = random.Random(seed)
 
     def set_seed(self, seed: int) -> None:
+        """Reseed the degrader so later samples are reproducible."""
         self.seed = seed
         self._rng = random.Random(seed)
 

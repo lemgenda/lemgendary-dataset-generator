@@ -1,3 +1,5 @@
+"""YOLO and MediaPipe auto-labelers for detection, segmentation, pose and face landmarks."""
+
 import os
 from typing import Any, cast
 
@@ -31,6 +33,7 @@ class AutoLabeler:
         self.model = YOLO(model_path)
 
     def predict(self, img_pil):
+        """Return the annotations (bbox, segmentation, pose or face landmarks) found in an image."""
         if self.mode == "face_landmarks":
             return self._predict_face_landmarks(img_pil)
 

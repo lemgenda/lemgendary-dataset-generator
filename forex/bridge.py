@@ -51,28 +51,34 @@ def last_error() -> Any:
 
 
 def account_info() -> Any:
+    """Return the MT5 account info, or None when MetaTrader5 is not installed."""
     return _MT5.account_info() if _MT5 is not None else None
 
 
 def symbols_get(*args: Any, **kwargs: Any) -> Any:
+    """Return the MT5 symbols matching the filter, or None when MetaTrader5 is not installed."""
     return _MT5.symbols_get(*args, **kwargs) if _MT5 is not None else None
 
 
 def symbol_info(symbol: str) -> Any:
+    """Return MT5 info for ``symbol``, or None when MetaTrader5 is not installed."""
     return _MT5.symbol_info(symbol) if _MT5 is not None else None
 
 
 def symbol_select(symbol: str, enable: bool = True) -> bool:
+    """Show or hide ``symbol`` in MT5 Market Watch; False when MetaTrader5 is not installed."""
     if _MT5 is None:
         return False
     return bool(_MT5.symbol_select(symbol, enable))
 
 
 def copy_rates_range(symbol: str, timeframe: int, start: Any, end: Any) -> Any:
+    """Return MT5 bars for ``symbol`` between ``start`` and ``end``, or None without MetaTrader5."""
     return _MT5.copy_rates_range(symbol, timeframe, start, end) if _MT5 is not None else None
 
 
 def copy_rates_from_pos(symbol: str, timeframe: int, pos: int, count: int) -> Any:
+    """Return ``count`` MT5 bars for ``symbol`` from bar index ``pos``, or None without MetaTrader5."""
     return _MT5.copy_rates_from_pos(symbol, timeframe, pos, count) if _MT5 is not None else None
 
 

@@ -114,6 +114,7 @@ async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
 
 @router.post("/degrade", response_model=JobResponse)
 async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
+    """Start a degradation job that synthesises a paired manifold from a clean source."""
     cmd = [
         venv_python(), "-m", "tools.generate_degrade",
         "--source", req.source,

@@ -386,6 +386,7 @@ def config_validate() -> None:
 
 @config_app.command("show")
 def config_show() -> None:
+    """Print unified_data.yaml."""
     p = Path(__file__).resolve().parent / "unified_data.yaml"
     if not p.exists():
         p = Path("./unified_data.yaml")

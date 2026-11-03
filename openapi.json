@@ -520,6 +520,7 @@
           "Kaggle"
         ],
         "summary": "Trigger Kaggle Sync",
+        "description": "Start a Kaggle push (sync) or pull (get) job through tools.manifold_sync.",
         "operationId": "trigger_kaggle_sync_api_kaggle_sync_post",
         "requestBody": {
           "content": {
@@ -1203,6 +1204,7 @@
           "Jobs"
         ],
         "summary": "Submit Degrade Job",
+        "description": "Start a degradation job that synthesises a paired manifold from a clean source.",
         "operationId": "submit_degrade_job_api_jobs_degrade_post",
         "requestBody": {
           "content": {
@@ -1515,7 +1517,8 @@
           "state",
           "created_at"
         ],
-        "title": "ActiveJobTelemetry"
+        "title": "ActiveJobTelemetry",
+        "description": "Progress telemetry for one running job."
       },
       "ActiveJobsResponse": {
         "properties": {
@@ -1536,7 +1539,8 @@
           "active_jobs",
           "count"
         ],
-        "title": "ActiveJobsResponse"
+        "title": "ActiveJobsResponse",
+        "description": "The running jobs with their count."
       },
       "CompileJobRequest": {
         "properties": {
@@ -1745,7 +1749,8 @@
           }
         },
         "type": "object",
-        "title": "CompileJobRequest"
+        "title": "CompileJobRequest",
+        "description": "Request body for a dataset compile job."
       },
       "CompilerPresetModel": {
         "properties": {
@@ -1844,7 +1849,8 @@
           "image_format",
           "image_quality"
         ],
-        "title": "CompilerPresetModel"
+        "title": "CompilerPresetModel",
+        "description": "A compiler preset as exposed by the API."
       },
       "CustomCompileRequest": {
         "properties": {
@@ -1902,7 +1908,8 @@
         "required": [
           "custom_name"
         ],
-        "title": "CustomCompileRequest"
+        "title": "CustomCompileRequest",
+        "description": "Request body for compiling a custom multi-source dataset."
       },
       "DatasetDetailStats": {
         "properties": {
@@ -2029,7 +2036,8 @@
           "has_hardlinks",
           "hardlink_ratio"
         ],
-        "title": "DatasetDetailStats"
+        "title": "DatasetDetailStats",
+        "description": "Detailed statistics for one compiled dataset."
       },
       "DatasetFormatStats": {
         "properties": {
@@ -2060,7 +2068,8 @@
           }
         },
         "type": "object",
-        "title": "DatasetFormatStats"
+        "title": "DatasetFormatStats",
+        "description": "Per-format file counts for a dataset."
       },
       "DatasetInfoResponse": {
         "properties": {
@@ -2111,7 +2120,8 @@
           "has_hardlinks",
           "hardlink_ratio"
         ],
-        "title": "DatasetInfoResponse"
+        "title": "DatasetInfoResponse",
+        "description": "Summary of one compiled dataset on disk."
       },
       "DatasetListResponse": {
         "properties": {
@@ -2132,7 +2142,8 @@
           "datasets",
           "total"
         ],
-        "title": "DatasetListResponse"
+        "title": "DatasetListResponse",
+        "description": "A list of compiled datasets with their total count."
       },
       "DatasetSourceInfo": {
         "properties": {
@@ -2179,7 +2190,8 @@
         "required": [
           "name"
         ],
-        "title": "DatasetSourceInfo"
+        "title": "DatasetSourceInfo",
+        "description": "One upstream source a dataset was compiled from."
       },
       "DatasetStatsListResponse": {
         "properties": {
@@ -2210,7 +2222,8 @@
           "total_size_bytes",
           "total_size_gb"
         ],
-        "title": "DatasetStatsListResponse"
+        "title": "DatasetStatsListResponse",
+        "description": "Detailed statistics for all compiled datasets with size totals."
       },
       "DatasetTestSuiteRequest": {
         "properties": {
@@ -2303,7 +2316,8 @@
           "source",
           "output"
         ],
-        "title": "DegradeJobRequest"
+        "title": "DegradeJobRequest",
+        "description": "Request body for a degradation (synthetic pair) job."
       },
       "EnvPassthroughResponse": {
         "properties": {
@@ -2326,7 +2340,8 @@
           "returncode",
           "output"
         ],
-        "title": "EnvPassthroughResponse"
+        "title": "EnvPassthroughResponse",
+        "description": "Result of a command passed through to the environment manager."
       },
       "FullHealthResponse": {
         "properties": {
@@ -2363,7 +2378,8 @@
           "active_jobs",
           "hardware"
         ],
-        "title": "FullHealthResponse"
+        "title": "FullHealthResponse",
+        "description": "Liveness response with host hardware details."
       },
       "GenericJobRequest": {
         "properties": {
@@ -2391,7 +2407,8 @@
         "required": [
           "command"
         ],
-        "title": "GenericJobRequest"
+        "title": "GenericJobRequest",
+        "description": "Request body for a job that runs an arbitrary command."
       },
       "GuiStateResponse": {
         "properties": {
@@ -2446,7 +2463,8 @@
           "hardware",
           "presets"
         ],
-        "title": "GuiStateResponse"
+        "title": "GuiStateResponse",
+        "description": "Dashboard summary for the GUI."
       },
       "HTTPValidationError": {
         "properties": {
@@ -2497,7 +2515,8 @@
           "device_name",
           "active_workers"
         ],
-        "title": "HardwareInfo"
+        "title": "HardwareInfo",
+        "description": "Host CPU, memory and CUDA details."
       },
       "HealthResponse": {
         "properties": {
@@ -2530,7 +2549,8 @@
           "uptime_seconds",
           "active_jobs"
         ],
-        "title": "HealthResponse"
+        "title": "HealthResponse",
+        "description": "Basic liveness response."
       },
       "JobListResponse": {
         "properties": {
@@ -2551,7 +2571,8 @@
           "jobs",
           "total"
         ],
-        "title": "JobListResponse"
+        "title": "JobListResponse",
+        "description": "A list of jobs with their total count."
       },
       "JobResponse": {
         "properties": {
@@ -2641,7 +2662,8 @@
           "created_at",
           "log_file"
         ],
-        "title": "JobResponse"
+        "title": "JobResponse",
+        "description": "A background job and its current state."
       },
       "JobState": {
         "type": "string",
@@ -2653,7 +2675,8 @@
           "interrupted",
           "cancelled"
         ],
-        "title": "JobState"
+        "title": "JobState",
+        "description": "Lifecycle state of a background job."
       },
       "JobType": {
         "type": "string",
@@ -2670,7 +2693,8 @@
           "custom",
           "llm"
         ],
-        "title": "JobType"
+        "title": "JobType",
+        "description": "Category of work a background job performs."
       },
       "KaggleDatasetRegistryItem": {
         "properties": {
@@ -2728,7 +2752,8 @@
           "kaggle_ref",
           "clean_repo_id"
         ],
-        "title": "KaggleDatasetRegistryItem"
+        "title": "KaggleDatasetRegistryItem",
+        "description": "A Kaggle-published dataset from the unified registry."
       },
       "KaggleDownloadRequest": {
         "properties": {
@@ -2760,7 +2785,8 @@
         "required": [
           "kaggle_ref"
         ],
-        "title": "KaggleDownloadRequest"
+        "title": "KaggleDownloadRequest",
+        "description": "Request body for downloading a Kaggle dataset."
       },
       "KaggleMetadataRequest": {
         "properties": {
@@ -2793,7 +2819,8 @@
           }
         },
         "type": "object",
-        "title": "KaggleMetadataRequest"
+        "title": "KaggleMetadataRequest",
+        "description": "Request body for a Kaggle metadata update."
       },
       "KaggleSyncRequest": {
         "properties": {
@@ -2829,7 +2856,8 @@
           }
         },
         "type": "object",
-        "title": "KaggleSyncRequest"
+        "title": "KaggleSyncRequest",
+        "description": "Request body for a Kaggle push or pull of one manifold."
       },
       "KaggleUploadRequest": {
         "properties": {
@@ -2861,7 +2889,8 @@
         "required": [
           "manifold"
         ],
-        "title": "KaggleUploadRequest"
+        "title": "KaggleUploadRequest",
+        "description": "Request body for uploading a manifold to Kaggle."
       },
       "LLMCompileRequest": {
         "properties": {
@@ -3017,7 +3046,8 @@
           }
         },
         "type": "object",
-        "title": "ManifoldReduceRequest"
+        "title": "ManifoldReduceRequest",
+        "description": "Request body for creating a reduced manifold variant."
       },
       "ModernizeRunRequest": {
         "properties": {
@@ -3100,7 +3130,8 @@
           }
         },
         "type": "object",
-        "title": "ModernizeRunRequest"
+        "title": "ModernizeRunRequest",
+        "description": "Request body for a modernization run."
       },
       "PresetListResponse": {
         "properties": {
@@ -3121,7 +3152,8 @@
           "presets",
           "total"
         ],
-        "title": "PresetListResponse"
+        "title": "PresetListResponse",
+        "description": "All compiler presets keyed by name."
       },
       "QueueItemResponse": {
         "properties": {
@@ -3194,7 +3226,8 @@
           "status_label",
           "source_label"
         ],
-        "title": "QueueItemResponse"
+        "title": "QueueItemResponse",
+        "description": "One dataset in the modernization queue."
       },
       "QuickCompileRequest": {
         "properties": {
@@ -3238,7 +3271,8 @@
         "required": [
           "model"
         ],
-        "title": "QuickCompileRequest"
+        "title": "QuickCompileRequest",
+        "description": "Request body for compiling a dataset with a preset."
       },
       "ValidationError": {
         "properties": {

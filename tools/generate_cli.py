@@ -150,6 +150,7 @@ def run(
     sample_limit: int | None,
     dry_run: bool,
 ) -> int:
+    """Run a label, prompt or mask generator over every image in a manifold; returns the exit code."""
     if not manifold.exists():
         print(f"[ERROR] Manifold not found: {manifold}")
         return 1
@@ -197,6 +198,7 @@ def run(
 
 
 def main() -> int:
+    """Parse the CLI arguments and run the generator."""
     parser = argparse.ArgumentParser(
         description="Standalone label / prompt / mask generator"
     )

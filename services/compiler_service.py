@@ -44,6 +44,7 @@ class CompilerService:
         mask_strategy: str | None = None,
         shard_ext: str | None = None,
     ) -> int:
+        """Run a compile in-process with the given CLI options; returns the exit code."""
         manifold_compile = load_manifold_compile()
 
         # Build list of CLI arguments for parse_compile_args

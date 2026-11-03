@@ -44,6 +44,7 @@ class _FakeJobManager:
         self.started: list[str] = []
 
     def create_job(self, job_type: JobType, command: list[str], parameters: dict[str, Any]) -> JobResponse:
+        """Record the job and return a pending JobResponse."""
         self.created.append({"command": command, "parameters": parameters})
         return JobResponse(
             id=f"job-{len(self.created)}",
@@ -55,6 +56,7 @@ class _FakeJobManager:
         )
 
     def start_job(self, job_id: str, _loop: asyncio.AbstractEventLoop) -> None:
+        """Record that the job was started."""
         self.started.append(job_id)
 
 
@@ -93,11 +95,14 @@ class _TempRegistryCase(unittest.TestCase):
 
 
 class TestDefaultPreset(_TempRegistryCase):
+    """The custom-compile default preset comes from presets.yaml."""
     def test_real_default_preset_exists_in_presets_yaml(self) -> None:
+        """The shipped default preset is one of the listed presets."""
         default_name = presets.get_default_preset_name(REAL_PRESETS)
         self.assertIn(default_name, presets.list_presets(REAL_PRESETS))
 
     def test_default_comes_from_presets_yaml(self) -> None:
+        """Changing default_preset in presets.yaml changes the preset a request gets."""
         text = self.presets_path.read_text(encoding="utf-8")
         self.presets_path.write_text(
             text.replace('default_preset: "quality-vision"', 'default_preset: "cloud-archival"'),
@@ -110,6 +115,7 @@ class TestDefaultPreset(_TempRegistryCase):
         self.assertEqual(self.jobs.started, ["job-1"])
 
     def test_default_naming_an_unknown_preset_is_rejected(self) -> None:
+        """A default_preset that names no preset raises ValueError."""
         text = self.presets_path.read_text(encoding="utf-8")
         self.presets_path.write_text(
             text.replace('default_preset: "quality-vision"', 'default_preset: "streaming-webdataset"'),
@@ -119,6 +125,7 @@ class TestDefaultPreset(_TempRegistryCase):
             presets.get_default_preset_name()
 
     def test_unknown_preset_returns_422_with_valid_list(self) -> None:
+        """An unknown preset returns 422 listing the valid presets and leaves the registry untouched."""
         before = self.unified_path.read_bytes()
         response = self._post(preset="streaming-webdataset")
         self.assertEqual(response.status_code, 422)
@@ -130,7 +137,9 @@ class TestDefaultPreset(_TempRegistryCase):
 
 
 class TestRegistryWrite(_TempRegistryCase):
+    """Writing a custom entry to unified_data.yaml is safe."""
     def test_comments_and_formatting_preserved(self) -> None:
+        """Comments and formatting in unified_data.yaml survive adding an entry."""
         original = self.unified_path.read_bytes().decode("utf-8")
         newline = "\r\n" if "\r\n" in original else "\n"
         commented = original.replace(f"datasets:{newline}", f"# top comment{newline}datasets:{newline}"
@@ -155,6 +164,7 @@ class TestRegistryWrite(_TempRegistryCase):
         self.assertEqual(self.jobs.started, ["job-1"])
 
     def test_duplicate_key_returns_409(self) -> None:
+        """A name that maps to an existing key returns 409 and writes nothing."""
         before = self.unified_path.read_bytes()
         existing_key = next(iter(yaml.safe_load(before)["datasets"]))
         name = " ".join(existing_key.split("_"))
@@ -164,6 +174,7 @@ class TestRegistryWrite(_TempRegistryCase):
         self.assertEqual(self.jobs.created, [])
 
     def test_invalid_entry_rejected_before_write(self) -> None:
+        """An invalid entry returns 422 before anything is written or started."""
         before = self.unified_path.read_bytes()
         response = self._post(canonical_format="zip")
         self.assertEqual(response.status_code, 422, response.text)
@@ -171,6 +182,7 @@ class TestRegistryWrite(_TempRegistryCase):
         self.assertEqual(self.jobs.created, [])
 
     def test_failed_write_does_not_start_job(self) -> None:
+        """A failed registry write returns 500 and starts no job."""
         before = self.unified_path.read_bytes()
         with patch("core.unified_registry.os.replace", side_effect=PermissionError("locked")):
             response = self._post()
@@ -181,12 +193,14 @@ class TestRegistryWrite(_TempRegistryCase):
         self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), ["presets.yaml", "unified_data.yaml"])
 
     def test_registry_service_refuses_existing_key(self) -> None:
+        """add_dataset_entry raises RegistryEntryExistsError for an existing key."""
         existing_key = next(iter(yaml.safe_load(self.unified_path.read_bytes())["datasets"]))
         with self.assertRaises(unified_registry.RegistryEntryExistsError):
             unified_registry.add_dataset_entry(existing_key, {"name": "X"})
 
 
 class TestFinalizeCompile(unittest.TestCase):
+    """finalize_compile exit codes and loose-layout purging."""
     def setUp(self) -> None:
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
@@ -198,27 +212,32 @@ class TestFinalizeCompile(unittest.TestCase):
         return []
 
     def test_nothing_compiled_fails_without_purge(self) -> None:
+        """No compiled samples gives exit code 1 and purges nothing."""
         self.assertEqual(finalize_compile([], purge_loose=True, purge=self._purge), 1)
         zero = [ManifoldOutcome("x", self.root, samples=0, containers_written=("parquet",))]
         self.assertEqual(finalize_compile(zero, purge_loose=True, purge=self._purge), 1)
         self.assertEqual(self.purged, [])
 
     def test_purge_runs_after_successful_compile_with_container(self) -> None:
+        """A successful compile with a container purges the loose layout."""
         ok = [ManifoldOutcome("x", self.root, samples=10, containers_written=("parquet",))]
         self.assertEqual(finalize_compile(ok, purge_loose=True, purge=self._purge), 0)
         self.assertEqual(self.purged, [self.root])
 
     def test_purge_keeps_only_copy_when_no_container(self) -> None:
+        """Without a container the loose layout is the only copy and is kept."""
         ok = [ManifoldOutcome("x", self.root, samples=10)]
         self.assertEqual(finalize_compile(ok, purge_loose=True, purge=self._purge), 0)
         self.assertEqual(self.purged, [])
 
     def test_no_purge_when_not_requested(self) -> None:
+        """Nothing is purged when purging was not requested."""
         ok = [ManifoldOutcome("x", self.root, samples=10, containers_written=("mds",))]
         self.assertEqual(finalize_compile(ok, purge_loose=False, purge=self._purge), 0)
         self.assertEqual(self.purged, [])
 
     def test_purge_loose_layout_keeps_containers(self) -> None:
+        """purge_loose_layout removes images/ and targets/ and keeps container folders."""
         for sub in ("images/train", "targets/val", "parquet"):
             (self.root / sub).mkdir(parents=True)
         removed = purge_loose_layout(self.root)
@@ -234,11 +253,13 @@ class TestCompilerWiring(unittest.TestCase):
         self.tree = ast.parse((PROJECT_ROOT / "core" / "manifold_compile.py").read_text(encoding="utf-8"))
 
     def test_cleanup_does_not_short_circuit_process_dataset(self) -> None:
+        """process_dataset does not call a cleanup that ends it early."""
         func = next(n for n in self.tree.body if isinstance(n, ast.FunctionDef) and n.name == "process_dataset")
         attrs = {n.attr for n in ast.walk(func) if isinstance(n, ast.Attribute)}
         self.assertNotIn("cleanup", attrs)
 
     def test_main_exits_with_finalize_compile(self) -> None:
+        """The __main__ block exits with finalize_compile's result."""
         main = next(
             n for n in self.tree.body
             if isinstance(n, ast.If) and "__main__" in ast.unparse(n.test)
@@ -248,7 +269,9 @@ class TestCompilerWiring(unittest.TestCase):
 
 
 class TestJobStatusPropagation(unittest.TestCase):
+    """A job's final state follows its process exit code."""
     def test_compile_that_produced_nothing_ends_failed(self) -> None:
+        """A compile process that exits 1 ends in the FAILED state."""
         with tempfile.TemporaryDirectory() as tmp:
             manager = JobManager(db_path=Path(tmp) / "jobs.db", logs_dir=Path(tmp) / "logs")
             code = (

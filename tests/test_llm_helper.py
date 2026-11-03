@@ -11,7 +11,9 @@ from tools.llm_helper.quality_validator import QualityValidator
 
 
 class TestLLMHelper(unittest.TestCase):
+    """Ingestion, chunking and validation in tools.llm_helper."""
     def test_knowledge_ingestion_markdown_and_json(self):
+        """KnowledgeIngestor reads Markdown and JSON sources."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             md_file = tmp / "sample.md"
@@ -28,6 +30,7 @@ class TestLLMHelper(unittest.TestCase):
             self.assertIn("json", types)
 
     def test_recursive_chunker(self):
+        """RecursiveChunker splits a long document into several chunks."""
         doc = KnowledgeDocument(
             doc_id="test.md",
             content="# Section 1\n\n" + ("Word " * 200) + "\n\n## Section 2\n\n" + ("Other " * 200),
@@ -42,6 +45,7 @@ class TestLLMHelper(unittest.TestCase):
             self.assertTrue(c.chunk_id.startswith("test.md_c"))
 
     def test_quality_validator_rules(self):
+        """QualityValidator accepts a valid record and flags rule violations."""
         validator = QualityValidator(zero_emojis=True, enforce_epistemic_tags=True)
 
         valid_record = {

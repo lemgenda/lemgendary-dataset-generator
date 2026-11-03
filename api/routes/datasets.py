@@ -1,3 +1,5 @@
+"""Routes that list compiled datasets and report their details."""
+
 import logging
 import os
 import sqlite3

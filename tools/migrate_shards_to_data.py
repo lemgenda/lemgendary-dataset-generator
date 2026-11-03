@@ -16,6 +16,7 @@ def migrate_shards(
     dry_run: bool = False,
     reverse: bool = False,
 ) -> int:
+    """Rename WebDataset shards under ``datasets_root`` from .tar to .data (or back with ``reverse``)."""
     datasets_root = datasets_root.resolve()
     if not datasets_root.exists() or not datasets_root.is_dir():
         print(f"[ERROR] Datasets directory not found: {datasets_root}")
@@ -84,6 +85,7 @@ def migrate_shards(
 
 
 def main() -> None:
+    """Parse the CLI arguments and run the shard rename."""
     parser = argparse.ArgumentParser(description="Migrate WebDataset shards .tar <-> .data")
     parser.add_argument(
         "--root",

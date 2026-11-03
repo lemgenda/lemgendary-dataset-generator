@@ -91,6 +91,7 @@ def process_parquet_file(file_path: Path, batch_size: int = 50000) -> bool:
 
 
 def main():
+    """Embed column descriptions into the Forex Parquet files (CLI entry point)."""
     default_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverse"
     if not default_dir.exists():
         legacy_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"

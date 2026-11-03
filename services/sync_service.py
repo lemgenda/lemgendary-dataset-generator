@@ -29,6 +29,7 @@ class SyncService:
         no_wait: bool = False,
     ) -> int:
 
+        """Upload a local manifold to Kaggle; returns the exit code."""
         try:
             manifold_sync.action_sync(
                 manifold_name=model,

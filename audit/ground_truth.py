@@ -28,11 +28,13 @@ logger = logging.getLogger(__name__)
 # ─── Shared state ───────────────────────────────────────────────────────────
 @dataclass
 class GroundTruthCaches:
+    """Ground-truth score tables keyed by image name, filled by the registered loaders."""
     ava: dict = field(default_factory=dict)
     aadb: dict = field(default_factory=dict)
     tid: dict = field(default_factory=dict)
 
     def load(self, root: Path, _model_name: str = "") -> None:
+        """Run every registered loader against ``root``; a loader that fails is logged and skipped."""
         for loader in _LOADERS:
             try:
                 loader(self, Path(root))
@@ -43,6 +45,7 @@ class GroundTruthCaches:
 
 _LOADERS: list[Callable[[GroundTruthCaches, Path], None]] = []
 def register(fn):
+    """Decorator that adds a loader to the registry run by ``GroundTruthCaches.load``."""
     _LOADERS.append(fn)
     return fn
 

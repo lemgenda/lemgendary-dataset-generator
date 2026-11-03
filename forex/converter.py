@@ -268,6 +268,7 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
 
 
 def main():
+    """Convert legacy .npy Forex shards to yearly Parquet files (CLI entry point)."""
     default_base = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverse"
     if not default_base.exists():
         legacy_base = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets" / "LemGendizedForexUniverseLarge"

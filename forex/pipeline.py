@@ -81,6 +81,7 @@ def _mt5_call(method_name: str, *args: Any, **kwargs: Any) -> Any:
 
 
 def connect_mt5(login=None, password=None, server=None, api_key=None):
+    """Connect to MetaTrader 5, logging in when credentials are given; returns True on success."""
     try:
         if _mt5_call("initialize"):
             info = _mt5_call("account_info")
@@ -134,6 +135,7 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
 
 
 def disconnect_mt5():
+    """Shut down the MetaTrader 5 connection."""
     try:
         _mt5_call("shutdown")
         print(" [MT5] Disconnected.")
@@ -198,6 +200,7 @@ def resolve_symbol(pair: str) -> Optional[str]:
 
 
 def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
+    """Download OHLCV bars for one pair and timeframe from MT5 since ``start_date``, with retries."""
     tf_attr = MT5_TIMEFRAMES.get(timeframe_min)
     if tf_attr is None:
         raise ValueError(f"Unsupported timeframe: {timeframe_min}min")
@@ -315,6 +318,7 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
 
 
 def compute_indicators(df):
+    """Return a copy of ``df`` with the technical indicator columns added."""
     df = df.copy()
     close = np.asarray(df['close'], dtype=np.float64)
     high = np.asarray(df['high'], dtype=np.float64)
@@ -440,6 +444,7 @@ def _bbwidth_manual(close, period=20, std_mult=2.0):
 
 
 def generate_labels(df, pair, horizon=LABEL_HORIZON_BARS, threshold_pips=DIRECTION_THRESHOLD_PIPS):
+    """Add direction (0 down, 1 flat, 2 up), take-profit and stop-loss pip labels over ``horizon`` bars."""
     if any(x in pair for x in ["JPY"]):
         pip_size = 0.01
     elif "XAU" in pair:
@@ -488,6 +493,7 @@ def generate_labels(df, pair, horizon=LABEL_HORIZON_BARS, threshold_pips=DIRECTI
 
 
 def normalize_ohlcv(df):
+    """Return a copy of ``df`` with prices as log returns and volume as a rolling z-score."""
     df = df.copy()
     close = np.asarray(df['close'], dtype=np.float64)
     prev = np.roll(close, 1)
@@ -512,6 +518,7 @@ def normalize_ohlcv(df):
 
 
 def year_chunk_complete(out_dir, year, pair, tf, chunk_suffix=None):
+    """True when the year's Parquet file or the shard for this pair, timeframe and chunk exists."""
     year_parquet = os.path.join(out_dir, f"ForexUniverse{year}.parquet")
     if os.path.isfile(year_parquet):
         return True
@@ -539,6 +546,7 @@ def save_shards(
     timestamps=None,
     chunk_suffix=None,
 ):
+    """Write one shard of feature windows and labels as Parquet under the year's pair/timeframe folder."""
     shard_dir = os.path.join(out_dir, f"ForexUniverse{year_split}", pair, str(timeframe_min))
     os.makedirs(shard_dir, exist_ok=True)
 
@@ -602,6 +610,7 @@ def build_windows_and_save_by_year(
     max_samples=50000,
     stride=None,
 ):
+    """Cut ``df`` into ``seq_len`` windows and save them as shards grouped by target year."""
     available = [c for c in FEATURES if c in df.columns]
     feat_arr = np.asarray(df[available], dtype=np.float32)
     dir_arr = np.asarray(df['direction'], dtype=np.int64)
@@ -678,6 +687,7 @@ def build_windows_and_save_by_year(
 
 
 def load_forex_datasets(yaml_path):
+    """Load the Forex dataset definitions from a unified_data.yaml file."""
     if not os.path.exists(yaml_path):
         raise FileNotFoundError(f"YAML config not found: {yaml_path}")
 
@@ -710,6 +720,7 @@ def run_download_pipeline(
     server=None,
     api_key=None,
 ):
+    """Download, label and shard every pair and timeframe in ``dataset_defs`` into ``out_dir``."""
     mt5_active = connect_mt5(login=login, password=password, server=server, api_key=api_key)
     if not mt5_active:
         raise RuntimeError("[FATAL] Cannot connect to MetaTrader 5.")
@@ -798,6 +809,7 @@ def run_download_pipeline(
 
 
 def main():
+    """Run the MT5 download pipeline (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary MT5 Data Pipeline (Final - Resilient)")
     parser.add_argument("--config", default="unified_data.yaml", help="Path to the unified_data.yaml manifest")
     parser.add_argument("--out_dir", default="data/forex", help="Output directory for .npy shards")

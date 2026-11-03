@@ -28,6 +28,7 @@ def _gdown_errors() -> tuple[type[BaseException], ...]:
 # Removed TQDM_ASCII override to allow Unicode block characters
 
 def main():
+    """Download a Google Drive file or folder (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary Google Drive Downloader")
     parser.add_argument("--repo_id", type=str, required=True, help="Google Drive File or Folder ID")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory path (will be converted to .zip in parent dir)")

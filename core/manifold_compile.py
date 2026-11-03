@@ -1,3 +1,5 @@
+"""Compile datasets from unified_data.yaml into manifolds; run as ``python -m core.manifold_compile``."""
+
 import argparse
 import hashlib
 import json

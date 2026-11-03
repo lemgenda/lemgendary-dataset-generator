@@ -1,3 +1,5 @@
+"""NIMA aesthetic and technical quality model."""
+
 import torch
 from torch import nn
 from torchvision import models
@@ -30,6 +32,7 @@ class NimaModel(nn.Module):
 
     def forward(self, x):
         # 2026 High-Velocity Tensor Mapping
+        """Return the score-distribution logits for a batch of images."""
         x = self.features(x)
         x = nn.functional.adaptive_avg_pool2d(x, (1, 1)) # Robust GAP
         x = torch.flatten(x, 1)

@@ -32,6 +32,7 @@ class TestWriterFactory(unittest.TestCase):
     """Test format factory and CLI argument parsing."""
 
     def test_make_writer_valid(self) -> None:
+        """make_writer returns the writer class for each known format."""
         self.assertIsInstance(make_writer("directory"), DirectoryWriter)
         self.assertIsInstance(make_writer("webdataset"), WebDatasetWriter)
         self.assertIsInstance(make_writer("parquet"), ParquetWriter)
@@ -39,14 +40,17 @@ class TestWriterFactory(unittest.TestCase):
         self.assertIsInstance(make_writer("mds"), MDSWriter)
 
     def test_make_writer_case_and_whitespace(self) -> None:
+        """make_writer ignores case and surrounding whitespace."""
         self.assertIsInstance(make_writer("  WebDataset  "), WebDatasetWriter)
         self.assertIsInstance(make_writer("PARQUET"), ParquetWriter)
 
     def test_make_writer_unknown_raises(self) -> None:
+        """make_writer raises ValueError for an unknown format."""
         with self.assertRaises(ValueError):
             make_writer("unsupported_format_xyz")
 
     def test_parse_also_format(self) -> None:
+        """parse_also_format splits, trims and lowercases the format list."""
         self.assertEqual(
             parse_also_format("wds, litdata, parquet"),
             ["wds", "litdata", "parquet"],
@@ -63,6 +67,7 @@ class TestImageTranscoder(unittest.TestCase):
         self.rgba_image = Image.new("RGBA", (32, 32), color=(0, 255, 0, 128))
 
     def test_default_webp_encoding(self) -> None:
+        """The default policy encodes images as WebP."""
         transcoder = ImageTranscoder()
         self.assertTrue(transcoder.enabled)
 
@@ -83,6 +88,7 @@ class TestImageTranscoder(unittest.TestCase):
         self.assertTrue(mask_bytes.startswith(b"RIFF"))
 
     def test_jpeg_encoding_and_alpha_flatten(self) -> None:
+        """The JPEG policy encodes JPEG and flattens RGBA input."""
         policy = ImageFormatPolicy(format="jpeg", quality=85)
         transcoder = ImageTranscoder(policy)
 
@@ -97,6 +103,7 @@ class TestImageTranscoder(unittest.TestCase):
         self.assertTrue(rgba_bytes.startswith(b"\xff\xd8"))
 
     def test_png_encoding(self) -> None:
+        """The PNG policy encodes PNG."""
         policy = ImageFormatPolicy(format="png")
         transcoder = ImageTranscoder(policy)
         img_bytes, fmt = transcoder.encode(self.rgb_image, kind="image")
@@ -104,6 +111,7 @@ class TestImageTranscoder(unittest.TestCase):
         self.assertTrue(img_bytes.startswith(b"\x89PNG"))
 
     def test_keep_format_policy_raises(self) -> None:
+        """The keep policy disables the transcoder and encode raises KeepFormatError."""
         policy = ImageFormatPolicy(format="keep")
         transcoder = ImageTranscoder(policy)
         self.assertFalse(transcoder.enabled)
@@ -111,6 +119,7 @@ class TestImageTranscoder(unittest.TestCase):
             transcoder.encode(self.rgb_image, kind="image")
 
     def test_extension_for(self) -> None:
+        """extension_for maps each format to its file extension."""
         transcoder = ImageTranscoder()
         self.assertEqual(transcoder.extension_for("webp"), ".webp")
         self.assertEqual(transcoder.extension_for("jpeg"), ".jpg")
@@ -122,6 +131,7 @@ class TestWebDatasetWriter(unittest.TestCase):
     """Test WebDataset sharding and sample output."""
 
     def test_write_and_read_tar_shards(self) -> None:
+        """WebDatasetWriter writes tar shards whose members can be read back."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir)
             writer = WebDatasetWriter()
@@ -171,6 +181,7 @@ class TestWebDatasetWriter(unittest.TestCase):
                     self.assertEqual(txt_member.read(), b"test label one")
 
     def test_legacy_shard_writer(self) -> None:
+        """The legacy ShardWriter writes a readable shard."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_dir = Path(tmp_dir) / "legacy_shards"
             writer = ShardWriter(output_dir=out_dir, prefix="test_shard", max_size=10_000_000)
@@ -191,6 +202,7 @@ class TestParquetWriter(unittest.TestCase):
     """Test Parquet columnar serialization with Zstd compression."""
 
     def test_write_and_read_parquet(self) -> None:
+        """ParquetWriter writes a file whose rows can be read back."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir)
             writer = ParquetWriter()
@@ -236,6 +248,7 @@ class TestDirectoryWriterAndSource(unittest.TestCase):
     """Test DirectoryWriter no-op lifecycle and DirectorySampleSource streaming."""
 
     def test_directory_writer_noop(self) -> None:
+        """DirectoryWriter accepts samples without writing anything."""
         writer = DirectoryWriter()
         sample = Sample("n", "t", "s", b"", "webp")
         writer.open(Path("."), None)
@@ -243,6 +256,7 @@ class TestDirectoryWriterAndSource(unittest.TestCase):
         writer.close()
 
     def test_directory_sample_source(self) -> None:
+        """DirectorySampleSource yields the samples of a loose manifold."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             (root / "images" / "train").mkdir(parents=True)
@@ -294,6 +308,7 @@ class TestMDSWriter(unittest.TestCase):
 
     def test_mds_writer_lifecycle_and_idempotency(self) -> None:
 
+        """MDSWriter writes shards and can be reopened on the same folder."""
         if importlib.util.find_spec("streaming") is None:
             self.skipTest("mosaicml-streaming not installed")
 

@@ -281,6 +281,7 @@ def _render(rows: list[dict]) -> str:
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 def main(args: list[str] | argparse.Namespace | None = None) -> int:
+    """Regenerate manifolds.md, or with ``--check`` only print the summary; returns the exit code."""
     if isinstance(args, argparse.Namespace):
         parsed = args
     else:

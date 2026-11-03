@@ -42,6 +42,7 @@ class KnowledgeDocument:
         self.content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the document as a JSON-serialisable dict."""
         return {
             "doc_id": self.doc_id,
             "source_type": self.source_type,

@@ -518,6 +518,7 @@ def _report(
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 def build_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for manifold modernization."""
     parser = argparse.ArgumentParser(
         description="LemGendary Manifold Modernization (create modern manifold variants, WebP transcoding, container formats)"
     )
@@ -552,6 +553,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
+    """Modernize the selected manifolds; returns the exit code."""
     if not REGISTRY_YAML.exists():
         print(f"[ERROR] Registry not found: {REGISTRY_YAML}")
         return 1
@@ -725,6 +727,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Parse the CLI arguments and run the modernization."""
     parser = build_parser()
     args = parser.parse_args()
     return run(args)

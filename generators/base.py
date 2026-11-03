@@ -45,4 +45,5 @@ class Generator(Protocol):
         self,
         img: Image.Image,
         context: dict[str, Any] | None = None,
-    ) -> GenerationResult: ...
+    ) -> GenerationResult:
+        """Generate the output for one image."""

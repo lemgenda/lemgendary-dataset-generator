@@ -32,6 +32,7 @@ _DOWNLOAD_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 def main():
+    """Download a Hugging Face repository (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary HF Downloader")
     parser.add_argument("--repo_id", type=str, required=True, help="Hugging Face Repo ID")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory")

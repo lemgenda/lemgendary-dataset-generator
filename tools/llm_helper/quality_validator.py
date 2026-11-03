@@ -41,6 +41,7 @@ class QualityValidator:
         self.enforce_diag_stages = enforce_diag_stages
 
     def validate_record(self, record: dict[str, Any]) -> list[ValidationIssue]:
+        """Return the quality issues found in one LLM training record."""
         issues: list[ValidationIssue] = []
         rec_id = str(record.get("id", "UNKNOWN_ID"))
 

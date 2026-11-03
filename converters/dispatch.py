@@ -24,6 +24,7 @@ def _detect_in_subdir(sub: Path) -> tuple[str | None, Path | None]:
 
 
 def detect_annotations(path) -> tuple[str | None, Path | None]:
+    """Return the annotation format found in ``path`` and its file, or (None, None)."""
     path = Path(path)
     # 2026 Resilience: Multi-format annotation discovery
     for f in path.glob("*.json"):

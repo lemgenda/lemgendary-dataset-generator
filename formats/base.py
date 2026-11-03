@@ -46,11 +46,14 @@ class Sample(NamedTuple):
 class Writer(Protocol):
     """Structural interface for a container writer."""
 
-    def open(self, output_root: Path, policy: Any) -> None: ...
+    def open(self, output_root: Path, policy: Any) -> None:
+        """Prepare the writer to write a manifold under ``output_root``."""
 
-    def write(self, sample: Sample) -> None: ...
+    def write(self, sample: Sample) -> None:
+        """Write one sample."""
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Flush and finalise the output."""
 
 
 def parse_also_format(value: str) -> list[str]:

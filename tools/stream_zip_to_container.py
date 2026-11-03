@@ -546,6 +546,7 @@ def _post_process_zip(zip_path: Path, legacy_dir: Path | None, delete_zip: bool)
 
 
 def main() -> int:
+    """Stream a legacy zip archive into WebDataset or MDS shards (CLI entry point)."""
     parser = argparse.ArgumentParser(description="Stream legacy zip directly into canonical container format.")
     parser.add_argument("--zip", required=True, type=Path, help="Path to source .zip archive")
     parser.add_argument("--target", required=True, type=Path, help="Destination manifold directory")

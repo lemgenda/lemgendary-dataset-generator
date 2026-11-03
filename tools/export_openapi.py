@@ -35,6 +35,7 @@ def build_schema() -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Write openapi.json, or with ``--check`` exit 1 when it is out of date."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="Exit 1 if openapi.json differs from the app.")
     args = parser.parse_args(argv)

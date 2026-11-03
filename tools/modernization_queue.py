@@ -1113,6 +1113,7 @@ def run_queue(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the CLI arguments and list or run the modernization queue."""
     parser = argparse.ArgumentParser(description="LemGendary Dataset Modernization and Kaggle Publication Queue")
     parser.add_argument("--list", action="store_true", help="Print modernization queue status table and exit")
     parser.add_argument("--dry-run", action="store_true", help="Preview plan without executing conversions or uploads")

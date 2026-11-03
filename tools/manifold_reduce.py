@@ -1,3 +1,5 @@
+"""Create reduced (sampled) variants of compiled manifolds; run as ``python -m tools.manifold_reduce``."""
+
 from collections import defaultdict
 import argparse
 import json

@@ -1,3 +1,5 @@
+"""Convert the NIMA and RetinaFace .txt labels of the legacy manifolds to JSON files."""
+
 import json
 import logging
 from pathlib import Path
@@ -38,6 +40,7 @@ def parse_retinaface_lines(lines: list):
 
 def convert_labels():
     # Base configuration based on your paths
+    """Write a JSON label file next to every .txt label of the configured manifolds."""
     base_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
 
     models = {

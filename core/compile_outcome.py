@@ -31,6 +31,7 @@ class ManifoldOutcome:
 
     @property
     def compiled(self) -> bool:
+        """True when the manifold produced output (always True for non-sample-based manifolds)."""
         return (not self.sample_based) or self.samples > 0
 
 

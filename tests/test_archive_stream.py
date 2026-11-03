@@ -34,6 +34,7 @@ class TestArchiveUtils(unittest.TestCase):
     """Test smart archive creation, verification, and extraction."""
 
     def test_create_and_verify_zip_archive(self) -> None:
+        """create_archive writes a zip that verify_archive accepts."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             src_dir = Path(tmp_dir) / "source_folder"
             src_dir.mkdir()
@@ -47,6 +48,7 @@ class TestArchiveUtils(unittest.TestCase):
             self.assertTrue(verify_archive(zip_out))
 
     def test_create_and_verify_tar_archive(self) -> None:
+        """create_archive writes a tar.gz that verify_archive accepts."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             src_dir = Path(tmp_dir) / "source_tar_folder"
             src_dir.mkdir()
@@ -59,12 +61,14 @@ class TestArchiveUtils(unittest.TestCase):
             self.assertTrue(verify_archive(tar_out))
 
     def test_verify_archive_corrupted(self) -> None:
+        """verify_archive rejects a file that is not an archive."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             bad_file = Path(tmp_dir) / "corrupt.zip"
             bad_file.write_bytes(b"This is not a valid zip archive file contents.")
             self.assertFalse(verify_archive(bad_file))
 
     def test_smart_extract_zip(self) -> None:
+        """smart_extract unpacks a zip into the destination."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_file = Path(tmp_dir) / "payload.zip"
             with zipfile.ZipFile(zip_file, "w") as zf:
@@ -82,6 +86,7 @@ class TestArchiveUtils(unittest.TestCase):
             self.assertTrue(zip_file.exists())
 
     def test_flatten_common_root(self) -> None:
+        """A folder nested under a same-named wrapper is moved up and the wrapper removed."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             dest_dir = Path(tmp_dir) / "LemGendizedTestDataset"
             dest_dir.mkdir()
@@ -109,6 +114,7 @@ class TestStreamZipToContainer(unittest.TestCase):
         self.sample_png_bytes = buf.getvalue()
 
     def test_transcode_to_webp(self) -> None:
+        """PNG bytes are transcoded to WebP and WebP bytes are left as they are."""
         raw_bytes, ext = _transcode_to_webp(self.sample_png_bytes, ".png", quality=90)
         self.assertEqual(ext, ".webp")
         self.assertTrue(raw_bytes.startswith(b"RIFF"))
@@ -119,6 +125,7 @@ class TestStreamZipToContainer(unittest.TestCase):
         self.assertEqual(webp_bytes, raw_bytes)
 
     def test_stream_paired_dataset(self) -> None:
+        """A paired (images and targets) zip streams into WebDataset shards."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             work_dir = Path(tmp_dir)
             source_zip = work_dir / "legacy_paired.zip"
@@ -177,6 +184,7 @@ class TestStreamZipToContainer(unittest.TestCase):
             self.assertFalse(legacy_dir.exists(), "legacy_dir was not deleted")
 
     def test_stream_targets_only_dataset(self) -> None:
+        """A targets-only zip streams into WebDataset shards."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             work_dir = Path(tmp_dir)
             source_zip = work_dir / "legacy_targets_only.zip"

@@ -68,43 +68,52 @@ class TestOriginGuard(unittest.TestCase):
         self.client = TestClient(_build_app())
 
     def test_no_origin_read_allowed(self) -> None:
+        """A read without an Origin header is allowed."""
         self.assertEqual(self.client.get("/read").status_code, 200)
 
     def test_no_origin_write_allowed(self) -> None:
+        """A write without an Origin header is allowed."""
         self.assertEqual(self.client.post("/write").status_code, 200)
 
     def test_gui_origin_read_allowed(self) -> None:
+        """A read from the GUI origin is allowed and gets the CORS header."""
         resp = self.client.get("/read", headers={"Origin": GUI_ORIGIN})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.headers.get("access-control-allow-origin"), GUI_ORIGIN)
 
     def test_foreign_origin_read_refused(self) -> None:
+        """A read from a foreign origin is refused with 403."""
         resp = self.client.get("/read", headers={"Origin": FOREIGN_ORIGIN})
         self.assertEqual(resp.status_code, 403)
         self.assertIn("not allowed", resp.json()["detail"])
 
     def test_null_origin_refused(self) -> None:
+        """The "null" origin is refused."""
         resp = self.client.get("/read", headers={"Origin": "null"})
         self.assertEqual(resp.status_code, 403)
 
     def test_gui_origin_write_without_header_refused(self) -> None:
+        """A GUI-origin write without the client header is refused."""
         resp = self.client.post("/write", headers={"Origin": GUI_ORIGIN})
         self.assertEqual(resp.status_code, 403)
         self.assertIn(CLIENT_HEADER, resp.json()["detail"])
 
     def test_gui_origin_write_with_wrong_header_refused(self) -> None:
+        """A GUI-origin write with the wrong client header value is refused."""
         resp = self.client.post(
             "/write", headers={"Origin": GUI_ORIGIN, CLIENT_HEADER: "other"}
         )
         self.assertEqual(resp.status_code, 403)
 
     def test_gui_origin_write_with_header_allowed(self) -> None:
+        """A GUI-origin write with the client header is allowed."""
         resp = self.client.post(
             "/write", headers={"Origin": GUI_ORIGIN, CLIENT_HEADER: CLIENT_HEADER_VALUE}
         )
         self.assertEqual(resp.status_code, 200)
 
     def test_foreign_origin_write_with_header_refused(self) -> None:
+        """A foreign-origin write is refused even with the client header."""
         resp = self.client.post(
             "/write",
             headers={"Origin": FOREIGN_ORIGIN, CLIENT_HEADER: CLIENT_HEADER_VALUE},
@@ -112,6 +121,7 @@ class TestOriginGuard(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_preflight_from_gui_allows_client_and_token_headers(self) -> None:
+        """A GUI preflight allows the client and token headers."""
         resp = self.client.options(
             "/write",
             headers={
@@ -126,6 +136,7 @@ class TestOriginGuard(unittest.TestCase):
         self.assertIn(API_KEY_HEADER.lower(), allowed)
 
     def test_preflight_from_foreign_origin_refused(self) -> None:
+        """A preflight from a foreign origin is refused."""
         resp = self.client.options(
             "/write",
             headers={
@@ -136,14 +147,17 @@ class TestOriginGuard(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_websocket_gui_origin_allowed(self) -> None:
+        """A WebSocket from the GUI origin is accepted."""
         with self.client.websocket_connect("/ws", headers={"Origin": GUI_ORIGIN}) as ws:
             self.assertEqual(ws.receive_json(), {"ok": True})
 
     def test_websocket_no_origin_allowed(self) -> None:
+        """A WebSocket without an Origin header is accepted."""
         with self.client.websocket_connect("/ws") as ws:
             self.assertEqual(ws.receive_json(), {"ok": True})
 
     def test_websocket_foreign_origin_refused(self) -> None:
+        """A WebSocket from a foreign origin is closed."""
         with (
             self.assertRaises(WebSocketDisconnect),
             self.client.websocket_connect("/ws", headers={"Origin": FOREIGN_ORIGIN}) as ws,
@@ -155,6 +169,7 @@ class TestServerWiring(unittest.TestCase):
     """The real sidecar app uses the guard and a closed CORS allow-list."""
 
     def test_server_middleware_configuration(self) -> None:
+        """The server installs the origin guard outermost and a CORS allow-list without wildcards."""
         classes = [m.cls for m in server_app.user_middleware]
         self.assertIn(origin_guard_middleware, classes)
         self.assertIn(CORSMiddleware, classes)
@@ -169,11 +184,13 @@ class TestServerWiring(unittest.TestCase):
 
     def test_real_app_refuses_foreign_origin(self) -> None:
         # No context manager: the lifespan (PID file, event drain) does not run.
+        """The real app refuses a foreign-origin POST."""
         client = TestClient(server_app)
         resp = client.post("/api/gui/quick-compile", headers={"Origin": FOREIGN_ORIGIN})
         self.assertEqual(resp.status_code, 403)
 
     def test_real_app_websocket_refuses_foreign_origin(self) -> None:
+        """The real app closes a foreign-origin WebSocket."""
         client = TestClient(server_app)
         with (
             self.assertRaises(WebSocketDisconnect),
@@ -184,6 +201,7 @@ class TestServerWiring(unittest.TestCase):
             ws.receive_text()
 
     def test_real_app_token_check_still_applies_behind_guard(self) -> None:
+        """Behind the origin guard, a missing token gives 401 and a wrong one 403."""
         client = TestClient(server_app)
         gui_headers = {"Origin": GUI_ORIGIN, CLIENT_HEADER: CLIENT_HEADER_VALUE}
         env = {"LEMGENDARY_API_TOKEN": TEST_TOKEN, "LEMGENDARY_DISABLE_AUTH": ""}

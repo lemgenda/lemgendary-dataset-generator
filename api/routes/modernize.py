@@ -21,6 +21,7 @@ router = APIRouter(prefix="/modernize", tags=["Modernization Hub"])
 
 
 class QueueItemResponse(BaseModel):
+    """One dataset in the modernization queue."""
     key: str
     name: str
     canonical_format: str
@@ -37,6 +38,7 @@ class QueueItemResponse(BaseModel):
 
 
 class ModernizeRunRequest(BaseModel):
+    """Request body for a modernization run."""
     datasets: list[str] | None = Field(None, description="Specific dataset key(s) to modernize. Omit (with `dataset`) for full batch.")
     dataset: str | None = Field(None, description="Single dataset key or folder to modernize (merged with `datasets`).")
     workers: int | None = Field(12, description="Transcoding worker threads")
@@ -58,6 +60,7 @@ class ModernizeRunRequest(BaseModel):
 
 
 class ManifoldReduceRequest(BaseModel):
+    """Request body for creating a reduced manifold variant."""
     dataset_key: str | None = Field(None, description="Target manifold folder or dataset key to reduce")
     manifold: str | None = Field(None, description="Alias of `dataset_key` (manifold folder name)")
     scale: float | None = Field(

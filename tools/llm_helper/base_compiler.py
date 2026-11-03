@@ -42,6 +42,7 @@ class BaseLLMCompiler:
         self.validator = QualityValidator()
 
     def load_manifest(self) -> dict[str, Any]:
+        """Return the parsed unified_data.yaml manifest."""
         with open(self.config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 

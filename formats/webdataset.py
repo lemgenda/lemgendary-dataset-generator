@@ -94,6 +94,7 @@ class ShardWriter:
         )
 
     def write(self, name: str, img_bytes: bytes, caption: str) -> None:
+        """Write one image with its caption as a WebDataset sample."""
         self.sink.write({
             "__key__": name,
             "jpg": img_bytes,
@@ -101,4 +102,5 @@ class ShardWriter:
         })
 
     def close(self) -> None:
+        """Close the underlying tar sink."""
         self.sink.close()

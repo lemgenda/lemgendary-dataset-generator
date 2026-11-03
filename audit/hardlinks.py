@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HardlinkAuditResult:
+    """Hardlink counts and sizes for one manifold directory."""
     total_files: int
     hardlinked_files: int
     hardlink_pct: float
@@ -42,6 +43,7 @@ class HardlinkAuditResult:
         return "BLOCK"
 
     def summary(self) -> str:
+        """Return a one-line summary of the hardlink counts and the verdict."""
         return (
             f"{self.hardlinked_files}/{self.total_files} files hardlinked "
             f"({self.hardlink_pct:.1f}%, {self.hardlinked_bytes / 1024**3:.2f} GB) "

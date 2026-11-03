@@ -39,10 +39,12 @@ class _AsgiResponse:
     headers: list[tuple[bytes, bytes]]
 
     def json(self) -> Any:
+        """Decode the body as JSON."""
         return loads(self.body_bytes.decode("utf-8"))
 
     @property
     def text(self) -> str:
+        """Decode the body as UTF-8 text."""
         return self.body_bytes.decode("utf-8", errors="replace")
 
 
@@ -59,6 +61,7 @@ class InProcessAsgiClient:
         json_body: Any = None,
         headers: dict[str, str] | None = None,
     ) -> _AsgiResponse:
+        """Send one request through the ASGI app and collect the response."""
         parsed = urlsplit(path)
         raw_headers: list[tuple[bytes, bytes]] = [(b"host", b"testserver")]
         body_bytes = b""
@@ -119,6 +122,7 @@ class InProcessAsgiClient:
         )
 
     def get(self, path: str, headers: dict[str, str] | None = None) -> _AsgiResponse:
+        """Send a GET request."""
         return self.request("GET", path, headers=headers)
 
     def post(
@@ -127,6 +131,7 @@ class InProcessAsgiClient:
         json: Any = None,
         headers: dict[str, str] | None = None,
     ) -> _AsgiResponse:
+        """Send a POST request with an optional JSON body."""
         return self.request("POST", path, json_body=json, headers=headers)
 
 
@@ -140,6 +145,7 @@ class TestApiRoutes(unittest.TestCase):
         cls.auth_headers = {"X-API-Key": cls.token}
 
     def test_health_endpoint(self) -> None:
+        """GET /api/health reports the service name, status and version."""
         resp = self.client.get("/api/health")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -149,6 +155,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("uptime_seconds", data)
 
     def test_health_full_endpoint(self) -> None:
+        """GET /api/health/full includes the hardware block."""
         resp = self.client.get("/api/health/full")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -160,6 +167,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("cuda_available", hw)
 
     def test_gui_state_and_presets_endpoints(self) -> None:
+        """GET /api/gui/state lists presets, and the presets endpoint answers."""
         resp = self.client.get("/api/gui/state")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -174,6 +182,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertGreater(presets_data.get("total", 0), 0)
 
     def test_datasets_list_and_details_endpoints(self) -> None:
+        """The dataset list and detail endpoints read a manifold from the output root."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             m_dir = tmp_root / "LemGendizedTestManifold"
@@ -202,10 +211,12 @@ class TestApiRoutes(unittest.TestCase):
                 self.assertEqual(detail["classes"], ["clean", "degraded"])
 
     def test_datasets_not_found(self) -> None:
+        """An unknown dataset name returns 404."""
         resp = self.client.get("/api/datasets/non_existent_manifold_xyz_123")
         self.assertEqual(resp.status_code, 404)
 
     def test_gates_hardlinks_endpoint(self) -> None:
+        """The hardlink gate endpoint returns a verdict and percentage."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             resp = self.client.get(f"/api/gates/hardlinks?path={tmp_dir}")
             self.assertEqual(resp.status_code, 200)
@@ -218,6 +229,7 @@ class TestApiRoutes(unittest.TestCase):
 
     def test_protected_config_and_jobs_endpoints(self) -> None:
         # Unauthenticated request is rejected
+        """Config and job endpoints return 401 without a token and succeed with one."""
         unauth = self.client.get("/api/config")
         self.assertEqual(unauth.status_code, 401)
 
@@ -235,6 +247,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("jobs", jobs_resp.json())
 
     def test_sources_and_kaggle_and_modernize_endpoints(self) -> None:
+        """The sources, Kaggle and modernize endpoints answer."""
         src_resp = self.client.get("/api/sources")
         self.assertEqual(src_resp.status_code, 200)
         self.assertIn("total_configured", src_resp.json())
@@ -256,10 +269,12 @@ class TestAuditService(unittest.TestCase):
     """Test AuditService image quality and hardlink verification."""
 
     def test_audit_manifold_nonexistent(self) -> None:
+        """Auditing a missing manifold returns 1."""
         ret = AuditService.audit_manifold(Path("C:/does_not_exist_xyz_dir_999"), as_json=True)
         self.assertEqual(ret, 1)
 
     def test_audit_manifold_valid_directory(self) -> None:
+        """Auditing a manifold with one valid image succeeds."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             m_path = Path(tmp_dir) / "TestManifold"
             img_dir = m_path / "images" / "train"
@@ -277,6 +292,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
     """Test all 7 service facade layers for in-process dispatch."""
 
     def test_compiler_service_dry_dispatch(self) -> None:
+        """CompilerService passes its options to process_dataset."""
         with patch("core.manifold_compile.process_dataset") as mock_proc:
             mock_proc.return_value = None
             ret = CompilerService.run_compile(
@@ -289,6 +305,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_proc.called)
 
     def test_compiler_service_handles_error(self) -> None:
+        """CompilerService returns 1 when process_dataset raises."""
         with patch("core.manifold_compile.process_dataset", side_effect=RuntimeError("Test error")):
             ret = CompilerService.run_compile(
                 preset="restoration-hardlinked",
@@ -296,6 +313,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertEqual(ret, 1)
 
     def test_migration_service_transcode_dispatch(self) -> None:
+        """MigrationService.transcode_images calls the image-format migration."""
         with patch("tools.migrate_manifold_image_format.run", return_value=0) as mock_run:
             ret = MigrationService.transcode_images(
                 manifold_path=Path("C:/test_manifold"),
@@ -305,6 +323,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_run.called)
 
     def test_migration_service_modernize_dispatch(self) -> None:
+        """MigrationService.modernize_manifolds calls modernize_manifold.run."""
         with patch("tools.modernize_manifold.run", return_value=0) as mock_run:
             ret = MigrationService.modernize_manifolds(
                 dry_run=True,
@@ -314,6 +333,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_run.called)
 
     def test_migration_service_reduce_and_queue_dispatch(self) -> None:
+        """MigrationService dispatches reduce and queue runs with the given options."""
         with patch("tools.manifold_reduce.reduce_dataset", return_value=0) as mock_red:
             ret = MigrationService.reduce_manifolds(max_gb=50.0, suffix="Reduced")
             self.assertEqual(ret, 0)
@@ -327,6 +347,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             )
 
     def test_degrade_service_dispatch(self) -> None:
+        """DegradeService calls synthesize_manifold."""
         with patch("tools.generate_degrade.synthesize_manifold", return_value=0) as mock_deg:
             ret = DegradeService.run_degrade(
                 source="clean_src",
@@ -338,12 +359,14 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_deg.called)
 
     def test_doc_service_dispatch(self) -> None:
+        """DocService.rebuild_manifolds_md calls regenerate_manifolds_md.main."""
         with patch("tools.regenerate_manifolds_md.main", return_value=0) as mock_md:
             ret = DocService.rebuild_manifolds_md(check_only=True)
             self.assertEqual(ret, 0)
             self.assertTrue(mock_md.called)
 
     def test_generation_service_dispatch(self) -> None:
+        """GenerationService calls generate_cli.run."""
         with patch("tools.generate_cli.run", return_value=0) as mock_gen:
             ret = GenerationService.generate(
                 manifold=Path("C:/test_manifold"),
@@ -355,6 +378,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_gen.called)
 
     def test_sync_service_push_pull_and_metadata_dispatch(self) -> None:
+        """SyncService dispatches push, pull and metadata calls to the sync tools."""
         with patch("tools.manifold_sync.action_sync") as mock_push:
             ret = SyncService.push(model="nima_technical", url=None, no_wait=True)
             self.assertEqual(ret, 0)

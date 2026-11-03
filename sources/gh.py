@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 def main():
+    """Clone a GitHub repository into the output directory (CLI entry point)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo_url", required=True)
     parser.add_argument("--output_dir", required=True)

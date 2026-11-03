@@ -83,6 +83,7 @@ def migrate_manifold(
     accept_space_loss: bool = False,
     purge_source: bool = False,
 ) -> int:
+    """Write an existing manifold into the given container formats; returns the exit code."""
     if not root.exists():
         print(f"[ERROR] Manifold not found: {root}")
         return 1
@@ -137,6 +138,7 @@ def migrate_manifold(
 
 
 def main() -> int:
+    """Parse the CLI arguments and run the container migration."""
     parser = argparse.ArgumentParser(
         description="Retroactive container-format migration"
     )

@@ -44,10 +44,12 @@ def _schema_operations(routes: list, prefix: str = "") -> set[tuple[str, str]]:
 
 @pytest.fixture(name="live_app", scope="module")
 def fixture_live_app():
+    """Build the FastAPI app once for the module's tests."""
     return create_app()
 
 
 def test_openapi_json_matches_live_app(live_app) -> None:
+    """openapi.json matches the schema the live app generates."""
     committed = OPENAPI_FILE.read_text(encoding="utf-8")
     assert committed == render_openapi(live_app.openapi()), (
         "openapi.json drifted from the app; run: python -m tools.export_openapi"
@@ -55,6 +57,7 @@ def test_openapi_json_matches_live_app(live_app) -> None:
 
 
 def test_every_app_operation_is_in_openapi_json(live_app) -> None:
+    """Every route of the live app is documented in openapi.json."""
     committed = json.loads(OPENAPI_FILE.read_text(encoding="utf-8"))
     documented = {
         (method.upper(), path)

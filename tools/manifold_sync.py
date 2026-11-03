@@ -1,3 +1,5 @@
+"""Upload manifolds to Kaggle and download them back; run as ``python -m tools.manifold_sync``."""
+
 import sys
 import shutil
 import argparse
@@ -195,6 +197,7 @@ def action_get(repo_id, output_name=None):
 
 
 def main():
+    """Parse the CLI arguments and run the sync or get action."""
     parser = argparse.ArgumentParser(description="LemGendary Manifold Sync Manager")
     parser.add_argument("--action", choices=["sync", "get"], help="Action to perform")
     parser.add_argument("--model", "--manifold", dest="model", type=str, help="Local manifold name or YAML key")

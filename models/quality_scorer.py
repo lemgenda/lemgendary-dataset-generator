@@ -1,3 +1,5 @@
+"""NIMA-based image quality scoring."""
+
 import torch
 from torch import nn
 from torchvision import transforms
@@ -30,6 +32,7 @@ class QualitySentry:
 
     @torch.no_grad()
     def score(self, img_pil, return_probs=False):
+        """Return the mean NIMA score of an image, with the score distribution when ``return_probs``."""
         img_tensor = self.transform(img_pil).unsqueeze(0).to(self.device)
         with torch.no_grad():
             logits = self.model(img_tensor)

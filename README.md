@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.33-STABLE` |
+| **Version** | `v16.9.34-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,13 @@
 ---
 
 ## Changelog
+
+### v16.9.34 - Every Module, Class and Function Documented, Docstring Checks Re-Enabled
+
+- **`.pylintrc` Disables One Fewer Check**: `missing-docstring` is enabled again. The 266 findings (10 modules, 50 classes, 206 functions and methods) each got a one-line docstring that says what the code does.
+- **Coverage**: the API request and response models (`api/models.py`, `api/routes/kaggle.py`, `api/routes/modernize.py`), the MT5 bridge wrappers and pipeline stages in `forex/`, the model wrappers in `models/`, the `Writer` protocol methods, the CLI entry points under `tools/` and `sources/`, and the test cases, which now state the behaviour each one checks.
+- **OpenAPI Contract Regenerated**: FastAPI publishes model and route docstrings as schema and operation descriptions, so `openapi.json` gained the new descriptions.
+- The stub methods of the `Writer` and `Generator` protocols now hold only their docstring instead of `...`.
 
 ### v16.9.33 - One Loader per Heavy Dependency, `import-outside-toplevel` Re-Enabled
 

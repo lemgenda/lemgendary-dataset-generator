@@ -29,6 +29,7 @@ router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
 
 
 class KaggleSyncRequest(BaseModel):
+    """Request body for a Kaggle push or pull of one manifold."""
     manifold: Optional[str] = Field(None, description="Specific manifold ID or folder name")
     push: bool = Field(False, description="Push local manifold to Kaggle")
     pull: bool = Field(False, description="Pull remote dataset from Kaggle")
@@ -236,6 +237,7 @@ async def upload_kaggle_dataset(req: KaggleUploadRequest) -> JobResponse:
 
 @router.post("/sync", response_model=JobResponse)
 async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
+    """Start a Kaggle push (sync) or pull (get) job through tools.manifold_sync."""
     action = "get" if req.pull and not req.push else "sync"
     cmd = [venv_python(), "-u", "-m", "tools.manifold_sync", "--action", action]
     if req.manifold:
@@ -252,6 +254,7 @@ async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
 
 
 class KaggleMetadataRequest(BaseModel):
+    """Request body for a Kaggle metadata update."""
     manifold: Optional[str] = None
     """Specific manifold folder/key to update. If omitted, all_datasets must be True."""
     kaggle_ref: Optional[str] = None
