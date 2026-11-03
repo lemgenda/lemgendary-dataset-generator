@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.45-STABLE` |
+| **Version** | `v16.9.46-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,26 @@
 ---
 
 ## Changelog
+
+### v16.9.46 - Reduce and Degrade Tools Split; Service Option Objects
+
+- **Reduce and Degrade Tools Split** (`manifold_reduce.py` 650 lines to 265,
+  `generate_degrade.py` 413 to 373): discovery and prompts moved to
+  `tools/manifold_reduce_select.py`, image copying to
+  `manifold_reduce_vision.py`, forex reduction to `manifold_reduce_forex.py`,
+  and the synthetic registry and metadata writers to
+  `tools/generate_degrade_registry.py`.
+- **Option Objects Instead of Long Signatures**: `reduce_dataset`,
+  `synthesize_manifold`, `GenerationService.generate`,
+  `DegradeService.run_degrade` and `wait_for_job` take their optional
+  settings as typed keyword options (`Unpack[TypedDict]`). Every existing
+  keyword call works unchanged.
+- **Smaller Functions**: `AuditService.audit_manifold`, the film scratch and
+  dust kernels and `AutoLabeler` prediction are split into helpers. The
+  `too-many-*` findings in these files went from 43 to 2, and the
+  `manifold_reduce` / `modernize_manifold` duplicate-code finding is gone.
+- **Unchanged Behaviour**: old and new outputs match on sample manifolds
+  (exit codes, stdout, file trees, images, labels and registry rows).
 
 ### v16.9.45 - Zip Streamer and Archive Utilities Split
 

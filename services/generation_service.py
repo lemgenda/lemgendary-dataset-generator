@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TypedDict, Unpack
+
 from rich.console import Console
 
 from tools import generate_cli
@@ -19,6 +21,15 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+class GenerateOptions(TypedDict, total=False):
+    """Optional settings for :meth:`GenerationService.generate`."""
+
+    template: str
+    device: str
+    sample: int | None
+    dry_run: bool
+
+
 class GenerationService:
     """Encapsulates label, prompt, and mask generation."""
 
@@ -27,22 +38,23 @@ class GenerationService:
         manifold: Path,
         kind: str,
         strategy: str,
-        template: str = "diffusers-v1",
-        device: str = "cpu",
-        sample: int | None = None,
-        dry_run: bool = False,
+        **options: Unpack[GenerateOptions],
     ) -> int:
-        """Run smart generation pass over an existing manifold."""
+        """Run smart generation pass over an existing manifold.
+
+        ``options`` defaults: ``template="diffusers-v1"``, ``device="cpu"``,
+        ``sample=None`` (no cap) and ``dry_run=False``.
+        """
 
         try:
             return generate_cli.run(
                 manifold=manifold,
                 kind=kind,
                 strategy=strategy,
-                template=template,
-                device=device,
-                sample_limit=sample,
-                dry_run=dry_run,
+                template=options.get("template", "diffusers-v1"),
+                device=options.get("device", "cpu"),
+                sample_limit=options.get("sample"),
+                dry_run=options.get("dry_run", False),
             )
         except SERVICE_ERRORS as exc:
             logger.exception("Generation error")

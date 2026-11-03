@@ -18,6 +18,45 @@ from typing import Any
 import numpy as np
 
 
+def _numpy_rng(rng: random.Random) -> np.random.Generator:
+    """Derive a NumPy generator from the per-sample Python RNG (consumes one draw)."""
+    return np.random.default_rng(rng.randint(0, 2**31 - 1))
+
+
+def _draw_scratch(out: np.ndarray, np_rng: np.random.Generator, opacity: float) -> int:
+    """Draw one wobbling vertical scratch into ``out`` in place; return its start column."""
+    h, w = out.shape[:2]
+    x_start = np_rng.integers(0, w)
+    scratch_color = 1.0 if np_rng.random() > 0.3 else 0.0  # White or dark scratch
+    width = np_rng.choice([1, 2])
+    wobble = np_rng.integers(-1, 2, size=h)
+    x_track = np.clip(x_start + np.cumsum(wobble) // 10, 0, w - width)
+
+    for y in range(h):
+        x = x_track[y]
+        out[y, x:x + width, :] = (
+            out[y, x:x + width, :] * (1.0 - opacity) + scratch_color * opacity
+        )
+    return int(x_start)
+
+
+def _stamp_speck(out: np.ndarray, np_rng: np.random.Generator) -> None:
+    """Stamp one round dust speck into ``out`` in place."""
+    h, w = out.shape[:2]
+    cy = np_rng.integers(0, h)
+    cx = np_rng.integers(0, w)
+    radius = np_rng.integers(1, 4)
+    dust_color = 0.1 if np_rng.random() > 0.4 else 0.9
+
+    y_min, y_max = max(0, cy - radius), min(h, cy + radius + 1)
+    x_min, x_max = max(0, cx - radius), min(w, cx + radius + 1)
+
+    yy, xx = np.ogrid[y_min - cy:y_max - cy, x_min - cx:x_max - cx]
+    mask = (xx**2 + yy**2) <= (radius**2)
+
+    out[y_min:y_max, x_min:x_max][mask] = dust_color
+
+
 class FilmGrain:
     """Simulates analog photographic film grain."""
 
@@ -33,8 +72,7 @@ class FilmGrain:
         rng: random.Random,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         h, w = img.shape[:2]
-        seed_val = rng.randint(0, 2**31 - 1)
-        np_rng = np.random.default_rng(seed_val)
+        np_rng = _numpy_rng(rng)
 
         # Grain is strongest in midtones, weaker in deep shadows/highlights
         midtones_weight = 4.0 * img * (1.0 - img)
@@ -67,27 +105,12 @@ class FilmScratches:
         img: np.ndarray,
         rng: random.Random,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        h, w = img.shape[:2]
-        seed_val = rng.randint(0, 2**31 - 1)
-        np_rng = np.random.default_rng(seed_val)
+        np_rng = _numpy_rng(rng)
 
         out = img.copy()
-        scratch_coords = []
-
-        for _ in range(self.num_scratches):
-            x_start = np_rng.integers(0, w)
-            scratch_color = 1.0 if np_rng.random() > 0.3 else 0.0  # White or dark scratch
-            width = np_rng.choice([1, 2])
-            wobble = np_rng.integers(-1, 2, size=h)
-            x_track = np.clip(x_start + np.cumsum(wobble) // 10, 0, w - width)
-
-            for y in range(h):
-                x = x_track[y]
-                out[y, x:x + width, :] = (
-                    out[y, x:x + width, :] * (1.0 - self.opacity)
-                    + scratch_color * self.opacity
-                )
-            scratch_coords.append(int(x_start))
+        scratch_coords = [
+            _draw_scratch(out, np_rng, self.opacity) for _ in range(self.num_scratches)
+        ]
 
         params = {
             "num_scratches": self.num_scratches,
@@ -110,24 +133,11 @@ class FilmDust:
         img: np.ndarray,
         rng: random.Random,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        h, w = img.shape[:2]
-        seed_val = rng.randint(0, 2**31 - 1)
-        np_rng = np.random.default_rng(seed_val)
+        np_rng = _numpy_rng(rng)
 
         out = img.copy()
         for _ in range(self.num_specks):
-            cy = np_rng.integers(0, h)
-            cx = np_rng.integers(0, w)
-            radius = np_rng.integers(1, 4)
-            dust_color = 0.1 if np_rng.random() > 0.4 else 0.9
-
-            y_min, y_max = max(0, cy - radius), min(h, cy + radius + 1)
-            x_min, x_max = max(0, cx - radius), min(w, cx + radius + 1)
-
-            yy, xx = np.ogrid[y_min - cy:y_max - cy, x_min - cx:x_max - cx]
-            mask = (xx**2 + yy**2) <= (radius**2)
-
-            out[y_min:y_max, x_min:x_max][mask] = dust_color
+            _stamp_speck(out, np_rng)
 
         params = {
             "num_specks": self.num_specks,

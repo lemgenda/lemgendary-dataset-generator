@@ -21,22 +21,44 @@ import json
 import logging
 import os
 import random
-import sqlite3
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypedDict, Unpack, cast
 
 from PIL import Image
 from tqdm import tqdm
 
+from core.config_schema import ImageFormatPolicy
 from degrade import DynamicDegrader, parse_profile
 from formats.transcode import ImageTranscoder
-from core.config_schema import ImageFormatPolicy
-from core.registry import initialize_registry
+from tools.generate_degrade_registry import (
+    ManifoldDescription,
+    commit_records,
+    init_synthetic_registry,
+    write_metadata,
+)
+
+__all__ = [
+    "DEFAULT_IMAGE_FORMAT",
+    "DEFAULT_INTENSITY",
+    "DEFAULT_PROFILE",
+    "DEFAULT_SEED",
+    "DEFAULT_VAL_SPLIT",
+    "ImageFormat",
+    "SampleContext",
+    "SampleJob",
+    "SynthesisOptions",
+    "main",
+    "process_single_sample",
+    "synthesize_manifold",
+]
 
 logger = logging.getLogger(__name__)
+
+ImageFormat = Literal["webp", "jpeg", "png", "keep"]
 
 _IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"})
 
@@ -65,101 +87,98 @@ def _discover_source_images(source_path: Path) -> list[Path]:
     return files
 
 
-def _init_synthetic_registry(db_path: Path) -> None:
-    """Initialize manifold_registry.db schema for synthetic manifold."""
-    initialize_registry(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS samples (
-                id INTEGER PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
-                source TEXT NOT NULL,
-                task TEXT NOT NULL,
-                split TEXT NOT NULL,
-                hash TEXT,
-                perceptual_hash TEXT,
-                img_format TEXT,
-                img_size_bytes INTEGER,
-                target_size_bytes INTEGER,
-                mask_size_bytes INTEGER DEFAULT 0,
-                is_hardlinked INTEGER DEFAULT 0,
-                reject_code TEXT,
-                audit_trail TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id INTEGER PRIMARY KEY,
-                sample_name TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                event_data TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        conn.commit()
+@dataclass(frozen=True)
+class SampleContext:
+    """Shared, read-only state every sample worker needs."""
+
+    output_root: Path
+    degrader: DynamicDegrader
+    base_seed: int
+    transcoder: ImageTranscoder
 
 
-def process_single_sample(
-    idx: int,
-    src_file: Path,
-    split: str,
-    output_root: Path,
-    degrader: DynamicDegrader,
-    base_seed: int,
-    transcoder: ImageTranscoder,
+@dataclass(frozen=True)
+class SampleJob:
+    """One source image to degrade: its index, file and target split."""
+
+    idx: int
+    src_file: Path
+    split: str
+
+
+class SynthesisOptions(TypedDict, total=False):
+    """Optional settings for :func:`synthesize_manifold` (defaults: ``DEFAULT_*``)."""
+
+    profile_expr: str
+    intensity: str
+    pairs: int | None
+    val_split: float
+    seed: int
+    image_format: ImageFormat
+    workers: int | None
+    dry_run: bool
+
+
+DEFAULT_PROFILE = "motion-blur+iso-noise"
+DEFAULT_INTENSITY = "medium"
+DEFAULT_VAL_SPLIT = 0.12
+DEFAULT_SEED = 42
+DEFAULT_IMAGE_FORMAT: ImageFormat = "webp"
+
+
+def _label_payload(
+    job: SampleJob, sample_seed: int, meta: dict[str, Any], clean_img: Image.Image
 ) -> dict[str, Any]:
+    """Return the label skeleton (formats are filled in after encoding)."""
+    return {
+        "sample_name": f"{job.src_file.stem}_synth_{job.idx:06d}",
+        "source_file": job.src_file.name,
+        "split": job.split,
+        "seed": sample_seed,
+        "profile": meta.get("profile", "unknown"),
+        "degradations": meta.get("degradations", []),
+        "input_dimensions": [clean_img.height, clean_img.width],
+    }
+
+
+def process_single_sample(job: SampleJob, ctx: SampleContext) -> dict[str, Any]:
     """Process, degrade, and write a single clean-degraded pair with parameter labels."""
-    sample_seed = (base_seed * 1000003 + idx) % (2**31 - 1)
-    stem = src_file.stem
-    sample_name = f"{stem}_synth_{idx:06d}"
+    sample_seed = (ctx.base_seed * 1000003 + job.idx) % (2**31 - 1)
 
     # Load clean ground truth
-    with Image.open(src_file) as clean_img:
+    with Image.open(job.src_file) as clean_img:
         if clean_img.mode != "RGB":
             clean_img = clean_img.convert("RGB")
         clean_img.load()
 
     # Apply degradation directly as PIL image
-    degraded_img, meta = degrader.degrade_pil(clean_img, sample_seed=sample_seed)
+    degraded_img, meta = ctx.degrader.degrade_pil(clean_img, sample_seed=sample_seed)
+    label_payload = _label_payload(job, sample_seed, meta, clean_img)
+    sample_name = label_payload["sample_name"]
 
     # Encode images via transcoder
-    deg_bytes, deg_fmt = transcoder.encode(degraded_img, kind="image")
-    tgt_bytes, tgt_fmt = transcoder.encode(clean_img, kind="target")
-
-    deg_ext = transcoder.extension_for(deg_fmt)
-    tgt_ext = transcoder.extension_for(tgt_fmt)
-
-    # Destination paths
-    img_out = output_root / "images" / split / f"{sample_name}{deg_ext}"
-    tgt_out = output_root / "targets" / split / f"{sample_name}{tgt_ext}"
-    lbl_out = output_root / "labels" / split / f"{sample_name}.json"
+    deg_bytes, deg_fmt = ctx.transcoder.encode(degraded_img, kind="image")
+    tgt_bytes, tgt_fmt = ctx.transcoder.encode(clean_img, kind="target")
 
     # Write files atomically
-    img_out.write_bytes(deg_bytes)
-    tgt_out.write_bytes(tgt_bytes)
+    root = ctx.output_root
+    deg_name = f"{sample_name}{ctx.transcoder.extension_for(deg_fmt)}"
+    tgt_name = f"{sample_name}{ctx.transcoder.extension_for(tgt_fmt)}"
+    (root / "images" / job.split / deg_name).write_bytes(deg_bytes)
+    (root / "targets" / job.split / tgt_name).write_bytes(tgt_bytes)
 
     # Label payload detailing exact quantitative parameters
-    label_payload = {
-        "sample_name": sample_name,
-        "source_file": src_file.name,
-        "split": split,
-        "seed": sample_seed,
-        "profile": meta.get("profile", "unknown"),
-        "degradations": meta.get("degradations", []),
-        "input_dimensions": [clean_img.height, clean_img.width],
-        "image_format": deg_fmt,
-        "target_format": tgt_fmt,
-    }
-    lbl_out.write_text(json.dumps(label_payload, indent=2), encoding="utf-8")
+    label_payload["image_format"] = deg_fmt
+    label_payload["target_format"] = tgt_fmt
+    (root / "labels" / job.split / f"{sample_name}.json").write_text(
+        json.dumps(label_payload, indent=2), encoding="utf-8"
+    )
 
     return {
         "name": sample_name,
-        "source": src_file.name,
+        "source": job.src_file.name,
         "task": "restoration",
-        "split": split,
+        "split": job.split,
         "img_format": deg_fmt,
         "img_size": len(deg_bytes),
         "target_size": len(tgt_bytes),
@@ -167,193 +186,134 @@ def process_single_sample(
     }
 
 
-def synthesize_manifold(
-    source: str,
-    output: str,
-    profile_expr: str = "motion-blur+iso-noise",
-    intensity: str = "medium",
-    pairs: int | None = None,
-    val_split: float = 0.12,
-    seed: int = 42,
-    image_format: Literal["webp", "jpeg", "png", "keep"] = "webp",
-    workers: int | None = None,
-    dry_run: bool = False,
-) -> int:
-    """Main entry point for compiler-time manifold degradation synthesis."""
+def _resolve_source_path(source: str) -> Path:
+    """Resolve ``source``, falling back to the sibling LemGendaryDatasets folder."""
     source_path = Path(source).resolve()
     if not source_path.exists():
         # Check relative to datasets repository
         alt_path = Path("../LemGendaryDatasets") / source
         if alt_path.exists():
             source_path = alt_path.resolve()
+    return source_path
 
-    print(f"[DEGRADE] Discovering source images in {source_path}...")
-    source_files = _discover_source_images(source_path)
-    total_found = len(source_files)
-    print(f"[DEGRADE] Discovered {total_found:,} candidate source images.")
 
-    if total_found == 0:
-        print(f"[ERROR] No image files found in {source_path}.")
-        return 1
-
-    if pairs is not None and pairs > 0:
-        source_files = source_files[:pairs]
-    total_samples = len(source_files)
-
-    # Resolve output directory
+def _resolve_output_path(output: str) -> Path:
+    """Resolve the output manifold directory (bare names go under LemGendaryDatasets)."""
     output_path = Path(output)
     if not output_path.is_absolute() and not str(output).startswith("."):
         output_path = Path("../LemGendaryDatasets") / output
-    output_path = output_path.resolve()
+    return output_path.resolve()
 
-    print(f"[DEGRADE] Target Manifold: {output_path}")
-    print(f"[DEGRADE] Profile: {profile_expr} (Intensity: {intensity}, Base Seed: {seed})")
-    print(f"[DEGRADE] Target Samples: {total_samples:,} (Val Split: {val_split:.1%})")
 
-    if dry_run:
-        print("[DEGRADE] Dry-run completed. No files were written.")
-        return 0
-
-    # Build directories
+def _prepare_output_dirs(output_path: Path) -> None:
+    """Create the images/targets/labels split folders."""
     for split in ("train", "val"):
         (output_path / "images" / split).mkdir(parents=True, exist_ok=True)
         (output_path / "targets" / split).mkdir(parents=True, exist_ok=True)
         (output_path / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    # Initialize Registry DB
-    db_path = output_path / "manifold_registry.db"
-    _init_synthetic_registry(db_path)
 
-    # Setup profile & transcoder
-    composite_prof = parse_profile(profile_expr, intensity=intensity)
-    degrader = DynamicDegrader(composite_prof, seed=seed)
+def _build_context(desc: ManifoldDescription, image_format: ImageFormat) -> SampleContext:
+    """Set up the degradation profile and transcoder shared by all samples."""
+    composite_prof = parse_profile(desc.profile_expr, intensity=desc.intensity)
+    degrader = DynamicDegrader(composite_prof, seed=desc.seed)
     policy = ImageFormatPolicy(format=image_format, quality=92, target_quality=95)
-    transcoder = ImageTranscoder(policy)
+    return SampleContext(desc.output_path, degrader, desc.seed, ImageTranscoder(policy))
 
 
+def _synthesize_all(
+    ctx: SampleContext,
+    source_files: list[Path],
+    val_split: float,
+    workers: int | None,
+) -> list[dict[str, Any]]:
+    """Degrade every source file on a thread pool; return the successful records."""
     num_workers = workers or min(16, os.cpu_count() or 4)
-    rng = random.Random(seed)
+    rng = random.Random(ctx.base_seed)
 
-    print(f"[DEGRADE] Synthesizing {total_samples:,} pairs using {num_workers} parallel workers...")
-    start_time = time.time()
+    print(
+        f"[DEGRADE] Synthesizing {len(source_files):,} pairs using {num_workers} parallel"
+        " workers..."
+    )
     records: list[dict[str, Any]] = []
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = []
         for idx, src_file in enumerate(source_files):
             split = "val" if rng.random() < val_split else "train"
-            fut = executor.submit(
-                process_single_sample,
-                idx,
-                src_file,
-                split,
-                output_path,
-                degrader,
-                seed,
-                transcoder,
+            futures.append(
+                executor.submit(process_single_sample, SampleJob(idx, src_file, split), ctx)
             )
-            futures.append(fut)
 
         for fut in tqdm(as_completed(futures), total=len(futures), desc="Synthesizing"):
             try:
-                res = fut.result()
-                records.append(res)
+                records.append(fut.result())
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 logger.warning("Failed to synthesize sample: %s", e)
                 print(f"\n[WARNING] Failed to synthesize sample: {e}")
+    return records
 
-    # Commit metadata to registry in batch
-    with sqlite3.connect(db_path) as conn:
-        for r in records:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO samples (
-                    name, source, task, split, img_format, img_size_bytes, target_size_bytes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    r["name"],
-                    r["source"],
-                    r["task"],
-                    r["split"],
-                    r["img_format"],
-                    r["img_size"],
-                    r["target_size"],
-                ),
-            )
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO registry (
-                    name, source, task, split, img_format, img_size_bytes, target_size_bytes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    r["name"],
-                    r["source"],
-                    r["task"],
-                    r["split"],
-                    r["img_format"],
-                    r["img_size"],
-                    r["target_size"],
-                ),
-            )
-            conn.execute(
-                """
-                INSERT INTO audit_events (sample_name, event_type, event_data)
-                VALUES (?, ?, ?)
-                """,
-                (r["name"], "degradation_synthesis", json.dumps(r["label_payload"])),
-            )
-        conn.commit()
 
-    # Generate metadata package (dataset_info.yaml, README.md)
+def synthesize_manifold(
+    source: str,
+    output: str,
+    **options: Unpack[SynthesisOptions],
+) -> int:
+    """Main entry point for compiler-time manifold degradation synthesis.
+
+    ``options`` defaults: ``profile_expr="motion-blur+iso-noise"``,
+    ``intensity="medium"``, ``pairs=None`` (all), ``val_split=0.12``,
+    ``seed=42``, ``image_format="webp"``, ``workers=None`` (auto) and
+    ``dry_run=False``.
+    """
+    source_path = _resolve_source_path(source)
+
+    print(f"[DEGRADE] Discovering source images in {source_path}...")
+    source_files = _discover_source_images(source_path)
+    print(f"[DEGRADE] Discovered {len(source_files):,} candidate source images.")
+
+    if not source_files:
+        print(f"[ERROR] No image files found in {source_path}.")
+        return 1
+
+    pairs = options.get("pairs")
+    if pairs is not None and pairs > 0:
+        source_files = source_files[:pairs]
+    val_split = options.get("val_split", DEFAULT_VAL_SPLIT)
+
+    desc = ManifoldDescription(
+        output_path=_resolve_output_path(output),
+        source_path=source_path,
+        profile_expr=options.get("profile_expr", DEFAULT_PROFILE),
+        intensity=options.get("intensity", DEFAULT_INTENSITY),
+        seed=options.get("seed", DEFAULT_SEED),
+    )
+
+    print(f"[DEGRADE] Target Manifold: {desc.output_path}")
+    print(
+        f"[DEGRADE] Profile: {desc.profile_expr} (Intensity: {desc.intensity}, Base Seed:"
+        f" {desc.seed})"
+    )
+    print(f"[DEGRADE] Target Samples: {len(source_files):,} (Val Split: {val_split:.1%})")
+
+    if options.get("dry_run", False):
+        print("[DEGRADE] Dry-run completed. No files were written.")
+        return 0
+
+    _prepare_output_dirs(desc.output_path)
+    db_path = desc.output_path / "manifold_registry.db"
+    init_synthetic_registry(db_path)
+    ctx = _build_context(desc, options.get("image_format", DEFAULT_IMAGE_FORMAT))
+
+    start_time = time.time()
+    records = _synthesize_all(ctx, source_files, val_split, options.get("workers"))
+    commit_records(db_path, records)
+
     elapsed = time.time() - start_time
-    total_written = len(records)
-
-    info_yaml = {
-        "dataset_name": output_path.name,
-        "task": "restoration",
-        "dataset_type": "vision_paired",
-        "synthetic": True,
-        "base_source": str(source_path.name),
-        "degradation_profile": profile_expr,
-        "intensity": intensity,
-        "seed": seed,
-        "total_samples": total_written,
-        "train_samples": sum(1 for r in records if r["split"] == "train"),
-        "val_samples": sum(1 for r in records if r["split"] == "val"),
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-    (output_path / "dataset_info.yaml").write_text(
-        json.dumps(info_yaml, indent=2), encoding="utf-8"
-    )
-
-    split_counts = (
-        f"Train: {info_yaml['train_samples']:,}, Val: {info_yaml['val_samples']:,}"
-    )
-    readme_content = f"""# {output_path.name}
-
-> Synthesized Restoration Dataset Manifold generated by LemGendary Dataset Compiler (Phase 6).
-
-## Dataset Summary
-
-- **Task**: Image Restoration & Enhancement
-- **Base Ground Truth**: `{source_path.name}`
-- **Degradation Profile**: `{profile_expr}`
-- **Intensity**: `{intensity}`
-- **Base Seed**: `{seed}`
-- **Total Samples**: {total_written:,} ({split_counts})
-- **Format**: WebP (Images: q=92, Targets: q=95)
-
-## Parameter Supervision
-
-Every sample in `images/` has its clean ground truth in `targets/` and exact parameter descriptor in `labels/<split>/<name>.json`.
-"""
-    (output_path / "README.md").write_text(readme_content, encoding="utf-8")
-    (output_path / "classes.txt").write_text("restoration\n", encoding="utf-8")
+    total_written = write_metadata(desc, records)
 
     print(
-        f"[DEGRADE] Successfully synthesized {total_written:,} pairs into {output_path.name} "
+        f"[DEGRADE] Successfully synthesized {total_written:,} pairs into {desc.output_path.name} "
         f"in {elapsed:.1f}s ({total_written / max(0.1, elapsed):.1f} pairs/sec)."
     )
     return 0
@@ -392,7 +352,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Preview plan without writing")
 
     args = parser.parse_args()
-    fmt = cast(Literal["webp", "jpeg", "png", "keep"], args.image_format)
+    fmt = cast(ImageFormat, args.image_format)
     code = synthesize_manifold(
         source=args.source,
         output=args.output,

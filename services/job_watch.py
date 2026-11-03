@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 ACTIVE_STATES = frozenset({"pending", "running"})
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "interrupted"})
@@ -49,20 +49,36 @@ def _result_for_terminal(job: dict[str, Any]) -> JobWaitResult:
     return JobWaitResult(state, exit_code, str(message), job)
 
 
+class WaitHooks(TypedDict, total=False):
+    """Optional callbacks for :func:`wait_for_job`.
+
+    ``on_state`` is called on every state change; ``sleep`` (default
+    :func:`time.sleep`) and ``clock`` (default :func:`time.monotonic`) are
+    injectable so tests can run on a fake clock.
+    """
+
+    on_state: Callable[[str], None] | None
+    sleep: Callable[[float], None]
+    clock: Callable[[], float]
+
+
 def wait_for_job(
     fetch_status: Callable[[], dict[str, Any]],
     timeout_s: float,
     poll_interval_s: float = 1.0,
-    on_state: Callable[[str], None] | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    clock: Callable[[], float] = time.monotonic,
+    **hooks: Unpack[WaitHooks],
 ) -> JobWaitResult:
     """Poll ``fetch_status`` until the job is terminal, unknown, or the deadline passes.
 
     ``fetch_status`` returns the job JSON, raises :class:`JobNotFoundError`
     when the job does not exist, and :class:`JobStatusError` for transient
-    failures (those are retried until the deadline).
+    failures (those are retried until the deadline). ``hooks`` are the
+    optional ``on_state``, ``sleep`` and ``clock`` callbacks (see
+    :class:`WaitHooks`).
     """
+    on_state = hooks.get("on_state")
+    sleep = hooks.get("sleep", time.sleep)
+    clock = hooks.get("clock", time.monotonic)
     deadline = clock() + timeout_s
     last_state: str | None = None
     last_error: str | None = None
