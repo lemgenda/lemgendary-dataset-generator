@@ -144,7 +144,7 @@ class KnowledgeIngestor:
             else:
                 logger.debug("Unsupported extension: %s", ext)
                 return None
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError, csv.Error) as exc:
             logger.error("Failed reading file %s: %s", file_path, exc)
             return None
 
@@ -172,7 +172,7 @@ class KnowledgeIngestor:
                     clean_text = re.sub(r"\s+", " ", clean_text).strip()
                     content = clean_text
                     cache_file.write_text(content, encoding="utf-8")
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
                 logger.warning("Remote URL fetch failed for %s (%s). Falling back.", url, exc)
                 return None
 

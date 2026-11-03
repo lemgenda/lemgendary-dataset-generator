@@ -16,12 +16,15 @@ first use. Phase 5 core ships `parsenet` only.
 from __future__ import annotations
 
 import importlib
+import logging
 from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw
 
 from .base import GenerationResult
+
+logger = logging.getLogger(__name__)
 
 
 _VALID_STRATEGIES: frozenset[str] = frozenset({"parsenet", "sam", "modnet"})
@@ -133,7 +136,8 @@ def _pairs(flat: list[Any]) -> list[tuple[float, float]]:
     for i in range(0, n, 2):
         try:
             out.append((float(flat[i]), float(flat[i + 1])))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
+            logger.debug("Dropping non-numeric polygon point at index %d: %s", i, exc)
             continue
     return out
 

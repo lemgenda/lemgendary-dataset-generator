@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+import yaml
 
 from api.jobs import job_manager
 from api.models import JobType
@@ -69,7 +70,7 @@ async def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
 
     try:
         result = await run_in_threadpool(BaseLLMCompiler().compile_manifold, req.dataset_key)
-    except Exception as exc:
+    except (OSError, KeyError, ValueError, RuntimeError, yaml.YAMLError) as exc:
         logger.exception("LLM manifold compile failed for %s", req.dataset_key)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -8,12 +8,17 @@ for datasets (.zip, .tar, .tar.gz, .tgz) with real-time progress tracking.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tarfile
 from typing import Sequence
 import zipfile
+
+logger = logging.getLogger(__name__)
 
 try:
     from utils.progress import create_progress_bar
@@ -83,7 +88,8 @@ def create_archive(
 
                 file_entries.append((full_path, arcname, size))
                 total_bytes += size
-            except OSError:
+            except OSError as exc:
+                logger.warning("Skipping unreadable file %s while archiving: %s", full_path, exc)
                 continue
 
     if not file_entries:
@@ -148,13 +154,11 @@ def _find_7z() -> str | None:
     for c in ["C:\\Program Files\\7-Zip\\7z.exe", "C:\\Program Files (x86)\\7-Zip\\7z.exe"]:
         if os.path.isfile(c):
             return c
-    import shutil
     return shutil.which("7z") or shutil.which("7z.exe")
 
 
 def _find_tar() -> str | None:
     """Locate native tar executable."""
-    import shutil
     return shutil.which("tar") or shutil.which("tar.exe")
 
 
@@ -167,7 +171,6 @@ def _flatten_common_root(dest_path: Path) -> None:
         if len(subdirs) == 1 and len(files) <= 5:
             cand = subdirs[0]
             if cand.name.lower() == dest_path.name.lower() or cand.name.startswith("LemGendized") or dest_path.name.startswith("LemGendized"):
-                import shutil
                 for child in list(cand.iterdir()):
                     dest_child = dest_path / child.name
                     if dest_child.exists():
@@ -178,21 +181,22 @@ def _flatten_common_root(dest_path: Path) -> None:
                                     shutil.move(str(subchild), str(target_sub))
                             try:
                                 child.rmdir()
-                            except OSError:
-                                pass
+                            except OSError as exc:
+                                logger.debug("Leaving non-empty merged dir %s: %s", child, exc)
                         else:
                             try:
                                 os.remove(dest_child)
-                            except OSError:
-                                pass
+                            except OSError as exc:
+                                logger.warning("Could not remove %s before replacing it: %s", dest_child, exc)
                             shutil.move(str(child), str(dest_child))
                     else:
                         shutil.move(str(child), str(dest_child))
                 try:
                     cand.rmdir()
-                except OSError:
-                    pass
-    except Exception as exc:
+                except OSError as exc:
+                    logger.debug("Leaving wrapper dir %s in place: %s", cand, exc)
+    except OSError as exc:
+        logger.warning("Directory flattening of %s incomplete: %s", dest_path, exc)
         print(f"[DEBUG] Directory flattening note: {exc}")
 
 
@@ -213,7 +217,6 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
     seven_z = _find_7z()
     if seven_z:
         print(f"[EXTRACT] High-throughput native extraction via 7-Zip: {source_archive.name}")
-        import subprocess
         cmd = [
             seven_z,
             "x",
@@ -237,14 +240,14 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
                         print(f"[WARN] Could not remove source archive: {ex}")
                 return True
             print(f"[WARN] 7-Zip exited with return code {proc.returncode}. Attempting fallback...")
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("7-Zip extraction of %s failed; falling back: %s", source_archive, exc)
             print(f"[WARN] 7-Zip extraction encountered error: {exc}. Attempting fallback...")
 
     # Native tar acceleration for tar archives
     native_tar = _find_tar()
     if is_tar and native_tar:
         print(f"[EXTRACT] Native extraction via tar: {source_archive.name}")
-        import subprocess
         cmd = [native_tar, "-xf", str(source_archive), "-C", str(dest_path)]
         cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
         try:
@@ -258,7 +261,8 @@ def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: 
                     except OSError as ex:
                         print(f"[WARN] Could not remove source archive: {ex}")
                 return True
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("Native tar extraction of %s failed; falling back: %s", source_archive, exc)
             print(f"[WARN] Native tar extraction encountered error: {exc}. Attempting fallback...")
 
     print(f"Opening archive: {source_archive.name}")

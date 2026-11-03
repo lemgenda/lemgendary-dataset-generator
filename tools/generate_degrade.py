@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import random
 import sqlite3
@@ -38,6 +39,7 @@ from degrade import DynamicDegrader, parse_profile
 from formats.transcode import ImageTranscoder
 from core.config_schema import ImageFormatPolicy
 
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"})
 
@@ -260,7 +262,8 @@ def synthesize_manifold(
             try:
                 res = fut.result()
                 records.append(res)
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError, KeyError) as e:
+                logger.warning("Failed to synthesize sample: %s", e)
                 print(f"\n[WARNING] Failed to synthesize sample: {e}")
 
     # Commit metadata to registry in batch

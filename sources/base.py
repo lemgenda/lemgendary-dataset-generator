@@ -15,12 +15,15 @@ importing this module does not touch the network or the filesystem.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
 from typing import Iterable
 
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Paths ──────────────────────────────────────────────────────────────────
@@ -124,6 +127,7 @@ def summarize_output(output_dir: str | Path) -> tuple[int, int]:
             if entry.is_file():
                 count += 1
                 total += entry.stat().st_size
-        except OSError:
+        except OSError as exc:
+            logger.debug("Skipping unreadable entry %s: %s", entry, exc)
             continue
     return count, total

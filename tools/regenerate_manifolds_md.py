@@ -63,7 +63,7 @@ def _count_from_registry(manifold_path: Path) -> int | None:
             n = cur.fetchone()[0]
             conn.close()
             return int(n)
-        except Exception as exc:
+        except (sqlite3.Error, TypeError, ValueError) as exc:
             logger.debug("Could not read count from registry %s: %s", db, exc)
     # Legacy location
     legacy = ROOT / ".cache" / f"registry_{manifold_path.name}.db"
@@ -74,7 +74,7 @@ def _count_from_registry(manifold_path: Path) -> int | None:
             n = cur.fetchone()[0]
             conn.close()
             return int(n)
-        except Exception as exc:
+        except (sqlite3.Error, TypeError, ValueError) as exc:
             logger.debug("Could not read count from legacy registry %s: %s", legacy, exc)
     return None
 
@@ -91,7 +91,7 @@ def _count_from_disk(manifold_path: Path) -> int:
                 try:
                     meta = pq.read_metadata(str(pqf))
                     total += meta.num_rows
-                except Exception as exc:
+                except (OSError, ValueError) as exc:
                     logger.debug("Could not read parquet metadata for %s: %s", pqf, exc)
         except ImportError as exc:
             logger.debug("pyarrow unavailable for counting parquet rows: %s", exc)

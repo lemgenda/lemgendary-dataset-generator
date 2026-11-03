@@ -217,7 +217,7 @@ def _extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
                         counts["LemGendary AI Documentation Hub"] += 1
                     else:
                         counts["Curated AI LemGend instruction and validation examples"] += 1
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError) as exc:
             logger.debug("Failed extracting provenance from %s: %s", jf, exc)
     return dict(counts)
 
@@ -279,7 +279,7 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
             with open(unified_yaml, "r", encoding="utf-8") as f:
                 ydata = yaml.safe_load(f) or {}
                 registry_datasets = ydata.get("datasets", {})
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
             logger.debug("Failed reading unified_data.yaml: %s", exc)
 
     folder_to_meta: Dict[str, tuple[str, Dict[str, Any]]] = {}
@@ -324,7 +324,7 @@ async def get_datasets_with_stats() -> DatasetStatsListResponse:
                         canonical_format = meta.get("canonical_format")
                     if meta.get("format"):
                         format_val = meta.get("format")
-            except Exception as exc:
+            except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
         formats, counted_files, size_bytes, has_hardlinks, ratio, shards_count = _calculate_dataset_file_stats(entry)
@@ -472,7 +472,7 @@ async def get_active_jobs_telemetry() -> ActiveJobsResponse:
                 start_dt = datetime.datetime.fromisoformat(started)
                 now_dt = datetime.datetime.now(datetime.timezone.utc)
                 elapsed = max(0.1, (now_dt - start_dt).total_seconds())
-            except Exception as dt_exc:
+            except (TypeError, ValueError) as dt_exc:
                 logger.debug("Failed parsing start timestamp for job %s: %s", job.id, dt_exc)
 
         # Parse log tail to estimate progress if available
@@ -544,7 +544,7 @@ async def quick_compile(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
 
     cmd = [
         venv_python(),

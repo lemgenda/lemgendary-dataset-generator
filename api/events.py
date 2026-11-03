@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("lemgendary.api.events")
 
@@ -57,7 +57,7 @@ class ConnectionManager:
         for ws in targets:
             try:
                 await ws.send_json(message)
-            except Exception as exc:
+            except (WebSocketDisconnect, RuntimeError, OSError) as exc:
                 logger.debug("Error sending broadcast to websocket: %s", exc)
                 await self.disconnect_global(ws)
 
@@ -69,7 +69,7 @@ class ConnectionManager:
         for ws in targets:
             try:
                 await ws.send_json(payload)
-            except Exception as exc:
+            except (WebSocketDisconnect, RuntimeError, OSError) as exc:
                 logger.debug("Error streaming log to websocket for job %s: %s", job_id, exc)
                 await self.disconnect_job(job_id, ws)
 

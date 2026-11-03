@@ -140,7 +140,10 @@ else:
 
 
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "core" else Path(__file__).resolve().parent
+import yaml
+
 from core.config_schema import ImageFormatPolicy, UnifiedData, load_unified_data
+from core.error_types import MODEL_LOAD_ERRORS, PARQUET_READ_ERRORS, SAMPLE_PROCESSING_ERRORS
 
 try:
     _manifest_path = ROOT / "unified_data.yaml"
@@ -151,7 +154,8 @@ try:
 except FileNotFoundError as e:
     print(f"[FATAL] {e}")
     sys.exit(3)
-except Exception as e:
+except (ValueError, yaml.YAMLError) as e:
+    logger.error("unified_data.yaml failed schema validation: %s", e)
     print("[FATAL] unified_data.yaml failed schema validation:")
     print(f"  {type(e).__name__}: {e}")
     print("[REMEDY] Run `python config_schema.py` to see detailed field diagnostics.")
@@ -426,7 +430,7 @@ def init_worker(
     if os.name != "nt" or multiprocessing.current_process().name != "MainProcess":
         try:
             torch.set_num_threads(1)
-        except Exception as exc:
+        except RuntimeError as exc:
             logger.debug("Failed setting torch num threads: %s", exc)
 
     # Device selection.
@@ -463,7 +467,8 @@ def init_worker(
         seg_mode = _label_strategy == "parsenet_segmentation"
         try:
             _gen_labeler = get_labeler("segmentation" if seg_mode else mission, device)
-        except Exception:
+        except MODEL_LOAD_ERRORS as exc:
+            logger.warning("Worker failed loading %s labeler: %s", _label_strategy, exc)
             _gen_labeler = None
 
     # NIMA quality vetting.
@@ -478,7 +483,7 @@ def init_worker(
         if os.path.exists(model_path):
             try:
                 SENTRY = QualitySentry(model_path, model_name=model_type, device=device)
-            except Exception as exc:
+            except MODEL_LOAD_ERRORS as exc:
                 logger.warning("Worker failed loading QualitySentry (%s): %s", model_path, exc)
 
     # Ground truth caches.
@@ -489,14 +494,14 @@ def init_worker(
     if mission == "diffusion":
         try:
             CAPTIONER = CaptionSentry(device=device)
-        except Exception as exc:
+        except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CaptionSentry: %s", exc)
 
     # Style manifold (CLIP) — loaded on CPU to conserve VRAM.
     if "clip" in str(config):
         try:
             CLIP_MANIFOLD = CLIPManifold(device="cpu")
-        except Exception as exc:
+        except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CLIPManifold: %s", exc)
 
     # Phase 5 generators (constructed after all model wrappers are loaded).
@@ -509,15 +514,15 @@ def init_worker(
                 labeler=_gen_labeler,
                 sentry=SENTRY,
             )
-        except Exception as e:
-            print(f"[WARN] LabelGenerator init failed: {e}")
+        except MODEL_LOAD_ERRORS as e:
+            logger.warning("LabelGenerator init failed: %s", e)
             LABEL_GEN = None
 
     if _mask_strategy:
         try:
             MASK_GEN = MaskGenerator(_mask_strategy, labeler=_gen_labeler)
-        except Exception as e:
-            print(f"[WARN] MaskGenerator init failed: {e}")
+        except MODEL_LOAD_ERRORS as e:
+            logger.warning("MaskGenerator init failed: %s", e)
             MASK_GEN = None
 
 
@@ -545,8 +550,8 @@ def process_parquet_shard(
     """Process an entire Parquet shard as one worker task."""
     try:
         df = pd.read_parquet(pq_path)
-    except Exception as e:
-        print(f"[WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
+    except PARQUET_READ_ERRORS as e:
+        logger.warning("Skipping corrupted virtual parquet shard %s: %s", pq_path, e)
         return [{"hash": "skipped"}] * num_rows
 
     results = []
@@ -603,7 +608,7 @@ def batch_worker(tasks: list[tuple[Any, ...]]) -> list[Any]:
                 results.extend(res)
             else:
                 results.append(res)
-        except Exception as exc:
+        except SAMPLE_PROCESSING_ERRORS as exc:
             logger.warning("Worker task failed: %s with args %s: %s", getattr(task_func, "__name__", str(task_func)), task_args, exc)
             results.append(None)
     return results
@@ -657,8 +662,8 @@ def _write_image_phase3(
             return final_path
         except KeepFormatError as kfe:
             logger.debug("Retaining format for %s per policy: %s", source_path.name, kfe)
-        except Exception as e:
-            print(f"[WARN] Transcode failed for {source_path.name}: {e}; using copy fallback.")
+        except SAMPLE_PROCESSING_ERRORS as e:
+            logger.warning("Transcode failed for %s: %s; using copy fallback.", source_path.name, e)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if loaded_img is not None:
@@ -1255,8 +1260,8 @@ def process_image(
             "clip_latent": None,
         }
 
-    except Exception as e:
-        print(f"[ERROR] processing {img_path}: {e}")
+    except SAMPLE_PROCESSING_ERRORS as e:
+        logger.error("Failed processing %s: %s", img_path, e)
         return None
 
 
@@ -1337,9 +1342,9 @@ def process_diffusion(img_path, prefix, slug, idx, split, output_root_str):
             "caption": caption, "style_tag": style_tag, "clip_latent": latent_blob,
             "img_bytes": img_bytes, "size": len(img_bytes),
         }
-    except Exception as e:
+    except SAMPLE_PROCESSING_ERRORS as e:
         safe_path = "virtual_bytes" if isinstance(img_path, (bytes, dict)) else img_path
-        print(f"[ERROR] Error processing diffusion sample {safe_path}: {e}")
+        logger.error("Failed processing diffusion sample %s: %s", safe_path, e)
         return None
 
 

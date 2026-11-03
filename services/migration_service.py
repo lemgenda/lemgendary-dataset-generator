@@ -7,10 +7,14 @@ image format transcoding, and manifold name modernization.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from rich.console import Console
 
+from ._errors import SERVICE_ERRORS
+
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class MigrationService:
@@ -42,7 +46,8 @@ class MigrationService:
                 dry_run=dry_run,
             )
             return ret
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Container migration error")
             console.print(f"[bold red]Container migration error:[/bold red] {exc}")
             return 1
 
@@ -71,7 +76,8 @@ class MigrationService:
             parser = migrate_manifold_image_format.build_parser()
             parsed = parser.parse_args(args)
             return migrate_manifold_image_format.run(parsed)
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Image transcoding error")
             console.print(f"[bold red]Image transcoding error:[/bold red] {exc}")
             return 1
 
@@ -114,7 +120,8 @@ class MigrationService:
             parser = modernize_manifold.build_parser()
             parsed = parser.parse_args(args)
             return modernize_manifold.run(parsed)
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Manifold modernization error")
             console.print(f"[bold red]Manifold modernization error:[/bold red] {exc}")
             return 1
 
@@ -139,7 +146,8 @@ class MigrationService:
                 assume_yes=yes,
                 dry_run=dry_run,
             )
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Manifold reduction error")
             console.print(f"[bold red]Manifold reduction error:[/bold red] {exc}")
             return 1
 
@@ -165,6 +173,7 @@ class MigrationService:
                 force=force,
             )
             return modernization_queue.main(args)
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Modernization queue error")
             console.print(f"[bold red]Modernization queue error:[/bold red] {exc}")
             return 1

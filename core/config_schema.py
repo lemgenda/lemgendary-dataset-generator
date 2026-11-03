@@ -314,7 +314,7 @@ def _cli_validate() -> int:
 
     try:
         data = load_unified_data(target)
-    except Exception as e:
+    except (OSError, ValueError, yaml.YAMLError) as e:
         print(f"[ERROR] Configuration validation failed for {target}:")
         print(f"  {type(e).__name__}: {e}")
         return 1

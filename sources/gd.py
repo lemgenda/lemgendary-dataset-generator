@@ -4,6 +4,7 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import argparse
+import logging
 import os
 import shutil
 
@@ -11,6 +12,19 @@ try:
     import gdown
 except ImportError:
     gdown = None
+
+logger = logging.getLogger(__name__)
+
+
+def _gdown_errors() -> tuple[type[BaseException], ...]:
+    """Exceptions gdown is expected to raise for a failed/unauthorised download."""
+    errors: list[type[BaseException]] = [OSError, ValueError, RuntimeError]
+    exc_mod = getattr(gdown, "exceptions", None)
+    for name in ("FileURLRetrievalError", "FolderContentsMaximumLimitError"):
+        cls = getattr(exc_mod, name, None)
+        if isinstance(cls, type) and issubclass(cls, BaseException):
+            errors.append(cls)
+    return tuple(errors)
 
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
@@ -31,6 +45,7 @@ def main():
         parent_dir = os.path.dirname(args.output_dir)
         slug = os.path.basename(args.output_dir)
         zip_path = os.path.join(parent_dir, f"{slug}.zip")
+        gdown_errors = _gdown_errors()
 
         try:
             print(f"Attempting to download {args.repo_id} as a file archive to {zip_path}...")
@@ -39,7 +54,8 @@ def main():
             if res is None:
                 raise RuntimeError("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
-        except Exception as e:
+        except gdown_errors as e:
+            logger.warning("Google Drive file download failed for %s; trying folder download: %s", args.repo_id, e)
             print(f"WARNING: File download failed ({e}). Attempting folder download...")
             if os.path.exists(zip_path):
                 try:
@@ -52,7 +68,8 @@ def main():
                 if res is None:
                     raise RuntimeError("Failed to download as a folder.") from e
                 print("STATUS:COMPLETED")
-            except Exception as e2:
+            except gdown_errors as e2:
+                logger.error("Could not download Google Drive source %s: %s", args.repo_id, e2)
                 print(f"ERROR: Could not download Google Drive source {args.repo_id}: {e2}")
                 print("STATUS:FAILED")
 

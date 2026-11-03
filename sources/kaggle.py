@@ -22,6 +22,9 @@ import logging
 import sys
 from pathlib import Path
 
+import yaml
+
+logger = logging.getLogger(__name__)
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 from core.common_sync import (
@@ -54,7 +57,6 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
         root_datasets_dir = target_dir
         manifold_name = slug
         try:
-            import yaml
             yd_path = Path(__file__).parent.parent / "unified_data.yaml"
             if not yd_path.exists():
                 yd_path = Path(__file__).parent / "unified_data.yaml"
@@ -69,7 +71,8 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
                         mod_folder = entry.get("modernized_folder")
                         manifold_name = mod_folder or f"{prefix}{entry.get('name', '')}{suffix}"
                         break
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
+            logger.debug("Kaggle manifold name lookup fallback: %s", exc)
             print(f"[DEBUG] Kaggle manifold name lookup fallback: {exc}")
         target_dir = root_datasets_dir / manifold_name
     return target_dir, root_datasets_dir, manifold_name, slug

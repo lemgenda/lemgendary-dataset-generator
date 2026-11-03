@@ -1,8 +1,11 @@
 import io
+import logging
 import os
 import shutil
 import tarfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def process_shards():
@@ -84,7 +87,8 @@ def process_shards():
                                 else:
                                     unmatched_images.append(f"{shard_file.name} -> {member.name}")
 
-                except Exception as e:
+                except (OSError, tarfile.TarError) as e:
+                    logger.error("Error processing shard archive %s: %s", tar_path, e)
                     print(f"    Error processing shard archive {tar_path.name}: {e}")
                     # Revert to original naming structure if processing breaks mid-way
                     if tar_path.exists() and not shard_file.exists():

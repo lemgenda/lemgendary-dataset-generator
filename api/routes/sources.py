@@ -29,7 +29,7 @@ async def list_sources() -> Dict[str, Any]:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
                 configured_datasets = data.get("datasets", {})
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
             logger.debug("Failed reading %s in sources listing: %s", config_file, exc)
 
     return {

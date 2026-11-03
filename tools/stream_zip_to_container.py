@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import io
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -28,6 +29,8 @@ from utils.progress import create_progress_bar
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -70,7 +73,8 @@ def _transcode_to_webp(raw_bytes: bytes, ext: str, quality: int = 92) -> tuple[b
             out = io.BytesIO()
             img.save(out, format="WEBP", quality=quality, method=2)
             return out.getvalue(), ".webp"
-    except Exception:
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        logger.warning("WebP transcode failed (%s); keeping original %s bytes", exc, ext)
         return raw_bytes, ext
 
 
@@ -306,7 +310,8 @@ def stream_zip_to_webdataset(
                 with open(ds_info_path, "w", encoding="utf-8") as f_out:
                     yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
                 print(f"[METADATA] Updated {ds_info_path.name} format to 'webdataset' (image_format: webp).")
-            except Exception as exc:
+            except (OSError, yaml.YAMLError, TypeError) as exc:
+                logger.warning("Failed updating %s: %s", ds_info_path, exc)
                 print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
         # Verify shards exist and are non-empty
@@ -319,7 +324,8 @@ def stream_zip_to_webdataset(
 
         _post_process_zip(zip_path, legacy_dir, delete_zip)
         return True
-    except Exception as exc:
+    except (OSError, ValueError, KeyError, RuntimeError, ImportError, zipfile.BadZipFile, tarfile.TarError) as exc:
+        logger.exception("Direct zip-to-WebDataset streaming failed for %s", zip_path)
         print(f"[ERROR] Direct zip-to-WebDataset streaming failed: {exc}")
         return False
 
@@ -517,7 +523,8 @@ def stream_zip_to_mds(
                 with open(ds_info_path, "w", encoding="utf-8") as f_out:
                     yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
                 print(f"[METADATA] Updated {ds_info_path.name} format to 'mds'.")
-            except Exception as exc:
+            except (OSError, yaml.YAMLError, TypeError) as exc:
+                logger.warning("Failed updating %s: %s", ds_info_path, exc)
                 print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
         # Verify MDS shards exist
@@ -530,10 +537,9 @@ def stream_zip_to_mds(
 
         _post_process_zip(zip_path, legacy_dir, delete_zip)
         return True
-    except Exception as exc:
+    except (OSError, ValueError, KeyError, RuntimeError, ImportError, zipfile.BadZipFile, tarfile.TarError) as exc:
+        logger.exception("Direct zip-to-MDS streaming failed for %s", zip_path)
         print(f"[ERROR] Direct zip-to-MDS streaming failed: {exc}")
-        import traceback
-        traceback.print_exc()
         return False
 
 

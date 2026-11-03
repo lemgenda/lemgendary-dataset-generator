@@ -12,8 +12,11 @@ Phase 2 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -65,7 +68,8 @@ def audit_hardlinks(root: str | Path, recursive: bool = True) -> HardlinkAuditRe
         current = stack.pop()
         try:
             entries = list(current.iterdir())
-        except OSError:
+        except OSError as exc:
+            logger.warning("Hardlink audit: cannot list %s: %s", current, exc)
             continue
 
         for entry in entries:
@@ -77,7 +81,8 @@ def audit_hardlinks(root: str | Path, recursive: bool = True) -> HardlinkAuditRe
                 if not entry.is_file():
                     continue
                 st = entry.stat()
-            except OSError:
+            except OSError as exc:
+                logger.debug("Hardlink audit: cannot stat %s: %s", entry, exc)
                 continue
 
             total += 1

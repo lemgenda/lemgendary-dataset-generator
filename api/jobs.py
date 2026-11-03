@@ -246,7 +246,11 @@ class JobManager:
                 proc.wait()
                 exit_code = proc.returncode
 
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            # Background job boundary: log-file I/O, process spawn (OSError /
+            # SubprocessError), stdout decoding (ValueError) and broadcasting on a
+            # closed event loop (RuntimeError) become a FAILED job status instead
+            # of killing the runner thread and leaving the job stuck in RUNNING.
             logger.exception("Unexpected error executing job %s: %s", job_id, exc)
             exit_code = 1
             error_message = str(exc)
@@ -408,7 +412,8 @@ class JobManager:
         params: Dict[str, Any] = {}
         try:
             params = json.loads(row["parameters"])
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.warning("Job %s has unparseable parameters JSON; using empty parameters: %s", row["id"], exc)
             params = {}
 
         return self._build_response(

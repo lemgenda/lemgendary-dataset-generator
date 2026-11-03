@@ -137,7 +137,7 @@ def generate_cover_image(
                 im.verify()
             logger.info("Validated existing cover image: %s", image_path)
             return image_path
-        except Exception as exc:
+        except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as exc:
             logger.warning("Corrupted image at %s (%s); regenerating...", image_path, exc)
 
     # Generate banner

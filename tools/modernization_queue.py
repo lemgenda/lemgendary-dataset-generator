@@ -109,8 +109,8 @@ def _fast_has_tar_shards(shards_dir: Path) -> tuple[bool, int]:
                     if sub_entry.is_file() and (sub_entry.name.endswith(".data") or sub_entry.name.endswith(".tar")):
                         found = True
                         total_bytes += sub_entry.stat().st_size
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.warning("Could not scan shard directory %s (partial size %d bytes): %s", shards_dir, total_bytes, exc)
     return found, total_bytes
 
 
@@ -126,8 +126,8 @@ def _fast_has_mds(mds_dir: Path) -> tuple[bool, int]:
                 if f == "index.json" or f.endswith(".mds") or ".mds." in f or f.endswith(".zstd"):
                     found = True
                     total_bytes += os.path.getsize(os.path.join(root, f))
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.warning("Could not scan MDS directory %s (partial size %d bytes): %s", mds_dir, total_bytes, exc)
     return found, total_bytes
 
 
@@ -195,13 +195,14 @@ def load_queue_manifest(
                     with open(info_yaml, "r", encoding="utf-8") as f_info:
                         i_data = yaml.safe_load(f_info) or {}
                     container_bytes = i_data.get("approx_bytes") or i_data.get("container_bytes") or 0
-                except OSError:
+                except (OSError, yaml.YAMLError, AttributeError) as exc:
+                    logger.warning("Could not read container size from %s: %s", info_yaml, exc)
                     container_bytes = 0
             if container_bytes == 0:
                 try:
                     container_bytes = sum(e.stat().st_size for e in os.scandir(target_dir) if e.is_file())
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.warning("Could not compute container size for %s: %s", target_dir, exc)
 
         has_loose = False
         if target_dir.exists():
@@ -364,7 +365,8 @@ def convert_loose_directory_to_webdataset(
             with open(info_path, "w", encoding="utf-8") as f_out:
                 yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
             print(f"[METADATA] Updated {info_path.name} format to webdataset.")
-        except Exception as exc:
+        except (OSError, yaml.YAMLError, TypeError) as exc:
+            logger.warning("Failed updating %s: %s", info_path, exc)
             print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
     if purge_loose:
@@ -508,7 +510,8 @@ def convert_loose_directory_to_mds(
             with open(info_path, "w", encoding="utf-8") as f_out:
                 yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
             print(f"[METADATA] Updated {info_path.name} format to mds.")
-        except Exception as exc:
+        except (OSError, yaml.YAMLError, TypeError) as exc:
+            logger.warning("Failed updating %s: %s", info_path, exc)
             print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
     if purge_loose:
@@ -685,7 +688,8 @@ def transcode_mds_to_webdataset(
             with open(info_path, "w", encoding="utf-8") as f_out:
                 yaml.safe_dump(idata, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
             print(f"[METADATA] Updated {info_path.name} format to webdataset ({ext} shards).")
-        except Exception as exc:
+        except (OSError, yaml.YAMLError, TypeError) as exc:
+            logger.warning("Failed updating %s: %s", info_path, exc)
             print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
     # Verify shards exist before purging legacy mds
@@ -838,10 +842,12 @@ def push_manifold_to_kaggle(
             with open(meta_path, "w", encoding="utf-8") as f_meta:
                 json.dump(m_data, f_meta, indent=2)
             print(f"[METADATA] Synchronized {meta_path.name} handle to {clean_handle}")
-        except Exception as exc:
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("Could not update %s id: %s", meta_path, exc)
             print(f"[WARN] Could not update dataset-metadata.json id: {exc}")
 
     import kagglehub
+    import kagglehub.exceptions
     import kagglehub.gcs_upload
     # kagglehub annotates MAX_FILES_TO_UPLOAD as Literal[50]; setattr bypasses the
     # static type constraint while still performing the runtime assignment correctly.
@@ -850,7 +856,17 @@ def push_manifold_to_kaggle(
     try:
         kagglehub.dataset_upload(clean_handle, str(target_dir), version_notes=notes)
         print(f"[SUCCESS] Upload payload transferred to Kaggle for {clean_handle}.")
-    except Exception as exc:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        kagglehub.exceptions.BackendError,
+        kagglehub.exceptions.CredentialError,
+        kagglehub.exceptions.UnauthenticatedError,
+        kagglehub.exceptions.KaggleEnvironmentError,
+        kagglehub.exceptions.NotFoundError,
+    ) as exc:
+        logger.error("Kaggle upload failed for %s: %s", clean_handle, exc)
         print(f"[ERROR] Kaggle upload failed for {clean_handle}: {exc}")
         return False
 
@@ -860,7 +876,8 @@ def push_manifold_to_kaggle(
             print(f"[METADATA] Pushing dataset settings and licensing to Kaggle API...")
             push_kaggle_dataset_metadata(clean_handle, meta_path)
             print(f"[SUCCESS] Kaggle metadata successfully synchronized for {clean_handle}.")
-        except Exception as exc:
+        except (OSError, ValueError, KeyError, RuntimeError, ImportError) as exc:
+            logger.warning("Kaggle metadata push failed for %s: %s", clean_handle, exc)
             print(f"[WARN] Kaggle metadata push notice: {exc}")
 
     if not no_wait:

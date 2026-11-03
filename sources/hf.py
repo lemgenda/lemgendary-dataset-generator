@@ -6,11 +6,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import os
 import sys
 import argparse
+import logging
+import tarfile
+import zipfile
 from huggingface_hub import snapshot_download, login
 from pathlib import Path
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
+
+# Expected failures from HTTP transfer (requests/huggingface_hub errors are OSError
+# subclasses), bad headers/arguments, and archive extraction.
+_DOWNLOAD_ERRORS: tuple[type[BaseException], ...] = (
+    OSError,
+    ValueError,
+    RuntimeError,
+    EOFError,
+    tarfile.TarError,
+    zipfile.BadZipFile,
+)
 
 def main():
     parser = argparse.ArgumentParser(description="LemGendary HF Downloader")
@@ -31,8 +47,6 @@ def main():
 
     # Download (Surgical Mode v2.0)
     print(f"[HF] Starting {args.repo_type} download for {args.repo_id}...")
-    import tarfile
-    import zipfile
     from huggingface_hub import list_repo_files, hf_hub_download
 
     # Sub-Repo Targeting (Syntax: repo_id:filename)
@@ -125,7 +139,8 @@ def main():
                         except ImportError:
                             from archive_manager import smart_extract
                         smart_extract(path, dedicated_dir, delete_after=True)
-                except Exception as e:
+                except _DOWNLOAD_ERRORS as e:
+                    logger.warning("Direct HTTP download of %s failed; falling back to hf_hub_download: %s", t_file, e)
                     print(f"  [WARN] Requests failed, falling back to basic HF-Hub: {e}")
                     from huggingface_hub import hf_hub_download
                     path = hf_hub_download(repo_id=repo_id, filename=t_file, repo_type=args.repo_type, local_dir=dedicated_dir, token=token)
@@ -142,11 +157,13 @@ def main():
                 if f.endswith(('.tgz', '.tar.gz', '.zip')):
                     try:
                         smart_extract(f_path, root, delete_after=True)
-                    except Exception as ex:
+                    except _DOWNLOAD_ERRORS as ex:
+                        logger.error("Failed to extract %s: %s", f_path, ex)
                         print(f"  [ERR] Failed to extract {f}: {ex}")
 
         print(f"[SUCCESS] {args.repo_id} processed to {args.output_dir}")
-    except Exception as e:
+    except (*_DOWNLOAD_ERRORS, ImportError) as e:
+        logger.error("Failed to download %s: %s", args.repo_id, e)
         print(f"[ERROR] Failed to download {args.repo_id}: {e}")
         sys.exit(1)
 

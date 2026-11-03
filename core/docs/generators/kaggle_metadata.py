@@ -144,7 +144,8 @@ def introspect_root_resources(
                     with Image.open(p) as im:
                         w, h = im.size
                     desc = f"Canonical {w}x{h} architecture banner and visual sample preview."
-                except Exception:
+                except (OSError, Image.DecompressionBombError) as exc:
+                    logger.debug("Could not read banner size of %s (%s); using the canonical size", p, exc)
                     desc = "Canonical 564x284 architecture banner and visual sample preview."
             elif "colab" in fn_lower and fn_lower.endswith(".ipynb"):
                 desc = "Standalone Google Colab GPU training notebook configured for accelerated cloud execution."

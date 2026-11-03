@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.27-STABLE` |
+| **Version** | `v16.9.28-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,20 @@
 ---
 
 ## Changelog
+
+### v16.9.28 - No Swallowed Exceptions, Exception-Policy Lint Checks Re-Enabled
+
+- **Every Exception Handler Catches Specific Types (review: ROBOTS.md compliance, "Swallowed exceptions")**:
+  - About 170 handlers across `api/`, `services/`, `core/`, `sources/`, `tools/`, `forex/`, `utils/`, `cli.py` and the other packages no longer catch `Exception` or use a bare `except:`. Each catches the types its `try` body can raise and logs, re-raises with `from`, or returns a typed error.
+  - Handlers that only did `pass`, `continue` or `return` (for example `tools/modernization_queue.py`, `utils/archive.py`, `api/routes/llm.py`) now log the condition they tolerate.
+  - Behaviour change: an unexpected exception type (a programming error such as `TypeError` or `AttributeError`) now propagates with its traceback instead of being skipped or turned into exit code 1.
+- **One Place per Set of Expected Failure Types**:
+  - New `core/error_types.py`: `SAMPLE_PROCESSING_ERRORS`, `MODEL_LOAD_ERRORS`, `PARQUET_READ_ERRORS`, `DOC_GENERATION_ERRORS`.
+  - New `core/kaggle_errors.py`: `KAGGLE_REMOTE_ERRORS` and `KAGGLE_CLIENT_ERRORS` for the `kaggle` / `kagglehub` / `kagglesdk` stack.
+  - New `services/_errors.py`: `SERVICE_ERRORS`, which the service facades translate into a non-zero exit code.
+- **Background Job Runner (`api/jobs.py`)**: still turns spawn, log-file, decoding and event-loop failures into a FAILED job, but no longer catches arbitrary exceptions.
+- **`.pylintrc`**: `bare-except`, `broad-exception-caught` and `duplicate-except` are no longer disabled, and the whole tree passes them.
+- **`POLICY.md`**: now restates the ROBOTS.md zero-suppression rules. It no longer allows `# type: ignore[code]` or documented `except: pass`.
 
 ### v16.9.27 - LLM Validate Stays Inside the Dataset Root, OpenAPI Contract Regenerated
 

@@ -52,7 +52,7 @@ def _read_presets_document(config_path: Path | None = None) -> tuple[Path, dict[
     try:
         raw_text = target_path.read_text(encoding="utf-8")
         raw_data = yaml.safe_load(raw_text)
-    except Exception as exc:
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         _log.error("Failed to parse YAML from %s: %s", target_path, exc)
         raise ValueError(f"Invalid YAML in {target_path}: {exc}") from exc
 

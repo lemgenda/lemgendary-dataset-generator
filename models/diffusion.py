@@ -37,6 +37,6 @@ class CaptionSentry:
             # 2026 Resilience: We use greedy search for speed
             out = self.model.generate(**inputs, max_new_tokens=50)
             return self.processor.decode(out[0], skip_special_tokens=True)
-        except Exception as exc:
-            logger.debug("BLIP caption generation fallback invoked: %s", exc)
+        except (RuntimeError, ValueError, TypeError) as exc:
+            logger.warning("BLIP caption generation failed; using fallback caption: %s", exc)
             return "a high quality image"  # Fallback safety descriptor

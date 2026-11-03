@@ -143,7 +143,8 @@ class DirectorySampleSource:
 
         try:
             image_bytes = img_path.read_bytes()
-        except OSError:
+        except OSError as exc:
+            logger.warning("Failed reading image %s: %s", img_path, exc)
             return None
 
         image_format = img_path.suffix.lstrip(".").lower() or "bin"

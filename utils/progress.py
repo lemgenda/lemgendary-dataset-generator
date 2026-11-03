@@ -7,6 +7,7 @@ and granular item-by-item updates across all compilation, sharding, and ingestio
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from collections.abc import Iterable, Iterator, Sized
@@ -14,6 +15,8 @@ from typing import Any, TypeVar
 from tqdm import tqdm
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 # Modern clean progress format across the entire LemGendary ecosystem:
 # Operational metadata, unconstrained percentage, numeric size/count, and rate (never truncated)
@@ -31,7 +34,8 @@ def supports_unicode() -> bool:
         if os.environ.get("WT_SESSION") or os.environ.get("PYTHONIOENCODING", "").lower().startswith("utf"):
             return True
         return False
-    except Exception:
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("Could not determine stdout unicode support; assuming ASCII: %s", exc)
         return False
 
 

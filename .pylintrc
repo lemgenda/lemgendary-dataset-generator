@@ -18,8 +18,6 @@ disable=
     missing-docstring,
     invalid-name,
     line-too-long,
-    broad-exception-caught,
-    bare-except,
     subprocess-run-check,
     attribute-defined-outside-init,
     reimported,
@@ -53,8 +51,7 @@ disable=
     superfluous-parens,
     consider-using-from-import,
     unnecessary-dunder-call,
-    expression-not-assigned,
-    duplicate-except
+    expression-not-assigned
 
 [REPORTS]
 output-format=text

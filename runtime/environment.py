@@ -80,18 +80,21 @@ def _load_env_from_yaml(yaml_path: Path) -> dict[str, str] | None:
     """
     try:
         raw = yaml_path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        logger.debug("runtime env YAML %s not readable; using defaults: %s", yaml_path, exc)
         return None
 
     try:
         import yaml
         from yaml import YAMLError
-    except ImportError:
+    except ImportError as exc:
+        logger.debug("PyYAML unavailable; skipping %s: %s", yaml_path, exc)
         return None
 
     try:
         data = yaml.safe_load(raw) or {}
-    except YAMLError:
+    except YAMLError as exc:
+        logger.warning("Malformed runtime env YAML %s; using defaults: %s", yaml_path, exc)
         return None
 
     result: dict[str, str] = {}
@@ -136,7 +139,8 @@ def _apply_torch_patches() -> None:
     """
     try:
         import torch
-    except ImportError:
+    except ImportError as exc:
+        logger.debug("torch not importable; skipping CUDA patches: %s", exc)
         return
 
     cuda = getattr(torch, "cuda", None)
@@ -198,6 +202,6 @@ def get_device_info() -> str:
         import torch
         if torch.cuda.is_available():
             return f"CUDA ({torch.cuda.get_device_name(0)})"
-    except (ImportError, Exception) as exc:
+    except (ImportError, OSError, RuntimeError, AssertionError) as exc:
         logger.debug("PyTorch device detection unavailable: %s", exc)
     return "CPU (No CUDA detected)"

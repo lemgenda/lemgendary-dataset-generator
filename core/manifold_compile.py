@@ -52,6 +52,13 @@ from core.compiler_core import (
 )
 from core.doc_generator import generate_dataset_docs
 from core.compile_outcome import ManifoldOutcome, finalize_compile
+from core.error_types import DOC_GENERATION_ERRORS, PARQUET_READ_ERRORS
+import logging
+import pickle
+import sqlite3
+from concurrent.futures import BrokenExecutor, CancelledError
+
+logger = logging.getLogger(__name__)
 
 
 # 2026: Task tuples passed to batch_worker. Each item is
@@ -290,17 +297,17 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     out_dir=str(output_root.parent),
                     login=None, password=None, server=None
                 )
-            except Exception as e:
-                print(f" -> [CRITICAL FAILURE] Temporal compilation dropped: {e}")
-                raise e
+            except Exception:
+                logger.exception("Temporal compilation of %s dropped", full_name)
+                raise
 
             try:
                 gen_train_nb, gen_colab_nb = _get_training_suite_notebook_generators()
                 target_model = "forex_predictor" if model_key == "forex_universe" else model_key
                 gen_train_nb(pascal_name, target_model, str(output_root / f"{target_model}_kaggle_training.ipynb"))
                 gen_colab_nb(pascal_name, target_model, str(output_root / f"{target_model}_colab_training.ipynb"))
-            except Exception as e:
-                print(f"[WARNING] Forex notebook generation skipped: {e}")
+            except (ImportError, OSError, ValueError) as e:
+                logger.warning("Forex notebook generation skipped: %s", e)
 
             category_str = model_config.get('category', 'Forex & Financial Time-Series')
             yaml_info = {
@@ -318,8 +325,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
             try:
                 generate_dataset_docs(output_root, final_index=None, pascal_name=pascal_name, overrides=yaml_info)
-            except Exception as e:
-                print(f" -> [WARNING] Documentation engine skipped: {e}")
+            except DOC_GENERATION_ERRORS as e:
+                logger.warning("Documentation engine skipped for %s: %s", pascal_name, e)
 
             print(f"[SUCCESS] Temporal Chunking compilation successfully staged under storage path!\n")
             outcomes.append(ManifoldOutcome(model_key, output_root, samples=0, sample_based=False))
@@ -342,8 +349,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 existing_names = {r[0] for r in rows}
                 if existing_names:
                     print(f"[OK] Found {len(existing_names)} existing samples. Resuming from checkpoint.")
-            except Exception as e:
-                print(f"[WARNING] Resumption scan failed: {e}")
+            except sqlite3.Error as e:
+                logger.warning("Resumption scan of %s failed: %s", db_path, e)
 
         # 2026 Resilience: High-Speed Physical Scan (SOTA v6.2)
         existing_on_disk = set()
@@ -476,8 +483,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                         if matches:
                             dataset = matches[0]
                             print(f"[DISCOVERY] Mapping {ref} -> {dataset.name}")
-                    except Exception as exc:
-                        print(f"[DEBUG] Discovery scan for {slug} in {shared_root} failed: {exc}")
+                    except OSError as exc:
+                        logger.warning("Discovery scan for %s in %s failed: %s", slug, shared_root, exc)
 
             if not dataset.is_dir():
                 print(f"[SKIP] Source {ref} not found in {shared_root}")
@@ -494,8 +501,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 for ap in ann_paths:
                     try:
                         ann_data_list.append(parse_parquet(ap))
-                    except Exception as e:
-                        print(f"[WARNING] Failed to parse {ap}: {e}")
+                    except PARQUET_READ_ERRORS as e:
+                        logger.warning("Failed to parse %s: %s", ap, e)
                 ann_data = ann_data_list[0] if ann_data_list else None
             elif fmt == "matlab":
                 ann_data = parse_matlab(_require_ann_path(ann_path))
@@ -532,8 +539,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     if url_col in cols:
                         try:
                             df = pd.read_parquet(pq_path)
-                        except Exception as e:
-                            print(f"[WARNING] Skipping corrupted lazy parquet shard {pq_path}: {e}")
+                        except PARQUET_READ_ERRORS as e:
+                            logger.warning("Skipping corrupted lazy parquet shard %s: %s", pq_path, e)
                             continue
                         for row in df.itertuples():
                             url = getattr(row, url_col)
@@ -569,8 +576,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 pq_path, mapping, cols = cast(ParquetAnnData, ann_data)
                 try:
                     df = pd.read_parquet(str(pq_path))
-                except Exception as e:
-                    print(f"[WARNING] Skipping corrupted parquet {pq_path}: {e}")
+                except PARQUET_READ_ERRORS as e:
+                    logger.warning("Skipping corrupted parquet %s: %s", pq_path, e)
                     df = pd.DataFrame()
                 file_col = mapping.get("file_name", "file_name")
                 if file_col in df.columns and len(df) > 0 and (df[file_col].dtype != 'object' or isinstance(df[file_col].iloc[0], str)):
@@ -580,20 +587,20 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                 data, key = cast(MatlabAnnData, ann_data)
                 if key in data:
                     for entry in data[key]:
-                        try:
-                            fname = entry.get("image_name", entry.get("name"))
-                            if fname:
-                                if fname not in matlab_map: matlab_map[fname] = []
-                                matlab_map[fname].append(entry)
-                        except Exception as exc:
-                            print(f"[DEBUG] Skipping unparseable matlab entry: {exc}")
+                        if not isinstance(entry, dict):
+                            logger.debug("Skipping non-mapping matlab entry: %r", entry)
+                            continue
+                        fname = entry.get("image_name", entry.get("name"))
+                        if fname:
+                            matlab_map.setdefault(fname, []).append(entry)
 
             if not is_virtual:
                 sample_count = len(images)
             else:
                 try:
                     sample_count = sum(pd.read_parquet(d[0], columns=[]).shape[0] for d in ann_data_list)
-                except Exception:
+                except PARQUET_READ_ERRORS as exc:
+                    logger.warning("Could not count parquet samples: %s", exc)
                     sample_count = 0
 
             model_val_split = model_config.get("val_split", None)
@@ -612,11 +619,12 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     try:
                         import pyarrow.parquet as pq
                         num_rows = pq.read_metadata(str(pq_path)).num_rows
-                    except Exception:
+                    except (ImportError, *PARQUET_READ_ERRORS) as meta_exc:
+                        logger.debug("pyarrow metadata read failed for %s (%s); counting rows via pandas", pq_path, meta_exc)
                         try:
                             num_rows = pd.read_parquet(pq_path, columns=[]).shape[0]
-                        except Exception as e:
-                            print(f"[WARNING] Skipping corrupted virtual parquet shard {pq_path}: {e}")
+                        except PARQUET_READ_ERRORS as e:
+                            logger.warning("Skipping corrupted virtual parquet shard %s: %s", pq_path, e)
                             continue
 
                     if num_rows == 0: continue
@@ -827,7 +835,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                                             for f in futures: f.cancel()
                                             futures.clear()
                                             break
-                            except Exception as e: print(f"[ERROR] Worker Error: {e}")
+                            except (BrokenExecutor, CancelledError, pickle.PicklingError) as e:
+                                logger.error("Worker batch failed: %s", e)
 
                         if batch_entries:
                             conn.executemany("""
@@ -937,8 +946,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                         containers_written = tuple(f for f in extra_formats if f != "directory")
                     else:
                         print(f"[ERROR] Container writer exited with code {container_rc}; loose layout kept.")
-            except Exception as e:
-                print(f"[ERROR] Failed writing additional container format: {e}")
+            except (ImportError, OSError, ValueError) as e:
+                logger.error("Failed writing additional container format: %s", e)
 
         try:
             gen_nb, gen_colab_nb = _get_training_suite_notebook_generators()
@@ -954,8 +963,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
             gen_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_kaggle_training.ipynb")
             gen_colab_nb(pascal_name, resolved_model, output_root / f"{resolved_model}_colab_training.ipynb")
-        except Exception as e:
-            print(f"\\n[ERROR] Silent Failure Detected! Could not generate notebooks: {e}\\n")
+        except (ImportError, OSError, ValueError) as e:
+            logger.error("Could not generate training notebooks for %s: %s", pascal_name, e)
 
         print(f"[SUCCESS] v5.0 Ascension Complete: {len(final_index)} samples compiled for {pascal_name}.")
         executor.shutdown(wait=True)

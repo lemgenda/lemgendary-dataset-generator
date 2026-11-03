@@ -8,13 +8,17 @@ programmatically, bridging CLI options, presets, and the core coordinator.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 
+from ._errors import SERVICE_ERRORS
+
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class CompilerService:
@@ -89,6 +93,7 @@ class CompilerService:
         try:
             manifold_compile.process_dataset(parsed)
             return 0
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Compilation error")
             console.print(f"[bold red]Compilation error:[/bold red] {exc}")
             return 1

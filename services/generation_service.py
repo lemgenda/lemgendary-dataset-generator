@@ -7,10 +7,14 @@ generators over manifolds in-process without subprocess spawning.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from rich.console import Console
 
+from ._errors import SERVICE_ERRORS
+
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class GenerationService:
@@ -39,6 +43,7 @@ class GenerationService:
                 sample_limit=sample,
                 dry_run=dry_run,
             )
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Generation error")
             console.print(f"[bold red]Generation error:[/bold red] {exc}")
             return 1

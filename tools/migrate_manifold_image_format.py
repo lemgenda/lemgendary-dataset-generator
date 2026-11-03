@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sqlite3
 import sys
 from pathlib import Path
@@ -41,6 +42,7 @@ if str(_ROOT) not in sys.path:
 from core.config_schema import ImageFormatPolicy
 from formats.transcode import ImageTranscoder
 
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS: set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -59,7 +61,8 @@ def _iter_manifold_images(manifold: Path) -> Iterator[Path]:
                 for p in d.iterdir():
                     if p.is_file() and p.suffix.lower() in _IMAGE_EXTS:
                         yield p
-            except OSError:
+            except OSError as exc:
+                logger.warning("Could not list manifold directory %s: %s", d, exc)
                 continue
 
 
@@ -73,6 +76,7 @@ def _kind_from_path(p: Path, root: Path) -> _KindLiteral:
     try:
         rel = p.relative_to(root)
     except ValueError:
+        logger.debug("Path %s is outside manifold root %s; treating as image", p, root)
         return "image"
     top = rel.parts[0].lower() if rel.parts else "images"
     if top == "masks":
@@ -92,7 +96,8 @@ def _unique_by_inode(paths: Iterable[Path]) -> Iterator[Path]:
     for p in paths:
         try:
             st = p.stat()
-        except OSError:
+        except OSError as exc:
+            logger.warning("Could not stat %s, skipping: %s", p, exc)
             continue
         key = (st.st_dev, st.st_ino)
         if key in seen:
@@ -194,8 +199,9 @@ def migrate_manifold(
             registry_updates.append((new, fmt, path.stem))
             if processed % 500 == 0:
                 print(f"  [{processed}/{len(unique_paths)}] processed...")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             failed += 1
+            logger.warning("Transcode failed for %s: %s", path, e)
             print(f"  [FAIL] {path.name}: {e}")
 
     print()

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Iterator
@@ -28,6 +29,7 @@ from PIL import Image
 
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -179,8 +181,9 @@ def run(
             with Image.open(path) as img:
                 img = img.convert("RGB")
                 result = generator.generate(img, context={"task": kind, "slug": name})
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             failed += 1
+            logger.warning("Generation failed for %s (%s): %s", name, path, e)
             print(f"  [FAIL] {name}: {e}")
             continue
 

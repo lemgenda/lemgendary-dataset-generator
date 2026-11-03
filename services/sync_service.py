@@ -7,10 +7,14 @@ between local compiled manifolds and remote registries (Kaggle).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from rich.console import Console
 
+from ._errors import SERVICE_ERRORS
+
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class SyncService:
@@ -32,8 +36,10 @@ class SyncService:
             )
             return 0
         except SystemExit as exc:
+            logger.debug("Delegated command exited via SystemExit(%r)", exc.code)
             return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Sync push failed")
             console.print(f"[bold red]Sync push failed:[/bold red] {exc}")
             return 1
 
@@ -52,8 +58,10 @@ class SyncService:
             )
             return 0
         except SystemExit as exc:
+            logger.debug("Delegated command exited via SystemExit(%r)", exc.code)
             return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Sync pull failed")
             console.print(f"[bold red]Sync pull failed:[/bold red] {exc}")
             return 1
 
@@ -75,7 +83,9 @@ class SyncService:
                 dry_run=dry_run,
             )
         except SystemExit as exc:
+            logger.debug("Delegated command exited via SystemExit(%r)", exc.code)
             return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Sync metadata failed")
             console.print(f"[bold red]Sync metadata failed:[/bold red] {exc}")
             return 1

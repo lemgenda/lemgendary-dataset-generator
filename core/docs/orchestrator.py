@@ -23,6 +23,7 @@ if str(_MODULE_ROOT) not in sys.path:
     sys.path.insert(0, str(_MODULE_ROOT))
 
 from core.docs.context import resolve_manifold_context
+from core.error_types import DOC_GENERATION_ERRORS
 from core.docs.generators import (
     generate_category_txt,
     generate_classes_txt,
@@ -126,7 +127,7 @@ def regenerate_all_docs(
             )
             print(f"  Success: {m_dir.name} -> Total Samples: {samples:,}")
             count += 1
-        except Exception as exc:
+        except DOC_GENERATION_ERRORS as exc:
             print(f"  Error on {m_dir.name}: {exc}")
             logger.exception("Failed to regenerate docs for %s", m_dir.name)
 

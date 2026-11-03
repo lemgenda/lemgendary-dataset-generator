@@ -15,10 +15,13 @@ Public API:
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, cast
+
+logger = logging.getLogger(__name__)
 
 # ─── Shared state ───────────────────────────────────────────────────────────
 @dataclass
@@ -31,7 +34,8 @@ class GroundTruthCaches:
         for loader in _LOADERS:
             try:
                 loader(self, Path(root))
-            except Exception as e:
+            except (ImportError, OSError, KeyError, ValueError, TypeError) as e:
+                logger.warning("[GT] loader %s skipped: %s", loader.__name__, e)
                 print(f"[GT] loader {loader.__name__} skipped: {e}")
 
 

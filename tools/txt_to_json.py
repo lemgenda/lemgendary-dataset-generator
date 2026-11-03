@@ -1,5 +1,8 @@
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def parse_nima_line(line: str):
@@ -91,7 +94,8 @@ def convert_labels():
 
                     converted_count += 1
 
-                except Exception as e:
+                except (OSError, ValueError, IndexError) as e:
+                    logger.warning("Error converting label file %s: %s", file_path, e)
                     print(f"  Error processing {file_path.name}: {e}")
 
             print(f"  Finished '{split}': Converted {converted_count} files.")

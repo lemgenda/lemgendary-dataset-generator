@@ -413,6 +413,7 @@ def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fracti
                 try:
                     avail_tfs_raw.add(int(tf_dir.name))
                 except ValueError:
+                    logger.debug("Skipping non-numeric timeframe directory %s", tf_dir)
                     continue
                 # Now look for year subdirectories under the timeframe
                 for year_dir in tf_dir.iterdir():
@@ -511,6 +512,7 @@ def _reduce_forex_dataset(source_root, base_name, info, interactive=True, fracti
                     if int(tf_dir.name) not in kept_tfs:
                         continue
                 except ValueError:
+                    logger.debug("Skipping non-numeric timeframe directory %s", tf_dir)
                     continue
 
                 # Copy only the years we want.

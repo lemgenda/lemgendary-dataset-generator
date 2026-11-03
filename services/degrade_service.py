@@ -7,10 +7,14 @@ generation programmatically without subprocess spawning.
 
 from __future__ import annotations
 
+import logging
 from typing import Literal, cast
 from rich.console import Console
 
+from ._errors import SERVICE_ERRORS
+
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class DegradeService:
@@ -46,6 +50,7 @@ class DegradeService:
                 workers=workers,
                 dry_run=dry_run,
             )
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Degradation synthesis error")
             console.print(f"[bold red]Degradation synthesis error:[/bold red] {exc}")
             return 1

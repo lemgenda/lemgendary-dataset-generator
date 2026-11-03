@@ -14,6 +14,7 @@ LemGendary MT5 Data Pipeline v5.4 (Final - NAS100 renamed, Disk-Error Resilient)
 import argparse
 from datetime import datetime
 import importlib
+import logging
 import os
 import shutil
 import sys
@@ -28,6 +29,8 @@ import yaml
 
 from . import bridge as mt5_bridge
 from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA
+
+logger = logging.getLogger(__name__)
 
 FEATURES = [
     "open", "high", "low", "close", "volume",
@@ -87,7 +90,8 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
                     f"| Balance: {info.balance} {info.currency}"
                 )
                 return True
-    except Exception as e:
+    except (RuntimeError, AttributeError, OSError) as e:
+        logger.warning("MT5 attach to running terminal failed: %s", e)
         print(f" [MT5] Failed to attach to terminal: {e}")
 
     if login is None and "MT5_LOGIN" in os.environ:
@@ -117,7 +121,7 @@ def connect_mt5(login=None, password=None, server=None, api_key=None):
                 raise RuntimeError("[MT5] Connected but no account info.")
             err = _mt5_call("last_error")
             raise RuntimeError(f"[MT5] Initialize failed: {err}")
-        except Exception as e:
+        except (RuntimeError, AttributeError, OSError) as e:
             raise RuntimeError(f"[MT5] Initialize exception: {e}") from e
     else:
         raise RuntimeError(
@@ -133,7 +137,8 @@ def disconnect_mt5():
     try:
         _mt5_call("shutdown")
         print(" [MT5] Disconnected.")
-    except Exception as err:
+    except (RuntimeError, AttributeError, OSError) as err:
+        logger.warning("MT5 shutdown failed: %s", err)
         print(f" [MT5] Warning during shutdown: {err}")
 
 
@@ -173,7 +178,8 @@ def resolve_symbol(pair: str) -> Optional[str]:
 
     try:
         all_symbols = _mt5_call("symbols_get")
-    except Exception:
+    except (RuntimeError, AttributeError, OSError) as err:
+        logger.warning("MT5 symbols_get failed while resolving %s: %s", pair, err)
         return None
 
     if not all_symbols:
@@ -291,7 +297,8 @@ def download_bars(pair, timeframe_min, start_date="2019-01-01", retries=3):
                 _SYMBOL_CACHE[pair] = mt5_symbol
                 return df
 
-            except Exception as e:
+            except (RuntimeError, AttributeError, OSError, KeyError, ValueError, IndexError) as e:
+                logger.warning("MT5 download attempt %d for %s failed: %s", attempt + 1, mt5_symbol, e)
                 if attempt < retries - 1:
                     wait = 2 ** attempt
                     print(f" [MT5] Download attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
@@ -346,7 +353,11 @@ def compute_indicators(df):
                 / (close + 1e-8)
             ).tolist()
             computed_ta = True
-    except Exception:
+    except ImportError as err:
+        logger.debug("pandas_ta_classic unavailable, using manual indicators: %s", err)
+        computed_ta = False
+    except (AttributeError, KeyError, ValueError, TypeError) as err:
+        logger.warning("pandas_ta_classic indicator computation failed, using manual indicators: %s", err)
         computed_ta = False
 
     if not computed_ta:

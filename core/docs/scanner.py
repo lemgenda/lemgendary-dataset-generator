@@ -8,8 +8,14 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+import logging
 from typing import Any
+
 import numpy as np
+
+from core.error_types import PARQUET_READ_ERRORS
+
+logger = logging.getLogger(__name__)
 
 
 def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
@@ -34,6 +40,7 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
         try:
             year = int(year_str)
         except ValueError:
+            logger.debug("Ignoring %s: no year suffix", pq_file.name)
             continue
         year_set.add(year)
 
@@ -59,8 +66,8 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
                 result["samples_per_year"][year] = result["samples_per_year"].get(year, 0) + int(count)
                 result["samples_per_pair"][str(pair)] = result["samples_per_pair"].get(str(pair), 0) + int(count)
                 result["samples_per_tf"][int(tf)] = result["samples_per_tf"].get(int(tf), 0) + int(count)
-        except Exception as e:
-            print(f"[WARNING] Error scanning {pq_file.name}: {e}")
+        except (*PARQUET_READ_ERRORS, KeyError) as e:
+            logger.warning("Error scanning %s: %s", pq_file.name, e)
 
     # 2. Scan legacy directories if not already scanned as Parquet
     for chunk_dir in root_path.glob("ForexUniverse*"):
@@ -70,6 +77,7 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
         try:
             year = int(year_str)
         except ValueError:
+            logger.debug("Ignoring %s: no year suffix", chunk_dir.name)
             continue
 
         if year in year_set:
@@ -89,6 +97,7 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
                 try:
                     tf = int(tf_str)
                 except ValueError:
+                    logger.debug("Ignoring %s: timeframe folder is not numeric", tf_dir)
                     continue
                 tf_set.add(tf)
 
@@ -97,8 +106,8 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
                     try:
                         arr = np.load(npy_file, mmap_mode="r")
                         total_samples += arr.shape[0]
-                    except Exception as exc:
-                        print(f"[DEBUG] Could not load npy file {npy_file}: {exc}")
+                    except (OSError, ValueError) as exc:
+                        logger.warning("Could not load npy file %s: %s", npy_file, exc)
 
                 if total_samples > 0:
                     entry = {

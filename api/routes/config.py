@@ -37,7 +37,7 @@ async def get_config() -> Dict[str, Any]:
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
             return data if isinstance(data, dict) else {}
-    except Exception as exc:
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed reading configuration: {exc}",
@@ -64,7 +64,7 @@ async def validate_config() -> Dict[str, Any]:
             "output_folder": rm.output_folder_name,
             "dataset_count": len(data.datasets),
         }
-    except Exception as exc:
+    except (OSError, ValueError, yaml.YAMLError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Configuration schema validation failed: {exc}",

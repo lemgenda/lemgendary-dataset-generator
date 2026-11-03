@@ -91,9 +91,13 @@ def generate_index_json(
                             continue
                         try:
                             record = json.loads(line_str)
+                        except json.JSONDecodeError as exc:
+                            logger.debug("Line %d of %s split is not JSON (%s); hashing its position", line_num, split, exc)
+                            record = None
+                        if isinstance(record, dict):
                             prompt_text = str(record.get("prompt", record.get("instruction", "")))
                             h = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:16]
-                        except Exception:
+                        else:
                             h = hashlib.sha256(f"{split}_{line_num}".encode("utf-8")).hexdigest()[:16]
 
                         constructed_index.append({

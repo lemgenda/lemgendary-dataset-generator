@@ -25,7 +25,7 @@ def _resolve_output_root() -> Path:
                 if not p.is_absolute():
                     p = (config_file.parent / p).resolve()
                 return p
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
             logger.debug("Could not parse output_folder_name from %s: %s", config_file, exc)
     return (Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets").resolve()
 
@@ -54,7 +54,7 @@ async def list_datasets() -> DatasetListResponse:
                     meta = yaml.safe_load(f) or {}
                     task = meta.get("task", task)
                     sample_count = int(meta.get("total_samples", 0) or 0)
-            except Exception as exc:
+            except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError, TypeError, ValueError) as exc:
                 logger.debug("Failed reading %s: %s", info_file, exc)
 
         size_bytes = 0
@@ -98,7 +98,7 @@ async def list_datasets() -> DatasetListResponse:
                         row = conn.execute("SELECT MAX(rowid) FROM registry").fetchone()
                         if row and row[0]:
                             sample_count = int(row[0])
-            except Exception as exc:
+            except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 logger.debug("Failed reading registry DB %s: %s", db_file, exc)
 
         datasets.append(
@@ -139,14 +139,15 @@ async def get_dataset_details(name: str) -> Dict[str, Any]:
         try:
             with open(info_file, "r", encoding="utf-8") as f:
                 details["dataset_info"] = yaml.safe_load(f)
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+            logger.warning("Failed reading %s: %s", info_file, exc)
             details["dataset_info_error"] = str(exc)
 
     classes_file = target / "classes.txt"
     if classes_file.exists():
         try:
             details["classes"] = classes_file.read_text(encoding="utf-8").splitlines()
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             logger.debug("Failed reading %s: %s", classes_file, exc)
 
     return details

@@ -7,10 +7,14 @@ dataset_info.yaml manifests, category maps, and the master manifolds.md table.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from rich.console import Console
 
+from ._errors import SERVICE_ERRORS
+
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class DocService:
@@ -24,7 +28,8 @@ class DocService:
         try:
             doc_generator.regenerate_all_docs(datasets_dir=datasets_dir)
             return 0
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Documentation generation error")
             console.print(f"[bold red]Documentation generation error:[/bold red] {exc}")
             return 1
 
@@ -36,7 +41,8 @@ class DocService:
         try:
             doc_generator.generate_dataset_docs(manifold_path, None, manifold_name)
             return 0
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("Documentation generation error")
             console.print(f"[bold red]Documentation generation error:[/bold red] {exc}")
             return 1
 
@@ -49,7 +55,9 @@ class DocService:
             ret = regenerate_manifolds_md.main(["--check"] if check_only else [])
             return ret if isinstance(ret, int) else 0
         except SystemExit as exc:
+            logger.debug("Delegated command exited via SystemExit(%r)", exc.code)
             return exc.code if isinstance(exc.code, int) else 0
-        except Exception as exc:
+        except SERVICE_ERRORS as exc:
+            logger.exception("manifolds.md rebuild error")
             console.print(f"[bold red]manifolds.md rebuild error:[/bold red] {exc}")
             return 1

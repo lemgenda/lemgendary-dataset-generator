@@ -25,6 +25,8 @@ from .schema import COLUMN_DESCRIPTIONS, PARQUET_SCHEMA, TIMEFRAME_LOOKBACK, EXT
 ROW_GROUP_SIZE = 5000
 CHUNK_BATCH_SIZE = 20000
 
+logger = logging.getLogger(__name__)
+
 
 def get_dir_size_gb(dir_path: Path) -> float:
     """Calculate total size of directory in gigabytes."""
@@ -35,7 +37,7 @@ def get_dir_size_gb(dir_path: Path) -> float:
             try:
                 total += os.path.getsize(p)
             except OSError as err:
-                logging.debug("Could not read file size for %s: %s", p, err)
+                logger.debug("Could not read file size for %s: %s", p, err)
     return total / (1024 ** 3)
 
 
@@ -43,7 +45,8 @@ def get_file_size_gb(file_path: Path) -> float:
     """Calculate file size in gigabytes."""
     try:
         return os.path.getsize(file_path) / (1024 ** 3)
-    except OSError:
+    except OSError as err:
+        logger.debug("Could not read file size for %s: %s", file_path, err)
         return 0.0
 
 
@@ -220,13 +223,14 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
                         if hasattr(arr_obj, "_mmap") and arr_obj._mmap is not None:
                             try:
                                 arr_obj._mmap.close()
-                            except Exception as err:
-                                logging.debug("Failed closing mmap on array object: %s", err)
+                            except (BufferError, OSError, ValueError) as err:
+                                logger.debug("Failed closing mmap on array object: %s", err)
                     del X, yd, ym, ts
                     gc.collect()
 
         writer.close()
-    except Exception as e:
+    except (OSError, ValueError, IndexError, pa.ArrowException) as e:
+        logger.exception("Parquet conversion failed for year %s", year)
         writer.close()
         temp_parquet.unlink(missing_ok=True)
         print(f" [FATAL] Exception during Parquet conversion for year {year}: {e}")
@@ -252,7 +256,8 @@ def convert_year(base_manifold: Path, year: int, dry_run: bool = False, skip_cle
         try:
             shutil.rmtree(year_folder)
             print(f" [CLEANUP] Reclaimed {initial_size_gb:.2f} GB disk space!")
-        except Exception as e:
+        except OSError as e:
+            logger.warning("Could not fully remove %s: %s", year_folder, e)
             print(f" [WARNING] Could not fully remove {year_folder}: {e}")
     else:
         print(" [CLEANUP] Skipped directory removal as requested.")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
@@ -19,6 +20,8 @@ from api.models import (
     JobType,
 )
 from core.cli_args import venv_python
+
+logger = logging.getLogger("lemgendary.api.routes.jobs")
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -183,7 +186,8 @@ async def stream_job_logs(websocket: WebSocket, job_id: str) -> None:
     if backlog:
         try:
             await websocket.send_json({"job_id": job_id, "type": "backlog", "chunk": backlog})
-        except Exception:
+        except (WebSocketDisconnect, RuntimeError, OSError) as exc:
+            logger.debug("Failed sending log backlog for job %s; dropping client: %s", job_id, exc)
             await manager.disconnect_job(job_id, websocket)
             return
 
@@ -192,5 +196,6 @@ async def stream_job_logs(websocket: WebSocket, job_id: str) -> None:
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect_job(job_id, websocket)
-    except Exception:
+    except (RuntimeError, OSError) as exc:
+        logger.debug("Job %s websocket client error: %s", job_id, exc)
         await manager.disconnect_job(job_id, websocket)

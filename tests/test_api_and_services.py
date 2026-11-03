@@ -104,11 +104,13 @@ class InProcessAsgiClient:
                 out_body.extend(msg.get("body", b""))
 
         coro = self._app(scope, receive, send)
-        try:
-            while True:
+        # Drive the ASGI coroutine to completion; StopIteration signals it finished.
+        finished = False
+        while not finished:
+            try:
                 coro.send(None)
-        except StopIteration:
-            pass
+            except StopIteration:
+                finished = True
 
         return _AsgiResponse(
             status_code=out_status,

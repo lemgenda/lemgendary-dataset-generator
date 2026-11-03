@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -19,6 +20,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from core.common_sync import is_kaggle_large_manifold, push_kaggle_dataset_metadata
+
+logger = logging.getLogger(__name__)
 
 
 def is_large_manifold(repo_id: str) -> bool:
@@ -63,7 +66,8 @@ def sync_metadata(
                     and not is_large_manifold(ds.ref)
                 }
                 print(f"[INFO] Discovered {len(existing_datasets)} active published datasets on Kaggle for @{owner}")
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
+                logger.warning("Could not pre-fetch Kaggle dataset list for %s: %s", owner, exc)
                 print(f"[WARNING] Could not pre-fetch remote dataset list ({exc}); will attempt direct push for all.")
                 existing_datasets = {}
 
@@ -125,7 +129,8 @@ def sync_metadata(
                     successes += 1
                 else:
                     failures += 1
-            except Exception as exc:
+            except (OSError, ValueError, KeyError, AttributeError, RuntimeError, ImportError) as exc:
+                logger.error("Failed to push metadata for %s: %s", manifold_dir, exc)
                 print(f"[ERROR] Failed to push metadata for {manifold_dir.name}: {exc}")
                 failures += 1
 

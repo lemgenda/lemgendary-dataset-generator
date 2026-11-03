@@ -68,7 +68,7 @@ def _out_parent() -> Path:
             "output_folder_name", "../LemGendaryDatasets"
         )
         return (ROOT / folder).resolve()
-    except Exception as exc:
+    except (OSError, yaml.YAMLError, AttributeError, TypeError) as exc:
         logger.debug("Failed reading registry for output_folder_name, using fallback: %s", exc)
         return (ROOT.parent / "LemGendaryDatasets").resolve()
 
@@ -376,8 +376,8 @@ def _create_modernized_batch(
             for s_f, d_f in copy_iter:
                 try:
                     shutil.copy2(s_f, d_f)
-                except Exception as exc:
-                    logger.debug("Copy failed for %s -> %s: %s", s_f, d_f, exc)
+                except OSError as exc:
+                    logger.warning("Copy failed for %s -> %s: %s", s_f, d_f, exc)
         elif skipped_copies > 0:
             print(f"[COPY] All {skipped_copies} structure, label, and metadata file(s) already in place.")
 
@@ -392,8 +392,8 @@ def _create_modernized_batch(
                     with open(d_p, "wb") as f_out:
                         f_out.write(data)
                     return True
-                except Exception as exc:
-                    logger.debug("Transcode failure for %s: %s", s_p, exc)
+                except (OSError, ValueError, RuntimeError) as exc:
+                    logger.warning("Transcode failure for %s, falling back to copy: %s", s_p, exc)
                     try:
                         shutil.copy2(s_p, d_p)
                     except OSError as copy_exc:
@@ -435,7 +435,8 @@ def _regen_docs(item: dict) -> bool:
         )
         print(f"[OK] Docs regenerated: {item['target_name']}")
         return True
-    except Exception as e:
+    except (ImportError, OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as e:
+        logger.warning("Docs regeneration failed for %s: %s", item.get("target_name"), e)
         print(f"[WARN] Docs regeneration failed for {item['target_name']}: {e}")
         return False
 
@@ -466,7 +467,8 @@ def _kaggle_reupload(item: dict, dry_run: bool = False) -> tuple[bool, str]:
         if rc == 0:
             return True, f"Uploaded to {new_ref}"
         return False, f"SyncService.push exited {rc}"
-    except Exception as e:
+    except (ImportError, OSError, ValueError, RuntimeError) as e:
+        logger.warning("Kaggle re-upload failed for %s: %s", item["target_name"], e)
         return False, f"sync error: {e}"
 
 
@@ -680,14 +682,15 @@ def run(args: argparse.Namespace) -> int:
                             info_data["format"] = target_format
                             with open(ds_info_path, "w", encoding="utf-8") as f_out:
                                 yaml.safe_dump(info_data, f_out, default_flow_style=False, sort_keys=False, allow_unicode=True)
-                        except Exception as exc:
-                            logger.debug("Failed updating format in dataset_info.yaml: %s", exc)
+                        except (OSError, yaml.YAMLError, TypeError) as exc:
+                            logger.warning("Failed updating format in %s: %s", ds_info_path, exc)
 
                     # Re-run docs generator to update README structure listing without deleted loose images
                     _regen_docs(item)
                 else:
                     print(f"[WARN] Container migration returned code {mig_code} for {target_path.name}")
-            except Exception as exc:
+            except (ImportError, OSError, ValueError, KeyError, RuntimeError, yaml.YAMLError) as exc:
+                logger.error("Container conversion failed for %s: %s", target_path, exc)
                 print(f"[ERROR] Container conversion encountered an issue for {target_path.name}: {exc}")
 
     # ── Phase D: Kaggle re-upload ──────────────────────────────────────────

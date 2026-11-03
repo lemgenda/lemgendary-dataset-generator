@@ -118,7 +118,7 @@ def create_app() -> FastAPI:
                 await websocket.receive_text()
         except WebSocketDisconnect:
             await manager.disconnect_global(websocket)
-        except Exception as exc:
+        except (RuntimeError, OSError) as exc:
             logger.debug("Global websocket client error: %s", exc)
             await manager.disconnect_global(websocket)
 

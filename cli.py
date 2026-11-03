@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 import time
@@ -24,6 +25,7 @@ import requests
 from rich.console import Console
 from rich.table import Table
 import typer
+from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 import yaml
 
@@ -51,6 +53,7 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+logger = logging.getLogger(__name__)
 
 # Sub-apps
 server_app = typer.Typer(help="Control the local FastAPI + WebSocket API sidecar server.")
@@ -70,7 +73,8 @@ def _is_server_available(host: str = DEFAULT_SERVER_HOST, port: int = DEFAULT_SE
     try:
         resp = requests.get(f"http://{host}:{port}/api/health", timeout=0.8)
         return resp.status_code == 200
-    except Exception:
+    except requests.RequestException as exc:
+        logger.debug("API server health probe failed on %s:%s: %s", host, port, exc)
         return False
 
 
@@ -85,7 +89,8 @@ def _stream_job_logs(job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = D
                 console.print(chunk, end="")
                 if "[PROCESS_TERMINATED]" in chunk:
                     break
-    except Exception as exc:
+    except (WebSocketException, OSError, json.JSONDecodeError) as exc:
+        logger.debug("WebSocket log stream for job %s closed: %s", job_id, exc)
         console.print(f"[dim]WebSocket streaming closed: {exc}[/dim]")
 
     try:
@@ -98,7 +103,8 @@ def _stream_job_logs(job_id: str, host: str = DEFAULT_SERVER_HOST, port: int = D
             if exit_code is not None:
                 return int(exit_code)
             return 0 if job_info.get("state") == "completed" else 1
-    except Exception as exc:
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Failed fetching final status for job %s: %s", job_id, exc)
         console.print(f"[dim]Failed fetching final job status: {exc}[/dim]")
     return 0
 
@@ -759,9 +765,9 @@ def server_stop() -> None:
     pid_file = Path(".lgd_server/server.pid")
     stopped = False
     if pid_file.exists():
+        import psutil
         try:
             pid = int(pid_file.read_text(encoding="utf-8").strip())
-            import psutil
             if psutil.pid_exists(pid):
                 proc = psutil.Process(pid)
                 proc.terminate()
@@ -772,7 +778,8 @@ def server_stop() -> None:
                 stopped = True
                 console.print(f"[bold green]Terminated server process (PID {pid}).[/bold green]")
             pid_file.unlink()
-        except Exception as exc:
+        except (OSError, ValueError, psutil.Error) as exc:
+            logger.warning("Failed stopping server process from %s: %s", pid_file, exc)
             console.print(f"[yellow]Warning while stopping server process: {exc}[/yellow]")
 
     if not stopped and _is_server_available():
@@ -816,7 +823,8 @@ def server_status(
             console.print(table)
         else:
             console.print(f"[red]Health endpoint returned status {resp.status_code}[/red]")
-    except Exception as exc:
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Error probing API server on %s:%s: %s", host, port, exc)
         console.print(f"[red]Error probing server: {exc}[/red]")
 
 
@@ -1049,10 +1057,11 @@ def llm_compile(
         return
     except typer.Exit:
         raise
-    except Exception as exc:
+    except (KeyError, ValueError, NotImplementedError, OSError, ImportError, RuntimeError, yaml.YAMLError) as exc:
+        logger.error("LLM compilation failed for dataset %s: %s", dataset, exc)
         console.print(f"[bold red]LLM compilation error:[/bold red] {exc}")
         console.print_exception()
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
 
 @llm_app.command("validate")

@@ -9,9 +9,11 @@ Resolves the missing audit_cli.py and unifies audit functionality.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
 from rich.console import Console
 from rich.table import Table
 
@@ -19,6 +21,7 @@ from audit.hardlinks import audit_hardlinks
 from audit.vision_audit import VisionAuditor
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class AuditService:
@@ -66,7 +69,6 @@ class AuditService:
                     rejection_breakdown[header_res.code or "ERR_HEADER_INVALID"] = rejection_breakdown.get(header_res.code or "ERR_HEADER_INVALID", 0) + 1
                     continue
 
-                from PIL import Image
                 with Image.open(img_p) as img:
                     result = auditor.audit_image(img, task="quality", slug=img_p.stem)
                     if result.valid:
@@ -74,7 +76,8 @@ class AuditService:
                     else:
                         code = result.code or "UNKNOWN"
                         rejection_breakdown[code] = rejection_breakdown.get(code, 0) + 1
-            except Exception:
+            except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as exc:
+                logger.debug("Audit decode failed for %s: %s", img_p, exc)
                 code = "ERR_DECODE_FAILED"
                 rejection_breakdown[code] = rejection_breakdown.get(code, 0) + 1
 
