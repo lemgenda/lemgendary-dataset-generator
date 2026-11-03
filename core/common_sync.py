@@ -22,11 +22,28 @@ import zipfile
 from pathlib import Path
 from typing import Any, TypedDict
 
+import certifi
 import kagglehub
+from kagglehub import clients as kagglehub_clients
+from kagglehub.clients import build_kaggle_client
+from kagglesdk.datasets.types.dataset_api_service import (
+    ApiGetDatasetFilesSummaryRequest,
+    ApiGetDatasetRequest,
+    ApiUpdateDatasetMetadataRequest,
+)
+from kagglesdk.datasets.types.dataset_types import (
+    DatasetSettings,
+    DatasetSettingsFile,
+    DatasetSettingsFileColumn,
+    SettingsLicense,
+)
 from tqdm import tqdm
 import yaml
 
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS, KAGGLE_REMOTE_ERRORS
+from core.lazy_imports import load_kaggle_api
+from tools.stream_zip_to_container import stream_zip_to_webdataset
+from utils.archive import create_archive, smart_extract, verify_archive
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +141,6 @@ def setup_kaggle_auth(
                 os.environ["KAGGLE_USERNAME"] = default_user
 
     try:
-        import certifi
         cert_path = certifi.where()
         if os.path.exists(cert_path):
             if "SSL_CERT_FILE" not in os.environ:
@@ -145,18 +161,10 @@ def setup_kaggle_auth(
     except (ImportError, AttributeError, OSError) as cert_exc:
         logger.debug("TLS CA certificate bundle check notice: %s", cert_exc)
 
-    try:
-        from kagglehub import clients as kagglehub_clients
-        kagglehub_clients.already_printed_version_warning = True
-    except ImportError as exc:
-        logger.debug("Kagglehub warning flag suppression skipped: %s", exc)
+    kagglehub_clients.already_printed_version_warning = True
 
     try:
-        sys.path = [p for p in sys.path if not (os.path.basename(os.path.normpath(p)) == "sources" and os.path.exists(os.path.join(p, "kaggle.py")))]
-        if "kaggle" in sys.modules and not hasattr(sys.modules["kaggle"], "api"):
-            del sys.modules["kaggle"]
-        from kaggle.api.kaggle_api_extended import KaggleApi
-        KaggleApi.already_printed_version_warning = True
+        load_kaggle_api().already_printed_version_warning = True
     except KAGGLE_CLIENT_ERRORS as exc:
         logger.debug("KaggleApi warning flag suppression skipped: %s", exc)
 
@@ -263,8 +271,6 @@ def get_dataset_version_info(repo_id: str) -> DatasetVersionInfo:
     setup_kaggle_auth(default_user=owner)
 
     try:
-        from kagglehub.clients import build_kaggle_client
-        from kagglesdk.datasets.types.dataset_api_service import ApiGetDatasetRequest
         with build_kaggle_client() as client:
             req = ApiGetDatasetRequest()
             req.owner_slug = owner
@@ -300,8 +306,7 @@ def get_dataset_status(repo_id: str) -> str | None:
     setup_kaggle_auth(default_user=owner)
 
     try:
-        from kaggle.api.kaggle_api_extended import KaggleApi
-        api = KaggleApi()
+        api = load_kaggle_api()()
         api.authenticate()
         return api.dataset_status(clean_handle)
     except KAGGLE_CLIENT_ERRORS as exc:
@@ -394,8 +399,6 @@ def track_kaggle_dataset_status(
             file_pct = None
             if expected_files > 0:
                 try:
-                    from kagglehub.clients import build_kaggle_client
-                    from kagglesdk.datasets.types.dataset_api_service import ApiGetDatasetFilesSummaryRequest
                     with build_kaggle_client() as client:
                         sreq = ApiGetDatasetFilesSummaryRequest()
                         sreq.owner_slug = owner
@@ -465,8 +468,6 @@ def _verify_or_create_staging_zip(
     file_count: int,
     newest_src_mtime: float
 ) -> None:
-    from utils.archive import create_archive, verify_archive
-
     can_reuse = False
     if target_zip.exists() and target_zip.is_file() and target_zip.stat().st_size > 0:
         print(f"[SYNC] Existing staging archive detected ({target_zip.stat().st_size / (1024**3):.2f} GB). Verifying...")
@@ -544,8 +545,7 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
         )
 
         try:
-            from kaggle.api.kaggle_api_extended import KaggleApi
-            api = KaggleApi()
+            api = load_kaggle_api()()
             api.authenticate()
             resp = api.dataset_create_new(
                 folder=str(tmp_dir),
@@ -723,16 +723,7 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     if not ensure_kaggle_dataset_exists(clean_handle, title=dataset_title):
         print(f"[WARN] Could not ensure Kaggle dataset placeholder exists for '{clean_handle}'. Attempting metadata update anyway...")
 
-    from kaggle.api.kaggle_api_extended import KaggleApi
-    from kagglesdk.datasets.types.dataset_api_service import ApiUpdateDatasetMetadataRequest
-    from kagglesdk.datasets.types.dataset_types import (
-        DatasetSettings,
-        DatasetSettingsFile,
-        DatasetSettingsFileColumn,
-        SettingsLicense,
-    )
-
-    api = KaggleApi()
+    api = load_kaggle_api()()
     api.authenticate()
 
     req = ApiUpdateDatasetMetadataRequest()
@@ -1002,14 +993,8 @@ def _fetch_remote_archive(
 
     downloaded = False
     try:
-        sys.path = [p for p in sys.path if not (os.path.basename(os.path.normpath(p)) == "sources" and os.path.exists(os.path.join(p, "kaggle.py")))]
-        if "kaggle" in sys.modules and not hasattr(sys.modules["kaggle"], "api"):
-            del sys.modules["kaggle"]
         socket.setdefaulttimeout(60.0)
-
-
-        from kaggle.api.kaggle_api_extended import KaggleApi
-        api = KaggleApi()
+        api = load_kaggle_api()()
         api.authenticate()
         print(f"[GET] Streaming dataset archive directly to {root_datasets_dir} via Kaggle API...")
         api.dataset_download_files(clean_repo_id, path=str(root_datasets_dir), unzip=False, quiet=False)
@@ -1063,7 +1048,6 @@ def perform_dataset_download(
     ]
 
     existing_archive = None
-    from utils.archive import smart_extract, verify_archive
 
     for cand in archive_candidates:
         if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
@@ -1125,7 +1109,6 @@ def perform_dataset_download(
             print(f"[STREAM] Discovered legacy image matrix in {archive_to_extract.name}.")
             print("[STREAM] Converting directly into modern WebDataset (.tar) shards via in-memory streaming...")
             try:
-                from tools.stream_zip_to_container import stream_zip_to_webdataset
                 success = stream_zip_to_webdataset(
                     zip_path=archive_to_extract,
                     target_dir=target_dir,

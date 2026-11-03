@@ -22,6 +22,7 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
 import requests
 from rich.console import Console
 from rich.table import Table
@@ -31,7 +32,11 @@ from websockets.sync.client import connect
 import yaml
 
 from api.auth import get_or_create_token
+from api.server import run_server
+from core import presets
 from core.cli_args import PROJECT_NAME, __version__, resolve_lem_env, venv_python
+from core.config_schema import _cli_validate
+from core.lazy_imports import load_forex_module
 from services import (
     AuditService,
     CompilerService,
@@ -42,6 +47,9 @@ from services import (
     SyncService,
 )
 from services.job_watch import JobNotFoundError, JobStatusError, TERMINAL_STATES, wait_for_job
+from tools.llm_helper import base_compiler
+from tools.llm_helper.quality_validator import QualityValidator
+from tools.modernization_queue import load_queue_manifest
 
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 8100
@@ -373,7 +381,6 @@ app.add_typer(docs_app, name="docs")
 @config_app.command("validate")
 def config_validate() -> None:
     """Validate unified_data.yaml against the Pydantic schema."""
-    from core.config_schema import _cli_validate
     raise typer.Exit(code=_cli_validate())
 
 
@@ -532,7 +539,6 @@ app.add_typer(format_app, name="format")
 @presets_app.command("list")
 def presets_list() -> None:
     """List available compiler presets with format and gate details."""
-    from core import presets
     all_p = presets.list_presets()
     table = Table(title="LemGendary Compiler Presets")
     table.add_column("Preset", style="cyan", no_wrap=True)
@@ -761,7 +767,6 @@ def server_start(
             f"[bold green]Starting LemGendary Dataset Compiler API server on http://{host}:{port}...[/bold green]"
         )
         console.print(f"[dim]Interactive documentation available at http://{host}:{port}/docs[/dim]")
-        from api.server import run_server
         run_server(host=host, port=port, reload=reload)
 
 
@@ -771,7 +776,6 @@ def server_stop() -> None:
     pid_file = Path(".lgd_server/server.pid")
     stopped = False
     if pid_file.exists():
-        import psutil
         try:
             pid = int(pid_file.read_text(encoding="utf-8").strip())
             if psutil.pid_exists(pid):
@@ -846,7 +850,6 @@ def forex_convert(
     skip_cleanup: bool = typer.Option(False, "--skip-cleanup", help="Keep source .npy directories after conversion"),
 ) -> None:
     """Convert raw .npy Forex manifolds into unified Apache Parquet files."""
-    from forex.converter import convert_year
     datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
     base_manifold = (datasets_root / "LemGendizedForexUniverse").resolve()
     if not base_manifold.exists() and (datasets_root / "LemGendizedForexUniverseLarge").exists():
@@ -861,7 +864,7 @@ def forex_convert(
         raise typer.Exit(code=0)
 
     for yr in years:
-        ok = convert_year(base_manifold, yr, dry_run=dry_run, skip_cleanup=skip_cleanup)
+        ok = load_forex_module("converter").convert_year(base_manifold, yr, dry_run=dry_run, skip_cleanup=skip_cleanup)
         if not ok:
             raise typer.Exit(code=1)
     raise typer.Exit(code=0)
@@ -870,8 +873,7 @@ def forex_convert(
 @forex_app.command("embed")
 def forex_embed() -> None:
     """Embed column descriptions and schema metadata into Forex Parquet files."""
-    from forex.injector import main as run_embed
-    run_embed()
+    load_forex_module("injector").main()
 
 
 app.add_typer(forex_app, name="forex")
@@ -881,7 +883,6 @@ app.add_typer(forex_app, name="forex")
 @modernize_app.command("queue")
 def modernize_queue() -> None:
     """Display modernization queue status and pending conversions."""
-    from tools.modernization_queue import load_queue_manifest
     datasets_root = Path(__file__).resolve().parent.parent / "LemGendaryDatasets"
     registry_yaml = Path(__file__).resolve().parent / "unified_data.yaml"
     items = load_queue_manifest(datasets_root.resolve(), registry_yaml.resolve())
@@ -1051,9 +1052,8 @@ def llm_compile(
         except requests.RequestException as e:
             console.print(f"[yellow]Could not route to API ({e}). Executing in-process...[/yellow]")
 
-    from tools.llm_helper.base_compiler import BaseLLMCompiler
     try:
-        compiler = BaseLLMCompiler()
+        compiler = base_compiler.BaseLLMCompiler()
         console.print(f"[bold cyan]Compiling LLM manifold '{dataset}'...[/bold cyan]")
         res = compiler.compile_manifold(dataset)
         console.print(f"[bold green]Successfully compiled {dataset}:[/bold green]")
@@ -1075,7 +1075,6 @@ def llm_validate(
     file_path: Path = typer.Option(..., "--file", "-f", help="Path to .jsonl dataset file to validate"),
 ) -> None:
     """Run QualityValidator on an LLM dataset JSONL file for 4 quality invariants."""
-    from tools.llm_helper.quality_validator import QualityValidator
     if not file_path.exists():
         console.print(f"[bold red]File not found:[/bold red] {file_path}")
         raise typer.Exit(1)

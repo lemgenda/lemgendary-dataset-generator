@@ -11,6 +11,8 @@ import logging
 from typing import Literal, cast
 from rich.console import Console
 
+from tools import generate_degrade
+
 from ._errors import SERVICE_ERRORS
 
 console = Console()
@@ -34,7 +36,6 @@ class DegradeService:
         dry_run: bool = False,
     ) -> int:
         """Execute synthetic degradation manifold generation in-process."""
-        from tools import generate_degrade
 
         fmt = cast(Literal["webp", "jpeg", "png", "keep"], image_format)
         try:

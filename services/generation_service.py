@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from rich.console import Console
 
+from tools import generate_cli
+
 from ._errors import SERVICE_ERRORS
 
 console = Console()
@@ -31,7 +33,6 @@ class GenerationService:
         dry_run: bool = False,
     ) -> int:
         """Run smart generation pass over an existing manifold."""
-        from tools import generate_cli
 
         try:
             return generate_cli.run(

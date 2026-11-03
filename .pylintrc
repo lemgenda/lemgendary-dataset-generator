@@ -16,8 +16,7 @@ disable=
     too-many-instance-attributes,
     too-many-nested-blocks,
     missing-docstring,
-    line-too-long,
-    import-outside-toplevel
+    line-too-long
 
 [REPORTS]
 output-format=text

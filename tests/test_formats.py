@@ -16,12 +16,16 @@ import unittest
 
 from PIL import Image
 
-from formats.base import Sample, make_writer, parse_also_format
+from formats.base import Sample, parse_also_format
+from formats.factory import make_writer
 from formats.directory import DirectorySampleSource, DirectoryWriter
+from formats.litdata import LitDataWriter
+from formats.mds import MDSWriter
 from formats.parquet import ParquetWriter
 from formats.transcode import ImageTranscoder, KeepFormatError
 from formats.webdataset import ShardWriter, WebDatasetWriter
 from core.config_schema import ImageFormatPolicy
+from core.lazy_imports import load_parquet
 
 
 class TestWriterFactory(unittest.TestCase):
@@ -31,10 +35,6 @@ class TestWriterFactory(unittest.TestCase):
         self.assertIsInstance(make_writer("directory"), DirectoryWriter)
         self.assertIsInstance(make_writer("webdataset"), WebDatasetWriter)
         self.assertIsInstance(make_writer("parquet"), ParquetWriter)
-
-        from formats.litdata import LitDataWriter
-        from formats.mds import MDSWriter
-
         self.assertIsInstance(make_writer("litdata"), LitDataWriter)
         self.assertIsInstance(make_writer("mds"), MDSWriter)
 
@@ -224,9 +224,7 @@ class TestParquetWriter(unittest.TestCase):
             parquet_path = out_root / "manifold.parquet"
             self.assertTrue(parquet_path.exists(), "Parquet output file was not created")
 
-            import pyarrow.parquet as pq
-
-            table = pq.read_table(str(parquet_path))
+            table = load_parquet().read_table(str(parquet_path))
             self.assertEqual(table.num_rows, 2)
             self.assertEqual(table.column("name").to_pylist(), ["row_001", "row_002"])
             self.assertEqual(table.column("task").to_pylist(), ["restoration", "quality"])
@@ -298,8 +296,6 @@ class TestMDSWriter(unittest.TestCase):
 
         if importlib.util.find_spec("streaming") is None:
             self.skipTest("mosaicml-streaming not installed")
-
-        from formats.mds import MDSWriter
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir) / "test_manifold"

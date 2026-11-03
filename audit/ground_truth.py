@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, cast
 
+from core.lazy_imports import load_pandas
+
 logger = logging.getLogger(__name__)
 
 # ─── Shared state ───────────────────────────────────────────────────────────
@@ -64,7 +66,7 @@ def _load_ava(c: GroundTruthCaches, root: Path) -> None:
     path = root / "ava-aesthetic-visual-assessment" / "ground_truth_dataset.csv"
     if not path.exists():
         return
-    import pandas as pd
+    pd = load_pandas()
     df = pd.read_csv(path)
     vote_cols = [f"vote_{i}" for i in range(1, 11)]
     c.ava = cast(dict, cast(Any, df.set_index("image_num")[vote_cols]).to_dict("index"))
@@ -76,7 +78,7 @@ def _load_aadb(c: GroundTruthCaches, root: Path) -> None:
     path = root / "aadb-imagedatabase" / "Dataset.csv"
     if not path.exists():
         return
-    import pandas as pd
+    pd = load_pandas()
     df = pd.read_csv(path)
     c.aadb = df.set_index("ImageFile")["score"].to_dict()
     print(f"[GT] {len(c.aadb)} AADB Aesthetic ratings cached.")
@@ -88,7 +90,7 @@ def _load_koniq(c: GroundTruthCaches, root: Path) -> None:
         or _find(root, "koniq10k", "koniq10k_scores.csv")
     if not csv:
         return
-    import pandas as pd
+    pd = load_pandas()
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
         val = float(cast(Any, row["MOS"])) / 10.0
@@ -102,7 +104,7 @@ def _load_spaq(c: GroundTruthCaches, root: Path) -> None:
         or _find(root, "spaq", "Annotations/MOS_Average.csv")
     if not csv:
         return
-    import pandas as pd
+    pd = load_pandas()
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
         c.tid[str(row["Image name"]).lower()] = 1.0 + float(cast(Any, row["MOS"])) * 0.09
@@ -127,7 +129,7 @@ def _load_live(c: GroundTruthCaches, root: Path) -> None:
     csv = _find(root, "live", "live_scores.csv")
     if not csv:
         return
-    import pandas as pd
+    pd = load_pandas()
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
         orig = min(100.0, float(cast(Any, row["dmos"])))
@@ -140,7 +142,7 @@ def _load_csiq(c: GroundTruthCaches, root: Path) -> None:
     csv = _find(root, "csiq", "csiq_scores.csv")
     if not csv:
         return
-    import pandas as pd
+    pd = load_pandas()
     df = pd.read_csv(csv)
     for _, row in df.iterrows():
         c.tid[str(row["image_name"]).lower()] = 1.0 + (1.0 - float(cast(Any, row["dmos"]))) * 9.0
@@ -154,7 +156,7 @@ def _load_tad66k(c: GroundTruthCaches, root: Path) -> None:
         labels = _find(root, "TAD66K_for_Image_Aesthetics_Assessment", "labels/labels/unmerge")
     if not labels or not labels.exists():
         return
-    import pandas as pd
+    pd = load_pandas()
     count = 0
     for dirpath, _, files in os.walk(labels):
         for f in files:

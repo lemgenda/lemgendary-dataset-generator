@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from api.jobs import job_manager
 from api.models import JobResponse, JobType
 from core.cli_args import venv_python
+from services.doc_service import DocService
 from tools.modernization_queue import build_queue_args, load_queue_manifest
 
 logger = logging.getLogger("lemgendary.api.routes.modernize")
@@ -192,7 +193,6 @@ async def run_reduce(req: ManifoldReduceRequest) -> JobResponse:
 @router.post("/regenerate-manifolds")
 async def regenerate_manifolds_documentation() -> dict[str, Any]:
     """Regenerate authoritative manifolds.md matrix from on-disk status and registries."""
-    from services.doc_service import DocService
     code = DocService.rebuild_manifolds_md(check_only=False)
     if code != 0:
         raise HTTPException(

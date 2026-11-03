@@ -30,6 +30,9 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import yaml
+from yaml import YAMLError
+
 logger = logging.getLogger(__name__)
 
 # Fallback values mirror lem-gendary-env-manager/requirements/runtime_env.yaml.
@@ -72,23 +75,12 @@ def _find_runtime_env_yaml() -> Path | None:
 def _load_env_from_yaml(yaml_path: Path) -> dict[str, str] | None:
     """Parse runtime_env.yaml into a flat name->value dict.
 
-    Returns None on any parse failure (caller falls back to defaults).
-
-    Imports yaml and YAMLError together — if only yaml were imported and
-    a sibling except clause referenced YAMLError, Pyrefly would (correctly)
-    flag an unbound-name error when the import fails.
+    Returns None on any read or parse failure (caller falls back to defaults).
     """
     try:
         raw = yaml_path.read_text(encoding="utf-8")
     except OSError as exc:
         logger.debug("runtime env YAML %s not readable; using defaults: %s", yaml_path, exc)
-        return None
-
-    try:
-        import yaml
-        from yaml import YAMLError
-    except ImportError as exc:
-        logger.debug("PyYAML unavailable; skipping %s: %s", yaml_path, exc)
         return None
 
     try:

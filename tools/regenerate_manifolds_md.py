@@ -26,6 +26,8 @@ from pathlib import Path
 
 import yaml
 
+from core.lazy_imports import load_parquet
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -87,7 +89,7 @@ def _count_from_disk(manifold_path: Path) -> int:
     if pq_files:
         total = 0
         try:
-            import pyarrow.parquet as pq
+            pq = load_parquet()
             for pqf in pq_files:
                 try:
                     meta = pq.read_metadata(str(pqf))

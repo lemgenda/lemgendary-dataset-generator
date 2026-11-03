@@ -76,7 +76,8 @@ from audit.ground_truth import GroundTruthCaches
 from audit.vision_audit import VisionAuditor
 from audit.dedup import ExactHasher, PerceptualHasher
 from audit.reject_log import RejectLog
-from formats.base import Sample, Writer, make_writer, parse_also_format
+from formats.base import Sample, Writer, parse_also_format
+from formats.factory import make_writer
 from formats.transcode import ImageTranscoder, KeepFormatError
 from formats.webdataset import ShardWriter, WebDatasetWriter
 from formats.mds import MDSWriter
@@ -91,8 +92,10 @@ from degrade import (
     composite,
     parse_profile,
 )
+from core.cli_args import build_parser
 from core.config_schema import ImageFormatPolicy, UnifiedData, load_unified_data
 from core.error_types import MODEL_LOAD_ERRORS, PARQUET_READ_ERRORS, SAMPLE_PROCESSING_ERRORS
+from core.lazy_imports import load_model_module
 from core.registry import ensure_registry_schema, initialize_registry
 from runtime.environment import bootstrap_runtime, get_device_info, load_torch
 
@@ -220,7 +223,6 @@ def configure(argv: list[str] | None = None) -> argparse.Namespace:
     Namespace and re-applies CLI overrides to CONFIG (idempotent for the
     same argv).
     """
-    from core.cli_args import build_parser
     _CLI.args = build_parser().parse_args(argv)
     _apply_cli_overrides(_CLI.args)
     return _CLI.args
@@ -413,9 +415,9 @@ def init_worker(
     if physical_index:
         _WORKER.physical_index = physical_index
 
-    from models.quality_scorer import QualitySentry
-    from models.diffusion import CaptionSentry
-    from models.encoder import CLIPManifold
+    quality_scorer = load_model_module("quality_scorer")
+    diffusion = load_model_module("diffusion")
+    encoder = load_model_module("encoder")
 
     # Workers ignore SIGINT to prevent traceback noise (subprocesses only).
     if os.name == "nt" and multiprocessing.current_process().name != "MainProcess":
@@ -476,7 +478,7 @@ def init_worker(
         model_path = os.path.join(base_dir, "models", f"nima_{model_type}_best.pth")
         if os.path.exists(model_path):
             try:
-                _WORKER.sentry = QualitySentry(model_path, model_name=model_type, device=device)
+                _WORKER.sentry = quality_scorer.QualitySentry(model_path, model_name=model_type, device=device)
             except MODEL_LOAD_ERRORS as exc:
                 logger.warning("Worker failed loading QualitySentry (%s): %s", model_path, exc)
 
@@ -487,14 +489,14 @@ def init_worker(
     # Diffusion captioning.
     if mission == "diffusion":
         try:
-            _WORKER.captioner = CaptionSentry(device=device)
+            _WORKER.captioner = diffusion.CaptionSentry(device=device)
         except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CaptionSentry: %s", exc)
 
     # Style manifold (CLIP) — loaded on CPU to conserve VRAM.
     if "clip" in str(config):
         try:
-            _WORKER.clip_manifold = CLIPManifold(device="cpu")
+            _WORKER.clip_manifold = encoder.CLIPManifold(device="cpu")
         except MODEL_LOAD_ERRORS as exc:
             logger.warning("Worker failed loading CLIPManifold: %s", exc)
 
@@ -522,13 +524,12 @@ def init_worker(
 
 def get_labeler(task: str, device: str = "cuda"):
     """Singleton labeler per task type (detection / segmentation / face)."""
-    from models.detection import AutoLabeler
     if task not in _WORKER.labelers:
         if task == "face_detection":
             mode = "face_landmarks"
         else:
             mode = "segmentation" if "seg" in task else "detection"
-        _WORKER.labelers[task] = AutoLabeler(mode=mode, device=device)
+        _WORKER.labelers[task] = load_model_module("detection").AutoLabeler(mode=mode, device=device)
     return _WORKER.labelers[task]
 
 

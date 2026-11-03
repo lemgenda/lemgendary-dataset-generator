@@ -26,16 +26,20 @@ from typing import Any, Iterator
 
 import zstandard as zstd
 
+import kagglehub
+import kagglehub.exceptions
+import kagglehub.gcs_upload
 import yaml
 from tqdm import tqdm
 
-from formats.mds import LOOSE_MDS_COLUMNS
 from core.common_sync import (
     get_dataset_version_info,
     push_kaggle_dataset_metadata,
     setup_kaggle_auth,
     track_kaggle_dataset_status,
 )
+from core.lazy_imports import load_streaming
+from formats.mds import LOOSE_MDS_COLUMNS
 
 _ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 
@@ -388,8 +392,7 @@ def convert_loose_directory_to_mds(
     """Convert a loose images/targets directory into MDS shards."""
     workers = max_workers or min(12, os.cpu_count() or 4)
     try:
-        import importlib as _il
-        _streaming = _il.import_module("streaming")
+        streaming = load_streaming()
     except ImportError:
         print("[NOTICE] mosaicml-streaming is not installed. Routing loose directory directly to WebDataset shards...")
         return convert_loose_directory_to_webdataset(
@@ -414,7 +417,7 @@ def convert_loose_directory_to_mds(
 
     print(f"[CONVERT-MDS] Packaging loose directory {source_dir.name} into MDS shards ({workers} workers)...")
 
-    mds_writer_cls = getattr(_streaming, "MDSWriter")
+    mds_writer_cls = streaming.MDSWriter
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for split in target_splits:
@@ -820,9 +823,6 @@ def push_manifold_to_kaggle(
             logger.warning("Could not update %s id: %s", meta_path, exc)
             print(f"[WARN] Could not update dataset-metadata.json id: {exc}")
 
-    import kagglehub
-    import kagglehub.exceptions
-    import kagglehub.gcs_upload
     # kagglehub annotates MAX_FILES_TO_UPLOAD as Literal[50]; setattr bypasses the
     # static type constraint while still performing the runtime assignment correctly.
     setattr(kagglehub.gcs_upload, "MAX_FILES_TO_UPLOAD", 5000)

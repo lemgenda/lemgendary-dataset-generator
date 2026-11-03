@@ -15,7 +15,14 @@ import logging
 import sys
 from pathlib import Path
 
-from core.common_sync import is_kaggle_large_manifold, push_kaggle_dataset_metadata
+from core.common_sync import (
+    is_kaggle_large_manifold,
+    push_kaggle_dataset_metadata,
+    setup_kaggle_auth,
+)
+from core.docs.context import find_unified_entry
+from core.lazy_imports import load_kaggle_api
+from tools.manifold_sync import resolve_kaggle_ref, resolve_manifold_folder
 
 _ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 
@@ -49,10 +56,8 @@ def sync_metadata(
         existing_datasets: dict[str, str] = {}
         owner = "lemtreursi"
         if not dry_run:
-            from core.common_sync import setup_kaggle_auth
             setup_kaggle_auth()
-            from kaggle.api.kaggle_api_extended import KaggleApi
-            api = KaggleApi()
+            api = load_kaggle_api()()
             api.authenticate()
 
             try:
@@ -86,7 +91,6 @@ def sync_metadata(
                     if raw_id.lower() in existing_datasets:
                         target_repo_id = existing_datasets[raw_id.lower()]
                     if not target_repo_id:
-                        from core.docs.context import find_unified_entry
                         u_entry = find_unified_entry(manifold_dir.name)
                         if u_entry and u_entry.get("kaggle_ref"):
                             clean_kref = u_entry["kaggle_ref"].replace("kaggle://", "").lower()
@@ -142,14 +146,12 @@ def sync_metadata(
         if candidate.exists():
             meta_path = candidate
         else:
-            from tools.manifold_sync import resolve_manifold_folder
             folder_name = resolve_manifold_folder(str(metadata_dir))
             meta_path = datasets_root / folder_name
     else:
         meta_path = datasets_root / "LemGendizedForexUniverse"
 
     if not repo_id:
-        from tools.manifold_sync import resolve_kaggle_ref
         resolved_ref = resolve_kaggle_ref(meta_path.name)
         if resolved_ref:
             repo_id = resolved_ref

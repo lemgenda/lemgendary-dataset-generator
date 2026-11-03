@@ -39,7 +39,8 @@ __all__ = [
     "KeepFormatError",
 ]
 
-from .base import Sample, Writer, make_writer, parse_also_format
+from .base import Sample, Writer, parse_also_format
+from .factory import make_writer
 from .directory import DirectoryWriter, DirectorySampleSource
 from .mds import MDSWriter
 from .litdata import LitDataWriter

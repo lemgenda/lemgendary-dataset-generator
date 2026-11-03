@@ -36,7 +36,10 @@ from PIL import Image
 import yaml
 
 from core.config_schema import ImageFormatPolicy
+from core.doc_generator import generate_dataset_docs
+from formats.base import parse_also_format
 from formats.transcode import ImageTranscoder
+from tools import manifold_sync, migrate_manifold_format
 
 try:
     from tqdm import tqdm
@@ -423,7 +426,6 @@ def _create_modernized_batch(
 def _regen_docs(item: dict) -> bool:
     """Regenerate dataset_info.yaml, README.md, category.txt, classes.txt, and index.json."""
     try:
-        from core.doc_generator import generate_dataset_docs
         generate_dataset_docs(
             item["target_path"],
             final_index=None,
@@ -458,11 +460,11 @@ def _kaggle_reupload(item: dict, dry_run: bool = False) -> tuple[bool, str]:
         return True, f"[DRY-RUN] Would upload {item['target_name']} -> {new_ref}"
 
     try:
-        from services.sync_service import SyncService
-        rc = SyncService.push(model=item["target_name"], url=clean_ref)
-        if rc == 0:
-            return True, f"Uploaded to {new_ref}"
-        return False, f"SyncService.push exited {rc}"
+        manifold_sync.action_sync(manifold_name=item["target_name"], repo_id=clean_ref, no_wait=False)
+        return True, f"Uploaded to {new_ref}"
+    except SystemExit as exc:
+        logger.warning("Kaggle re-upload of %s exited with %r", item["target_name"], exc.code)
+        return False, f"manifold_sync exited {exc.code}"
     except (ImportError, OSError, ValueError, RuntimeError) as e:
         logger.warning("Kaggle re-upload failed for %s: %s", item["target_name"], e)
         return False, f"sync error: {e}"
@@ -654,8 +656,6 @@ def run(args: argparse.Namespace) -> int:
 
             print(f"[CONTAINER] Modernizing {target_path.name} to canonical format: {target_format.upper()}...")
             try:
-                from formats.base import parse_also_format
-                from tools import migrate_manifold_format
                 container_formats = parse_also_format(target_format)
                 purge_loose = not args.keep_intermediate
 

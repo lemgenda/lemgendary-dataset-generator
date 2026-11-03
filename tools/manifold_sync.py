@@ -3,6 +3,15 @@ import shutil
 import argparse
 from pathlib import Path
 
+import yaml
+
+from core.common_sync import (
+    cleanup_temp_archives,
+    perform_dataset_download,
+    perform_dataset_upload,
+    setup_kaggle_auth,
+)
+
 ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
 # Load dataset registry directly from YAML
 OUT_PARENT = (ROOT.parent / "LemGendaryDatasets").resolve()
@@ -11,7 +20,6 @@ YAML_DATA = {}
 META = {}
 yaml_file = ROOT / "unified_data.yaml"
 if yaml_file.exists():
-    import yaml
     with open(yaml_file, "r", encoding="utf-8") as f:
         YAML_DATA = yaml.safe_load(f) or {}
     META = YAML_DATA.get("_registry_metadata", {})
@@ -25,7 +33,6 @@ def setup_auth(
     default_user: str | None = None,
 ) -> bool:
     """Setup Kaggle authentication delegating to core.common_sync SSOT."""
-    from core.common_sync import setup_kaggle_auth
     return setup_kaggle_auth(
         default_user=default_user or "lemtreursi",
         custom_user=custom_user,
@@ -111,7 +118,6 @@ def action_sync(manifold_name, repo_id=None, no_wait=False):
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     setup_auth(default_user=owner)
 
-    from core.common_sync import cleanup_temp_archives, perform_dataset_upload
 
     # Pre-cleanup any dangling staging directories (preserves recent archives for resumption)
     cleanup_temp_archives(manifold_name=resolved_folder, base_dir=OUT_PARENT, force=False)
@@ -175,7 +181,6 @@ def action_get(repo_id, output_name=None):
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
     setup_auth(default_user=owner)
 
-    from core.common_sync import perform_dataset_download
     success = perform_dataset_download(
         clean_repo_id=clean_repo_id,
         target_dir=dest_dir,

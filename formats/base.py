@@ -53,32 +53,6 @@ class Writer(Protocol):
     def close(self) -> None: ...
 
 
-def make_writer(fmt: str) -> Writer:
-    """Factory: return an unopened Writer for the given format name.
-
-    Raises ValueError for unknown formats. Optional-dependency import errors
-    are raised at .open() time, not at factory time, so the CLI can report
-    a clean message.
-    """
-    normalized = fmt.strip().lower()
-    if normalized == "directory":
-        from .directory import DirectoryWriter
-        return DirectoryWriter()
-    if normalized == "mds":
-        from .mds import MDSWriter
-        return MDSWriter()
-    if normalized == "litdata":
-        from .litdata import LitDataWriter
-        return LitDataWriter()
-    if normalized == "webdataset":
-        from .webdataset import WebDatasetWriter
-        return WebDatasetWriter()
-    if normalized == "parquet":
-        from .parquet import ParquetWriter
-        return ParquetWriter()
-    raise ValueError(f"Unknown container format: {fmt}")
-
-
 def parse_also_format(value: str) -> list[str]:
     """Split a comma-separated --also-format value into a list of format names."""
     return [f.strip().lower() for f in value.split(",") if f.strip()]

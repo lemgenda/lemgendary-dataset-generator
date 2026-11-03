@@ -22,6 +22,7 @@ from typing import Any, Iterator
 
 from PIL import Image
 
+from core.lazy_imports import load_model_module
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
 _ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
@@ -47,20 +48,15 @@ def _load_generator(
     if kind == "label":
         captioner = clip = labeler = sentry = None
         if strategy == "blip_caption":
-            from models.diffusion import CaptionSentry
-            captioner = CaptionSentry(device=device)
+            captioner = load_model_module("diffusion").CaptionSentry(device=device)
         elif strategy == "clip_zeroshot":
-            from models.encoder import CLIPManifold
-            clip = CLIPManifold(device=device)
+            clip = load_model_module("encoder").CLIPManifold(device=device)
         elif strategy in ("yolo_detection", "parsenet_segmentation"):
-            from models.detection import AutoLabeler
             mode = "segmentation" if strategy == "parsenet_segmentation" else "detection"
-            labeler = AutoLabeler(mode=mode, device=device)
+            labeler = load_model_module("detection").AutoLabeler(mode=mode, device=device)
         elif strategy == "nima_quality":
-            from models.quality_scorer import QualitySentry
-            base_dir = _ROOT
-            model_path = base_dir / "models" / "nima_aesthetic_best.pth"
-            sentry = QualitySentry(str(model_path), model_name="aesthetic", device=device)
+            model_path = _ROOT / "models" / "nima_aesthetic_best.pth"
+            sentry = load_model_module("quality_scorer").QualitySentry(str(model_path), model_name="aesthetic", device=device)
         return LabelGenerator(
             strategy,
             captioner=captioner,
@@ -70,19 +66,16 @@ def _load_generator(
         )
 
     if kind == "prompt":
-        from models.diffusion import CaptionSentry
-        from models.encoder import CLIPManifold
         return PromptGenerator(
             template=template,
-            captioner=CaptionSentry(device=device),
-            clip=CLIPManifold(device=device),
+            captioner=load_model_module("diffusion").CaptionSentry(device=device),
+            clip=load_model_module("encoder").CLIPManifold(device=device),
         )
 
     if kind == "mask":
         labeler = None
         if strategy == "parsenet":
-            from models.detection import AutoLabeler
-            labeler = AutoLabeler(mode="segmentation", device=device)
+            labeler = load_model_module("detection").AutoLabeler(mode="segmentation", device=device)
         return MaskGenerator(strategy, labeler=labeler)
 
     raise ValueError(f"Unknown kind: {kind}")

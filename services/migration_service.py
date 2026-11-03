@@ -11,6 +11,15 @@ import logging
 from pathlib import Path
 from rich.console import Console
 
+from core.lazy_imports import load_manifold_reduce
+from formats.base import parse_also_format
+from tools import (
+    migrate_manifold_format,
+    migrate_manifold_image_format,
+    modernization_queue,
+    modernize_manifold,
+)
+
 from ._errors import SERVICE_ERRORS
 
 console = Console()
@@ -31,8 +40,6 @@ class MigrationService:
         dry_run: bool = False,
     ) -> int:
         """Migrate directory layout to additional container formats (MDS, LitData, etc.)."""
-        from tools import migrate_manifold_format
-        from formats.base import parse_also_format
 
         try:
             formats = parse_also_format(to_formats)
@@ -61,7 +68,6 @@ class MigrationService:
         dry_run: bool = False,
     ) -> int:
         """Transcode images and masks in an existing manifold in place."""
-        from tools import migrate_manifold_image_format
 
         try:
             args = [
@@ -95,7 +101,6 @@ class MigrationService:
         skip_container: bool = False,
     ) -> int:
         """Retire the legacy Large suffix across manifolds, transcode images, and convert to container formats."""
-        from tools import modernize_manifold
 
         try:
             args = []
@@ -135,7 +140,7 @@ class MigrationService:
         dry_run: bool = False,
     ) -> int:
         """Create a reduced manifold variant; prompts unless ``yes`` (then ``dataset`` is required)."""
-        from tools import manifold_reduce
+        manifold_reduce = load_manifold_reduce()
 
         try:
             return manifold_reduce.reduce_dataset(
@@ -161,7 +166,6 @@ class MigrationService:
         purge_source: bool = False,
     ) -> int:
         """Execute the modernization queue in-process with the same arguments the API job uses."""
-        from tools import modernization_queue
 
         try:
             args = modernization_queue.build_queue_args(

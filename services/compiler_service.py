@@ -11,6 +11,8 @@ import logging
 
 from rich.console import Console
 
+from core.lazy_imports import load_manifold_compile
+
 from ._errors import SERVICE_ERRORS
 
 console = Console()
@@ -42,7 +44,7 @@ class CompilerService:
         mask_strategy: str | None = None,
         shard_ext: str | None = None,
     ) -> int:
-        from core import manifold_compile
+        manifold_compile = load_manifold_compile()
 
         # Build list of CLI arguments for parse_compile_args
         args_list: list[str] = []

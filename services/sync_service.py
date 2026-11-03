@@ -11,6 +11,8 @@ import logging
 
 from rich.console import Console
 
+from tools import manifold_sync, sync_kaggle_metadata
+
 from ._errors import SERVICE_ERRORS
 
 console = Console()
@@ -26,7 +28,6 @@ class SyncService:
         url: str | None = None,
         no_wait: bool = False,
     ) -> int:
-        from tools import manifold_sync
 
         try:
             manifold_sync.action_sync(
@@ -49,7 +50,6 @@ class SyncService:
         output_name: str | None = None,
     ) -> int:
         """Pull remote manifold from registry."""
-        from tools import manifold_sync
 
         try:
             manifold_sync.action_get(
@@ -73,7 +73,6 @@ class SyncService:
         dry_run: bool = False,
     ) -> int:
         """Push Kaggle dataset metadata without re-uploading file archives."""
-        from tools import sync_kaggle_metadata
 
         try:
             return sync_kaggle_metadata.sync_metadata(

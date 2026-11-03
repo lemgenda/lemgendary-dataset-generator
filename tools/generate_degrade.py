@@ -34,6 +34,7 @@ from tqdm import tqdm
 from degrade import DynamicDegrader, parse_profile
 from formats.transcode import ImageTranscoder
 from core.config_schema import ImageFormatPolicy
+from core.registry import initialize_registry
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,6 @@ def _discover_source_images(source_path: Path) -> list[Path]:
 
 def _init_synthetic_registry(db_path: Path) -> None:
     """Initialize manifold_registry.db schema for synthetic manifold."""
-    from core.registry import initialize_registry
     initialize_registry(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:

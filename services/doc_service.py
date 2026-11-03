@@ -11,6 +11,9 @@ import logging
 from pathlib import Path
 from rich.console import Console
 
+from core import doc_generator
+from tools import regenerate_manifolds_md
+
 from ._errors import SERVICE_ERRORS
 
 console = Console()
@@ -23,7 +26,6 @@ class DocService:
     @staticmethod
     def regenerate_all_docs(datasets_dir: Path | str | None = None) -> int:
         """Regenerate per-manifold README and dataset_info files."""
-        from core import doc_generator
 
         try:
             doc_generator.regenerate_all_docs(datasets_dir=datasets_dir)
@@ -36,7 +38,6 @@ class DocService:
     @staticmethod
     def regenerate_single_doc(manifold_path: Path, manifold_name: str) -> int:
         """Regenerate documentation for a single manifold."""
-        from core import doc_generator
 
         try:
             doc_generator.generate_dataset_docs(manifold_path, None, manifold_name)
@@ -49,7 +50,6 @@ class DocService:
     @staticmethod
     def rebuild_manifolds_md(check_only: bool = False) -> int:
         """Rebuild top-level manifolds.md from registry databases."""
-        from tools import regenerate_manifolds_md
 
         try:
             ret = regenerate_manifolds_md.main(["--check"] if check_only else [])

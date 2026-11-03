@@ -48,7 +48,16 @@ from core.compiler_core import (
 )
 from core.doc_generator import generate_dataset_docs
 from core.compile_outcome import ManifoldOutcome, finalize_compile
+from core import presets
 from core.error_types import DOC_GENERATION_ERRORS, PARQUET_READ_ERRORS
+from core.lazy_imports import (
+    load_forex_module,
+    load_model_module,
+    load_parquet,
+    load_training_notebooks,
+)
+from formats.base import parse_also_format
+from tools.migrate_manifold_format import migrate_manifold
 from runtime.environment import load_torch
 
 # torch is loaded after the runtime env vars are set (see runtime.environment).
@@ -89,15 +98,18 @@ MatlabAnnData = tuple[dict[str, Any], str]
 
 
 def _get_training_suite_notebook_generators():
-    """Import notebook generator functions from lemgendary-training-suite (Single Source of Truth)."""
+    """Return the notebook generators from lemgendary-training-suite (Single Source of Truth).
+
+    Equivalent to ``from training.notebooks import generate_training_notebook,
+    generate_colab_training_notebook`` once the sibling checkout is on
+    ``sys.path``; the import goes through ``core.lazy_imports`` because the
+    training suite is an optional sibling repository.
+    """
     suite_dir = Path(__file__).resolve().parents[2] / "lemgendary-training-suite"
     if suite_dir.exists() and str(suite_dir) not in sys.path:
         sys.path.insert(0, str(suite_dir))
-    from training.notebooks import (
-        generate_training_notebook,
-        generate_colab_training_notebook,
-    )
-    return generate_training_notebook, generate_colab_training_notebook
+    notebooks = load_training_notebooks()
+    return notebooks.generate_training_notebook, notebooks.generate_colab_training_notebook
 
 
 
@@ -137,7 +149,6 @@ def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
     parsed = parser.parse_args(cmd_args)
 
     if parsed.preset:
-        from core import presets
         try:
             preset_cfg = presets.get_preset(parsed.preset)
             if parsed.image_format is None:
@@ -186,8 +197,8 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     shared_root = INPUT_ROOT
     # Pre-load models globally once to prevent multiprocess race conditions on HF cache
     print("[PRE-FLIGHT] Analyzing task requirements...")
-    from models.diffusion import CaptionSentry
-    from models.encoder import CLIPManifold
+    diffusion = load_model_module("diffusion")
+    encoder = load_model_module("encoder")
 
     # Analyze if any target models need AI augmentation
     needs_captioning = False
@@ -204,7 +215,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
     if needs_captioning and not args.no_vetting:
         print("[PRE-FLIGHT] Caching CaptionSentry (BLIP)...")
-        tmp = CaptionSentry(device="cpu")
+        tmp = diffusion.CaptionSentry(device="cpu")
         del tmp
 
     if torch.cuda.is_available():
@@ -213,7 +224,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
     if needs_styling and not args.no_vetting:
         if needs_captioning:
             print("[PRE-FLIGHT] Caching CLIPManifold...")
-            _ = CLIPManifold(device="cpu")
+            _ = encoder.CLIPManifold(device="cpu")
 
     print("[PRE-FLIGHT] Pre-flight analysis complete.")
 
@@ -300,8 +311,6 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
             print(f" -> Engaging MT5 Auto-Acquisition Bridge for {len(pairs_list)} symbols across {len(tfs_list)} timeframes...")
             try:
-                from forex.pipeline import run_download_pipeline
-
                 dataset_defs = [{
                     "name": full_name,
                     "pairs": pairs_list,
@@ -309,7 +318,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
                     "start_date": start_date_str
                 }]
 
-                run_download_pipeline(
+                load_forex_module("pipeline").run_download_pipeline(
                     dataset_defs=dataset_defs,
                     out_dir=str(output_root.parent),
                     login=None, password=None, server=None
@@ -634,8 +643,7 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
 
                 for pq_path, mapping, cols in ann_data_list:
                     try:
-                        import pyarrow.parquet as pq
-                        num_rows = pq.read_metadata(str(pq_path)).num_rows
+                        num_rows = load_parquet().read_metadata(str(pq_path)).num_rows
                     except (ImportError, *PARQUET_READ_ERRORS) as meta_exc:
                         logger.debug("pyarrow metadata read failed for %s (%s); counting rows via pandas", pq_path, meta_exc)
                         try:
@@ -945,12 +953,10 @@ def process_dataset(parsed_args: argparse.Namespace | None = None) -> list[Manif
         containers_written: tuple[str, ...] = ()
         if getattr(args, "also_format", None):
             try:
-                from formats.base import parse_also_format
-                from tools.migrate_manifold_format import migrate_manifold as write_containers
                 extra_formats = parse_also_format(args.also_format)
                 if extra_formats:
                     print(f"[CONTAINER] Writing additional container format(s): {', '.join(extra_formats)}...")
-                    container_rc = write_containers(
+                    container_rc = migrate_manifold(
                         root=output_root,
                         formats=extra_formats,
                         force_duplicate=getattr(args, "force_duplicate", False),

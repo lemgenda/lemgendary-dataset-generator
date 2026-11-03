@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from core.error_types import PARQUET_READ_ERRORS
+from core.lazy_imports import load_parquet
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,7 @@ def scan_forex_manifold(root_path: Path) -> dict[str, Any]:
         year_set.add(year)
 
         try:
-            import pyarrow.parquet as pq
-
+            pq = load_parquet()
             pf = pq.ParquetFile(str(pq_file))
             tbl = pf.read(columns=["pair", "timeframe"])
             p_arr = tbl["pair"].to_numpy(zero_copy_only=False)

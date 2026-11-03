@@ -23,6 +23,7 @@ import zipfile
 
 from PIL import Image
 import yaml
+from core.lazy_imports import load_streaming
 from formats.mds import LOOSE_MDS_COLUMNS
 from utils.progress import create_progress_bar
 
@@ -340,8 +341,7 @@ def stream_zip_to_mds(
     Requires mosaicml-streaming >= 0.9.0.
     """
     try:
-        import importlib as _il
-        _streaming = _il.import_module("streaming")
+        streaming = load_streaming()
     except ImportError:
         print("[NOTICE] mosaicml-streaming is not installed. Routing directly to WebDataset streaming...")
         return stream_zip_to_webdataset(
@@ -374,7 +374,7 @@ def stream_zip_to_mds(
             count = _extract_metadata_files(zf, metadata_members, target_dir)
             print(f"[STREAM-MDS] Extracted {count} metadata files.")
 
-            mds_writer_cls = getattr(_streaming, "MDSWriter")
+            mds_writer_cls = streaming.MDSWriter
 
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 if has_images_dir:

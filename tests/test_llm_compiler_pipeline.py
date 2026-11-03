@@ -8,6 +8,7 @@ import yaml
 from core.config_schema import UnifiedData
 from tools.llm_helper.chunker import KnowledgeChunk, RecursiveChunker
 from tools.llm_helper.knowledge_ingestor import KnowledgeIngestor
+from tools.llm_helper.metadata_compiler import generate_llm_metadata
 from tools.llm_helper.quality_validator import QualityValidator
 
 
@@ -69,7 +70,6 @@ class TestLLMCompilerPipeline(unittest.TestCase):
             val_recs = [
                 {"id": "v1", "category": "api_procedure", "messages": [{"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"}]}
             ]
-            from tools.llm_helper.metadata_compiler import generate_llm_metadata
             generate_llm_metadata(
                 manifold_dir=tmp,
                 dataset_name="LemGendizedUnitTestLLM",

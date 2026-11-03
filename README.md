@@ -10,7 +10,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.32-STABLE` |
+| **Version** | `v16.9.33-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Architecture Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -19,6 +19,15 @@
 ---
 
 ## Changelog
+
+### v16.9.33 - One Loader per Heavy Dependency, `import-outside-toplevel` Re-Enabled
+
+- **`.pylintrc` Disables One Fewer Check**: `import-outside-toplevel` (134 findings) is enabled again and reports none.
+- **New `core/lazy_imports.py`**: the only place the heavy or optional packages are imported, through `importlib.import_module`, with one function each: `load_pandas`, `load_parquet` (`pyarrow.parquet`), `load_kaggle_api`, `load_mediapipe`, `load_streaming`, `load_model_module` (`models.*`, after `bootstrap_runtime()`), `load_forex_module`, `load_manifold_compile`, `load_manifold_reduce` and `load_training_notebooks`. `audit/ground_truth.py`, `converters/parquet.py`, `core/common_sync.py`, `core/compiler_core.py`, `core/docs/scanner.py`, `core/manifold_compile.py`, `models/detection.py`, `services/compiler_service.py`, `services/migration_service.py`, `tools/generate_cli.py`, `tools/modernization_queue.py`, `tools/regenerate_manifolds_md.py`, `tools/stream_zip_to_container.py`, `tools/sync_kaggle_metadata.py` and `cli.py` call these loaders. `api/routes/health.py` takes torch from `runtime.load_torch()`.
+- **Cheap Imports Moved to Module Level**: PyYAML, requests, certifi, psutil, `fastapi.HTTPException`, `huggingface_hub.hf_hub_url`, kagglehub, kagglesdk and the internal modules the services, CLI and tools call (`core.presets`, `core.cli_args`, `core.config_schema`, `core.doc_generator`, `tools.*`, `utils.archive`, `api.server`, `formats.base`).
+- **Registry Modules Split to Break Import Cycles**: `make_writer` moved from `formats/base.py` to the new `formats/factory.py`, and the profile parser and presets moved from `degrade/base.py` to the new `degrade/profiles.py`. The writers and kernels import the base modules, so the factories now import them at the top. Pylint's `cyclic-import` findings went from 5 to 0. `formats.make_writer` and `degrade.parse_profile` are unchanged.
+- **`tools/modernize_manifold.py`** re-uploads through `tools.manifold_sync` directly instead of `services.sync_service`, so a tool no longer imports the service layer that imports it.
+- **Dead Code**: `core/common_sync.py` no longer drops `sources/` from `sys.path` or deletes `sys.modules["kaggle"]`; with modules run through `-m`, `sources/kaggle.py` cannot shadow the PyPI package. `sources/hf.py` lost its fallback to the deleted `archive_manager` module.
 
 ### v16.9.32 - Standard-Library Imports Moved to Module Level
 

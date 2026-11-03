@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from core.lazy_imports import load_parquet
+
 
 def parse_parquet(
     pq_path: str | Path,
@@ -16,7 +18,7 @@ def parse_parquet(
         mapping:  canonical-role -> actual-column-name (e.g. "file_name" -> "image")
         cols:     the schema's full column-name list, in declaration order
     """
-    import pyarrow.parquet as pq
+    pq = load_parquet()
 
     path = Path(pq_path)
     schema = pq.read_schema(str(path))

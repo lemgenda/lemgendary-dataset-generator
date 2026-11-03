@@ -16,7 +16,6 @@ from .base import (
     DynamicDegrader,
     composite,
     float_array_to_pil,
-    parse_profile,
     pil_to_float_array,
 )
 from .blur import BoxBlur, DefocusBlur, GaussianBlur, MotionBlur
@@ -26,6 +25,7 @@ from .haze import AtmosphericHaze
 from .jpeg import JPEGCompression
 from .lowlight import LowLight
 from .noise import GaussianNoise, ISOCalibratedNoise, PoissonNoise, SaltPepperNoise
+from .profiles import parse_profile
 from .rain import RainMist, RainStreaks
 
 __all__ = [

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from api.jobs import job_manager
@@ -22,6 +22,7 @@ from api.models import (
 )
 from api.routes.datasets import _resolve_output_root
 from core.cli_args import venv_python
+from core.common_sync import is_kaggle_large_manifold
 
 logger = logging.getLogger("lemgendary.api.routes.kaggle")
 router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
@@ -284,7 +285,6 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         return job
 
     if not req.manifold:
-        from fastapi import HTTPException
         raise HTTPException(status_code=422, detail="Either 'manifold' or 'all_datasets: true' must be provided.")
 
     # Resolve manifold path
@@ -318,9 +318,7 @@ async def update_kaggle_metadata(req: KaggleMetadataRequest) -> JobResponse:
         repo_id = f"lemtreursi/{manifold_dir.name.lower()}"
 
     clean_id = _clean_kaggle_ref(repo_id)
-    from core.common_sync import is_kaggle_large_manifold
     if is_kaggle_large_manifold(clean_id):
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=f"Refusing to update metadata for legacy *large manifold: {clean_id}")
 
     cmd = [

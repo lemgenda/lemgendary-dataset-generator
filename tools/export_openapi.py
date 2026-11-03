@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from api.server import create_app
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OPENAPI_FILE = PROJECT_ROOT / "openapi.json"
 
@@ -29,8 +31,6 @@ def render_openapi(schema: dict[str, Any]) -> str:
 
 def build_schema() -> dict[str, Any]:
     """Build the OpenAPI schema from the live app object."""
-    from api.server import create_app
-
     return create_app().openapi()
 
 

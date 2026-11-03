@@ -11,6 +11,7 @@ import psutil
 from api.jobs import job_manager
 from api.models import FullHealthResponse, HardwareInfo, HealthResponse
 from core.cli_args import __version__
+from runtime.environment import load_torch
 
 router = APIRouter(prefix="/health", tags=["Health"])
 
@@ -19,7 +20,7 @@ _START_TIME = time.time()
 
 def get_hardware_info() -> HardwareInfo:
     """Probe local system CPU, memory, and CUDA acceleration hardware."""
-    import torch
+    torch = load_torch()
     vm = psutil.virtual_memory()
     cuda_avail = torch.cuda.is_available()
     device_name = torch.cuda.get_device_name(0) if cuda_avail else "CPU"

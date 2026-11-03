@@ -10,10 +10,13 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download, list_repo_files, login, snapshot_download
+import requests
+from huggingface_hub import hf_hub_download, hf_hub_url, list_repo_files, login, snapshot_download
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
 from tqdm import tqdm
+
+from utils.archive import smart_extract
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +97,6 @@ def main():
 
                 # High-Visibility Download via requests + tqdm (Resumable)
                 try:
-                    import requests
-                    from huggingface_hub import hf_hub_url
-
                     url = hf_hub_url(repo_id=repo_id, filename=t_file, repo_type=args.repo_type)
                     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
@@ -132,10 +132,6 @@ def main():
 
                     # Auto-Extract to dedicated_dir
                     if t_file.endswith(('.tgz', '.tar.gz', '.zip')):
-                        try:
-                            from utils.archive import smart_extract
-                        except ImportError:
-                            from archive_manager import smart_extract
                         smart_extract(path, dedicated_dir, delete_after=True)
                 except _DOWNLOAD_ERRORS as e:
                     logger.warning("Direct HTTP download of %s failed; falling back to hf_hub_download: %s", t_file, e)
@@ -144,10 +140,6 @@ def main():
 
         # 2026 Resilience: Auto-Extract Sweep for Snapshot Downloads
         print(f"[SWEEP] Scanning {args.output_dir} for unextracted archives...")
-        try:
-            from utils.archive import smart_extract
-        except ImportError:
-            from archive_manager import smart_extract
         for root, _dirs, files in os.walk(args.output_dir):
             for f in files:
                 f_path = Path(root) / f

@@ -1,7 +1,11 @@
 import os
 from typing import Any, cast
+
+import numpy as np
 import torch
 from ultralytics import YOLO
+
+from core.lazy_imports import load_mediapipe
 
 class AutoLabeler:
     """
@@ -60,10 +64,7 @@ class AutoLabeler:
         return annotations
 
     def _predict_face_landmarks(self, img_pil):
-        import numpy as np
-        import mediapipe as mp
-        from mediapipe.tasks import python
-        from mediapipe.tasks.python import vision
+        mp, python, vision = load_mediapipe()
 
         # Initialize detector lazily
         if self.face_detector is None:

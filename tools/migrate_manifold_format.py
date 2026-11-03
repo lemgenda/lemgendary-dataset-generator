@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from audit.hardlinks import audit_hardlinks
-from formats.base import make_writer, parse_also_format
+from formats.base import parse_also_format
+from formats.factory import make_writer
 from formats.directory import DirectorySampleSource, purge_loose_layout
 
 

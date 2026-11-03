@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+from tools.sync_kaggle_metadata import sync_metadata
 from core.common_sync import (
     setup_kaggle_auth,
     track_kaggle_dataset_status,
@@ -108,7 +109,6 @@ def main():
             sys.exit(1)
 
     elif args.action == "metadata":
-        from tools.sync_kaggle_metadata import sync_metadata
         code = sync_metadata(
             repo_id=None if args.all_datasets else clean_repo_id,
             metadata_dir=args.output_dir or None,
