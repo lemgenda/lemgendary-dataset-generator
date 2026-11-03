@@ -9,6 +9,8 @@ import the base protocol.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .base import CompositeProfile, DegradationProfile, composite
 from .blur import DefocusBlur, GaussianBlur, MotionBlur
 from .downsample import Downsample
@@ -75,6 +77,33 @@ def _build_preset(canonical: str, scale: float) -> CompositeProfile | None:
     return presets.get(canonical)
 
 
+# Component-wise token table: (prefix, exact alias, factory(scale)). Matched in
+# order; a token matches when it starts with the prefix or equals the alias.
+_TOKEN_FACTORIES: tuple[
+    tuple[str, str | None, Callable[[float], DegradationProfile]], ...
+] = (
+    ("blur.gauss", "blur", lambda s: GaussianBlur(sigma=1.8 * s)),
+    ("blur.motion", None, lambda s: MotionBlur(kernel_size=max(3, int(round(13 * s))))),
+    ("blur.defocus", None, lambda s: DefocusBlur(radius=max(1, int(round(3 * s))))),
+    ("noise.gauss", "noise", lambda s: GaussianNoise(sigma=0.04 * s)),
+    ("noise.iso", None, lambda s: ISOCalibratedNoise(iso_level=int(round(1600 * s)))),
+    ("jpeg", None, lambda s: JPEGCompression(quality=max(10, min(95, int(round(90 - 40 * s)))))),
+    ("haze", None, lambda s: AtmosphericHaze(beta=0.5 * s)),
+    ("rain", None, lambda s: RainStreaks(density=0.015 * s)),
+    ("lowlight", None, lambda s: LowLight(gamma=1.0 + 1.0 * s)),
+    ("downsample", None, lambda s: Downsample(scale_factor=0.5)),
+    ("film", None, lambda s: FilmGrain(intensity=0.05 * s)),
+)
+
+
+def _profile_from_token(token: str, scale: float) -> DegradationProfile:
+    """Build one kernel from a component token, raising on unknown tokens."""
+    for prefix, alias, factory in _TOKEN_FACTORIES:
+        if token.startswith(prefix) or token == alias:
+            return factory(scale)
+    raise ValueError(f"Unknown degradation profile token or preset: {token!r}")
+
+
 def parse_profile(expr: str, intensity: str = "medium") -> CompositeProfile:
     """Parse a profile expression or preset alias into a CompositeProfile.
 
@@ -95,32 +124,7 @@ def parse_profile(expr: str, intensity: str = "medium") -> CompositeProfile:
         return preset
 
     # Component-wise parsing fallback e.g. "blur.gauss+noise.gauss+jpeg"
-    profiles: list[DegradationProfile] = []
-    for token in canonical.split("+"):
-        if token.startswith("blur.gauss") or token == "blur":
-            profiles.append(GaussianBlur(sigma=1.8 * scale))
-        elif token.startswith("blur.motion"):
-            profiles.append(MotionBlur(kernel_size=max(3, int(round(13 * scale)))))
-        elif token.startswith("blur.defocus"):
-            profiles.append(DefocusBlur(radius=max(1, int(round(3 * scale)))))
-        elif token.startswith("noise.gauss") or token == "noise":
-            profiles.append(GaussianNoise(sigma=0.04 * scale))
-        elif token.startswith("noise.iso"):
-            profiles.append(ISOCalibratedNoise(iso_level=int(round(1600 * scale))))
-        elif token.startswith("jpeg"):
-            q = max(10, min(95, int(round(90 - 40 * scale))))
-            profiles.append(JPEGCompression(quality=q))
-        elif token.startswith("haze"):
-            profiles.append(AtmosphericHaze(beta=0.5 * scale))
-        elif token.startswith("rain"):
-            profiles.append(RainStreaks(density=0.015 * scale))
-        elif token.startswith("lowlight"):
-            profiles.append(LowLight(gamma=1.0 + 1.0 * scale))
-        elif token.startswith("downsample"):
-            profiles.append(Downsample(scale_factor=0.5))
-        elif token.startswith("film"):
-            profiles.append(FilmGrain(intensity=0.05 * scale))
-        else:
-            raise ValueError(f"Unknown degradation profile token or preset: {token!r}")
-
+    profiles: list[DegradationProfile] = [
+        _profile_from_token(token, scale) for token in canonical.split("+")
+    ]
     return CompositeProfile(profiles=profiles, name=expr)

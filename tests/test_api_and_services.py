@@ -9,6 +9,7 @@ GenerationService, MigrationService, SyncService).
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from json import dumps, loads
 from pathlib import Path
@@ -48,6 +49,61 @@ class _AsgiResponse:
         return self.body_bytes.decode("utf-8", errors="replace")
 
 
+def _http_scope(method: str, path: str, extra_headers: list[tuple[bytes, bytes]]) -> dict[str, Any]:
+    """Build the ASGI HTTP scope for one in-process request."""
+    parsed = urlsplit(path)
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method.upper(),
+        "scheme": "http",
+        "path": parsed.path,
+        "raw_path": parsed.path.encode("utf-8"),
+        "query_string": parsed.query.encode("utf-8"),
+        "headers": [(b"host", b"testserver"), *extra_headers],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+
+
+def _single_body_receiver(body_bytes: bytes) -> Callable[[], Awaitable[dict[str, Any]]]:
+    """Return an ASGI ``receive`` that yields the body once, then disconnects."""
+    sent = False
+
+    async def receive() -> dict[str, Any]:
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body_bytes, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
+class _ResponseCollector:
+    """ASGI ``send`` sink that accumulates status, headers and body."""
+
+    def __init__(self) -> None:
+        self.status = 500
+        self.headers: list[tuple[bytes, bytes]] = []
+        self.body = bytearray()
+
+    async def send(self, msg: dict[str, Any]) -> None:
+        """Record one ASGI response message."""
+        if msg["type"] == "http.response.start":
+            self.status = int(msg["status"])
+            self.headers = list(msg.get("headers", []))
+        elif msg["type"] == "http.response.body":
+            self.body.extend(msg.get("body", b""))
+
+    def response(self) -> _AsgiResponse:
+        """Return the collected response."""
+        return _AsgiResponse(
+            status_code=self.status, body_bytes=bytes(self.body), headers=self.headers
+        )
+
+
 class InProcessAsgiClient:
     """Zero-socket in-process ASGI client compatible with Windows sandbox environments."""
 
@@ -62,51 +118,17 @@ class InProcessAsgiClient:
         headers: dict[str, str] | None = None,
     ) -> _AsgiResponse:
         """Send one request through the ASGI app and collect the response."""
-        parsed = urlsplit(path)
-        raw_headers: list[tuple[bytes, bytes]] = [(b"host", b"testserver")]
         body_bytes = b""
+        extra: list[tuple[bytes, bytes]] = []
         if json_body is not None:
             body_bytes = dumps(json_body).encode("utf-8")
-            raw_headers.append((b"content-type", b"application/json"))
+            extra.append((b"content-type", b"application/json"))
         for k, v in (headers or {}).items():
-            raw_headers.append((k.lower().encode("utf-8"), v.encode("utf-8")))
-
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": method.upper(),
-            "scheme": "http",
-            "path": parsed.path,
-            "raw_path": parsed.path.encode("utf-8"),
-            "query_string": parsed.query.encode("utf-8"),
-            "headers": raw_headers,
-            "client": ("127.0.0.1", 12345),
-            "server": ("testserver", 80),
-        }
-
-        sent = False
-
-        async def receive() -> dict[str, Any]:
-            nonlocal sent
-            if not sent:
-                sent = True
-                return {"type": "http.request", "body": body_bytes, "more_body": False}
-            return {"type": "http.disconnect"}
-
-        out_status = 500
-        out_headers: list[tuple[bytes, bytes]] = []
-        out_body = bytearray()
-
-        async def send(msg: dict[str, Any]) -> None:
-            nonlocal out_status, out_headers
-            if msg["type"] == "http.response.start":
-                out_status = int(msg["status"])
-                out_headers = list(msg.get("headers", []))
-            elif msg["type"] == "http.response.body":
-                out_body.extend(msg.get("body", b""))
-
-        coro = self._app(scope, receive, send)
+            extra.append((k.lower().encode("utf-8"), v.encode("utf-8")))
+        collector = _ResponseCollector()
+        coro = self._app(
+            _http_scope(method, path, extra), _single_body_receiver(body_bytes), collector.send
+        )
         # Drive the ASGI coroutine to completion; StopIteration signals it finished.
         finished = False
         while not finished:
@@ -114,12 +136,7 @@ class InProcessAsgiClient:
                 coro.send(None)
             except StopIteration:
                 finished = True
-
-        return _AsgiResponse(
-            status_code=out_status,
-            body_bytes=bytes(out_body),
-            headers=out_headers,
-        )
+        return collector.response()
 
     def get(self, path: str, headers: dict[str, str] | None = None) -> _AsgiResponse:
         """Send a GET request."""

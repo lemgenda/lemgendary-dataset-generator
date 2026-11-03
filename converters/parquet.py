@@ -7,6 +7,46 @@ from typing import Any
 
 from core.lazy_imports import load_parquet
 
+# Canonical role -> candidate column names; the first present column wins.
+_FIRST_MATCH_ROLES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("file_name", ("image", "pixel_values")),
+    ("url", ("url",)),
+    ("key", ("key",)),
+    ("class", ("label",)),
+)
+
+# Restoration targets: later candidates override earlier ones when present.
+_TARGET_COLUMNS: tuple[str, ...] = ("target", "sharp", "ground_truth")
+
+# Bbox/seg roles -> substrings matched against lowercased column names; the
+# last matching column wins.
+_SUBSTRING_ROLES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("xmin", ("xmin", "x1")),
+    ("ymin", ("ymin", "y1")),
+    ("width", ("width", "w")),
+    ("height", ("height", "h")),
+)
+
+
+def _map_columns(cols: list[str]) -> dict[str, Any]:
+    """Build the canonical-role -> column-name mapping for a schema."""
+    mapping: dict[str, Any] = {}
+    for role, candidates in _FIRST_MATCH_ROLES:
+        found = next((c for c in candidates if c in cols), None)
+        if found is not None:
+            mapping[role] = found
+
+    for target in _TARGET_COLUMNS:
+        if target in cols:
+            mapping["target"] = target
+
+    for c in cols:
+        cl = c.lower()
+        for role, needles in _SUBSTRING_ROLES:
+            if any(x in cl for x in needles):
+                mapping[role] = c
+    return mapping
+
 
 def parse_parquet(
     pq_path: str | Path,
@@ -24,36 +64,4 @@ def parse_parquet(
     schema = pq.read_schema(str(path))
     cols: list[str] = list(schema.names)
 
-    mapping: dict[str, Any] = {}
-    if "image" in cols:
-        mapping["file_name"] = "image"
-    elif "pixel_values" in cols:
-        mapping["file_name"] = "pixel_values"
-    if "url" in cols:
-        mapping["url"] = "url"
-    if "key" in cols:
-        mapping["key"] = "key"
-    if "label" in cols:
-        mapping["class"] = "label"
-
-    # Restoration targets
-    if "target" in cols:
-        mapping["target"] = "target"
-    if "sharp" in cols:
-        mapping["target"] = "sharp"
-    if "ground_truth" in cols:
-        mapping["target"] = "ground_truth"
-
-    # Additional mappings for bbox/seg if needed
-    for c in cols:
-        cl = c.lower()
-        if any(x in cl for x in ["xmin", "x1"]):
-            mapping["xmin"] = c
-        if any(x in cl for x in ["ymin", "y1"]):
-            mapping["ymin"] = c
-        if any(x in cl for x in ["width", "w"]):
-            mapping["width"] = c
-        if any(x in cl for x in ["height", "h"]):
-            mapping["height"] = c
-
-    return path, mapping, cols
+    return path, _map_columns(cols), cols

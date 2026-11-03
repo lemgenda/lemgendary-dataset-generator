@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.39-STABLE` |
+| **Version** | `v16.9.40-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,24 @@
 ---
 
 ## Changelog
+
+### v16.9.40 - Converter, Generator and Degrade Complexity Cleanup
+
+- **No `too-many-*` Findings Left in Small Modules**: the parquet, xml and
+  yolo converters, the haze filter, the profile parser, the directory sample
+  source, the label and prompt generators, `tools/migrate_shards_to_data.py`
+  and `tools/regenerate_manifolds_md.py` were refactored (10 findings to 0).
+  Column mapping, profile tokens and storage detection now use lookup tables;
+  per-object, per-line, depth-map and optional-file reads are small helpers.
+  Outputs match the previous version on the same inputs.
+- **Generator Model Handles**: the new `generators/model_handles.py`
+  (`ModelHandles`) validates the `captioner`/`clip`/`labeler`/`sentry`
+  keywords for `LabelGenerator` and `PromptGenerator`. Prompt style text is
+  grouped in `PromptStyle`. Existing keyword calls work unchanged, and an
+  unknown keyword still raises `TypeError`.
+- **Test ASGI Client**: `InProcessAsgiClient.request` in
+  `tests/test_api_and_services.py` builds the scope, receiver and response
+  collector through small helpers instead of 19 locals.
 
 ### v16.9.39 - Markdownlint Config Tracked in the Repo
 

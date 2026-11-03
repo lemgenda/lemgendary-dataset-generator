@@ -22,6 +22,7 @@ from typing import Any
 from PIL import Image
 
 from .base import GenerationResult, Generator
+from .model_handles import ModelHandles
 
 
 _VALID_STRATEGIES: frozenset[str] = frozenset({
@@ -40,22 +41,26 @@ class LabelGenerator(Generator):
         self,
         strategy: str,
         *,
-        captioner: Any = None,
-        clip: Any = None,
-        labeler: Any = None,
-        sentry: Any = None,
         classes: list[str] | None = None,
+        **models: Any,
     ) -> None:
+        """Bind a strategy to its model wrappers.
+
+        ``models`` accepts the keywords ``captioner``, ``clip``, ``labeler``
+        and ``sentry`` (see ``ModelHandles``); any other keyword raises
+        ``TypeError``.
+        """
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"Unknown label strategy: {strategy!r}. "
                 f"Valid: {sorted(_VALID_STRATEGIES)}"
             )
+        handles = ModelHandles.from_kwargs(type(self).__name__, models)
         self.strategy = strategy
-        self._captioner = captioner
-        self._clip = clip
-        self._labeler = labeler
-        self._sentry = sentry
+        self._captioner = handles.captioner
+        self._clip = handles.clip
+        self._labeler = handles.labeler
+        self._sentry = handles.sentry
         self._classes = classes or []
 
     def generate(

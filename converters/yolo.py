@@ -9,6 +9,22 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _parse_line(line: str, img_w: int, img_h: int) -> dict[str, Any] | None:
+    """Convert one YOLO label line to an annotation dict, or None if too short."""
+    parts = line.strip().split()
+    if len(parts) < 5:
+        return None
+    cx, cy, nw, nh = map(float, parts[1:5])
+    w = nw * img_w
+    h = nh * img_h
+    xmin = (cx * img_w) - (w / 2.0)
+    ymin = (cy * img_h) - (h / 2.0)
+    item: dict[str, Any] = {"class": parts[0], "bbox": [xmin, ymin, w, h]}
+    if len(parts) > 5:
+        item["keypoints"] = list(map(float, parts[5:]))
+    return item
+
+
 def parse_yolo(
     txt_path: str | Path,
     img_w: int,
@@ -27,17 +43,8 @@ def parse_yolo(
     try:
         with open(txt_path, "r", encoding="utf-8") as f:
             for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 5:
-                    cls_id = parts[0]
-                    cx, cy, nw, nh = map(float, parts[1:5])
-                    w = nw * img_w
-                    h = nh * img_h
-                    xmin = (cx * img_w) - (w / 2.0)
-                    ymin = (cy * img_h) - (h / 2.0)
-                    item: dict[str, Any] = {"class": cls_id, "bbox": [xmin, ymin, w, h]}
-                    if len(parts) > 5:
-                        item["keypoints"] = list(map(float, parts[5:]))
+                item = _parse_line(line, img_w, img_h)
+                if item is not None:
                     annotations.append(item)
     except OSError as exc:
         # Missing / unreadable label file → log diagnostic and return empty list.

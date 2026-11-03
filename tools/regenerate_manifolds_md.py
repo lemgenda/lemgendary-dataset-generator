@@ -156,19 +156,26 @@ def _format_domain(task: str) -> str:
     return "Image Manipulation & Restoration"
 
 
+# Storage-layout probes, checked in order: (kind, name, label). "glob" matches
+# any file for the pattern in the manifold root; "dir" means the sub-path exists.
+_STORAGE_PROBES: tuple[tuple[str, str, str], ...] = (
+    ("glob", "*.parquet", "Parquet (Annual Shards)"),
+    ("dir", "mds", "MDS + Directory"),
+    ("dir", "litdata", "LitData + Directory"),
+    ("dir", "shards", "WebDataset + Directory"),
+    ("glob", "*.jsonl", "JSONL (Instruction Corpus)"),
+    ("dir", "targets", "Directory Pair (images/, targets/)"),
+)
+
+
 def _format_storage(manifold_path: Path) -> str:
-    if list(manifold_path.glob("*.parquet")):
-        return "Parquet (Annual Shards)"
-    if (manifold_path / "mds").exists():
-        return "MDS + Directory"
-    if (manifold_path / "litdata").exists():
-        return "LitData + Directory"
-    if (manifold_path / "shards").exists():
-        return "WebDataset + Directory"
-    if list(manifold_path.glob("*.jsonl")):
-        return "JSONL (Instruction Corpus)"
-    if (manifold_path / "targets").exists():
-        return "Directory Pair (images/, targets/)"
+    for kind, name, label in _STORAGE_PROBES:
+        if kind == "glob":
+            hit = any(True for _ in manifold_path.glob(name))
+        else:
+            hit = (manifold_path / name).exists()
+        if hit:
+            return label
     return "Directory Pair (images/, labels/)"
 
 
