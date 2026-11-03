@@ -21,7 +21,6 @@ from .lowlight import LowLight
 from .noise import GaussianNoise, ISOCalibratedNoise
 from .rain import RainStreaks
 
-
 # ─── Profile Parser & Presets ───────────────────────────────────────────────
 _INTENSITY_SCALES: dict[str, float] = {
     "low": 0.5,
@@ -32,35 +31,35 @@ _INTENSITY_SCALES: dict[str, float] = {
 
 def _build_preset(canonical: str, scale: float) -> CompositeProfile | None:
     """Construct preset profile by canonical alias name."""
-    k_blur = int(round(15 * scale))
+    k_blur = round(15 * scale)
     k_blur = k_blur + 1 if k_blur % 2 == 0 else k_blur
-    k_gauss = int(round(9 * scale))
+    k_gauss = round(9 * scale)
     k_gauss = k_gauss + 1 if k_gauss % 2 == 0 else k_gauss
 
     presets: dict[str, CompositeProfile] = {
         "motion-blur+iso-noise": composite(
             MotionBlur(kernel_size=max(3, k_blur), angle=45.0),
-            ISOCalibratedNoise(iso_level=max(100, int(round(1600 * scale)))),
+            ISOCalibratedNoise(iso_level=max(100, round(1600 * scale))),
             name="motion-blur+iso-noise",
         ),
         "lowlight-noise": composite(
             LowLight(gamma=1.0 + (1.2 * scale), noise_scale=0.03 * scale),
-            ISOCalibratedNoise(iso_level=int(round(3200 * scale))),
+            ISOCalibratedNoise(iso_level=round(3200 * scale)),
             name="lowlight-noise",
         ),
         "rainy-haze": composite(
             AtmosphericHaze(beta=0.6 * scale),
-            RainStreaks(density=0.015 * scale, length=int(round(25 * scale))),
+            RainStreaks(density=0.015 * scale, length=round(25 * scale)),
             name="rainy-haze",
         ),
         "vintage-film": composite(
             FilmGrain(intensity=0.06 * scale),
-            FilmScratches(num_scratches=int(round(4 * scale))),
+            FilmScratches(num_scratches=round(4 * scale)),
             ColorFade(saturation=max(0.2, 1.0 - 0.4 * scale)),
             name="vintage-film",
         ),
         "compression-artifacts": composite(
-            JPEGCompression(quality=max(10, min(95, int(round(90 - 45 * scale))))),
+            JPEGCompression(quality=max(10, min(95, round(90 - 45 * scale)))),
             name="compression-artifacts",
         ),
         "super-resolution-x4": composite(
@@ -69,8 +68,8 @@ def _build_preset(canonical: str, scale: float) -> CompositeProfile | None:
         ),
         "full-spectrum-restoration": composite(
             GaussianBlur(sigma=1.5 * scale, kernel_size=max(3, k_gauss)),
-            ISOCalibratedNoise(iso_level=int(round(1200 * scale))),
-            JPEGCompression(quality=max(15, min(90, int(round(85 - 35 * scale))))),
+            ISOCalibratedNoise(iso_level=round(1200 * scale)),
+            JPEGCompression(quality=max(15, min(90, round(85 - 35 * scale)))),
             name="full-spectrum-restoration",
         ),
     }
@@ -83,11 +82,11 @@ _TOKEN_FACTORIES: tuple[
     tuple[str, str | None, Callable[[float], DegradationProfile]], ...
 ] = (
     ("blur.gauss", "blur", lambda s: GaussianBlur(sigma=1.8 * s)),
-    ("blur.motion", None, lambda s: MotionBlur(kernel_size=max(3, int(round(13 * s))))),
-    ("blur.defocus", None, lambda s: DefocusBlur(radius=max(1, int(round(3 * s))))),
+    ("blur.motion", None, lambda s: MotionBlur(kernel_size=max(3, round(13 * s)))),
+    ("blur.defocus", None, lambda s: DefocusBlur(radius=max(1, round(3 * s)))),
     ("noise.gauss", "noise", lambda s: GaussianNoise(sigma=0.04 * s)),
-    ("noise.iso", None, lambda s: ISOCalibratedNoise(iso_level=int(round(1600 * s)))),
-    ("jpeg", None, lambda s: JPEGCompression(quality=max(10, min(95, int(round(90 - 40 * s)))))),
+    ("noise.iso", None, lambda s: ISOCalibratedNoise(iso_level=round(1600 * s))),
+    ("jpeg", None, lambda s: JPEGCompression(quality=max(10, min(95, round(90 - 40 * s))))),
     ("haze", None, lambda s: AtmosphericHaze(beta=0.5 * s)),
     ("rain", None, lambda s: RainStreaks(density=0.015 * s)),
     ("lowlight", None, lambda s: LowLight(gamma=1.0 + 1.0 * s)),

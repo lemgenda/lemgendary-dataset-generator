@@ -14,8 +14,8 @@ Phase 4 of the 2026 modernization roadmap.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 from webdataset.writer import ShardWriter as WdsShardWriter
@@ -35,8 +35,7 @@ class WebDatasetWriter(Writer):
         self._out_dir.mkdir(parents=True, exist_ok=True)
         max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
         shard_ext = getattr(policy, "shard_extension", "data")
-        if shard_ext.startswith("."):
-            shard_ext = shard_ext[1:]
+        shard_ext = shard_ext.removeprefix(".")
         shard_path = (self._out_dir / f"shard-%05d.{shard_ext}").resolve()
         pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self._sink = WdsShardWriter(
@@ -85,7 +84,7 @@ class ShardWriter:
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        shard_ext = extension[1:] if extension.startswith(".") else extension
+        shard_ext = extension.removeprefix(".")
         shard_path = (self.output_dir / f"{prefix}-%05d.{shard_ext}").resolve()
         pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self.sink: Any = WdsShardWriter(

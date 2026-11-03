@@ -10,7 +10,7 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from api.job_stream import (
     ClaimedJob,
@@ -37,7 +37,7 @@ class JobManager:
     def __init__(self, db_path: Path = _DB_PATH, logs_dir: Path = _LOGS_DIR) -> None:
         self.db_path = db_path
         self.logs_dir = logs_dir
-        self.active_processes: Dict[str, subprocess.Popen[str]] = {}
+        self.active_processes: dict[str, subprocess.Popen[str]] = {}
         self._lock = threading.Lock()
         self._init_storage()
 
@@ -95,8 +95,8 @@ class JobManager:
     def create_job(
         self,
         job_type: JobType,
-        command: List[str],
-        parameters: Dict[str, Any],
+        command: list[str],
+        parameters: dict[str, Any],
     ) -> JobResponse:
         """Register a new job in pending state and return the job descriptor."""
         job_id = str(uuid.uuid4())
@@ -147,7 +147,7 @@ class JobManager:
         )
         thread.start()
 
-    def _claim_job(self, job_id: str) -> Optional[ClaimedJob]:
+    def _claim_job(self, job_id: str) -> ClaimedJob | None:
         """Mark a registered job RUNNING and return what is needed to execute it."""
         with self._get_connection() as conn:
             row = conn.execute(
@@ -190,7 +190,7 @@ class JobManager:
 
     def _run_process(
         self, job_id: str, claimed: ClaimedJob, loop: asyncio.AbstractEventLoop
-    ) -> tuple[int, Optional[str]]:
+    ) -> tuple[int, str | None]:
         """Run the job command, tee its output to the log file and the WebSocket streams."""
         try:
             with (
@@ -224,7 +224,7 @@ class JobManager:
             # SubprocessError), stdout decoding (ValueError) and broadcasting on a
             # closed event loop (RuntimeError) become a FAILED job status instead
             # of killing the runner thread and leaving the job stuck in RUNNING.
-            logger.exception("Unexpected error executing job %s: %s", job_id, exc)
+            logger.exception("Unexpected error executing job %s", job_id)
             return 1, str(exc)
         else:
             error_message = (
@@ -237,7 +237,7 @@ class JobManager:
                     del self.active_processes[job_id]
 
     def _finalize_job(
-        self, job_id: str, exit_code: int, error_message: Optional[str]
+        self, job_id: str, exit_code: int, error_message: str | None
     ) -> tuple[JobState, str]:
         """Persist the terminal state (keeping CANCELLED) and return it with its timestamp."""
         completed_at = utc_now_iso()
@@ -291,7 +291,7 @@ class JobManager:
             conn.commit()
             return conn.total_changes > 0
 
-    def get_job(self, job_id: str) -> Optional[JobResponse]:
+    def get_job(self, job_id: str) -> JobResponse | None:
         """Fetch single job record by ID."""
         with self._get_connection() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -303,12 +303,12 @@ class JobManager:
         self,
         limit: int = 50,
         offset: int = 0,
-        state: Optional[JobState] = None,
-        job_type: Optional[JobType] = None,
-    ) -> List[JobResponse]:
+        state: JobState | None = None,
+        job_type: JobType | None = None,
+    ) -> list[JobResponse]:
         """Fetch paginated job records with optional filtering."""
         query = "SELECT * FROM jobs WHERE 1=1"
-        params: List[Any] = []
+        params: list[Any] = []
 
         if state:
             query += " AND state = ?"
@@ -339,7 +339,7 @@ class JobManager:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM jobs").fetchone()
             return int(row["cnt"]) if row else 0
 
-    def get_log_content(self, job_id: str, tail_lines: Optional[int] = None) -> str:
+    def get_log_content(self, job_id: str, tail_lines: int | None = None) -> str:
         """Read log file content from disk."""
         log_file = self.logs_dir / f"{job_id}.log"
         if not log_file.exists():
@@ -355,7 +355,7 @@ class JobManager:
             return ""
 
     def _row_to_response(self, row: sqlite3.Row) -> JobResponse:
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         try:
             params = json.loads(row["parameters"])
         except (TypeError, ValueError) as exc:
@@ -381,8 +381,8 @@ class JobManager:
 def submit_job(
     jobs: JobManager,
     job_type: JobType,
-    command: List[str],
-    parameters: Dict[str, Any],
+    command: list[str],
+    parameters: dict[str, Any],
 ) -> JobResponse:
     """Register a job on ``jobs`` and start it on the running event loop.
 

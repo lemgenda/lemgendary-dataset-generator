@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 _MAX_REPAIR_RETRIES = 5
 
+# The KaggleApi method that uploads a dataset header image; private, so it is
+# looked up by name in exactly one place (_kaggle_upload_header_image).
+_KAGGLE_HEADER_UPLOAD_METHOD = "_upload_dataset_image_file"
+
 
 def _kaggle_upload_header_image(api: Any, meta_folder: Path, image_name: str) -> Any:
     """Adapter over the Kaggle client's private ``_upload_dataset_image_file``.
@@ -43,7 +47,7 @@ def _kaggle_upload_header_image(api: Any, meta_folder: Path, image_name: str) ->
     place that reaches into the private method; a client upgrade that renames
     it only needs this function updated.
     """
-    upload = getattr(api, "_upload_dataset_image_file")
+    upload = getattr(api, _KAGGLE_HEADER_UPLOAD_METHOD)
     return upload(
         metadata_file_path=str(meta_folder),
         relative_image_file_path=image_name,

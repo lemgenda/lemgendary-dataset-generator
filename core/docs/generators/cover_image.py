@@ -8,15 +8,19 @@ required for Kaggle dataset pages and visual previews across all manifolds.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
 from core.docs.context import ManifoldContext
-from core.docs.generators.common import ensure_context, manifold_parser, run_manifold_cli
+from core.docs.generators.common import (
+    ensure_context,
+    manifold_parser,
+    run_manifold_cli,
+)
 
 logger = logging.getLogger(__name__)
 

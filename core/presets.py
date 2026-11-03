@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
@@ -24,6 +25,10 @@ if not DEFAULT_PRESETS_FILE.exists():
     DEFAULT_PRESETS_FILE = Path(__file__).resolve().parent / "presets.yaml"
 
 
+class PresetsFileError(ValueError):
+    """``presets.yaml`` is unreadable or not shaped as a presets document."""
+
+
 class CompilerPreset(BaseModel):
     """Structured configuration for a compiler preset profile."""
 
@@ -32,14 +37,14 @@ class CompilerPreset(BaseModel):
     description: str = Field(..., description="Detailed explanation of profile rationale")
     image_format: str = Field("webp", description="Target image format (webp, jpeg, png)")
     image_quality: int = Field(92, ge=1, le=100, description="Target image quality (1-100)")
-    target_quality: Optional[int] = Field(
+    target_quality: int | None = Field(
         95, ge=1, le=100, description="Target quality for ground truth pairs"
     )
-    mask_format: Optional[str] = Field("webp-lossless", description="Target mask format")
-    min_resolution: Optional[int] = Field(
+    mask_format: str | None = Field("webp-lossless", description="Target mask format")
+    min_resolution: int | None = Field(
         256, ge=64, description="Minimum resolution floor in pixels"
     )
-    resampling: Optional[str] = Field(
+    resampling: str | None = Field(
         "lanczos", description="Resampling filter (lanczos, bilinear, bicubic)"
     )
     vetting_enabled: bool = Field(
@@ -49,11 +54,11 @@ class CompilerPreset(BaseModel):
     hardlink_gate: bool = Field(
         True, description="Whether NTFS hardlinking is enforced for identical targets"
     )
-    containers: List[str] = Field(
+    containers: list[str] = Field(
         default_factory=list, description="Target container formats (parquet, mds, litdata)"
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert preset model to dictionary representation."""
         return self.model_dump()
 
@@ -70,15 +75,15 @@ def _read_presets_document(config_path: Path | None = None) -> tuple[Path, dict[
         raw_data = yaml.safe_load(raw_text)
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         _log.error("Failed to parse YAML from %s: %s", target_path, exc)
-        raise ValueError(f"Invalid YAML in {target_path}: {exc}") from exc
+        raise PresetsFileError(f"Invalid YAML in {target_path}: {exc}") from exc
 
     if not isinstance(raw_data, dict) or "presets" not in raw_data:
         _log.error("Missing 'presets' root key in %s", target_path)
-        raise ValueError(f"Presets file {target_path} must contain a 'presets' root key")
+        raise PresetsFileError(f"Presets file {target_path} must contain a 'presets' root key")
     return target_path, raw_data
 
 
-def load_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset]:
+def load_presets(config_path: Path | None = None) -> dict[str, CompilerPreset]:
     """Load and parse compiler presets from YAML file.
 
     Args:
@@ -92,10 +97,10 @@ def load_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset
         ValueError: If the file format or schema validation fails.
     """
     target_path, raw_data = _read_presets_document(config_path)
-    loaded: Dict[str, CompilerPreset] = {}
+    loaded: dict[str, CompilerPreset] = {}
     presets_dict = raw_data["presets"]
     if not isinstance(presets_dict, dict):
-        raise ValueError("The 'presets' key must be a dictionary of preset configurations")
+        raise PresetsFileError("The 'presets' key must be a dictionary of preset configurations")
 
     for key, data in presets_dict.items():
         if not isinstance(data, dict):
@@ -112,7 +117,7 @@ def load_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset
     return loaded
 
 
-def get_preset(name: str, config_path: Optional[Path] = None) -> CompilerPreset:
+def get_preset(name: str, config_path: Path | None = None) -> CompilerPreset:
     """Retrieve a specific compiler preset by identifier.
 
     Args:
@@ -154,12 +159,12 @@ def get_default_preset_name(config_path: Path | None = None) -> str:
     return default_name
 
 
-def list_presets(config_path: Optional[Path] = None) -> Dict[str, CompilerPreset]:
+def list_presets(config_path: Path | None = None) -> dict[str, CompilerPreset]:
     """Retrieve all available compiler presets."""
     return load_presets(config_path)
 
 
-def validate_preset(preset_data: Dict[str, Any]) -> bool:
+def validate_preset(preset_data: dict[str, Any]) -> bool:
     """Validate raw dictionary data against the CompilerPreset schema without raising."""
     try:
         CompilerPreset.model_validate(preset_data)

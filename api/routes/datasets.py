@@ -4,9 +4,10 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException, status
+from typing import Any
+
 import yaml
+from fastapi import APIRouter, HTTPException, status
 
 from api.dataset_stats import as_count, read_yaml_mapping
 from api.models import DatasetInfoResponse, DatasetListResponse
@@ -45,9 +46,9 @@ def _read_list_meta(info_file: Path) -> tuple[str, int]:
     return str(meta.get("task", "vision")), as_count(meta.get("total_samples"))
 
 
-def _scan_manifold_formats(entry: Path) -> tuple[int, List[str]]:
+def _scan_manifold_formats(entry: Path) -> tuple[int, list[str]]:
     """Root-level byte size and the container formats present in a manifold folder."""
-    formats: List[str] = ["directory"]
+    formats: list[str] = ["directory"]
     size_bytes = 0
     has_parquet = False
     has_jsonl = False
@@ -107,13 +108,13 @@ def _dataset_info(entry: Path) -> DatasetInfoResponse:
 
 
 @router.get("", response_model=DatasetListResponse)
-async def list_datasets() -> DatasetListResponse:
+def list_datasets() -> DatasetListResponse:
     """List compiled dataset manifolds found in output storage root."""
     root = _resolve_output_root()
     if not root.exists():
         return DatasetListResponse(datasets=[], total=0)
 
-    datasets: List[DatasetInfoResponse] = [
+    datasets: list[DatasetInfoResponse] = [
         _dataset_info(entry)
         for entry in root.iterdir()
         if entry.is_dir() and not entry.name.startswith(".")
@@ -121,8 +122,8 @@ async def list_datasets() -> DatasetListResponse:
     return DatasetListResponse(datasets=datasets, total=len(datasets))
 
 
-@router.get("/{name}", response_model=Dict[str, Any])
-async def get_dataset_details(name: str) -> Dict[str, Any]:
+@router.get("/{name}", response_model=dict[str, Any])
+def get_dataset_details(name: str) -> dict[str, Any]:
     """Retrieve full metadata package for a specific compiled manifold."""
     root = _resolve_output_root()
     target = root / name
@@ -133,7 +134,7 @@ async def get_dataset_details(name: str) -> Dict[str, Any]:
         )
 
     info_file = target / "dataset_info.yaml"
-    details: Dict[str, Any] = {
+    details: dict[str, Any] = {
         "name": name,
         "path": str(target),
         "exists": True,

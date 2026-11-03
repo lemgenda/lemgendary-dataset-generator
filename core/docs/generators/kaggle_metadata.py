@@ -10,11 +10,12 @@ in the dataset root directory.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
 from PIL import Image
 
 from core.docs.context import ManifoldContext

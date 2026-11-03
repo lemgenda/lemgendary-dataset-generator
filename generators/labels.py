@@ -24,7 +24,6 @@ from PIL import Image
 from .base import GenerationResult, Generator
 from .model_handles import ModelHandles
 
-
 _VALID_STRATEGIES: frozenset[str] = frozenset({
     "blip_caption",
     "clip_zeroshot",

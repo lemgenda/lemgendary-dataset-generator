@@ -34,7 +34,7 @@ torch = load_torch()
 
 logger = logging.getLogger(__name__)
 
-setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = None
 
 GT_CACHE = GroundTruthCaches()
@@ -148,7 +148,7 @@ def _configure_process() -> str:
     if os.name == "nt" and not is_main:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     if os.name != "nt" or not is_main:
         try:

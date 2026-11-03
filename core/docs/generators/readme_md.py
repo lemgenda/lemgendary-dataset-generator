@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from core.docs.context import ManifoldContext
-from core.docs.generators.common import ensure_context, manifold_parser, run_manifold_cli
+from core.docs.generators.common import (
+    ensure_context,
+    manifold_parser,
+    run_manifold_cli,
+)
 from core.docs.metadata import MODELS_META
 from core.docs.scanner import scan_forex_manifold
 from core.docs.templates import (
@@ -27,7 +31,6 @@ from core.docs.templates import (
     render_forex_readme,
     render_standard_readme,
 )
-
 
 _TF_NAMES = {
     1: "M1 (1min)", 5: "M5 (5min)", 15: "M15 (15min)",

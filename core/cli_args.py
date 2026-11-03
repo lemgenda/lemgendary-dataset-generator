@@ -24,10 +24,9 @@ import shutil
 import sys
 from pathlib import Path
 
-
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.52"
+__version__ = "16.9.53"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────

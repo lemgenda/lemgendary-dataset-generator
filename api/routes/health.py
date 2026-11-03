@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import time
-from fastapi import APIRouter
 
 import psutil
+from fastapi import APIRouter
 
 from api.jobs import job_manager
 from api.models import FullHealthResponse, HardwareInfo, HealthResponse

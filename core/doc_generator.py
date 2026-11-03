@@ -13,13 +13,15 @@ from core.docs import (
     TASK_ARCH_BASE,
     TASK_META,
     UNIFIED_DATA,
-    clean_readme as _clean_readme,
     format_source,
     generate_dataset_docs,
     main,
     regenerate_all_docs,
     regenerate_all_non_forex,
     scan_forex_manifold,
+)
+from core.docs import (
+    clean_readme as _clean_readme,
 )
 from core.docs.metadata import (
     MANIFEST_CACHE_PATH,

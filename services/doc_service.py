@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+
 from rich.console import Console
 
 from core import doc_generator

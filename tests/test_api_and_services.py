@@ -9,18 +9,19 @@ GenerationService, MigrationService, SyncService).
 
 from __future__ import annotations
 
+import asyncio
+import tempfile
+import unittest
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from json import dumps, loads
 from pathlib import Path
-import tempfile
 from typing import Any
-import unittest
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from PIL import Image
 import yaml
+from PIL import Image
 
 from api.auth import get_or_create_token
 from api.server import app
@@ -126,16 +127,10 @@ class InProcessAsgiClient:
         for k, v in (headers or {}).items():
             extra.append((k.lower().encode("utf-8"), v.encode("utf-8")))
         collector = _ResponseCollector()
-        coro = self._app(
+        # A real event loop: sync routes run in the threadpool through anyio.
+        asyncio.run(self._app(
             _http_scope(method, path, extra), _single_body_receiver(body_bytes), collector.send
-        )
-        # Drive the ASGI coroutine to completion; StopIteration signals it finished.
-        finished = False
-        while not finished:
-            try:
-                coro.send(None)
-            except StopIteration:
-                finished = True
+        ))
         return collector.response()
 
     def get(self, path: str, headers: dict[str, str] | None = None) -> _AsgiResponse:

@@ -10,13 +10,14 @@ Generates:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import datetime
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
 import yaml
 
 logger = logging.getLogger("lemdata.llm.metadata")
@@ -59,7 +60,7 @@ def _write_dataset_info(
         "original_sources": descriptor.original_sources,
         "path": str(target_dir),
         "source": f"{dataset_name}-manifold",
-        "last_processed": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "last_processed": datetime.datetime.now(datetime.UTC).isoformat(),
         "train_samples": train_count,
         "val_samples": val_count,
     }

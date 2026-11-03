@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, HTTPException
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
 
 class KaggleSyncRequest(BaseModel):
     """Request body for a Kaggle push or pull of one manifold."""
-    manifold: Optional[str] = Field(None, description="Specific manifold ID or folder name")
+    manifold: str | None = Field(None, description="Specific manifold ID or folder name")
     push: bool = Field(False, description="Push local manifold to Kaggle")
     pull: bool = Field(False, description="Pull remote dataset from Kaggle")
     force: bool = Field(False, description="Force overwrite")
@@ -144,7 +144,7 @@ def _registry_item(
 
 
 @router.get("/status")
-async def get_kaggle_status() -> Dict[str, Any]:
+async def get_kaggle_status() -> dict[str, Any]:
     """Inspect Kaggle authentication and local credential files."""
     has_env = bool(
         os.environ.get("KAGGLE_API_TOKEN")
@@ -167,13 +167,13 @@ async def get_kaggle_status() -> Dict[str, Any]:
     }
 
 
-@router.get("/registry-datasets", response_model=List[KaggleDatasetRegistryItem])
-async def list_registry_kaggle_datasets() -> List[KaggleDatasetRegistryItem]:
+@router.get("/registry-datasets", response_model=list[KaggleDatasetRegistryItem])
+def list_registry_kaggle_datasets() -> list[KaggleDatasetRegistryItem]:
     """List the production manifolds in unified_data.yaml that can move through Kaggle."""
     root = _resolve_output_root()
     unified_yaml = _unified_yaml_path()
 
-    items: List[KaggleDatasetRegistryItem] = []
+    items: list[KaggleDatasetRegistryItem] = []
     if not unified_yaml.exists():
         return items
 
@@ -263,9 +263,9 @@ async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
 
 class KaggleMetadataRequest(BaseModel):
     """Request body for a Kaggle metadata update."""
-    manifold: Optional[str] = None
+    manifold: str | None = None
     """Specific manifold folder/key to update. If omitted, all_datasets must be True."""
-    kaggle_ref: Optional[str] = None
+    kaggle_ref: str | None = None
     """Explicit Kaggle handle (owner/slug). Auto-resolved from unified_data.yaml if omitted."""
     all_datasets: bool = False
     """If True, update metadata for every dataset in unified_data.yaml."""

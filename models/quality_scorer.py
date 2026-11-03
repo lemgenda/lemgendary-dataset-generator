@@ -3,7 +3,9 @@
 import torch
 from torch import nn
 from torchvision import transforms
+
 from .nima import NimaModel
+
 
 class QualitySentry:
     """
@@ -14,9 +16,10 @@ class QualitySentry:
         self,
         model_path,
         model_name="nima_technical",
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        device=None,
     ):
-        self.device = device
+        # None picks CUDA when it is available (resolved per instance, not at import).
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         # Technical NIMA uses EfficientNetV2-S, Aesthetic uses MobileNetV3-Small
         backbone = "mobilenet_v2" if "aesthetic" in model_name else "efficientnet_v2_s"

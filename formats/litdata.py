@@ -20,8 +20,9 @@ import importlib
 import logging
 import pickle
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .base import Sample, Writer
 
@@ -84,7 +85,7 @@ class LitDataWriter(Writer):
             if shards:
                 try:
                     litdata = importlib.import_module("litdata")
-                    optimize = getattr(litdata, "optimize")
+                    optimize = litdata.optimize
                     inputs = [(str(s),) for s in shards]
                     optimize(
                         fn=_read_shard,

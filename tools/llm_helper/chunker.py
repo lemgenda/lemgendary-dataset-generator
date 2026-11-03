@@ -6,9 +6,10 @@ code blocks, and lists, preserving line numbers and character offsets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hashlib
+from dataclasses import dataclass, field
 from typing import Any
+
 from .knowledge_ingestor import KnowledgeDocument
 
 # Clean boundaries tried, in order, when a chunk has to be cut mid-document.

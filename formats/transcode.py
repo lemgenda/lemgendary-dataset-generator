@@ -26,7 +26,6 @@ from PIL import Image
 
 from core.config_schema import ImageFormatPolicy
 
-
 _FORMAT_EXT: dict[str, str] = {
     "webp": ".webp",
     "jpeg": ".jpg",

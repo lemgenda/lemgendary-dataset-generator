@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
-from fastapi import APIRouter, HTTPException, status
+from typing import Any
+
 import yaml
+from fastapi import APIRouter, HTTPException, status
 
 from core.config_schema import load_unified_data
 
@@ -24,8 +25,8 @@ def _resolve_config_path() -> Path:
     return candidates[0]
 
 
-@router.get("", response_model=Dict[str, Any])
-async def get_config() -> Dict[str, Any]:
+@router.get("", response_model=dict[str, Any])
+def get_config() -> dict[str, Any]:
     """Retrieve the parsed contents of unified_data.yaml."""
     config_path = _resolve_config_path()
     if not config_path.exists():
@@ -45,7 +46,7 @@ async def get_config() -> Dict[str, Any]:
 
 
 @router.post("/validate")
-async def validate_config() -> Dict[str, Any]:
+async def validate_config() -> dict[str, Any]:
     """Validate unified_data.yaml against Pydantic config schema."""
     config_path = _resolve_config_path()
     if not config_path.exists():

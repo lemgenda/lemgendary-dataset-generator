@@ -7,22 +7,22 @@ Run from the project root as ``python -m sources.kaggle``. Running it as a
 module keeps ``sources/`` off ``sys.path``, so this file cannot shadow the
 PyPI ``kaggle`` package.
 """
-import socket
 import argparse
 import logging
+import socket
 import sys
 from pathlib import Path
 
 import yaml
 
-from tools.sync_kaggle_metadata import sync_metadata
 from core.common_sync import (
     DownloadRequest,
+    perform_dataset_download,
+    perform_dataset_upload,
     setup_kaggle_auth,
     track_kaggle_dataset_status,
-    perform_dataset_upload,
-    perform_dataset_download,
 )
+from tools.sync_kaggle_metadata import sync_metadata
 
 logger = logging.getLogger(__name__)
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
@@ -47,7 +47,7 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
                     ydata = yaml.safe_load(yf) or {}
                 prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
                 suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
-                for _, entry in ydata.get("datasets", {}).items():
+                for entry in ydata.get("datasets", {}).values():
                     ref = entry.get("kaggle_ref", "")
                     if slug.lower() in ref.lower():
                         mod_folder = entry.get("modernized_folder")

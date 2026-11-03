@@ -12,11 +12,10 @@ Extracted from compiler_core.py in Phase 2 of the 2026 modernization roadmap.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from PIL import Image
-
 
 # ─── Canonical reject codes ─────────────────────────────────────────────────
 # Every code is a stable identifier. Adding codes is safe; renaming them
@@ -82,7 +81,7 @@ class VisionAuditor:
 
     # Minimum resolution floors per task. Kept as a dict so future tasks can
     # register their own floors without editing this class.
-    _RES_FLOORS: dict[str, int] = {
+    _RES_FLOORS: ClassVar[dict[str, int]] = {
         "diffusion": 512,
         "quality": 224,
         "classification": 224,
@@ -116,11 +115,8 @@ class VisionAuditor:
             return AuditResult(valid=False, code=ERR_ZERO_BYTES, reason="empty byte stream")
         head = img_bytes[:12]
         for sig, fmt in _MAGIC.items():
-            if head.startswith(sig):
-                if fmt == "webp":
-                    # RIFF container must carry WEBP in bytes 8..12
-                    if head[8:12] != b"WEBP":
-                        continue
+            # A RIFF container is WebP only when it carries WEBP in bytes 8..12.
+            if head.startswith(sig) and (fmt != "webp" or head[8:12] == b"WEBP"):
                 return AuditResult(valid=True, details={"format": fmt})
         return AuditResult(
             valid=False,
@@ -155,13 +151,13 @@ class VisionAuditor:
 
         # Black-frame gate — skipped for LAION/AVA because those sources
         # intentionally include extreme-exposure reference material.
-        if task == "quality" and "laion" not in slug and "ava" not in slug:
-            if self._is_black(img):
-                return AuditResult(
-                    valid=False,
-                    code=ERR_BLACK_FRAME,
-                    reason=f">{1.0 - self.black_threshold:.0%} of pixels near-black",
-                )
+        if (task == "quality" and "laion" not in slug and "ava" not in slug
+                and self._is_black(img)):
+            return AuditResult(
+                valid=False,
+                code=ERR_BLACK_FRAME,
+                reason=f">{1.0 - self.black_threshold:.0%} of pixels near-black",
+            )
 
         # Aspect-ratio guard
         aspect = max(w, hgt) / max(1, min(w, hgt))
@@ -291,12 +287,13 @@ class VisionAuditor:
         # real human rating; the default fallback (all mass on bin 1) is
         # treated as "no rating available."
         if (
-            check.probs[0] == 1.0
-            and task in ("quality", "diffusion")
+            self.strict_ground_truth
+            and task == "quality"
+            and "laion" not in slug
             and not is_authenticity
+            and check.probs[0] == 1.0
         ):
-            if self.strict_ground_truth and task == "quality" and "laion" not in slug:
-                return False
+            return False
 
         if (
             task in ("quality", "diffusion")

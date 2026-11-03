@@ -6,7 +6,11 @@ and Markdown documentation builders.
 
 from __future__ import annotations
 
-from core.docs.context import ManifoldContext, find_unified_entry, resolve_manifold_context
+from core.docs.context import (
+    ManifoldContext,
+    find_unified_entry,
+    resolve_manifold_context,
+)
 from core.docs.generators import (
     generate_category_txt,
     generate_classes_txt,
@@ -54,10 +58,10 @@ __all__ = [
     "MANIFEST_CACHE",
     "MANIFOLD_TASK_MAP",
     "MODELS_META",
-    "ManifoldContext",
     "TASK_ARCH_BASE",
     "TASK_META",
     "UNIFIED_DATA",
+    "ManifoldContext",
     "build_models_markdown",
     "build_structure_text",
     "clean_readme",

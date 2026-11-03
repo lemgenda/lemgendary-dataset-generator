@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torchvision import models
 
+
 class NimaModel(nn.Module):
     """
     NIMA (Neural IMage Assessment) Model.

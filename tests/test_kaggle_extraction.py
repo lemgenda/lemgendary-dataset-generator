@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import io
-from unittest.mock import patch, MagicMock
 import unittest
+from unittest.mock import MagicMock, patch
 
 from core.common_sync import track_kaggle_dataset_status
 

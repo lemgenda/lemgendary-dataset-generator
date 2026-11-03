@@ -12,7 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import requests
-from huggingface_hub import hf_hub_download, hf_hub_url, list_repo_files, login, snapshot_download
+from huggingface_hub import (
+    hf_hub_download,
+    hf_hub_url,
+    list_repo_files,
+    login,
+    snapshot_download,
+)
+
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
 from tqdm import tqdm

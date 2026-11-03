@@ -14,8 +14,9 @@ Array convention:
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, Sequence, overload, runtime_checkable
+from typing import Any, Protocol, overload, runtime_checkable
 
 import numpy as np
 from PIL import Image

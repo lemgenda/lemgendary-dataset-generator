@@ -2,19 +2,20 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
-from fastapi import APIRouter
+from typing import Any
+
 import yaml
+from fastapi import APIRouter
 
 logger = logging.getLogger("lemgendary.api.routes.sources")
 router = APIRouter(prefix="/sources", tags=["Sources"])
 _RAW_SETS = Path("raw-sets")
 
 
-@router.get("", response_model=Dict[str, Any])
-async def list_sources() -> Dict[str, Any]:
+@router.get("", response_model=dict[str, Any])
+def list_sources() -> dict[str, Any]:
     """List local raw datasets and configured upstream references."""
-    local_sources: List[Dict[str, Any]] = []
+    local_sources: list[dict[str, Any]] = []
     if _RAW_SETS.exists():
         for entry in _RAW_SETS.iterdir():
             if entry.is_dir() and not entry.name.startswith("."):
@@ -24,7 +25,7 @@ async def list_sources() -> Dict[str, Any]:
                     "type": "directory",
                 })
 
-    configured_datasets: Dict[str, Any] = {}
+    configured_datasets: dict[str, Any] = {}
     config_file = Path("unified_data.yaml")
     if config_file.exists():
         try:

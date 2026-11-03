@@ -56,7 +56,7 @@ class ClaimedJob:
 
 def utc_now_iso() -> str:
     """Current UTC time as an ISO-8601 string."""
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def subprocess_env() -> dict[str, str]:

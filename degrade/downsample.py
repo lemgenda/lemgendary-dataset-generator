@@ -18,7 +18,6 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-
 _PIL_RESAMPLE_MODES = {
     "bicubic": Image.Resampling.BICUBIC,
     "bilinear": Image.Resampling.BILINEAR,
@@ -50,8 +49,8 @@ class Downsample:
         rng: random.Random,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         h, w = img.shape[:2]
-        small_h = max(8, int(round(h * self.scale_factor)))
-        small_w = max(8, int(round(w * self.scale_factor)))
+        small_h = max(8, round(h * self.scale_factor))
+        small_w = max(8, round(w * self.scale_factor))
 
         clipped_u8 = np.clip(img * 255.0 + 0.5, 0.0, 255.0).astype(np.uint8)
         pil_img = Image.fromarray(clipped_u8, mode="RGB")

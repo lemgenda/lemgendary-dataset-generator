@@ -29,6 +29,7 @@ from api.models import (
     ActiveJobsResponse,
     ActiveJobTelemetry,
     CompilerPresetModel,
+    CustomCompileRequest,
     DatasetStatsListResponse,
     GuiStateResponse,
     JobResponse,
@@ -36,12 +37,11 @@ from api.models import (
     JobType,
     PresetListResponse,
     QuickCompileRequest,
-    CustomCompileRequest,
 )
 from api.routes.datasets import _resolve_output_root
 from api.routes.health import _START_TIME, get_hardware_info
-from core.cli_args import __version__
 from core import presets
+from core.cli_args import __version__
 
 __all__ = [
     "custom_compile",
@@ -92,7 +92,7 @@ async def get_gui_state() -> GuiStateResponse:
 
 
 @router.get("/datasets/with-stats", response_model=DatasetStatsListResponse)
-async def get_datasets_with_stats() -> DatasetStatsListResponse:
+def get_datasets_with_stats() -> DatasetStatsListResponse:
     """Enriched dataset catalog with detailed format breakdown, storage metrics, and hardlinks."""
     return build_dataset_stats_response(_resolve_output_root())
 
@@ -102,7 +102,7 @@ def _elapsed_seconds(job: JobResponse) -> float:
         return 0.0
     try:
         start_dt = datetime.datetime.fromisoformat(job.started_at)
-        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        now_dt = datetime.datetime.now(datetime.UTC)
         return max(0.1, (now_dt - start_dt).total_seconds())
     except (TypeError, ValueError) as dt_exc:
         logger.debug("Failed parsing start timestamp for job %s: %s", job.id, dt_exc)

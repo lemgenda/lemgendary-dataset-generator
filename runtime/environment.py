@@ -122,6 +122,10 @@ def _apply_stdio_reconfigure() -> None:
         stderr_reconfigure(encoding="utf-8")
 
 
+# torch.cuda's private capability checks that reject the P100 (sm_60) build.
+_CUDA_CAPABILITY_CHECKS = ("_check_capability", "_check_cubins")
+
+
 def _drop_queued_capability_checks(cuda) -> None:
     """Adapter over torch.cuda's private lazy-init queue (no public API exists).
 
@@ -137,7 +141,7 @@ def _drop_queued_capability_checks(cuda) -> None:
         if not (
             isinstance(c, tuple)
             and len(c) > 0
-            and getattr(c[0], "__name__", "") in ("_check_capability", "_check_cubins")
+            and getattr(c[0], "__name__", "") in _CUDA_CAPABILITY_CHECKS
         )
     ]
 
@@ -161,10 +165,9 @@ def _apply_torch_patches() -> None:
 
     _drop_queued_capability_checks(cuda)
 
-    if hasattr(cuda, "_check_capability"):
-        setattr(cuda, "_check_capability", lambda *a, **k: None)
-    if hasattr(cuda, "_check_cubins"):
-        setattr(cuda, "_check_cubins", lambda *a, **k: None)
+    for check_name in _CUDA_CAPABILITY_CHECKS:
+        if hasattr(cuda, check_name):
+            setattr(cuda, check_name, lambda *a, **k: None)
 
 
 @functools.cache

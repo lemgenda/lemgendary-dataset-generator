@@ -21,11 +21,11 @@ __all__ = [
     "GenerationResult",
     "Generator",
     "LabelGenerator",
-    "PromptGenerator",
     "MaskGenerator",
+    "PromptGenerator",
 ]
 
 from .base import GenerationResult, Generator
 from .labels import LabelGenerator
-from .prompts import PromptGenerator
 from .masks import MaskGenerator
+from .prompts import PromptGenerator

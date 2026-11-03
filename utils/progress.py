@@ -12,6 +12,7 @@ import os
 import sys
 from collections.abc import Iterable, Iterator, Sized
 from typing import Any, TypeVar
+
 from tqdm import tqdm
 
 T = TypeVar("T")
@@ -34,11 +35,8 @@ def supports_unicode() -> bool:
         if "utf" in encoding.lower():
             return True
         # Check PYTHONIOENCODING or modern Windows Terminal
-        if os.environ.get("WT_SESSION") or os.environ.get(
-            "PYTHONIOENCODING", ""
-        ).lower().startswith("utf"):
-            return True
-        return False
+        io_encoding = os.environ.get("PYTHONIOENCODING", "").lower()
+        return bool(os.environ.get("WT_SESSION") or io_encoding.startswith("utf"))
     except (AttributeError, TypeError, ValueError) as exc:
         logger.debug("Could not determine stdout unicode support; assuming ASCII: %s", exc)
         return False

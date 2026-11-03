@@ -7,17 +7,18 @@ with deterministic hashing, line preservation, and offline caching.
 from __future__ import annotations
 
 import csv
-from collections.abc import Callable
-from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
-from pathlib import Path
 import re
 import time
-from typing import Any
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
 import yaml
 
 logger = logging.getLogger("lemdata.llm.ingestor")

@@ -7,9 +7,9 @@ and unified metadata synthesis for LLM instruction and dialogue manifolds.
 from __future__ import annotations
 
 __all__ = [
-    "knowledge_ingestor",
-    "chunker",
-    "quality_validator",
     "base_compiler",
+    "chunker",
+    "knowledge_ingestor",
     "metadata_compiler",
+    "quality_validator",
 ]

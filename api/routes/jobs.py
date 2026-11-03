@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from typing import Any
+
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from api.events import manager
 from api.jobs import job_manager, submit_job
@@ -28,8 +36,8 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 async def list_jobs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    state: Optional[JobState] = None,
-    job_type: Optional[JobType] = None,
+    state: JobState | None = None,
+    job_type: JobType | None = None,
 ) -> JobListResponse:
     """List historical and active jobs with pagination."""
     jobs = job_manager.list_jobs(limit=limit, offset=offset, state=state, job_type=job_type)
@@ -50,7 +58,7 @@ async def get_job(job_id: str) -> JobResponse:
 
 
 @router.get("/{job_id}/logs")
-async def get_job_logs(job_id: str, tail: Optional[int] = Query(None, ge=1)) -> dict[str, str]:
+async def get_job_logs(job_id: str, tail: int | None = Query(None, ge=1)) -> dict[str, str]:
     """Retrieve raw text logs for a specific job."""
     job = job_manager.get_job(job_id)
     if not job:

@@ -19,8 +19,9 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .base import Sample, Writer
 

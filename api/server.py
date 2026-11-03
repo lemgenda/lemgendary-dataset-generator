@@ -9,9 +9,9 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import uvicorn
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 
 from api.auth import verify_token
 from api.events import drain_event_queue, manager
@@ -21,11 +21,12 @@ from api.routes.env import router as env_router
 from api.routes.gates import router as gates_router
 from api.routes.gui import router as gui_router
 from api.routes.health import router as health_router
-from api.routes.jobs import router as jobs_router, ws_router as jobs_ws_router
+from api.routes.jobs import router as jobs_router
+from api.routes.jobs import ws_router as jobs_ws_router
 from api.routes.kaggle import router as kaggle_router
+from api.routes.llm import router as llm_router
 from api.routes.modernize import router as modernize_router
 from api.routes.sources import router as sources_router
-from api.routes.llm import router as llm_router
 from api.security import (
     ALLOWED_HEADERS,
     ALLOWED_METHODS,

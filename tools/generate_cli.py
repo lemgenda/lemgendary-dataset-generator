@@ -17,9 +17,9 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Iterator, TypedDict, Unpack
+from typing import Any, TypedDict, Unpack
 
 from PIL import Image
 

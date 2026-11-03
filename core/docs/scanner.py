@@ -6,10 +6,10 @@ to gather shard inventory, pair distributions, and temporal sample counts.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-import logging
 from typing import Any
 
 import numpy as np

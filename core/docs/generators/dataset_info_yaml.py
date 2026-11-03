@@ -8,10 +8,11 @@ and container topology to dataset_info.yaml for automated PyTorch loaders.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
 import yaml
 
 from core.docs.context import ManifoldContext
@@ -106,7 +107,7 @@ def generate_dataset_info_yaml(
         "original_sources": src_keys,
         "path": str(Path("..") / "LemGendaryDatasets" / manifold_name),
         "source": f"{manifold_name}-manifold",
-        "last_processed": datetime.now(timezone.utc).isoformat(),
+        "last_processed": datetime.now(UTC).isoformat(),
     }
 
     if ctx.task == "forex":

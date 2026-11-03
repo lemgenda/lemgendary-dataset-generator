@@ -9,14 +9,14 @@ tools.stream_zip_to_container (streaming Zip-to-WebDataset with on-the-fly WebP)
 from __future__ import annotations
 
 import io
-from pathlib import Path
 import tarfile
 import tempfile
 import unittest
 import zipfile
+from pathlib import Path
 
-from PIL import Image
 import yaml
+from PIL import Image
 
 from tools.stream_zip_to_container import (
     _transcode_to_webp,

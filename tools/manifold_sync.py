@@ -1,8 +1,8 @@
 """Upload manifolds to Kaggle and download them back; run as ``python -m tools.manifold_sync``."""
 
-import sys
-import shutil
 import argparse
+import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -96,7 +96,7 @@ def get_kaggle_ref(manifold_id: str | None) -> str | None:
 
     for k, v in DATASETS_META.items():
         ref = v.get("kaggle_ref", "")
-        clean_ref = ref[9:] if ref.startswith("kaggle://") else ref
+        clean_ref = ref.removeprefix("kaggle://")
 
         # 1. Direct key match (e.g., forex_titan_core)
         if k == target_clean:
@@ -156,7 +156,7 @@ def action_get(repo_id, output_name=None):
     slug = clean_repo_id.split("/")[-1]
     if not output_name:
         output_name = slug
-        for _, v in DATASETS_META.items():
+        for v in DATASETS_META.values():
             ref = v.get("kaggle_ref", "")
             if clean_repo_id.lower() in ref.lower():
                 output_name = v.get("modernized_folder") or _compiled_folder_name(

@@ -103,7 +103,7 @@ def _patch_gcs_upload_tqdm() -> None:
             kwargs.setdefault("bar_format", _GCS_BAR_FORMAT)
             return orig_tqdm(*args, **kwargs)
 
-        setattr(gcs_mod, "tqdm", _safe_tqdm)
+        gcs_mod.tqdm = _safe_tqdm
     except (ImportError, AttributeError) as patch_exc:
         logger.debug("Tqdm patch notice: %s", patch_exc)
 

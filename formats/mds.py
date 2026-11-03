@@ -15,12 +15,11 @@ from __future__ import annotations
 import importlib
 import json
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Any
 
 from .base import Sample, Writer
-
 
 # Column schema. All vision manifolds share this shape; task-specific
 # fields (labels, targets, masks) are present only when the source has
@@ -66,7 +65,7 @@ class MDSWriter(Writer):
                 "Install it with: pip install mosaicml-streaming"
             ) from e
 
-        mds_writer_cls = getattr(streaming, "MDSWriter")
+        mds_writer_cls = streaming.MDSWriter
         self._out_dir = Path(output_root) / "mds"
         # mosaicml-streaming parses `out` with urllib.parse.urlparse to detect cloud vs
         # local paths. On Windows, an absolute path such as C:\... is parsed as scheme 'c'

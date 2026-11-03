@@ -71,7 +71,7 @@ def push_manifold_to_kaggle(
 
     # kagglehub annotates MAX_FILES_TO_UPLOAD as Literal[50]; setattr bypasses the
     # static type constraint while still performing the runtime assignment correctly.
-    setattr(kagglehub.gcs_upload, "MAX_FILES_TO_UPLOAD", 5000)
+    kagglehub.gcs_upload.MAX_FILES_TO_UPLOAD = 5000
 
     try:
         kagglehub.dataset_upload(clean_handle, str(target_dir), version_notes=notes)

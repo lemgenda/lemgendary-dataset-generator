@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from core.common_sync import (
     ensure_kaggle_dataset_exists,
@@ -22,8 +22,10 @@ class TestKaggleLargeManifoldSafeguard(unittest.TestCase):
         """Verify detection of legacy *large manifold handles, URLs, and slugs."""
         large_targets = [
             "https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge",
-            "https://www.kaggle.com/datasets/lemtreursi/"
-            "lemgendizedclassificationmastermanifoldlarge",
+            (
+                "https://www.kaggle.com/datasets/lemtreursi/"
+                "lemgendizedclassificationmastermanifoldlarge"
+            ),
             "kaggle://lemtreursi/lemgendizedprofessionalmultitaskrestorationlarge",
             "lemtreursi/lemgendizedforexuniverselarge",
             "lemtreursi/lemgendizedclassificationmastermanifoldlarge",

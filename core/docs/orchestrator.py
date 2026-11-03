@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from core.docs.context import resolve_manifold_context
-from core.error_types import DOC_GENERATION_ERRORS
 from core.docs.generators import (
     generate_category_txt,
     generate_classes_txt,
@@ -28,6 +27,7 @@ from core.docs.generators import (
     generate_kaggle_metadata,
     generate_readme_md,
 )
+from core.error_types import DOC_GENERATION_ERRORS
 
 logger = logging.getLogger(__name__)
 

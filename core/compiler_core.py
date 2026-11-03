@@ -110,44 +110,96 @@ from utils.net import download_image
 
 # ─── Public surface ─────────────────────────────────────────────────────────
 __all__ = [
+    "CATEGORY_MAP",
+    "CATEGORY_MAP_PATH",
     # Config constants (core.compiler_config)
-    "CONFIG", "DEFAULT_CONFIG", "META", "VERSION", "YAML_DATA",
-    "INPUT_ROOT", "OUT_PARENT", "CATEGORY_MAP", "DATASETS_META",
-    "CATEGORY_MAP_PATH", "CONFIG_PATH",
-    # CLI configuration (Phase 1.5 — replaces module-level `args` / `parser`)
-    "configure", "get_args", "set_args",
-    # Runtime (Phase 1.7)
-    "bootstrap_runtime", "get_device_info",
-    # Utils (Phase 1.5.5)
-    "get_dir_size", "remove_empty_dirs",
-    "convert_bbox_xywh_to_yolo", "normalize_points",
-    "compute_hash", "ensure_srgb", "is_black_image",
-    "get_gaussian_probs", "clean_slug", "map_category", "download_image",
-    # Registry (Phase 1.3 / 1.5.5)
-    "initialize_registry", "ensure_registry_schema",
+    "CONFIG",
+    "CONFIG_PATH",
+    "DATASETS_META",
+    "DEFAULT_CONFIG",
+    "INPUT_ROOT",
+    "META",
+    "OUT_PARENT",
+    "VERSION",
+    "YAML_DATA",
+    "CompositeProfile",
+    # Degradation Engine (Phase 6)
+    "DegradationProfile",
+    "DirectorySampleSource",
+    "DirectoryWriter",
+    "DynamicDegrader",
+    "ExactHasher",
+    "ExistingSamples",
+    # Generators (Phase 5)
+    "GenerationResult",
     # Ground truth (Phase 1.5.5)
     "GroundTruthCaches",
-    # Converters (Phase 1.4)
-    "detect_annotations", "parse_coco", "parse_parquet", "parse_xml",
-    "parse_yolo", "parse_matlab", "parse_safetensors",
-    # Audit (Phase 2)
-    "VisionAuditor", "ExactHasher", "PerceptualHasher", "RejectLog",
-    # Transcode (Phase 3)
-    "ImageTranscoder", "KeepFormatError", "ImageFormatPolicy",
-    # Formats (Phase 4)
-    "ShardWriter", "WebDatasetWriter", "MDSWriter", "LitDataWriter",
-    "ParquetWriter", "DirectoryWriter", "DirectorySampleSource",
-    "Sample", "Writer", "make_writer", "parse_also_format",
-    # Generators (Phase 5)
-    "GenerationResult", "LabelGenerator", "PromptGenerator", "MaskGenerator",
-    # Degradation Engine (Phase 6)
-    "DegradationProfile", "CompositeProfile", "DynamicDegrader", "composite", "parse_profile",
-    # Core API (core.compiler_worker / core.sample_*)
-    "detect_task", "get_labeler",
-    "init_worker", "batch_worker",
-    "process_image", "process_diffusion", "process_parquet_shard",
+    "ImageFormatPolicy",
     # Task payloads (core.sample_jobs)
-    "ImageJob", "ShardJob", "SampleKey", "SourceContext", "ExistingSamples",
+    "ImageJob",
+    # Transcode (Phase 3)
+    "ImageTranscoder",
+    "KeepFormatError",
+    "LabelGenerator",
+    "LitDataWriter",
+    "MDSWriter",
+    "MaskGenerator",
+    "ParquetWriter",
+    "PerceptualHasher",
+    "PromptGenerator",
+    "RejectLog",
+    "Sample",
+    "SampleKey",
+    "ShardJob",
+    # Formats (Phase 4)
+    "ShardWriter",
+    "SourceContext",
+    # Audit (Phase 2)
+    "VisionAuditor",
+    "WebDatasetWriter",
+    "Writer",
+    "batch_worker",
+    # Runtime (Phase 1.7)
+    "bootstrap_runtime",
+    "clean_slug",
+    "composite",
+    "compute_hash",
+    # CLI configuration (Phase 1.5 — replaces module-level `args` / `parser`)
+    "configure",
+    "convert_bbox_xywh_to_yolo",
+    # Converters (Phase 1.4)
+    "detect_annotations",
+    # Core API (core.compiler_worker / core.sample_*)
+    "detect_task",
+    "download_image",
+    "ensure_registry_schema",
+    "ensure_srgb",
+    "get_args",
+    "get_device_info",
+    # Utils (Phase 1.5.5)
+    "get_dir_size",
+    "get_gaussian_probs",
+    "get_labeler",
+    "init_worker",
+    # Registry (Phase 1.3 / 1.5.5)
+    "initialize_registry",
+    "is_black_image",
+    "make_writer",
+    "map_category",
+    "normalize_points",
+    "parse_also_format",
+    "parse_coco",
+    "parse_matlab",
+    "parse_parquet",
+    "parse_profile",
+    "parse_safetensors",
+    "parse_xml",
+    "parse_yolo",
+    "process_diffusion",
+    "process_image",
+    "process_parquet_shard",
+    "remove_empty_dirs",
+    "set_args",
 ]
 
 

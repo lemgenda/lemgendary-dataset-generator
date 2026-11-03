@@ -9,13 +9,15 @@ from ultralytics import YOLO
 
 from core.lazy_imports import load_mediapipe
 
+
 class AutoLabeler:
     """
     Automated label discovery using pre-trained YOLO models.
     Supports Detection, Instance Segmentation, and Pose Estimation.
     """
-    def __init__(self, mode="detection", device="cuda" if torch.cuda.is_available() else "cpu"):
-        self.device = device
+    def __init__(self, mode="detection", device=None):
+        # None picks CUDA when it is available (resolved per instance, not at import).
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.mode = mode # 'detection', 'segmentation', 'pose'
         self.face_detector = None  # lazily created by _predict_face_landmarks
 

@@ -37,6 +37,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ─── Ref-level ──────────────────────────────────────────────────────────────
+class UnifiedDataError(ValueError):
+    """``unified_data.yaml`` is empty or its root is not a mapping."""
+
+
 class SourceRef(BaseModel):
     """A single source dataset reference inside a manifold definition."""
 
@@ -248,7 +252,7 @@ class UnifiedData(BaseModel):
 
     # Cross-field rules
     @model_validator(mode="after")
-    def _validate_cross_field_rules(self) -> "UnifiedData":
+    def _validate_cross_field_rules(self) -> UnifiedData:
         for key, entry in self.datasets.items():
             if entry.dataset_type == "forex":
                 if not entry.pairs:
@@ -296,9 +300,9 @@ def load_unified_data(path: Path | str) -> UnifiedData:
     with open(p, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     if raw is None:
-        raise ValueError(f"unified_data.yaml is empty: {p}")
+        raise UnifiedDataError(f"unified_data.yaml is empty: {p}")
     if not isinstance(raw, dict):
-        raise ValueError(
+        raise UnifiedDataError(
             f"unified_data.yaml root must be a mapping, got {type(raw).__name__}"
         )
     return UnifiedData.model_validate(raw)

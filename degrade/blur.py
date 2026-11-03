@@ -37,8 +37,8 @@ def create_motion_kernel(size: int, angle_deg: float) -> np.ndarray:
 
     for i in range(size):
         offset = i - center
-        x = int(round(center + offset * cos_a))
-        y = int(round(center + offset * sin_a))
+        x = round(center + offset * cos_a)
+        y = round(center + offset * sin_a)
         if 0 <= x < size and 0 <= y < size:
             kernel[y, x] = 1.0
 
@@ -69,7 +69,7 @@ class GaussianBlur:
     def __init__(self, sigma: float = 1.8, kernel_size: int | None = None) -> None:
         self.sigma = max(0.1, float(sigma))
         if kernel_size is None:
-            k = int(math.ceil(self.sigma * 3.0)) * 2 + 1
+            k = math.ceil(self.sigma * 3.0) * 2 + 1
             self.kernel_size = max(3, k)
         else:
             self.kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1

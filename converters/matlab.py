@@ -22,5 +22,5 @@ def parse_matlab(mat_path: str | Path) -> tuple[dict[str, Any], str]:
     correct value here as well.
     """
     data: dict[str, Any] = sio.loadmat(str(mat_path), spmatrix=False)
-    key = [k for k in data if not k.startswith("__")][0]
+    key = next(k for k in data if not k.startswith("__"))
     return data, key

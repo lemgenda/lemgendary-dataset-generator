@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from pathlib import Path
 import re
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from .knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
@@ -124,7 +124,7 @@ def synthesize_instruction_from_section(
     user_prompt, assistant_reply = _render_turns(category, doc_id, header, clean_text)
 
     # Deterministic SHA hash for record ID
-    record_hash = hashlib.sha256(f"{doc_id}:{header}:{index}".encode("utf-8")).hexdigest()[:8]
+    record_hash = hashlib.sha256(f"{doc_id}:{header}:{index}".encode()).hexdigest()[:8]
     record_id = f"gen_{doc_base.lower()}_{record_hash}"
 
     return {

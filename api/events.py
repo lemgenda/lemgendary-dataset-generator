@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List
+from typing import Any
+
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("lemgendary.api.events")
@@ -14,8 +15,8 @@ class ConnectionManager:
     """Manages active WebSocket connections for broadcasts and job-specific log streams."""
 
     def __init__(self) -> None:
-        self.global_connections: List[WebSocket] = []
-        self.job_connections: Dict[str, List[WebSocket]] = {}
+        self.global_connections: list[WebSocket] = []
+        self.job_connections: dict[str, list[WebSocket]] = {}
         self._lock = asyncio.Lock()
 
     async def connect_global(self, websocket: WebSocket) -> None:
@@ -59,7 +60,7 @@ class ConnectionManager:
                     del self.job_connections[job_id]
         logger.debug("WebSocket client disconnected from job %s", job_id)
 
-    async def broadcast_global(self, message: Dict[str, Any]) -> None:
+    async def broadcast_global(self, message: dict[str, Any]) -> None:
         """Send a JSON payload to all active global clients."""
         async with self._lock:
             targets = list(self.global_connections)
@@ -84,7 +85,7 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(maxsize=1000)
+event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
 
 
 async def drain_event_queue() -> None:

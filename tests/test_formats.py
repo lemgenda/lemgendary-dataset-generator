@@ -9,23 +9,23 @@ DirectorySampleSource, and container protocol compliance.
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from pathlib import Path
 
 from PIL import Image
 
+from core.config_schema import ImageFormatPolicy
+from core.lazy_imports import load_parquet
 from formats.base import Sample, parse_also_format
-from formats.factory import make_writer
 from formats.directory import DirectorySampleSource, DirectoryWriter
+from formats.factory import make_writer
 from formats.litdata import LitDataWriter
 from formats.mds import MDSWriter
 from formats.parquet import ParquetWriter
 from formats.transcode import ImageTranscoder, KeepFormatError
 from formats.webdataset import ShardWriter, WebDatasetWriter
-from core.config_schema import ImageFormatPolicy
-from core.lazy_imports import load_parquet
 
 
 class TestWriterFactory(unittest.TestCase):

@@ -6,7 +6,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
+from typing import Annotated
 
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
@@ -45,8 +45,8 @@ def get_or_create_token() -> str:
 
 
 async def verify_token(
-    header_key: Optional[str] = Security(_api_key_header),
-    bearer_creds: Optional[HTTPAuthorizationCredentials] = Security(_bearer_security),
+    header_key: Annotated[str | None, Security(_api_key_header)],
+    bearer_creds: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_security)],
 ) -> str:
     """Validate incoming HTTP request authentication token against server master token."""
     if os.environ.get("LEMGENDARY_DISABLE_AUTH", "").lower() in ("1", "true", "yes"):

@@ -23,17 +23,17 @@ from __future__ import annotations
 __all__ = [
     "detect_annotations",
     "parse_coco",
+    "parse_matlab",
     "parse_parquet",
+    "parse_safetensors",
     "parse_xml",
     "parse_yolo",
-    "parse_matlab",
-    "parse_safetensors",
 ]
 
-from .dispatch import detect_annotations
 from .coco import parse_coco
+from .dispatch import detect_annotations
+from .matlab import parse_matlab
 from .parquet import parse_parquet
+from .safetensors import parse_safetensors
 from .xml import parse_xml
 from .yolo import parse_yolo
-from .matlab import parse_matlab
-from .safetensors import parse_safetensors

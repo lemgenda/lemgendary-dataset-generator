@@ -24,7 +24,6 @@ from PIL import Image
 from .base import GenerationResult, Generator
 from .model_handles import ModelHandles
 
-
 _TEMPLATES: dict[str, str] = {
     "diffusers-v1": "{subject}, {style}, {lighting}, {camera}, {quality_tokens}",
     "sd-v1": "{subject}, {style}, {quality_tokens}",

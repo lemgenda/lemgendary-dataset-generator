@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -34,33 +35,33 @@ class JobType(str, Enum):
 
 class CompileJobRequest(BaseModel):
     """Request body for a dataset compile job."""
-    model: Optional[str] = Field(None, description="Dataset/model key in unified_data.yaml")
-    preset: Optional[str] = Field(
+    model: str | None = Field(None, description="Dataset/model key in unified_data.yaml")
+    preset: str | None = Field(
         None, description="Compiler preset profile name from presets.yaml"
     )
-    max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
-    suffix: Optional[str] = Field(None, description="Manifold name suffix override")
-    workers: Optional[int] = Field(None, description="Parallel worker process count")
+    max_gb: float | None = Field(None, description="Max size override in gigabytes")
+    suffix: str | None = Field(None, description="Manifold name suffix override")
+    workers: int | None = Field(None, description="Parallel worker process count")
     no_vetting: bool = Field(False, description="Bypass NIMA aesthetic vetting gate")
     no_labeling: bool = Field(False, description="Bypass YOLO auto-labeling")
     no_hash: bool = Field(False, description="Bypass deduplication hash")
-    image_format: Optional[str] = Field(
+    image_format: str | None = Field(
         "webp", description="Target image format (webp, jpeg, png, keep)"
     )
-    image_quality: Optional[int] = Field(92, description="Target image quality (1-100)")
-    target_quality: Optional[int] = Field(
+    image_quality: int | None = Field(92, description="Target image quality (1-100)")
+    target_quality: int | None = Field(
         95, description="Target quality for restoration ground truth"
     )
-    mask_format: Optional[str] = Field("webp-lossless", description="Target mask format")
-    also_format: Optional[str] = Field(
+    mask_format: str | None = Field("webp-lossless", description="Target mask format")
+    also_format: str | None = Field(
         None, description="Comma-separated container formats (mds, litdata, wds, parquet)"
     )
     force_duplicate: bool = Field(False, description="Bypass hardlink gate and duplicate bytes")
     accept_space_loss: bool = Field(False, description="Accept storage growth for container writes")
-    label_strategy: Optional[str] = Field(None, description="Auto-labeling strategy")
-    prompt_strategy: Optional[str] = Field(None, description="Diffusion prompt template")
-    mask_strategy: Optional[str] = Field(None, description="Segmentation mask strategy")
-    shard_ext: Optional[str] = Field(
+    label_strategy: str | None = Field(None, description="Auto-labeling strategy")
+    prompt_strategy: str | None = Field(None, description="Diffusion prompt template")
+    mask_strategy: str | None = Field(None, description="Segmentation mask strategy")
+    shard_ext: str | None = Field(
         "data", description="WebDataset shard file extension without dot (default: 'data')"
     )
 
@@ -73,19 +74,19 @@ class DegradeJobRequest(BaseModel):
         "motion-blur+iso-noise", description="Degradation profile expression or preset alias"
     )
     intensity: str = Field("medium", description="Intensity preset (low, medium, high)")
-    pairs: Optional[int] = Field(None, description="Maximum sample pairs to synthesize")
+    pairs: int | None = Field(None, description="Maximum sample pairs to synthesize")
     val_split: float = Field(0.12, description="Validation split ratio")
     seed: int = Field(42, description="Deterministic seed")
     image_format: str = Field("webp", description="Format for degraded images (webp, jpeg, png)")
-    workers: Optional[int] = Field(None, description="Worker thread count")
+    workers: int | None = Field(None, description="Worker thread count")
     dry_run: bool = Field(False, description="Simulate without writing files")
 
 
 class GenericJobRequest(BaseModel):
     """Request body for a job that runs an arbitrary command."""
     job_type: JobType = Field(JobType.CUSTOM, description="Type of job to execute")
-    command: List[str] = Field(..., description="Command and argument list")
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Metadata dictionary")
+    command: list[str] = Field(..., description="Command and argument list")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Metadata dictionary")
 
 
 class JobResponse(BaseModel):
@@ -94,19 +95,19 @@ class JobResponse(BaseModel):
     job_type: JobType = Field(..., description="Job category")
     state: JobState = Field(..., description="Current job lifecycle state")
     created_at: str = Field(..., description="ISO 8601 creation timestamp")
-    started_at: Optional[str] = Field(None, description="ISO 8601 execution start timestamp")
-    completed_at: Optional[str] = Field(None, description="ISO 8601 completion timestamp")
-    exit_code: Optional[int] = Field(None, description="Process exit code")
-    error_message: Optional[str] = Field(None, description="Error details if failed")
+    started_at: str | None = Field(None, description="ISO 8601 execution start timestamp")
+    completed_at: str | None = Field(None, description="ISO 8601 completion timestamp")
+    exit_code: int | None = Field(None, description="Process exit code")
+    error_message: str | None = Field(None, description="Error details if failed")
     log_file: str = Field(..., description="Relative or absolute path to execution log file")
-    parameters: Dict[str, Any] = Field(
+    parameters: dict[str, Any] = Field(
         default_factory=dict, description="Job configuration parameters"
     )
 
 
 class JobListResponse(BaseModel):
     """A list of jobs with their total count."""
-    jobs: List[JobResponse]
+    jobs: list[JobResponse]
     total: int
 
 
@@ -146,14 +147,14 @@ class DatasetInfoResponse(BaseModel):
     task: str
     sample_count: int
     size_bytes: int
-    formats: List[str]
+    formats: list[str]
     has_hardlinks: bool
     hardlink_ratio: float
 
 
 class DatasetListResponse(BaseModel):
     """A list of compiled datasets with their total count."""
-    datasets: List[DatasetInfoResponse]
+    datasets: list[DatasetInfoResponse]
     total: int
 
 
@@ -176,35 +177,35 @@ class DatasetFormatStats(BaseModel):
 class DatasetSourceInfo(BaseModel):
     """One upstream source a dataset was compiled from."""
     name: str
-    ref: Optional[str] = None
-    count: Optional[int] = None
-    type: Optional[str] = "SOURCE"
+    ref: str | None = None
+    count: int | None = None
+    type: str | None = "SOURCE"
 
 
 class DatasetDetailStats(BaseModel):
     """Detailed statistics for one compiled dataset."""
     name: str
-    key: Optional[str] = None
-    display_name: Optional[str] = None
+    key: str | None = None
+    display_name: str | None = None
     path: str
     task: str
     sample_count: int
     size_bytes: int
     size_gb: float
-    format: Optional[str] = "directory"
-    canonical_format: Optional[str] = "webdataset"
+    format: str | None = "directory"
+    canonical_format: str | None = "webdataset"
     formats: DatasetFormatStats
     shards_count: int = 0
     is_compiled: bool = False
     has_hardlinks: bool
     hardlink_ratio: float
-    sources: List[DatasetSourceInfo] = []
-    kaggle_ref: Optional[str] = None
+    sources: list[DatasetSourceInfo] = []
+    kaggle_ref: str | None = None
 
 
 class DatasetStatsListResponse(BaseModel):
     """Detailed statistics for all compiled datasets with size totals."""
-    datasets: List[DatasetDetailStats]
+    datasets: list[DatasetDetailStats]
     total: int
     total_size_bytes: int
     total_size_gb: float
@@ -216,18 +217,18 @@ class ActiveJobTelemetry(BaseModel):
     job_type: str
     state: str
     created_at: str
-    started_at: Optional[str] = None
+    started_at: str | None = None
     progress_percent: float = 0.0
     current_sample: int = 0
     total_samples: int = 0
     elapsed_seconds: float = 0.0
-    eta_seconds: Optional[float] = None
+    eta_seconds: float | None = None
     fps: float = 0.0
 
 
 class ActiveJobsResponse(BaseModel):
     """The running jobs with their count."""
-    active_jobs: List[ActiveJobTelemetry]
+    active_jobs: list[ActiveJobTelemetry]
     count: int
 
 
@@ -238,19 +239,19 @@ class CompilerPresetModel(BaseModel):
     description: str
     image_format: str
     image_quality: int
-    target_quality: Optional[int] = None
-    mask_format: Optional[str] = None
-    min_resolution: Optional[int] = None
-    resampling: Optional[str] = None
+    target_quality: int | None = None
+    mask_format: str | None = None
+    min_resolution: int | None = None
+    resampling: str | None = None
     vetting_enabled: bool = False
     labeling_enabled: bool = False
     hardlink_gate: bool = True
-    containers: List[str] = Field(default_factory=list)
+    containers: list[str] = Field(default_factory=list)
 
 
 class PresetListResponse(BaseModel):
     """All compiler presets keyed by name."""
-    presets: Dict[str, CompilerPresetModel]
+    presets: dict[str, CompilerPresetModel]
     total: int
 
 
@@ -258,8 +259,8 @@ class QuickCompileRequest(BaseModel):
     """Request body for compiling a dataset with a preset."""
     model: str = Field(..., description="Dataset or model key in unified_data.yaml")
     preset: str = Field("quality-vision", description="Preset name from presets.yaml")
-    max_gb: Optional[float] = Field(None, description="Max size override in gigabytes")
-    workers: Optional[int] = Field(None, description="Parallel worker process count")
+    max_gb: float | None = Field(None, description="Max size override in gigabytes")
+    workers: int | None = Field(None, description="Parallel worker process count")
 
 
 class GuiStateResponse(BaseModel):
@@ -272,7 +273,7 @@ class GuiStateResponse(BaseModel):
     total_storage_bytes: int
     total_storage_gb: float
     hardware: HardwareInfo
-    presets: List[str]
+    presets: list[str]
 
 
 class KaggleDatasetRegistryItem(BaseModel):
@@ -292,7 +293,7 @@ class KaggleDatasetRegistryItem(BaseModel):
 class KaggleDownloadRequest(BaseModel):
     """Request body for downloading a Kaggle dataset."""
     kaggle_ref: str = Field(..., description="Kaggle dataset handle, kaggle:// URI, or URL")
-    target_folder: Optional[str] = Field(
+    target_folder: str | None = Field(
         None, description="Destination folder name under datasets root"
     )
     force: bool = Field(False, description="Force overwrite existing folder")
@@ -301,7 +302,7 @@ class KaggleDownloadRequest(BaseModel):
 class KaggleUploadRequest(BaseModel):
     """Request body for uploading a manifold to Kaggle."""
     manifold: str = Field(..., description="Local manifold folder name or registry key")
-    kaggle_ref: Optional[str] = Field(None, description="Optional target Kaggle dataset handle")
+    kaggle_ref: str | None = Field(None, description="Optional target Kaggle dataset handle")
     no_wait: bool = Field(True, description="Do not wait for server-side extraction verification")
 
 
@@ -322,7 +323,7 @@ class CustomCompileRequest(BaseModel):
     )
     canonical_format: str = Field("webdataset", description="Target container format")
     shard_size: int = Field(5000, description="Samples per shard container")
-    sources: List[str] = Field(
+    sources: list[str] = Field(
         default_factory=list,
         description="List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)",
     )

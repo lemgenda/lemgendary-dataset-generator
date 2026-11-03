@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.52-STABLE` |
+| **Version** | `v16.9.53-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,27 @@
 ---
 
 ## Changelog
+
+### v16.9.53 - Ruff Clean
+
+- **Ruff 259 to 0**, with no rules ignored and no configuration added:
+  imports sorted, PEP 585/604 annotations (`list[str]`, `X | None`),
+  `collections.abc` imports, sorted `__all__`, `removeprefix`, `.values()`
+  loops, redundant `int(round(...))` casts dropped, nested `if`s merged.
+- **Blocking File I/O off the Event Loop**: the config, datasets, sources,
+  Kaggle registry and `/gui/datasets/with-stats` routes read files and scan
+  folders, so they are plain `def` routes that FastAPI runs in its
+  threadpool. The in-process test client now drives requests with
+  `asyncio.run` so threadpool routes work in tests.
+- **Typed Dependencies**: `verify_token` declares its security dependencies
+  with `Annotated[..., Security(...)]`; `AutoLabeler` and `QualitySentry` pick
+  the CUDA device per instance when `device` is not given, not at import.
+- **Domain Errors**: `UnifiedDataError` and `PresetsFileError` (both
+  `ValueError` subclasses, so existing handlers still catch them) name a
+  malformed `unified_data.yaml` or `presets.yaml`.
+- **Private API Adapters**: the Kaggle header-image upload and the torch
+  CUDA capability checks look the private names up from one module constant
+  each. `logger.exception` no longer repeats the exception text.
 
 ### v16.9.52 - Seven Compiler Bugs Fixed; One Version String
 
