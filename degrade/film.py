@@ -13,9 +13,12 @@ Simulates historical analog film stock artifacts:
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
+from .base import DegradationFilter
 
 
 def _numpy_rng(rng: random.Random) -> np.random.Generator:
@@ -57,14 +60,18 @@ def _stamp_speck(out: np.ndarray, np_rng: np.random.Generator) -> None:
     out[y_min:y_max, x_min:x_max][mask] = dust_color
 
 
-class FilmGrain:
+@dataclass
+class FilmGrain(DegradationFilter):
     """Simulates analog photographic film grain."""
 
     name = "film_grain"
 
-    def __init__(self, intensity: float = 0.05, monochrome: bool = True) -> None:
-        self.intensity = max(0.005, min(0.5, float(intensity)))
-        self.monochrome = monochrome
+    intensity: float = 0.05
+    monochrome: bool = True
+
+    def __post_init__(self) -> None:
+        self.intensity = max(0.005, min(0.5, float(self.intensity)))
+        self.monochrome = self.monochrome
 
     def __call__(
         self,
@@ -91,14 +98,18 @@ class FilmGrain:
         return out, params
 
 
-class FilmScratches:
+@dataclass
+class FilmScratches(DegradationFilter):
     """Simulates vertical physical film scratches from transport mechanisms."""
 
     name = "film_scratches"
 
-    def __init__(self, num_scratches: int = 3, opacity: float = 0.6) -> None:
-        self.num_scratches = max(1, int(num_scratches))
-        self.opacity = max(0.1, min(1.0, float(opacity)))
+    num_scratches: int = 3
+    opacity: float = 0.6
+
+    def __post_init__(self) -> None:
+        self.num_scratches = max(1, int(self.num_scratches))
+        self.opacity = max(0.1, min(1.0, float(self.opacity)))
 
     def __call__(
         self,
@@ -120,13 +131,16 @@ class FilmScratches:
         return out, params
 
 
-class FilmDust:
+@dataclass
+class FilmDust(DegradationFilter):
     """Simulates physical dust particles and fiber specks."""
 
     name = "film_dust"
 
-    def __init__(self, num_specks: int = 15) -> None:
-        self.num_specks = max(1, int(num_specks))
+    num_specks: int = 15
+
+    def __post_init__(self) -> None:
+        self.num_specks = max(1, int(self.num_specks))
 
     def __call__(
         self,
@@ -145,14 +159,18 @@ class FilmDust:
         return out, params
 
 
-class ColorFade:
+@dataclass
+class ColorFade(DegradationFilter):
     """Simulates photochemical dye color fading and contrast compression."""
 
     name = "color_fade"
 
-    def __init__(self, saturation: float = 0.7, contrast: float = 0.85) -> None:
-        self.saturation = max(0.0, min(1.5, float(saturation)))
-        self.contrast = max(0.2, min(1.5, float(contrast)))
+    saturation: float = 0.7
+    contrast: float = 0.85
+
+    def __post_init__(self) -> None:
+        self.saturation = max(0.0, min(1.5, float(self.saturation)))
+        self.contrast = max(0.2, min(1.5, float(self.contrast)))
 
     def __call__(
         self,

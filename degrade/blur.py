@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import math
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from scipy.ndimage import convolve
+
+from .base import DegradationFilter
 
 
 def _create_gaussian_kernel(size: int, sigma: float) -> np.ndarray:
@@ -61,18 +64,22 @@ def _create_disk_kernel(radius: int) -> np.ndarray:
     return kernel / np.sum(kernel)
 
 
-class GaussianBlur:
+@dataclass
+class GaussianBlur(DegradationFilter):
     """Applies isotropic Gaussian blur."""
 
     name = "gaussian_blur"
 
-    def __init__(self, sigma: float = 1.8, kernel_size: int | None = None) -> None:
-        self.sigma = max(0.1, float(sigma))
-        if kernel_size is None:
+    sigma: float = 1.8
+    kernel_size: int | None = None
+
+    def __post_init__(self) -> None:
+        self.sigma = max(0.1, float(self.sigma))
+        if self.kernel_size is None:
             k = math.ceil(self.sigma * 3.0) * 2 + 1
             self.kernel_size = max(3, k)
         else:
-            self.kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1
+            self.kernel_size += 1 - self.kernel_size % 2  # round an even size up to odd
 
     def __call__(
         self,
@@ -91,14 +98,18 @@ class GaussianBlur:
         return np.clip(out, 0.0, 1.0), params
 
 
-class MotionBlur:
+@dataclass
+class MotionBlur(DegradationFilter):
     """Applies directional linear motion blur."""
 
     name = "motion_blur"
 
-    def __init__(self, kernel_size: int = 15, angle: float | None = None) -> None:
-        self.kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1
-        self.angle = angle
+    kernel_size: int = 15
+    angle: float | None = None
+
+    def __post_init__(self) -> None:
+        self.kernel_size = self.kernel_size if self.kernel_size % 2 == 1 else self.kernel_size + 1
+        self.angle = self.angle
 
     def __call__(
         self,
@@ -119,13 +130,16 @@ class MotionBlur:
         return np.clip(out, 0.0, 1.0), params
 
 
-class DefocusBlur:
+@dataclass
+class DefocusBlur(DegradationFilter):
     """Applies circular disk defocus blur."""
 
     name = "defocus_blur"
 
-    def __init__(self, radius: int = 3) -> None:
-        self.radius = max(1, int(radius))
+    radius: int = 3
+
+    def __post_init__(self) -> None:
+        self.radius = max(1, int(self.radius))
 
     def __call__(
         self,
@@ -144,13 +158,16 @@ class DefocusBlur:
         return np.clip(out, 0.0, 1.0), params
 
 
-class BoxBlur:
+@dataclass
+class BoxBlur(DegradationFilter):
     """Applies uniform box blur."""
 
     name = "box_blur"
 
-    def __init__(self, kernel_size: int = 5) -> None:
-        self.kernel_size = kernel_size if kernel_size % 2 == 1 else kernel_size + 1
+    kernel_size: int = 5
+
+    def __post_init__(self) -> None:
+        self.kernel_size = self.kernel_size if self.kernel_size % 2 == 1 else self.kernel_size + 1
 
     def __call__(
         self,

@@ -48,4 +48,11 @@ class NimaModel(nn.Module):
         # Clamping to +/-10.0 ensures stability during first-iteration resumption (FP16 safe)
         return x
 
+    @staticmethod
+    def expected_score(logits):
+        """Mean score on the 1..10 scale and the softmax distribution, per batch row."""
+        probs = nn.functional.softmax(logits, dim=1)
+        weights = torch.arange(1, 11, device=logits.device, dtype=probs.dtype)
+        return torch.sum(probs * weights, dim=1), probs
+
 # Unified Loss Logic moved to training/train.py for 2026 Resiliency Synchronization.

@@ -91,19 +91,15 @@ def build_compile_args(options: CompileOptions) -> list[str]:
     return args_list
 
 
-class CompilerService:
-    """Encapsulates dataset compilation orchestration."""
+def run_compile(**options: Unpack[CompileOptions]) -> int:
+    """Run a compile in-process with the given CLI options; returns the exit code."""
+    manifold_compile = load_manifold_compile()
 
-    @staticmethod
-    def run_compile(**options: Unpack[CompileOptions]) -> int:
-        """Run a compile in-process with the given CLI options; returns the exit code."""
-        manifold_compile = load_manifold_compile()
-
-        parsed = manifold_compile.parse_compile_args(build_compile_args(options))
-        try:
-            manifold_compile.process_dataset(parsed)
-            return 0
-        except SERVICE_ERRORS as exc:
-            logger.exception("Compilation error")
-            console.print(f"[bold red]Compilation error:[/bold red] {exc}")
-            return 1
+    parsed = manifold_compile.parse_compile_args(build_compile_args(options))
+    try:
+        manifold_compile.process_dataset(parsed)
+        return 0
+    except SERVICE_ERRORS as exc:
+        logger.exception("Compilation error")
+        console.print(f"[bold red]Compilation error:[/bold red] {exc}")
+        return 1

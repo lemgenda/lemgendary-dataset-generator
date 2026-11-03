@@ -24,9 +24,9 @@ from commands.options import (
 )
 from core.cli_args import PROJECT_NAME, __version__
 from services import (
-    AuditService,
-    CompilerService,
     MigrationService,
+    audit_manifold,
+    run_compile,
 )
 
 logger = logging.getLogger(__name__)
@@ -145,13 +145,13 @@ def _sidecar_compile_payload(values: dict[str, Any]) -> dict[str, Any]:
 
 @options_command(CompileOptions)
 def compile_manifold(opts: CompileOptions) -> None:
-    """Compile a manifold from raw sources (delegates to CompilerService or API)."""
+    """Compile a manifold from raw sources (delegates to services.run_compile or the API)."""
     values = flat_values(opts)
     values.pop("no_server")
     if not opts.no_server and _is_server_available():
         route_through_sidecar("compile", _sidecar_compile_payload(values))
 
-    code = CompilerService.run_compile(**values)
+    code = run_compile(**values)
     raise typer.Exit(code=code)
 
 
@@ -200,7 +200,7 @@ def audit(
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> None:
     """Full image audit pass (resolution, black-frame, dedup, hardlinks)."""
-    code = AuditService.audit_manifold(
+    code = audit_manifold(
         manifold_path=require_target(TargetOptions(model=model, manifold=manifold)),
         sample=sample,
         as_json=as_json,

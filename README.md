@@ -14,7 +14,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.53-STABLE` |
+| **Version** | `v16.9.54-STABLE` |
 | **Phase** | Complete Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,6 +23,37 @@
 ---
 
 ## Changelog
+
+### v16.9.54 - Pylint Clean: No Too-Few-Public-Methods, No Duplicate Code
+
+- **Pylint 0 Findings** (was 33 `too-few-public-methods` and 1
+  `duplicate-code`), still with no disabled checks.
+- **Degradation Kernels Are Dataclasses**: the 19 kernels subclass the new
+  `DegradationFilter` dataclass; constructor arguments are fields, clamped
+  in `__post_init__`. `DegradationProfile` gains `config()`, the configured
+  (not per-sample) parameters, and `CompositeProfile.config()` lists every
+  step. Synthetic manifolds record the chain as `degradation_steps` in
+  `dataset_info.yaml`. Output is byte-identical to v16.9.53 for every
+  kernel and preset (seeded check).
+- **Generator Strategies Have One Source**: `Generator.strategies()` lists
+  the names each generator accepts. The compile CLI's
+  `--label-strategy`/`--mask-strategy`/`--prompt-strategy` choices and the
+  `label`/`prompt`/`mask` help text come from it (prompt templates are now
+  validated by argparse too).
+- **Model Wrappers**: `QualitySentry.rate()` returns the score and the
+  distribution; `score()` returns only the score (the `return_probs` flag
+  is gone). `NimaModel.expected_score()` holds the 1-10 expectation.
+  `AutoLabeler.face_landmarks()` is public. `CaptionSentry` is a dataclass
+  with the checkpoint id, token budget and fallback caption as fields.
+  `ExactHasher` is a frozen dataclass.
+- **Single-Operation Services Are Functions**: `audit_manifold`,
+  `run_compile`, `run_degrade` and `run_generation` replace the
+  one-static-method `AuditService`, `CompilerService`, `DegradeService` and
+  `GenerationService` classes.
+- **Queue Response Reuses the Registry Entry**: `QueueItemResponse` extends
+  the `ManifoldRegistryEntry` dataclass instead of repeating its seven
+  fields; `openapi.json` is unchanged.
+- Tests: `tests/test_strategy_contracts.py`.
 
 ### v16.9.53 - Ruff Clean
 

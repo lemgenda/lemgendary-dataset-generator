@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from core.registry import initialize_registry
+from degrade import parse_profile
 
 _SAMPLES_DDL = """
             CREATE TABLE IF NOT EXISTS samples (
@@ -112,6 +113,8 @@ def write_metadata(desc: ManifoldDescription, records: list[dict[str, Any]]) -> 
         "synthetic": True,
         "base_source": str(desc.source_path.name),
         "degradation_profile": desc.profile_expr,
+        "degradation_steps": parse_profile(desc.profile_expr, intensity=desc.intensity)
+        .config()["steps"],
         "intensity": desc.intensity,
         "seed": desc.seed,
         "total_samples": total_written,

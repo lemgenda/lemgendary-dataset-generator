@@ -12,23 +12,27 @@ and A is atmospheric global airlight.
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
+from .base import DegradationFilter
 
-class AtmosphericHaze:
+
+@dataclass
+class AtmosphericHaze(DegradationFilter):
     """Simulates realistic atmospheric haze and depth-dependent scattering."""
 
     name = "atmospheric_haze"
 
-    def __init__(
-        self,
-        beta: float = 0.6,
-        atmospheric_light: tuple[float, float, float] = (0.88, 0.90, 0.92),
-    ) -> None:
-        self.beta = max(0.05, float(beta))
-        self.airlight = np.array(atmospheric_light, dtype=np.float32)
+    beta: float = 0.6
+    atmospheric_light: tuple[float, float, float] = (0.88, 0.90, 0.92)
+    airlight: np.ndarray = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self.beta = max(0.05, float(self.beta))
+        self.airlight = np.array(self.atmospheric_light, dtype=np.float32)
 
     def __call__(
         self,

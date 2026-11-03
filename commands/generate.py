@@ -22,9 +22,10 @@ from commands.options import (
     options_command,
     require_target,
 )
+from generators import LabelGenerator, MaskGenerator, PromptGenerator
 from services import (
-    DegradeService,
-    GenerationService,
+    run_degrade,
+    run_generation,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,10 +50,7 @@ class LabelOptions:
         str,
         typer.Option(
             "--strategy",
-            help=(
-                "blip_caption | clip_zeroshot | yolo_detection | parsenet_segmentation"
-                " | nima_quality"
-            ),
+            help=" | ".join(LabelGenerator.strategies()),
         ),
     ] = "blip_caption"
     run: GenerationRunOptions
@@ -64,7 +62,7 @@ class PromptOptions:
 
     target: TargetOptions
     template: Annotated[
-        str, typer.Option("--template", help="diffusers-v1 | sd-v1 | flux-v1 | minimal")
+        str, typer.Option("--template", help=" | ".join(PromptGenerator.strategies()))
     ] = "diffusers-v1"
     run: GenerationRunOptions
 
@@ -74,7 +72,9 @@ class MaskOptions:
     """Options of the ``mask`` command."""
 
     target: TargetOptions
-    strategy: Annotated[str, typer.Option("--strategy", help="parsenet | sam | modnet")] = (
+    strategy: Annotated[
+        str, typer.Option("--strategy", help=" | ".join(MaskGenerator.strategies()))
+    ] = (
         "parsenet"
     )
     run: GenerationRunOptions
@@ -83,9 +83,9 @@ class MaskOptions:
 def _generate(
     target: TargetOptions, kind: str, strategy: str, run: GenerationRunOptions, **extra: str
 ) -> None:
-    """Resolve the manifold, run one GenerationService pass and exit with its code."""
+    """Resolve the manifold, run one generation pass and exit with its code."""
     manifold = require_target(target)
-    code = GenerationService.generate(
+    code = run_generation(
         manifold=manifold,
         kind=kind,
         strategy=strategy,
@@ -179,5 +179,5 @@ def degrade(opts: DegradeOptions) -> None:
     if not opts.no_server and _is_server_available():
         route_through_sidecar("degrade", payload)
 
-    code = DegradeService.run_degrade(**payload)
+    code = run_degrade(**payload)
     raise typer.Exit(code=code)

@@ -30,33 +30,29 @@ class GenerateOptions(TypedDict, total=False):
     dry_run: bool
 
 
-class GenerationService:
-    """Encapsulates label, prompt, and mask generation."""
+def run_generation(
+    manifold: Path,
+    kind: str,
+    strategy: str,
+    **options: Unpack[GenerateOptions],
+) -> int:
+    """Run smart generation pass over an existing manifold.
 
-    @staticmethod
-    def generate(
-        manifold: Path,
-        kind: str,
-        strategy: str,
-        **options: Unpack[GenerateOptions],
-    ) -> int:
-        """Run smart generation pass over an existing manifold.
+    ``options`` defaults: ``template="diffusers-v1"``, ``device="cpu"``,
+    ``sample=None`` (no cap) and ``dry_run=False``.
+    """
 
-        ``options`` defaults: ``template="diffusers-v1"``, ``device="cpu"``,
-        ``sample=None`` (no cap) and ``dry_run=False``.
-        """
-
-        try:
-            return generate_cli.run(
-                manifold=manifold,
-                kind=kind,
-                strategy=strategy,
-                template=options.get("template", "diffusers-v1"),
-                device=options.get("device", "cpu"),
-                sample_limit=options.get("sample"),
-                dry_run=options.get("dry_run", False),
-            )
-        except SERVICE_ERRORS as exc:
-            logger.exception("Generation error")
-            console.print(f"[bold red]Generation error:[/bold red] {exc}")
-            return 1
+    try:
+        return generate_cli.run(
+            manifold=manifold,
+            kind=kind,
+            strategy=strategy,
+            template=options.get("template", "diffusers-v1"),
+            device=options.get("device", "cpu"),
+            sample_limit=options.get("sample"),
+            dry_run=options.get("dry_run", False),
+        )
+    except SERVICE_ERRORS as exc:
+        logger.exception("Generation error")
+        console.print(f"[bold red]Generation error:[/bold red] {exc}")
+        return 1

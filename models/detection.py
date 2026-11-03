@@ -19,7 +19,7 @@ class AutoLabeler:
         # None picks CUDA when it is available (resolved per instance, not at import).
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.mode = mode # 'detection', 'segmentation', 'pose'
-        self.face_detector = None  # lazily created by _predict_face_landmarks
+        self.face_detector = None  # lazily created by face_landmarks
 
         base_dir = os.path.dirname(__file__)
 
@@ -37,7 +37,7 @@ class AutoLabeler:
     def predict(self, img_pil):
         """Return the annotations (bbox, segmentation, pose or face landmarks) found in an image."""
         if self.mode == "face_landmarks":
-            return self._predict_face_landmarks(img_pil)
+            return self.face_landmarks(img_pil)
 
         raw_results = self.model.predict(img_pil, device=self.device, verbose=False)
         results: list[Any] = cast(list[Any], raw_results)
@@ -72,7 +72,8 @@ class AutoLabeler:
         self.face_detector = vision.FaceLandmarker.create_from_options(options)
         return self.face_detector
 
-    def _predict_face_landmarks(self, img_pil):
+    def face_landmarks(self, img_pil):
+        """Face annotations (box plus landmarks) from MediaPipe, whatever the YOLO mode."""
         mp, python, vision = load_mediapipe()
 
         # Initialize detector lazily

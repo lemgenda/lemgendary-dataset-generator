@@ -27,7 +27,8 @@ from .base import GenerationResult, Generator
 logger = logging.getLogger(__name__)
 
 
-_VALID_STRATEGIES: frozenset[str] = frozenset({"parsenet", "sam", "modnet"})
+# Accepted strategies, default first (the CLI choices come from here).
+_VALID_STRATEGIES: tuple[str, ...] = ("parsenet", "sam", "modnet")
 
 
 class MaskGenerator(Generator):
@@ -43,13 +44,18 @@ class MaskGenerator(Generator):
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"Unknown mask strategy: {strategy!r}. "
-                f"Valid: {sorted(_VALID_STRATEGIES)}"
+                f"Valid: {list(_VALID_STRATEGIES)}"
             )
         self.strategy = strategy
         self._labeler = labeler
         self._size = image_size
         self._sam_predictor: Any = None
         self._modnet: Any = None
+
+    @classmethod
+    def strategies(cls) -> tuple[str, ...]:
+        """The mask strategies, default (``parsenet``) first."""
+        return _VALID_STRATEGIES
 
     def generate(
         self,

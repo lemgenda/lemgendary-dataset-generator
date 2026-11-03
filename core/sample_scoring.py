@@ -135,7 +135,7 @@ def model_score(img: Any, current: NimaScore) -> NimaScore:
     """Score with the loaded QualitySentry, or keep ``current`` when none is loaded."""
     if not WORKER.models.sentry:
         return current
-    score, probs = WORKER.models.sentry.score(img, return_probs=True)
+    score, probs = WORKER.models.sentry.rate(img)
     return NimaScore(score, probs)
 
 

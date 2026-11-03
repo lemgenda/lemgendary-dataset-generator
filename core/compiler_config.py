@@ -107,7 +107,7 @@ def install_args(ns: argparse.Namespace) -> argparse.Namespace:
     """Make ``ns`` the active Namespace and apply its CONFIG overrides.
 
     For entry points that parse the CLI themselves (``core.manifold_compile``
-    applies preset defaults first, ``CompilerService`` builds argv from typed
+    applies preset defaults first, ``services.run_compile`` builds argv from typed
     options): without this call ``get_args()`` raises in the workers and
     ``--workers`` / ``--image-format`` / strategy flags never reach CONFIG.
     """

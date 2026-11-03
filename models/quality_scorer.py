@@ -1,7 +1,6 @@
 """NIMA-based image quality scoring."""
 
 import torch
-from torch import nn
 from torchvision import transforms
 
 from .nima import NimaModel
@@ -40,18 +39,12 @@ class QualitySentry:
         ])
 
     @torch.no_grad()
-    def score(self, img_pil, return_probs=False):
-        """Return an image's mean NIMA score, plus the score distribution when ``return_probs``."""
+    def rate(self, img_pil) -> tuple[float, list[float]]:
+        """An image's mean NIMA score (1..10) and its 10-bin score distribution."""
         img_tensor = self.transform(img_pil).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            logits = self.model(img_tensor)
+        mean_score, probs = NimaModel.expected_score(self.model(img_tensor))
+        return mean_score.item(), probs[0].cpu().numpy().tolist()
 
-            probs = nn.functional.softmax(logits, dim=1)
-
-        # Calculate mean score from distribution [1, 10]
-        weights = torch.arange(1, 11).to(self.device).float()
-        mean_score = torch.sum(probs * weights, dim=1).item()
-
-        if return_probs:
-            return mean_score, probs[0].cpu().numpy().tolist()
-        return mean_score
+    def score(self, img_pil) -> float:
+        """An image's mean NIMA score (1..10)."""
+        return self.rate(img_pil)[0]

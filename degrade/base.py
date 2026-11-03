@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from typing import Any, Protocol, overload, runtime_checkable
+from dataclasses import dataclass, field, fields
+from typing import Any, ClassVar, Protocol, overload, runtime_checkable
 
 import numpy as np
 from PIL import Image
@@ -45,6 +45,28 @@ class DegradationProfile(Protocol):
         rng: random.Random,
     ) -> tuple[np.ndarray, dict[str, Any]]: ...
 
+    def config(self) -> dict[str, Any]:
+        """The kernel's configured (not per-sample) parameters, for reproducibility."""
+        ...
+
+
+@dataclass
+class DegradationFilter:
+    """Base of the concrete kernels: the constructor arguments are dataclass fields.
+
+    ``config()`` reports those fields (after clamping in ``__post_init__``);
+    attributes derived from them are declared ``init=False`` and left out.
+    """
+
+    name: ClassVar[str] = "filter"
+
+    def config(self) -> dict[str, Any]:
+        """The configured parameters, keyed by constructor argument name."""
+        return {
+            f.name: list(value) if isinstance(value := getattr(self, f.name), tuple) else value
+            for f in fields(self) if f.init
+        }
+
 
 # ─── Format Conversion Utilities ───────────────────────────────────────────
 def pil_to_float_array(img: Image.Image) -> np.ndarray:
@@ -62,16 +84,22 @@ def float_array_to_pil(arr: np.ndarray) -> Image.Image:
 
 
 # ─── Composite Profile ──────────────────────────────────────────────────────
+@dataclass
 class CompositeProfile:
     """Chains multiple DegradationProfile instances sequentially."""
 
-    def __init__(
-        self,
-        profiles: Sequence[DegradationProfile],
-        name: str = "composite",
-    ) -> None:
-        self.profiles = list(profiles)
-        self.name = name
+    profiles: Sequence[DegradationProfile]
+    name: str = "composite"
+
+    def __post_init__(self) -> None:
+        self.profiles = list(self.profiles)
+
+    def config(self) -> dict[str, Any]:
+        """The chain's name and each kernel's type and configured parameters, in order."""
+        return {
+            "name": self.name,
+            "steps": [{"type": p.name, "params": p.config()} for p in self.profiles],
+        }
 
     def __call__(
         self,

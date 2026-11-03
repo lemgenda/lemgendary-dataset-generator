@@ -80,6 +80,11 @@ class PromptGenerator(Generator):
         self._lighting = style.lighting or _DEFAULT_LIGHTING
         self._camera = style.camera or _DEFAULT_CAMERA
 
+    @classmethod
+    def strategies(cls) -> tuple[str, ...]:
+        """The prompt template names, default (``diffusers-v1``) first."""
+        return tuple(_TEMPLATES)
+
     def generate(
         self,
         img: Image.Image,

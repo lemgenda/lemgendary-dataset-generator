@@ -33,40 +33,36 @@ class DegradeOptions(TypedDict, total=False):
     dry_run: bool
 
 
-class DegradeService:
-    """Encapsulates degradation manifold synthesis."""
+def run_degrade(
+    source: str,
+    output: str,
+    **options: Unpack[DegradeOptions],
+) -> int:
+    """Execute synthetic degradation manifold generation in-process.
 
-    @staticmethod
-    def run_degrade(
-        source: str,
-        output: str,
-        **options: Unpack[DegradeOptions],
-    ) -> int:
-        """Execute synthetic degradation manifold generation in-process.
+    ``options`` defaults: ``profile="motion-blur+iso-noise"``,
+    ``intensity="medium"``, ``pairs=None``, ``val_split=0.12``, ``seed=42``,
+    ``image_format="webp"``, ``workers=None`` and ``dry_run=False``.
+    """
 
-        ``options`` defaults: ``profile="motion-blur+iso-noise"``,
-        ``intensity="medium"``, ``pairs=None``, ``val_split=0.12``, ``seed=42``,
-        ``image_format="webp"``, ``workers=None`` and ``dry_run=False``.
-        """
-
-        fmt = cast(
-            generate_degrade.ImageFormat,
-            options.get("image_format", generate_degrade.DEFAULT_IMAGE_FORMAT),
+    fmt = cast(
+        generate_degrade.ImageFormat,
+        options.get("image_format", generate_degrade.DEFAULT_IMAGE_FORMAT),
+    )
+    try:
+        return generate_degrade.synthesize_manifold(
+            source=source,
+            output=output,
+            profile_expr=options.get("profile", generate_degrade.DEFAULT_PROFILE),
+            intensity=options.get("intensity", generate_degrade.DEFAULT_INTENSITY),
+            pairs=options.get("pairs"),
+            val_split=options.get("val_split", generate_degrade.DEFAULT_VAL_SPLIT),
+            seed=options.get("seed", generate_degrade.DEFAULT_SEED),
+            image_format=fmt,
+            workers=options.get("workers"),
+            dry_run=options.get("dry_run", False),
         )
-        try:
-            return generate_degrade.synthesize_manifold(
-                source=source,
-                output=output,
-                profile_expr=options.get("profile", generate_degrade.DEFAULT_PROFILE),
-                intensity=options.get("intensity", generate_degrade.DEFAULT_INTENSITY),
-                pairs=options.get("pairs"),
-                val_split=options.get("val_split", generate_degrade.DEFAULT_VAL_SPLIT),
-                seed=options.get("seed", generate_degrade.DEFAULT_SEED),
-                image_format=fmt,
-                workers=options.get("workers"),
-                dry_run=options.get("dry_run", False),
-            )
-        except SERVICE_ERRORS as exc:
-            logger.exception("Degradation synthesis error")
-            console.print(f"[bold red]Degradation synthesis error:[/bold red] {exc}")
-            return 1
+    except SERVICE_ERRORS as exc:
+        logger.exception("Degradation synthesis error")
+        console.print(f"[bold red]Degradation synthesis error:[/bold red] {exc}")
+        return 1

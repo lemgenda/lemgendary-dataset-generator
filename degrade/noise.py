@@ -13,19 +13,26 @@ Pure NumPy implementations for:
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
+from .base import DegradationFilter
 
-class GaussianNoise:
+
+@dataclass
+class GaussianNoise(DegradationFilter):
     """Applies additive zero-mean Gaussian noise."""
 
     name = "gaussian_noise"
 
-    def __init__(self, sigma: float = 0.05, mean: float = 0.0) -> None:
-        self.sigma = float(sigma)
-        self.mean = float(mean)
+    sigma: float = 0.05
+    mean: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.sigma = float(self.sigma)
+        self.mean = float(self.mean)
 
     def __call__(
         self,
@@ -46,13 +53,16 @@ class GaussianNoise:
         return out, params
 
 
-class PoissonNoise:
+@dataclass
+class PoissonNoise(DegradationFilter):
     """Simulates photon shot noise via Poisson scaling."""
 
     name = "poisson_noise"
 
-    def __init__(self, scale: float = 255.0) -> None:
-        self.scale = max(1.0, float(scale))
+    scale: float = 255.0
+
+    def __post_init__(self) -> None:
+        self.scale = max(1.0, float(self.scale))
 
     def __call__(
         self,
@@ -73,14 +83,18 @@ class PoissonNoise:
         return out, params
 
 
-class SaltPepperNoise:
+@dataclass
+class SaltPepperNoise(DegradationFilter):
     """Applies salt-and-pepper impulse noise."""
 
     name = "salt_pepper_noise"
 
-    def __init__(self, amount: float = 0.02, salt_vs_pepper: float = 0.5) -> None:
-        self.amount = max(0.0, min(1.0, float(amount)))
-        self.salt_vs_pepper = max(0.0, min(1.0, float(salt_vs_pepper)))
+    amount: float = 0.02
+    salt_vs_pepper: float = 0.5
+
+    def __post_init__(self) -> None:
+        self.amount = max(0.0, min(1.0, float(self.amount)))
+        self.salt_vs_pepper = max(0.0, min(1.0, float(self.salt_vs_pepper)))
 
     def __call__(
         self,
@@ -115,14 +129,18 @@ class SaltPepperNoise:
         return out, params
 
 
-class ISOCalibratedNoise:
+@dataclass
+class ISOCalibratedNoise(DegradationFilter):
     """Simulates calibrated camera sensor noise model (heteroscedastic Gaussian + Poisson)."""
 
     name = "iso_noise"
 
-    def __init__(self, iso_level: int = 1600) -> None:
-        self.iso_level = max(100, int(iso_level))
-        # ISO scaling factors for read noise (sigma_read) and shot noise (sigma_shot)
+    iso_level: int = 1600
+    sigma_read: float = field(init=False, repr=False, compare=False)
+    sigma_shot: float = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self.iso_level = max(100, int(self.iso_level))
         iso_norm = self.iso_level / 100.0
         self.sigma_read = 0.002 * (iso_norm ** 0.6)
         self.sigma_shot = 0.008 * (iso_norm ** 0.5)

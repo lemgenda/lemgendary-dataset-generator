@@ -112,7 +112,6 @@ from utils.net import download_image
 __all__ = [
     "CATEGORY_MAP",
     "CATEGORY_MAP_PATH",
-    # Config constants (core.compiler_config)
     "CONFIG",
     "CONFIG_PATH",
     "DATASETS_META",
@@ -123,21 +122,16 @@ __all__ = [
     "VERSION",
     "YAML_DATA",
     "CompositeProfile",
-    # Degradation Engine (Phase 6)
     "DegradationProfile",
     "DirectorySampleSource",
     "DirectoryWriter",
     "DynamicDegrader",
     "ExactHasher",
     "ExistingSamples",
-    # Generators (Phase 5)
     "GenerationResult",
-    # Ground truth (Phase 1.5.5)
     "GroundTruthCaches",
     "ImageFormatPolicy",
-    # Task payloads (core.sample_jobs)
     "ImageJob",
-    # Transcode (Phase 3)
     "ImageTranscoder",
     "KeepFormatError",
     "LabelGenerator",
@@ -151,37 +145,29 @@ __all__ = [
     "Sample",
     "SampleKey",
     "ShardJob",
-    # Formats (Phase 4)
     "ShardWriter",
     "SourceContext",
-    # Audit (Phase 2)
     "VisionAuditor",
     "WebDatasetWriter",
     "Writer",
     "batch_worker",
-    # Runtime (Phase 1.7)
     "bootstrap_runtime",
     "clean_slug",
     "composite",
     "compute_hash",
-    # CLI configuration (Phase 1.5 — replaces module-level `args` / `parser`)
     "configure",
     "convert_bbox_xywh_to_yolo",
-    # Converters (Phase 1.4)
     "detect_annotations",
-    # Core API (core.compiler_worker / core.sample_*)
     "detect_task",
     "download_image",
     "ensure_registry_schema",
     "ensure_srgb",
     "get_args",
     "get_device_info",
-    # Utils (Phase 1.5.5)
     "get_dir_size",
     "get_gaussian_probs",
     "get_labeler",
     "init_worker",
-    # Registry (Phase 1.3 / 1.5.5)
     "initialize_registry",
     "is_black_image",
     "make_writer",

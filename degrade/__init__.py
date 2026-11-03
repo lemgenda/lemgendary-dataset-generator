@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from .base import (
     CompositeProfile,
+    DegradationFilter,
     DegradationProfile,
     DegradationStepResult,
     DynamicDegrader,
@@ -29,27 +30,22 @@ from .profiles import parse_profile
 from .rain import RainMist, RainStreaks
 
 __all__ = [
-    # Haze & Rain
     "AtmosphericHaze",
     "BoxBlur",
     "ColorFade",
     "CompositeProfile",
     "DefocusBlur",
-    # Base Engine & Types
+    "DegradationFilter",
     "DegradationProfile",
     "DegradationStepResult",
-    # Resolution & Film
     "Downsample",
     "DynamicDegrader",
     "FilmDust",
     "FilmGrain",
     "FilmScratches",
-    # Blur
     "GaussianBlur",
-    # Noise
     "GaussianNoise",
     "ISOCalibratedNoise",
-    # Compression & Lighting
     "JPEGCompression",
     "LowLight",
     "MotionBlur",

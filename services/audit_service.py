@@ -148,28 +148,24 @@ def _render_table(
     return table
 
 
-class AuditService:
-    """Encapsulates manifold validation and diagnostic auditing."""
+def audit_manifold(
+    manifold_path: Path,
+    sample: int | None = None,
+    as_json: bool = False,
+) -> int:
+    """Run comprehensive audit on a compiled manifold directory."""
+    if not manifold_path.exists():
+        console.print(f"[bold red]Manifold path does not exist:[/bold red] {manifold_path}")
+        return 1
 
-    @staticmethod
-    def audit_manifold(
-        manifold_path: Path,
-        sample: int | None = None,
-        as_json: bool = False,
-    ) -> int:
-        """Run comprehensive audit on a compiled manifold directory."""
-        if not manifold_path.exists():
-            console.print(f"[bold red]Manifold path does not exist:[/bold red] {manifold_path}")
-            return 1
+    # 1. Hardlink Audit
+    hardlink_res = audit_hardlinks(manifold_path)
 
-        # 1. Hardlink Audit
-        hardlink_res = audit_hardlinks(manifold_path)
+    # 2. Image Sample Audit
+    tally = _audit_samples(_collect_images(manifold_path, sample))
 
-        # 2. Image Sample Audit
-        tally = _audit_samples(_collect_images(manifold_path, sample))
-
-        if as_json:
-            print(json.dumps(_build_report(manifold_path, hardlink_res, tally), indent=2))
-        else:
-            console.print(_render_table(manifold_path, hardlink_res, tally))
-        return 0 if hardlink_res.verdict != "BLOCK" else 1
+    if as_json:
+        print(json.dumps(_build_report(manifold_path, hardlink_res, tally), indent=2))
+    else:
+        console.print(_render_table(manifold_path, hardlink_res, tally))
+    return 0 if hardlink_res.verdict != "BLOCK" else 1

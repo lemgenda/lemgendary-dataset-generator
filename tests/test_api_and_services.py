@@ -3,8 +3,8 @@ LemGendary Dataset Compiler — API and Service Orchestration Unit Tests.
 
 Phase 1 of Ecosystem Comprehensive Testing Battery.
 Tests FastAPI endpoints (Health, GUI state, Datasets, Gates, Config, Jobs, Modernize, Kaggle)
-and all 7 service layers (AuditService, CompilerService, DegradeService, DocService,
-GenerationService, MigrationService, SyncService).
+and all 7 services (audit_manifold, run_compile, run_degrade, DocService,
+run_generation, MigrationService, SyncService).
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ from PIL import Image
 
 from api.auth import get_or_create_token
 from api.server import app
-from services.audit_service import AuditService
-from services.compiler_service import CompilerService
-from services.degrade_service import DegradeService
+from services.audit_service import audit_manifold
+from services.compiler_service import run_compile
+from services.degrade_service import run_degrade
 from services.doc_service import DocService
-from services.generation_service import GenerationService
+from services.generation_service import run_generation
 from services.migration_service import MigrationService
 from services.sync_service import SyncService
 
@@ -277,12 +277,12 @@ class TestApiRoutes(unittest.TestCase):
             self.assertEqual(mod_resp.json(), [])
 
 
-class TestAuditService(unittest.TestCase):
-    """Test AuditService image quality and hardlink verification."""
+class TestAuditManifold(unittest.TestCase):
+    """Test audit_manifold image quality and hardlink verification."""
 
     def test_audit_manifold_nonexistent(self) -> None:
         """Auditing a missing manifold returns 1."""
-        ret = AuditService.audit_manifold(Path("C:/does_not_exist_xyz_dir_999"), as_json=True)
+        ret = audit_manifold(Path("C:/does_not_exist_xyz_dir_999"), as_json=True)
         self.assertEqual(ret, 1)
 
     def test_audit_manifold_valid_directory(self) -> None:
@@ -296,7 +296,7 @@ class TestAuditService(unittest.TestCase):
             img_file = img_dir / "sample_001.webp"
             img.save(img_file, format="WEBP")
 
-            ret = AuditService.audit_manifold(m_path, sample=5, as_json=True)
+            ret = audit_manifold(m_path, sample=5, as_json=True)
             self.assertEqual(ret, 0)
 
 
@@ -304,10 +304,10 @@ class TestAllServicesOrchestration(unittest.TestCase):
     """Test all 7 service facade layers for in-process dispatch."""
 
     def test_compiler_service_dry_dispatch(self) -> None:
-        """CompilerService passes its options to process_dataset."""
+        """run_compile passes its options to process_dataset."""
         with patch("core.manifold_compile.process_dataset") as mock_proc:
             mock_proc.return_value = None
-            ret = CompilerService.run_compile(
+            ret = run_compile(
                 preset="restoration-hardlinked",
                 no_vetting=True,
                 no_labeling=True,
@@ -317,9 +317,9 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_proc.called)
 
     def test_compiler_service_handles_error(self) -> None:
-        """CompilerService returns 1 when process_dataset raises."""
+        """run_compile returns 1 when process_dataset raises."""
         with patch("core.manifold_compile.process_dataset", side_effect=RuntimeError("Test error")):
-            ret = CompilerService.run_compile(
+            ret = run_compile(
                 preset="restoration-hardlinked",
             )
             self.assertEqual(ret, 1)
@@ -359,9 +359,9 @@ class TestAllServicesOrchestration(unittest.TestCase):
             )
 
     def test_degrade_service_dispatch(self) -> None:
-        """DegradeService calls synthesize_manifold."""
+        """run_degrade calls synthesize_manifold."""
         with patch("tools.generate_degrade.synthesize_manifold", return_value=0) as mock_deg:
-            ret = DegradeService.run_degrade(
+            ret = run_degrade(
                 source="clean_src",
                 output="synth_out",
                 profile="motion-blur+iso-noise",
@@ -378,9 +378,9 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_md.called)
 
     def test_generation_service_dispatch(self) -> None:
-        """GenerationService calls generate_cli.run."""
+        """run_generation calls generate_cli.run."""
         with patch("tools.generate_cli.run", return_value=0) as mock_gen:
-            ret = GenerationService.generate(
+            ret = run_generation(
                 manifold=Path("C:/test_manifold"),
                 kind="label",
                 strategy="blip_caption",

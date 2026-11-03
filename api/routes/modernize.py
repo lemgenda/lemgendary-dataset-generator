@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from tools.modernization_queue import build_queue_args, load_queue_manifest
 from tools.modernize.queue_items import (
     API_LABEL_STYLE,
     ManifoldQueueItem,
+    ManifoldRegistryEntry,
     queue_status_labels,
 )
 
@@ -24,15 +26,10 @@ logger = logging.getLogger("lemgendary.api.routes.modernize")
 router = APIRouter(prefix="/modernize", tags=["Modernization Hub"])
 
 
-class QueueItemResponse(BaseModel):
+@dataclass
+class QueueItemResponse(ManifoldRegistryEntry):
     """One dataset in the modernization queue."""
-    key: str
-    name: str
-    canonical_format: str
-    modernized_folder: str
-    kaggle_ref: str
-    title: str
-    subtitle: str
+
     is_containerized: bool
     has_loose_files: bool
     container_bytes: int
@@ -155,14 +152,9 @@ async def get_modernization_queue() -> list[QueueItemResponse]:
 def _queue_item_response(it: ManifoldQueueItem) -> QueueItemResponse:
     """Map a scanned queue item to its API representation."""
     status_str, src_str = queue_status_labels(it, API_LABEL_STYLE)
+    identity = {f.name: getattr(it, f.name) for f in fields(ManifoldRegistryEntry)}
     return QueueItemResponse(
-        key=it.key,
-        name=it.name,
-        canonical_format=it.canonical_format,
-        modernized_folder=it.modernized_folder,
-        kaggle_ref=it.kaggle_ref,
-        title=it.title,
-        subtitle=it.subtitle,
+        **identity,
         is_containerized=it.is_containerized,
         has_loose_files=it.has_loose_files,
         container_bytes=it.container_bytes,

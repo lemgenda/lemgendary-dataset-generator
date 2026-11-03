@@ -24,13 +24,14 @@ from PIL import Image
 from .base import GenerationResult, Generator
 from .model_handles import ModelHandles
 
-_VALID_STRATEGIES: frozenset[str] = frozenset({
+# Accepted strategies, default first (the CLI choices come from here).
+_VALID_STRATEGIES: tuple[str, ...] = (
     "blip_caption",
     "clip_zeroshot",
     "yolo_detection",
     "parsenet_segmentation",
     "nima_quality",
-})
+)
 
 
 class LabelGenerator(Generator):
@@ -52,7 +53,7 @@ class LabelGenerator(Generator):
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"Unknown label strategy: {strategy!r}. "
-                f"Valid: {sorted(_VALID_STRATEGIES)}"
+                f"Valid: {list(_VALID_STRATEGIES)}"
             )
         handles = ModelHandles.from_kwargs(type(self).__name__, models)
         self.strategy = strategy
@@ -61,6 +62,11 @@ class LabelGenerator(Generator):
         self._labeler = handles.labeler
         self._sentry = handles.sentry
         self._classes = classes or []
+
+    @classmethod
+    def strategies(cls) -> tuple[str, ...]:
+        """The label strategies, default (``blip_caption``) first."""
+        return _VALID_STRATEGIES
 
     def generate(
         self,
@@ -126,7 +132,7 @@ class LabelGenerator(Generator):
     def _nima(self, img: Image.Image) -> GenerationResult:
         if self._sentry is None:
             return GenerationResult(kind="label", value={}, strategy=self.strategy)
-        score, probs = self._sentry.score(img, return_probs=True)
+        score, probs = self._sentry.rate(img)
         return GenerationResult(
             kind="label",
             value={"nima_probs": probs, "nima_score": score},

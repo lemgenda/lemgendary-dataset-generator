@@ -24,9 +24,11 @@ import shutil
 import sys
 from pathlib import Path
 
+from generators import LabelGenerator, MaskGenerator, PromptGenerator
+
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.53"
+__version__ = "16.9.54"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────
@@ -109,13 +111,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── Smart-generation strategy overrides (Phase 5) ───────────────────────
     parser.add_argument("--label-strategy", dest="label_strategy", type=str, default=None,
-                        choices=["blip_caption", "clip_zeroshot", "yolo_detection",
-                                 "parsenet_segmentation", "nima_quality"],
+                        choices=LabelGenerator.strategies(),
                         help="Label generation strategy (default: inferred from task)")
     parser.add_argument("--prompt-strategy", dest="prompt_strategy", type=str, default=None,
+                        choices=PromptGenerator.strategies(),
                         help="Prompt template name (default: diffusers-v1)")
     parser.add_argument("--mask-strategy", dest="mask_strategy", type=str, default=None,
-                        choices=["parsenet", "sam", "modnet"],
+                        choices=MaskGenerator.strategies(),
                         help="Mask generation strategy (default: parsenet for segmentation)")
 
     # ── Compiler Preset Profiles (Phase 8) ─────────────────────────────────
