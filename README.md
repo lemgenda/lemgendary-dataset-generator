@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.66-STABLE` |
+| **Version** | `v16.9.67-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,12 @@
 ---
 
 ## Changelog
+
+### v16.9.67 - Require Local kaggle.json in Start-Acquisition
+
+- `lemgendary_datasets_hub.ps1` (`Start-Acquisition`): removed the hardcoded
+  Kaggle username and API key write and replaced it with a verification check
+  that `kaggle.json` exists in `$env:KAGGLE_CONFIG_DIR` or `$HOME\.kaggle`.
 
 ### v16.9.66 - Pyright Clean Again
 

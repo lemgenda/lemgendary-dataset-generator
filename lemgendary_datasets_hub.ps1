@@ -468,14 +468,15 @@ function Start-Acquisition {
     param([string[]]$ForcedRefs = $null)
     if (-not $PSCmdlet.ShouldProcess("dataset acquisition", "Start")) { return }
 
-    $Cred = @{ username = 'lemgenda'; key = 'd28f8f8b8eef9a8f688e8b8c7c9e8e8' }
-    $KPath = Join-Path $env:USERPROFILE '.kaggle'
-    if (!(Test-Path $KPath)) { [void](New-Item -ItemType Directory -Path $KPath -Force) }
-    [System.IO.File]::WriteAllText((Join-Path $KPath 'kaggle.json'), ($Cred | ConvertTo-Json))
+    $kaggleDir = if ($env:KAGGLE_CONFIG_DIR) { $env:KAGGLE_CONFIG_DIR } `
+        else { Join-Path $HOME '.kaggle' }
+    if (-not (Test-Path (Join-Path $kaggleDir 'kaggle.json'))) {
+        throw "kaggle.json not found in $kaggleDir. Create a key on kaggle.com."
+    }
 
     $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
     if (Test-Path $TokenPath) {
-        Copy-Item -Path $TokenPath -Destination (Join-Path $KPath 'access_token') -Force
+        Copy-Item -Path $TokenPath -Destination (Join-Path $kaggleDir 'access_token') -Force
     }
 
     $RegData = Get-RegData
