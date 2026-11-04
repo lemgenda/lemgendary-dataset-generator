@@ -6,6 +6,7 @@ and physical directory manifests with strict Markdown standard compliance.
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,6 +64,40 @@ _CONTAINER_RULES: tuple[tuple[Callable[[str], bool], str], ...] = (
     ),
     (lambda n: n.endswith(".cache"), "Ultralytics pre-compiled binary label cache."),
 )
+
+
+def _wrap_bullet(text: str, width: int = 80) -> str:
+    """Wrap a markdown bullet line (`- ...`) to ``width`` characters."""
+    return textwrap.fill(
+        text,
+        width=width,
+        subsequent_indent="  ",
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+
+
+def _wrap_blockquote(text: str, width: int = 80) -> str:
+    """Wrap a markdown blockquote (`> ...`) to ``width`` characters."""
+    raw = text[2:].strip() if text.startswith("> ") else text.strip()
+    return textwrap.fill(
+        raw,
+        width=width,
+        initial_indent="> ",
+        subsequent_indent="> ",
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+
+
+def _wrap_paragraph(text: str, width: int = 80) -> str:
+    """Wrap a plain markdown paragraph to ``width`` characters."""
+    return textwrap.fill(
+        text,
+        width=width,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
 
 
 @dataclass
@@ -195,10 +230,9 @@ def _model_block(model: dict[str, Any]) -> str:
     arch_val = model.get("arch") or model.get("architecture_type") or "Standard Backbone"
     opt_val = model.get("loss", "Unknown")
 
-    model_block = (
-        f"### Model: {model_name}\n\n- **Architecture**: {arch_val}\n- **Optimization**:"
-        f" {opt_val}\n"
-    )
+    arch_bullet = _wrap_bullet(f"- **Architecture**: {arch_val}")
+    opt_bullet = _wrap_bullet(f"- **Optimization**: {opt_val}")
+    model_block = f"### Model: {model_name}\n\n{arch_bullet}\n{opt_bullet}\n"
     sota = model.get("sota_targets", {})
     if sota:
         table_lines = [
@@ -274,10 +308,8 @@ def build_structure_text(
     for item in sorted(output_root.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
         name = item.name
         desc = _describe_structure_entry(name, is_forex, desc_map)
-        if item.is_dir():
-            structure_lines.append(f"- **`{name}/`**: {desc}")
-        else:
-            structure_lines.append(f"- **`{name}`**: {desc}")
+        label = f"`{name}/`" if item.is_dir() else f"`{name}`"
+        structure_lines.append(_wrap_bullet(f"- **{label}**: {desc}"))
 
     return "\n".join(structure_lines)
 
@@ -292,26 +324,59 @@ def render_forex_readme(fields: ForexReadmeFields) -> str:
         f"{coverage.start_date_str} to Present "
         "(6-Fold Walk-Forward Matrix with 14-day Embargo)"
     )
+    quote = _wrap_blockquote(
+        "> High-fidelity OHLCV temporal manifold for training multi-scale financial "
+        "prediction models."
+    )
+    overview_bullets = "\n".join(
+        [
+            _wrap_bullet(f"- **Category:** {fields.category_str}"),
+            _wrap_bullet(
+                "- **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic "
+                "Multi-Regime Generator"
+            ),
+            _wrap_bullet(f"- **Pairs Included:** {coverage.pairs_display}"),
+            _wrap_bullet(f"- **Timeframe Rungs:** {coverage.tfs_display}"),
+            _wrap_bullet(f"- **Historical Horizon:** {horizon}"),
+            _wrap_bullet(f"- **Lookback Window:** {coverage.lookback_bars} bars"),
+            _wrap_bullet(f"- **Total Samples:** {fields.total_samples:,}"),
+            _wrap_bullet(
+                "- **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip "
+                "Target Heads (TP/SL)"
+            ),
+            _wrap_bullet(
+                "- **Architecture Base:** Causal TCN + Cross-Timeframe Multi-Head Attention"
+            ),
+            _wrap_bullet(
+                "- **Primary Task:** Predict directional probability (Sell/Hold/Buy) and "
+                "regress optimal Take-Profit/Stop-Loss boundaries."
+            ),
+        ]
+    )
+    shard_intro = _wrap_paragraph(
+        "The dataset is organised by year into unified Apache Parquet files "
+        "(`ForexUniverseYYYY.parquet`), each containing all pairs and timeframes "
+        "for that year with Zstandard compression."
+    )
+    repo_intro = _wrap_paragraph(
+        "Standardized directory logic for seamless integration into the "
+        "**LemGendary Training Suite**."
+    )
+    kaggle_line = (
+        "**Kaggle Native Source**: [Access Dataset][kaggle-source]\n\n"
+        f"[kaggle-source]:\n  {kaggle_url}"
+    )
     content = f"""# {common.manifold_name}
 
-> High-fidelity OHLCV temporal manifold for training multi-scale financial prediction models.
+{quote}
 
 ## Dataset Overview
 
-- **Category:** {fields.category_str}
-- **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic Multi-Regime Generator
-- **Pairs Included:** {coverage.pairs_display}
-- **Timeframe Rungs:** {coverage.tfs_display}
-- **Historical Horizon:** {horizon}
-- **Lookback Window:** {coverage.lookback_bars} bars
-- **Total Samples:** {fields.total_samples:,}
-- **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip Target Heads (TP/SL)
-- **Architecture Base:** Causal TCN + Cross-Timeframe Multi-Head Attention
-- **Primary Task:** Predict directional probability (Sell/Hold/Buy) and regress optimal Take-Profit/Stop-Loss boundaries.
+{overview_bullets}
 
 ## Year-Chunked Shard Breakdown
 
-The dataset is organised by year into unified Apache Parquet files (`ForexUniverseYYYY.parquet`), each containing all pairs and timeframes for that year with Zstandard compression.
+{shard_intro}
 
 {fields.year_table}
 
@@ -321,13 +386,13 @@ The dataset is organised by year into unified Apache Parquet files (`ForexUniver
 
 ## Repository Structure
 
-Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
+{repo_intro}
 
 {common.structure_text}
 
 ---
 
-**Kaggle Native Source**: [Access Dataset]({kaggle_url})
+{kaggle_line}
 """
     return clean_readme(content)
 
@@ -338,16 +403,30 @@ def render_standard_readme(fields: StandardReadmeFields) -> str:
     overview = fields.overview
     slug = common.manifold_name.lower().replace("_", "-")
     kaggle_url = f"https://www.kaggle.com/datasets/{common.kaggle_owner}/{slug}"
+    quote = _wrap_blockquote(f"> {overview.resolved_desc}")
+    overview_bullets = "\n".join(
+        [
+            _wrap_bullet(f"- **Category:** {overview.category}"),
+            _wrap_bullet(f"- **Total Samples:** {overview.total_samples_display}"),
+            _wrap_bullet(f"- **Architecture Base:** {overview.arch_base}"),
+            _wrap_bullet(f"- **Primary Task:** {overview.resolved_obj}"),
+        ]
+    )
+    repo_intro = _wrap_paragraph(
+        "Standardized directory logic for seamless integration into the "
+        "**LemGendary Training Suite**."
+    )
+    kaggle_line = (
+        "**Kaggle Native Source**: [Access Dataset][kaggle-source]\n\n"
+        f"[kaggle-source]:\n  {kaggle_url}"
+    )
     content = f"""# {common.manifold_name}
 
-> {overview.resolved_desc}
+{quote}
 
 ## Dataset Overview
 
-- **Category:** {overview.category}
-- **Total Samples:** {overview.total_samples_display}
-- **Architecture Base:** {overview.arch_base}
-- **Primary Task:** {overview.resolved_obj}
+{overview_bullets}
 
 ## Composition & Lineage
 
@@ -363,7 +442,7 @@ This manifold is a high-fidelity merge of the following original sources:
 
 ## Repository Structure
 
-Standardized directory logic for seamless integration into the **LemGendary Training Suite**.
+{repo_intro}
 
 {common.structure_text}
 
@@ -375,6 +454,6 @@ Standardized directory logic for seamless integration into the **LemGendary Trai
 
 ---
 
-**Kaggle Native Source**: [Access Dataset]({kaggle_url})
+{kaggle_line}
 """
     return clean_readme(content)

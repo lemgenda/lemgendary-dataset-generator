@@ -113,8 +113,11 @@ def _lineage_table(sources: dict[str, dict[str, Any]]) -> tuple[str, int, int]:
             total_train_all += tr
         if isinstance(vl, int):
             total_val_all += vl
+        disp_src = src.split(" (", 1)[0] if len(src) > 36 and " (" in src else src
+        if len(disp_src) > 36:
+            disp_src = disp_src[:33].rstrip() + "..."
         table_rows.append(
-            f"| **{src}** | {_format_count(tr)} | {_format_count(vl)} |"
+            f"| **{disp_src}** | {_format_count(tr)} | {_format_count(vl)} |"
             f" {_format_count(counts.get('total', 0))} samples |"
         )
     table_text = "\n".join(table_rows)
@@ -191,7 +194,7 @@ def generate_readme_md(
 
     readme_clean = clean_readme(readme_text)
     readme_file = ctx.manifold_path / "README.md"
-    readme_file.write_text(readme_clean, encoding="utf-8")
+    readme_file.write_text(readme_clean, encoding="utf-8", newline="\n")
     return readme_file, readme_clean
 
 

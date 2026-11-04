@@ -32,6 +32,13 @@ _DEFAULT_FOREX_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "NAS100", "DE40"
 _DEFAULT_TIMEFRAMES = [1, 5, 15, 60, 240, 1440]
 
 
+class _IndentedDumper(yaml.SafeDumper):
+    """YAML dumper that indents sequence items under parent keys for yamllint compliance."""
+
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
+        return super().increase_indent(flow=flow, indentless=False)
+
+
 def _canonical_format(ctx: ManifoldContext) -> str:
     """Return the declared canonical container format, or detect it from the task/layout."""
     canonical_format = ctx.spec.unified_entry.get("canonical_format")
@@ -149,14 +156,16 @@ def generate_dataset_info_yaml(
                 info_payload[k] = v
 
     target_file = ctx.manifold_path / "dataset_info.yaml"
-    with open(target_file, "w", encoding="utf-8") as f:
-        yaml.safe_dump(
+    with open(target_file, "w", encoding="utf-8", newline="\n") as f:
+        yaml.dump(
             info_payload,
             f,
+            Dumper=_IndentedDumper,
             default_flow_style=False,
             sort_keys=False,
             allow_unicode=True,
             explicit_start=True,
+            width=100,
         )
 
     return target_file

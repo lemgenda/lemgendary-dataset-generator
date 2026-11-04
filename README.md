@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.68-STABLE` |
+| **Version** | `v16.9.69-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,15 @@
 ---
 
 ## Changelog
+
+### v16.9.69 - 80-Column Markdown and Yamllint Compliance for Generated Assets
+
+- `core/docs/templates.py` & `core/docs/generators/readme_md.py`: wrapped
+  generated dataset `README.md` blockquotes, bullets, paragraphs, source
+  tables, and Kaggle links to 80 columns and enforced LF line endings.
+- `core/docs/generators/dataset_info_yaml.py`: serialized `dataset_info.yaml`
+  with `_IndentedDumper` (2-space sequence indentation), 100-column line wrap,
+  and LF line endings so generated manifolds pass `lem-env validate`.
 
 ### v16.9.68 - Run All Path Containment and MDS Writer Tests on Windows
 
