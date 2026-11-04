@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,13 +103,24 @@ class TestValidatePathContainment(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
     def test_symlink_escaping_the_root_is_refused(self) -> None:
-        """A symlink inside the root that points outside it is refused."""
+        """A symlink or directory junction inside the root that points outside it is refused."""
         link = self.root / "ai_helper" / "escape.jsonl"
+        target_rel = "ai_helper/escape.jsonl"
         try:
             os.symlink(self.outside_file, link)
         except OSError as exc:  # Windows without Developer Mode / admin rights
-            self.skipTest(f"symlink creation is not permitted on this system: {exc}")
-        resp = self._validate("ai_helper/escape.jsonl")
+            if os.name == "nt":
+                junction = self.root / "ai_helper" / "escape_dir"
+                subprocess.run(
+                    ["cmd", "/c", "mklink", "/J", str(junction), str(self.outside_dir)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                target_rel = f"ai_helper/escape_dir/{self.outside_file.name}"
+            else:
+                self.skipTest(f"symlink creation is not permitted on this system: {exc}")
+        resp = self._validate(target_rel)
         self.assertEqual(resp.status_code, 403)
 
     def test_inline_records_need_no_path(self) -> None:

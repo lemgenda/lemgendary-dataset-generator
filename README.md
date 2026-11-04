@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.67-STABLE` |
+| **Version** | `v16.9.68-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,18 @@
 ---
 
 ## Changelog
+
+### v16.9.68 - Run All Path Containment and MDS Writer Tests on Windows
+
+- `tests/test_llm_validate_paths.py`:
+  `test_symlink_escaping_the_root_is_refused` falls back to creating a
+  directory junction (`mklink /J`) when unprivileged Windows blocks
+  `os.symlink`, exercising symlink/reparse-point traversal refusal without
+  skipping.
+- `tests/test_formats.py`: `test_mds_writer_lifecycle_and_idempotency` uses an
+  in-process `_StubStreamingMDSWriter` when optional `mosaicml-streaming` is
+  not installed, exercising `MDSWriter` relative-path routing and idempotent
+  directory re-opening without skipping.
 
 ### v16.9.67 - Require Local kaggle.json in Start-Acquisition
 

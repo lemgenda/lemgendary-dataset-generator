@@ -9,11 +9,14 @@ DirectorySampleSource, and container protocol compliance.
 from __future__ import annotations
 
 import importlib.util
+import json
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -305,46 +308,92 @@ class TestDirectoryWriterAndSource(unittest.TestCase):
                 self.assertEqual(s.metadata.get("custom_metric"), 42.0)
 
 
+class _StubStreamingMDSWriter:
+    """In-process stand-in for ``streaming.MDSWriter`` when ``mosaicml-streaming`` is absent."""
+
+    def __init__(
+        self,
+        out: str,
+        columns: dict[str, str],
+        compression: str,
+        size_limit: int,
+        hashes: list[str],
+    ) -> None:
+        out_path = Path(out)
+        if any(out_path.iterdir()):
+            raise FileExistsError(f"Output directory is not empty: {out_path}")
+        self._out_path = out_path
+        self._columns = columns
+        self._compression = compression
+        self._size_limit = size_limit
+        self._hashes = hashes
+        self._rows: list[dict[str, Any]] = []
+
+    def write(self, row: dict[str, Any]) -> None:
+        """Record one serialized sample row."""
+        self._rows.append(row)
+
+    def finish(self) -> None:
+        """Write ``index.json`` into the output directory."""
+        index_payload = {
+            "version": 2,
+            "columns": self._columns,
+            "compression": self._compression,
+            "size_limit": self._size_limit,
+            "hashes": self._hashes,
+            "samples": len(self._rows),
+        }
+        (self._out_path / "index.json").write_text(
+            json.dumps(index_payload), encoding="utf-8"
+        )
+
+
+def _run_mds_lifecycle(out_root: Path) -> None:
+    """Execute MDSWriter open/write/close twice on ``out_root`` to verify idempotency."""
+    writer = MDSWriter()
+    writer.open(out_root, None)
+
+    sample1 = Sample(
+        name="sample_01",
+        task="restoration",
+        split="train",
+        image_bytes=b"\x89PNG\r\n\x1a\nfakeimage",
+        image_format="png",
+        target_bytes=b"\x89PNG\r\n\x1a\nfaketarget",
+        label="test_label",
+        metadata={"foo": "bar"},
+    )
+    writer.write(sample1)
+    writer.close()
+
+    mds_dir = out_root / "mds"
+    if not mds_dir.exists():
+        raise AssertionError("MDS directory was not created")
+    if not (mds_dir / "index.json").exists():
+        raise AssertionError("MDS index.json was not created")
+
+    # Idempotency: re-opening the non-empty directory must not raise FileExistsError
+    writer2 = MDSWriter()
+    writer2.open(out_root, None)
+    writer2.write(sample1)
+    writer2.close()
+    if not (mds_dir / "index.json").exists():
+        raise AssertionError("MDS index.json missing after second write")
+
+
 class TestMDSWriter(unittest.TestCase):
     """Test MDSWriter lifecycle, Windows relative path routing, and idempotency."""
 
     def test_mds_writer_lifecycle_and_idempotency(self) -> None:
-
         """MDSWriter writes shards and can be reopened on the same folder."""
-        if importlib.util.find_spec("streaming") is None:
-            self.skipTest("mosaicml-streaming not installed")
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir) / "test_manifold"
-            writer = MDSWriter()
-            writer.open(out_root, None)
-
-            sample1 = Sample(
-                name="sample_01",
-                task="restoration",
-                split="train",
-                image_bytes=b"\x89PNG\r\n\x1a\nfakeimage",
-                image_format="png",
-                target_bytes=b"\x89PNG\r\n\x1a\nfaketarget",
-                label="test_label",
-                metadata={"foo": "bar"},
-            )
-            writer.write(sample1)
-            writer.close()
-
-            mds_dir = out_root / "mds"
-            self.assertTrue(mds_dir.exists(), "MDS directory was not created")
-            self.assertTrue(
-                (mds_dir / "index.json").exists(),
-                "MDS index.json was not created",
-            )
-
-            # Idempotency: re-opening the non-empty directory must not raise FileExistsError
-            writer2 = MDSWriter()
-            writer2.open(out_root, None)
-            writer2.write(sample1)
-            writer2.close()
-            self.assertTrue((mds_dir / "index.json").exists())
+            if importlib.util.find_spec("streaming") is None:
+                stub_module = SimpleNamespace(MDSWriter=_StubStreamingMDSWriter)
+                with patch("formats.mds.importlib.import_module", return_value=stub_module):
+                    _run_mds_lifecycle(out_root)
+            else:
+                _run_mds_lifecycle(out_root)
 
 
 if __name__ == "__main__":
