@@ -13,41 +13,42 @@ _registry_metadata:
 datasets:
   nima_aesthetic:
     name: NimaAesthetic
+    task: quality
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaaesthetic
     val_split: 0.1
     refs:
-    - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
-    - ref: kaggle://generalhawking/koniq-10k-dataset
-    - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
-    - ref: hf://Shuai1995/TAD66K_for_Image_Aesthetics_Assessment
+      - ref: kaggle://nicolacarrassi/ava-aesthetic-visual-assessment
+      - ref: kaggle://generalhawking/koniq-10k-dataset
+      - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
+      - ref: hf://Shuai1995/TAD66K_for_Image_Aesthetics_Assessment
     modernized_folder: LemGendizedNimaAesthetic
     canonical_format: webdataset
     title: LemGendized NIMA Aesthetic
     subtitle: SOTA Aesthetic Image Quality Assessment Manifold for Swin-v2 and EfficientNet
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-classification
-    - benchmark
+      - computer-vision
+      - deep-learning
+      - image
+      - image-classification
+      - benchmark
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - AVA
-    - TAD66K
-    - SPAQ
-    - KonIQ-10k
+      - AVA
+      - TAD66K
+      - SPAQ
+      - KonIQ-10k
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/1709.05424
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/1709.05424
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -57,46 +58,46 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nima_technical:
     name: NimaTechnical
+    task: quality
     kaggle_ref: kaggle://lemtreursi/lemgendizednimatechnical
     val_split: 0.12
     refs:
-    - ref: kaggle://generalhawking/koniq-10k-dataset
-    - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
-    - ref: hf://chaofengc/IQA-PyTorch-Datasets:live.tgz
-    - ref: hf://chaofengc/IQA-PyTorch-Datasets:csiq.tgz
-    - ref: hf://chaofengc/IQA-PyTorch-Datasets:tid2013.tgz
-    - ref: kaggle://hsyndmr/dnd-nam-noise-data
+      - ref: kaggle://generalhawking/koniq-10k-dataset
+      - ref: hf://chaofengc/IQA-PyTorch-Datasets:spaq.tgz
+      - ref: hf://chaofengc/IQA-PyTorch-Datasets:live.tgz
+      - ref: hf://chaofengc/IQA-PyTorch-Datasets:csiq.tgz
+      - ref: hf://chaofengc/IQA-PyTorch-Datasets:tid2013.tgz
+      - ref: kaggle://hsyndmr/dnd-nam-noise-data
     modernized_folder: LemGendizedNimaTechnical
     canonical_format: webdataset
     title: LemGendized NIMA Technical
-    subtitle: Human-Perceptual Technical Image Quality Assessment with Distortion
-      Benchmarks
+    subtitle: Human-Perceptual Technical Image Quality Assessment with Distortion Benchmarks
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - benchmark
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - benchmark
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - KonIQ-10k
-    - SPAQ
-    - LIVE
-    - CSIQ
-    - TID2013
-    - DND-NAM
+      - KonIQ-10k
+      - SPAQ
+      - LIVE
+      - CSIQ
+      - TID2013
+      - DND-NAM
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/1709.05424
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/1709.05424
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -106,40 +107,42 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nima_authenticity:
     name: NimaAuthenticity
+    task: quality
+    task_confirmed: false
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticity
     val_split: 0.12
     refs:
-    - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
-    - ref: kaggle://hiddenplant/sut-project
-    - ref: kaggle://custom/RealVsFakeFaces
+      - ref: kaggle://tristanzhang32/ai-generated-images-vs-real-images
+      - ref: kaggle://hiddenplant/sut-project
+      - ref: kaggle://custom/RealVsFakeFaces
     modernized_folder: LemGendizedNimaAuthenticity
     canonical_format: webdataset
     title: LemGendized NIMA Authenticity
     subtitle: AI-Generated Synthetic vs Real Image Detection & Authenticity Quality
       Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - artificial-intelligence
-    - binary-classification
+      - computer-vision
+      - deep-learning
+      - image
+      - artificial-intelligence
+      - binary-classification
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - AI vs Real Images
-    - SUT Project
-    - RealVsFakeFaces
+      - AI vs Real Images
+      - SUT Project
+      - RealVsFakeFaces
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2111.08943
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2111.08943
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -149,43 +152,43 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   upn_v2:
     name: UpnV2
+    task: parameter_prediction
     kaggle_ref: kaggle://lemtreursi/lemgendizedupnv2
     val_split: 0.12
     labeling: false
-    task_override: parameter_prediction
     refs:
-    - ref: kaggle://joe1995/div2k-dataset
-    - ref: kaggle://daehoyang/flickr2k
-    - ref: kaggle://weipengzhang/adobe-fivek
-    - ref: hf://gitpull/DPED
+      - ref: kaggle://joe1995/div2k-dataset
+      - ref: kaggle://daehoyang/flickr2k
+      - ref: kaggle://weipengzhang/adobe-fivek
+      - ref: hf://gitpull/DPED
     modernized_folder: LemGendizedUpnV2
     canonical_format: webdataset
     title: LemGendized Upn V2
     subtitle: Massive 1.42M Sample Parameter Prediction Manifold for Universal Restoration
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - neural-networks
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - neural-networks
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - DIV2K
-    - Flickr2K
-    - Adobe FiveK
-    - DPED
+      - DIV2K
+      - Flickr2K
+      - Adobe FiveK
+      - DPED
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2104.09497
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2104.09497
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -195,48 +198,49 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   film_restorer:
     name: FilmRestorer
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedfilmrestorer
     val_split: 0.12
     labeling: false
     refs:
-    - ref: kaggle://spiyer/old-film-restoration-dataset
-    - ref: kaggle://marcinrutecki/old-photos
-    - ref: kaggle://shrutimandaokar2301/vintage-photo-restoration-clean-and-damaged-image
-    - ref: kaggle://shrutimandaokar2301/vintage-degraded-image-synthetic-real
-    - ref: kaggle://sureshmud/photo-restoration
-    - ref: hf://Norod78/Vintage-Faces-FFHQAligned
-    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
-    - ref: kaggle://hsyndmr/dnd-nam-noise-data
-    - ref: kaggle://joe1995/div2k-dataset
-    - ref: gh://microsoft/Bringing-Old-Photos-Back-to-Life
+      - ref: kaggle://spiyer/old-film-restoration-dataset
+      - ref: kaggle://marcinrutecki/old-photos
+      - ref: kaggle://shrutimandaokar2301/vintage-photo-restoration-clean-and-damaged-image
+      - ref: kaggle://shrutimandaokar2301/vintage-degraded-image-synthetic-real
+      - ref: kaggle://sureshmud/photo-restoration
+      - ref: hf://Norod78/Vintage-Faces-FFHQAligned
+      - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+      - ref: kaggle://hsyndmr/dnd-nam-noise-data
+      - ref: kaggle://joe1995/div2k-dataset
+      - ref: gh://microsoft/Bringing-Old-Photos-Back-to-Life
     modernized_folder: LemGendizedFilmRestorer
     canonical_format: webdataset
     title: LemGendized Film Restorer
     subtitle: Vintage Film Degradation & Archival Frame Restoration Training Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - photography
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - photography
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - Old Film Restoration
-    - Vintage Photos
-    - DIV2K
-    - SIDD
+      - Old Film Restoration
+      - Vintage Photos
+      - DIV2K
+      - SIDD
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2004.09484
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2004.09484
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -246,36 +250,37 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   codeformer:
     name: CodeFormer
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedcodeformer
     val_split: 0.1
     refs:
-    - ref: local://raw-sets/RealVsFakeFaces/
+      - ref: local://raw-sets/RealVsFakeFaces/
     modernized_folder: LemGendizedCodeFormer
     canonical_format: webdataset
     title: LemGendized CodeFormer
     subtitle: High-Fidelity Blind Face Restoration Manifold with Synthetic Degradation
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - facial-recognition
-    - image-processing
+      - computer-vision
+      - deep-learning
+      - image
+      - facial-recognition
+      - image-processing
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - RealVsFakeFaces
-    - FFHQ-aligned
+      - RealVsFakeFaces
+      - FFHQ-aligned
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2206.11253
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2206.11253
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -285,39 +290,40 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   parsenet:
     name: ParseNet
+    task: segmentation
     kaggle_ref: kaggle://lemtreursi/lemgendizedparsenet
     val_split: 0.12
     labeling: false
     refs:
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
     modernized_folder: LemGendizedParseNet
     canonical_format: webdataset
     title: LemGendized ParseNet
     subtitle: Fine-Grained 19-Class Facial Semantic Segmentation & Parsing Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - segmentation
-    - facial-recognition
+      - computer-vision
+      - deep-learning
+      - image
+      - segmentation
+      - facial-recognition
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - SFHQ Parts 1-4
+      - SFHQ Parts 1-4
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2004.02147
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2004.02147
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -327,39 +333,41 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   retinaface_mobilenet:
     name: RetinaFace
+    task: pose
+    task_confirmed: false
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinaface
     val_split: 0.12
     labeling: true
     refs:
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
-    - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-3
+      - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-4
     modernized_folder: LemGendizedRetinaFace
     canonical_format: webdataset
     title: LemGendized RetinaFace
     subtitle: Single-Shot Multi-Scale Facial Detection & 5-Point Landmark Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - object-detection
-    - facial-recognition
+      - computer-vision
+      - deep-learning
+      - image
+      - object-detection
+      - facial-recognition
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - SFHQ Parts 1-4
+      - SFHQ Parts 1-4
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/1905.00641
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/1905.00641
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -369,38 +377,39 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ffanet_indoor:
     name: FfaNetIndoor
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetindoor
     val_split: 0.12
     refs:
-    - ref: kaggle://balraj98/indoor-training-set-its-residestandard
-    - ref: kaggle://kmljts/reside-6k
-    - ref: kaggle://adipuli2004/dehazing-and-desmoking
+      - ref: kaggle://balraj98/indoor-training-set-its-residestandard
+      - ref: kaggle://kmljts/reside-6k
+      - ref: kaggle://adipuli2004/dehazing-and-desmoking
     modernized_folder: LemGendizedFfaNetIndoor
     canonical_format: webdataset
     title: LemGendized FFA-Net Indoor
     subtitle: Feature Fusion Attention Network Indoor Image Dehazing & Desmoking Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - neural-networks
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - neural-networks
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - RESIDE Standard ITS
-    - Dehazing and Desmoking
+      - RESIDE Standard ITS
+      - Dehazing and Desmoking
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/1911.07559
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/1911.07559
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -410,40 +419,41 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ffanet_outdoor:
     name: FfaNetOutdoor
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedffanetoutdoor
     val_split: 0.12
     refs:
-    - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
-    - ref: kaggle://polarrr/nhhaze
-    - ref: kaggle://akashdaiict/ntire20202021ohaze
-    - ref: kaggle://rajat95gupta/hazing-images-dataset-cvpr-2019
+      - ref: kaggle://shivakanthsujit/outdoor-dehazing-dataset
+      - ref: kaggle://polarrr/nhhaze
+      - ref: kaggle://akashdaiict/ntire20202021ohaze
+      - ref: kaggle://rajat95gupta/hazing-images-dataset-cvpr-2019
     modernized_folder: LemGendizedFfaNetOutdoor
     canonical_format: webdataset
     title: LemGendized FFA-Net Outdoor
     subtitle: High-Density Atmospheric Outdoor Dehazing & Dense Fog Restoration Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - neural-networks
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - neural-networks
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - Outdoor Dehazing
-    - NH-HAZE
-    - O-HAZE NTIRE
+      - Outdoor Dehazing
+      - NH-HAZE
+      - O-HAZE NTIRE
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/1911.07559
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/1911.07559
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -453,44 +463,45 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   mirnet_lowlight:
     name: MirNetLowLight
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetlowlight
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://soumikrakshit/lol-dataset
-    - ref: kaggle://washingtongold/exdark-dataset
-    - ref: kaggle://saerosx/learning-to-see-in-the-dark-long-exposure-npy
-    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
-    - ref: kaggle://alenken/low-light-image-enhancement-datasets
-    - ref: kaggle://tanhyml/lol-v2-dataset
+      - ref: kaggle://soumikrakshit/lol-dataset
+      - ref: kaggle://washingtongold/exdark-dataset
+      - ref: kaggle://saerosx/learning-to-see-in-the-dark-long-exposure-npy
+      - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+      - ref: kaggle://alenken/low-light-image-enhancement-datasets
+      - ref: kaggle://tanhyml/lol-v2-dataset
     modernized_folder: LemGendizedMirNetLowLight
     canonical_format: webdataset
     title: LemGendized MIRNet Low Light
     subtitle: Multi-Scale Residual Extreme Low-Light & Night Photo Enhancement Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - photography
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - photography
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - LOL Dataset v1/v2
-    - ExDark
-    - SIDD
+      - LOL Dataset v1/v2
+      - ExDark
+      - SIDD
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2003.06792
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2003.06792
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -500,39 +511,40 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   mirnet_exposure:
     name: MirNetExposure
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedmirnetexposure
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://weipengzhang/adobe-fivek
-    - ref: hf://gitpull/DPED
+      - ref: kaggle://weipengzhang/adobe-fivek
+      - ref: hf://gitpull/DPED
     modernized_folder: LemGendizedMirNetExposure
     canonical_format: webdataset
     title: LemGendized MIRNet Exposure
     subtitle: Dual-Illumination Multi-Scale Exposure Correction & Dynamic Range Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - photography
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - photography
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - Adobe FiveK
-    - DPED
+      - Adobe FiveK
+      - DPED
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2003.06792
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2003.06792
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -542,43 +554,44 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   mprnet_deraining:
     name: MprNetDeraining
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedmprnetderaining
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://bshaurya/rain-dataset
-    - ref: kaggle://yanzhou2004/rain100l
-    - ref: kaggle://nguynhoitrung/rain100h
-    - ref: hf://Ian824/High-Resolution-Rainy-Image
-    - ref: kaggle://balraj98/rain-dataset
+      - ref: kaggle://bshaurya/rain-dataset
+      - ref: kaggle://yanzhou2004/rain100l
+      - ref: kaggle://nguynhoitrung/rain100h
+      - ref: hf://Ian824/High-Resolution-Rainy-Image
+      - ref: kaggle://balraj98/rain-dataset
     modernized_folder: LemGendizedMprNetDeraining
     canonical_format: webdataset
     title: LemGendized MPRNet Deraining
     subtitle: Multi-Stage Progressive Restoration Heavy Rain Streak & Rain Drop Removal
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - neural-networks
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - neural-networks
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - Rain100L
-    - Rain100H
-    - Balraj Rain Dataset
+      - Rain100L
+      - Rain100H
+      - Balraj Rain Dataset
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2102.02808
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2102.02808
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -588,43 +601,43 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nafnet_debluring:
     name: NafNetDebluring
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdebluring
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
-    - ref: hf://slymachenko/image-deblurring-performance-analysis
-    - ref: kaggle://darthvader4067/hideblur
-    - ref: hf://rimchang/RealBlur
+      - ref: kaggle://adwythdarsanr/gopro-image-deblurring-dataset
+      - ref: hf://slymachenko/image-deblurring-performance-analysis
+      - ref: kaggle://darthvader4067/hideblur
+      - ref: hf://rimchang/RealBlur
     modernized_folder: LemGendizedNafNetDebluring
     canonical_format: webdataset
     title: LemGendized NAFNet Deblurring
-    subtitle: Nonlinear Activation-Free Network Motion Blur & Defocus Restoration
-      Manifold
+    subtitle: Nonlinear Activation-Free Network Motion Blur & Defocus Restoration Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - benchmark
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - benchmark
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - GoPro Deblurring
-    - RealBlur
-    - HiDeBlur
+      - GoPro Deblurring
+      - RealBlur
+      - HiDeBlur
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2204.04660
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2204.04660
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -634,45 +647,46 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   nafnet_denoising:
     name: NafNetDenoising
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizednafnetdenoising
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
-    - ref: kaggle://hsyndmr/dnd-nam-noise-data
-    - ref: kaggle://tenxengineers/denoising-dataset-multiple-iso-levels
-    - ref: kaggle://dibakarsil/9-classes-noisy-image-dataset
-    - ref: kaggle://goutham1208/multi-noises-for-image-denoising
-    - ref: kaggle://rajneesh231/salt-and-pepper-noise-images
+      - ref: kaggle://rajat95gupta/smartphone-image-denoising-dataset
+      - ref: kaggle://hsyndmr/dnd-nam-noise-data
+      - ref: kaggle://tenxengineers/denoising-dataset-multiple-iso-levels
+      - ref: kaggle://dibakarsil/9-classes-noisy-image-dataset
+      - ref: kaggle://goutham1208/multi-noises-for-image-denoising
+      - ref: kaggle://rajneesh231/salt-and-pepper-noise-images
     modernized_folder: LemGendizedNafNetDenoising
     canonical_format: webdataset
     title: LemGendized NAFNet Denoising
     subtitle: SOTA Raw & RGB Image Denoising Manifold across Real Smartphone Sensor
       Noise
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - benchmark
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - benchmark
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - SIDD
-    - DND & NAM
-    - Multiple ISO Levels
+      - SIDD
+      - DND & NAM
+      - Multiple ISO Levels
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2204.04660
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2204.04660
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -682,43 +696,44 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ultrazoom:
     name: UltraZoom
+    task: super-resolution
     kaggle_ref: kaggle://lemtreursi/lemgendizedultrazoom
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: kaggle://joe1995/div2k-dataset
-    - ref: kaggle://daehoyang/flickr2k
-    - ref: hf://Iceclear/DF2K-OST
-    - ref: kaggle://harshraone/urban100
+      - ref: kaggle://joe1995/div2k-dataset
+      - ref: kaggle://daehoyang/flickr2k
+      - ref: hf://Iceclear/DF2K-OST
+      - ref: kaggle://harshraone/urban100
     modernized_folder: LemGendizedUltraZoom
     canonical_format: webdataset
     title: LemGendized UltraZoom
     subtitle: 4x-8x Super-Resolution & High-Frequency Detail Hallucination Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - neural-networks
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - neural-networks
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - DIV2K
-    - Flickr2K
-    - DF2K-OST
-    - Urban100
+      - DIV2K
+      - Flickr2K
+      - DF2K-OST
+      - Urban100
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2107.10833
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2107.10833
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -728,42 +743,43 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   yolov8n:
     name: YoloV8n
+    task: detection
     kaggle_ref: kaggle://lemtreursi/lemgendizedyolov8n
     val_split: 0.12
     refs:
-    - ref: kaggle://awsaf49/coco-2017-dataset
-    - ref: kaggle://gopalbhattrai/pascal-voc-2012-dataset
-    - ref: kaggle://klemenko/kitti-dataset
-    - ref: kaggle://harshpatel66/mpii-human-pose
-    - ref: kaggle://elmahy/crowdpose
+      - ref: kaggle://awsaf49/coco-2017-dataset
+      - ref: kaggle://gopalbhattrai/pascal-voc-2012-dataset
+      - ref: kaggle://klemenko/kitti-dataset
+      - ref: kaggle://harshpatel66/mpii-human-pose
+      - ref: kaggle://elmahy/crowdpose
     modernized_folder: LemGendizedYoloV8n
     canonical_format: directory
     title: LemGendized YOLOv8n Multi-Task
-    subtitle: Multi-Task Object Detection, Person & Face Localization Manifold in
-      YOLO Format
+    subtitle: Multi-Task Object Detection, Person & Face Localization Manifold in YOLO
+      Format
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - object-detection
-    - neural-networks
+      - computer-vision
+      - deep-learning
+      - image
+      - object-detection
+      - neural-networks
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - COCO 2017
-    - Pascal VOC 2012
-    - KITTI Benchmark
+      - COCO 2017
+      - Pascal VOC 2012
+      - KITTI Benchmark
     container:
       primary: directory
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://github.com/ultralytics/ultralytics
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://github.com/ultralytics/ultralytics
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -773,48 +789,49 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   professional_multitask_restoration:
     name: MultitaskRestorationPro
+    task: restoration
     kaggle_ref: kaggle://lemtreursi/lemgendizedmultitaskrestorationpro
     val_split: 0.12
     labeling: false
     vetting: false
     refs:
-    - ref: manifold://NafNetDebluringMultiTask
-    - ref: manifold://NafNetDenoisingMultiTask
-    - ref: manifold://MprNetDerainingMultiTask
-    - ref: manifold://FfaNetIndoorMultiTask
-    - ref: manifold://FfaNetOutdoorMultiTask
-    - ref: manifold://MirNetLowLightMultiTask
-    - ref: manifold://MirNetExposureMultiTask
-    - ref: manifold://UltraZoomMultiTask
-    - ref: manifold://FilmRestorerMultiTask
-    - ref: manifold://CodeFormerMultiTask
-    - ref: manifold://ParseNetMultiTask
+      - ref: manifold://NafNetDebluringMultiTask
+      - ref: manifold://NafNetDenoisingMultiTask
+      - ref: manifold://MprNetDerainingMultiTask
+      - ref: manifold://FfaNetIndoorMultiTask
+      - ref: manifold://FfaNetOutdoorMultiTask
+      - ref: manifold://MirNetLowLightMultiTask
+      - ref: manifold://MirNetExposureMultiTask
+      - ref: manifold://UltraZoomMultiTask
+      - ref: manifold://FilmRestorerMultiTask
+      - ref: manifold://CodeFormerMultiTask
+      - ref: manifold://ParseNetMultiTask
     modernized_folder: LemGendizedMultitaskRestorationPro
     canonical_format: webdataset
     title: LemGendized Multitask Restoration Pro
-    subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur,
-      and Dehaze
+    subtitle: 264k Sample Multi-Task MoE Restoration Manifold for Denoise, Deblur, and
+      Dehaze
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-processing
-    - artificial-intelligence
+      - computer-vision
+      - deep-learning
+      - image
+      - image-processing
+      - artificial-intelligence
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - 11 upstream restoration sub-manifolds (NAFNet, MPRNet, FFANet, MIRNet, etc.)
+      - 11 upstream restoration sub-manifolds (NAFNet, MPRNet, FFANet, MIRNet, etc.)
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2111.09881
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2111.09881
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -824,43 +841,44 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   classification_master_manifold:
     name: ClassificationMaster
+    task: classification
     kaggle_ref: kaggle://lemtreursi/lemgendizedclassificationmaster
     val_split: 0.12
     nsfw_ratio: 0.5
     refs:
-    - ref: hf://deepghs/anime_dbrating
-      tag: anime_nsfw
-    - ref: hf://amaye15/NSFW
-      tag: general_nsfw
-    - ref: hf://food101
-      tag: sfw_baseline
+      - ref: hf://deepghs/anime_dbrating
+        tag: anime_nsfw
+      - ref: hf://amaye15/NSFW
+        tag: general_nsfw
+      - ref: hf://food101
+        tag: sfw_baseline
     modernized_folder: LemGendizedClassificationMaster
     canonical_format: webdataset
     title: LemGendized Classification Master
     subtitle: Robust Visual Content Moderation & Multi-Class Safety Filtering Manifold
     keywords:
-    - computer-vision
-    - deep-learning
-    - image
-    - image-classification
-    - benchmark
+      - computer-vision
+      - deep-learning
+      - image
+      - image-classification
+      - benchmark
     license: CC-BY-NC-4.0
     expected_update_frequency: never
     is_private: false
     provenance_sources:
-    - Anime DB Rating
-    - General NSFW
-    - Food-101
+      - Anime DB Rating
+      - General NSFW
+      - Food-101
     container:
       primary: webdataset
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2104.00298
-    collection_methodology: Curated multi-source ingestion synthesized from public
-      benchmark corpora, processed with deterministic degradation pipelines (noise,
-      motion blur, haze, downsampling) paired with ground truth targets, validated
-      via structural SSIM/PSNR gates, and compiled into high-velocity streaming containers
-      (MDS / WebDataset) with pre-indexed splits.
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2104.00298
+    collection_methodology: Curated multi-source ingestion synthesized from public benchmark
+      corpora, processed with deterministic degradation pipelines (noise, motion blur,
+      haze, downsampling) paired with ground truth targets, validated via structural
+      SSIM/PSNR gates, and compiled into high-velocity streaming containers (MDS / WebDataset)
+      with pre-indexed splits.
     coverage:
       temporal:
         start: '2020-01-01'
@@ -870,36 +888,38 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   forex_universe:
     name: ForexUniverse
+    task: detection
+    task_confirmed: false
     kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse
     kaggle_dataset_urls:
-    - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
+      - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
     acquisition_mode: mt5_terminal
     dataset_type: forex
     category: Forex & Financial Time-Series
     pairs:
-    - EURUSD
-    - GBPUSD
-    - USDJPY
-    - XAUUSD
-    - USDCAD
-    - USDCHF
-    - AUDUSD
-    - NZDUSD
-    - EURJPY
-    - GBPJPY
-    - EURGBP
-    - XAGUSD
-    - USOIL
-    - US500
-    - NAS100
-    - DE40
+      - EURUSD
+      - GBPUSD
+      - USDJPY
+      - XAUUSD
+      - USDCAD
+      - USDCHF
+      - AUDUSD
+      - NZDUSD
+      - EURJPY
+      - GBPJPY
+      - EURGBP
+      - XAGUSD
+      - USOIL
+      - US500
+      - NAS100
+      - DE40
     timeframe_rungs:
-    - 1
-    - 5
-    - 15
-    - 60
-    - 240
-    - 1440
+      - 1
+      - 5
+      - 15
+      - 60
+      - 240
+      - 1440
     start_date: '2019-01-01'
     lookback_bars: 168
     format: parquet
@@ -912,24 +932,24 @@ datasets:
     title: LemGendized Forex Universe
     subtitle: 30.8M Row 16-Symbol Multi-Timeframe Financial Foundation Parquet Manifold
     keywords:
-    - finance
-    - time-series-analysis
-    - tabular
-    - deep-learning
-    - investing
+      - finance
+      - time-series-analysis
+      - tabular
+      - deep-learning
+      - investing
     license: CC-BY-NC-4.0
     expected_update_frequency: annually
     is_private: false
     provenance_sources:
-    - MetaTrader 5 Terminal Native Cache (2019-2026)
+      - MetaTrader 5 Terminal Native Cache (2019-2026)
     container:
       primary: parquet
     citations:
-    - https://github.com/lemtreursi/model-training
-    - https://arxiv.org/abs/2211.14730
+      - https://github.com/lemtreursi/model-training
+      - https://arxiv.org/abs/2211.14730
     collection_methodology: Institutional tick and minute OHLCV ingestion with algorithmic
-      session normalization, statistical outlier winsorization, volatility feature
-      engineering, and compressed columnar Parquet partitioning.
+      session normalization, statistical outlier winsorization, volatility feature engineering,
+      and compressed columnar Parquet partitioning.
     coverage:
       temporal:
         start: '2019-01-01'
@@ -939,6 +959,8 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ai_helper_lemgend:
     name: AIHelperLemGend
+    task: detection
+    task_confirmed: false
     dataset_type: llm
     category: Technical Documentation & AI Assistant Training
     modernized_folder: LemGendizedAIHelperLemGend
@@ -953,62 +975,62 @@ datasets:
 
       '
     keywords:
-    - computer-science
-    - deep-learning
-    - artificial-intelligence
-    - software
-    - text
+      - computer-science
+      - deep-learning
+      - artificial-intelligence
+      - software
+      - text
     license: CC-BY-NC-4.0
     expected_update_frequency: monthly
     is_private: false
     provenance_sources:
-    - LemGendary AI Documentation Hub
-    - General AI Training Knowledge Reference
-    - Ecosystem Architecture and Current State Manifest
-    - Master Operations Manuals (GUI, CLI, API)
-    - Dataset Compiler and Environment Manager Whitepapers
-    - Training Suite and Training Pathology Documentation
-    - Model-Family Architecture Whitepapers
-    - Canonical Glossary and AI Helper Troubleshooting Knowledge Base
-    - Curated AI LemGend instruction and validation examples
+      - LemGendary AI Documentation Hub
+      - General AI Training Knowledge Reference
+      - Ecosystem Architecture and Current State Manifest
+      - Master Operations Manuals (GUI, CLI, API)
+      - Dataset Compiler and Environment Manager Whitepapers
+      - Training Suite and Training Pathology Documentation
+      - Model-Family Architecture Whitepapers
+      - Canonical Glossary and AI Helper Troubleshooting Knowledge Base
+      - Curated AI LemGend instruction and validation examples
     refs:
-    - ref: https://lemgenda.github.io/ai-training-whitepapers/index.html
-      tag: documentation_hub
-    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/general-ai-training-knowledge.html
-      tag: general_ai_knowledge
-    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/ai-helper-troubleshooting-knowledge.html
-      tag: ai_helper_troubleshooting
-    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/manuals-hub.html
-      tag: operations_manuals
-    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/dataset-compiler.html
-      tag: dataset_compiler
-    - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/training-suite-master.html
-      tag: training_suite
+      - ref: https://lemgenda.github.io/ai-training-whitepapers/index.html
+        tag: documentation_hub
+      - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/general-ai-training-knowledge.html
+        tag: general_ai_knowledge
+      - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/ai-helper-troubleshooting-knowledge.html
+        tag: ai_helper_troubleshooting
+      - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/manuals-hub.html
+        tag: operations_manuals
+      - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/dataset-compiler.html
+        tag: dataset_compiler
+      - ref: https://lemgenda.github.io/ai-training-whitepapers/papers/training-suite-master.html
+        tag: training_suite
     container:
       primary: jsonl
     train_file: data/ai_helper_train.jsonl
     val_file: data/ai_helper_val.jsonl
     split_strategy: stratified
     val_split: 0.2
-    collection_methodology: 'Curated supervised instruction examples derived from
-      reviewed documentation and general AI/ML engineering principles. Each example
-      is designed around a user task, diagnostic decision, terminology distinction,
-      or documentation authority rule. Records use one JSON object per line with messages
-      in system/user/assistant order. Keep source provenance in a companion audit
-      manifest if the active compiler schema does not permit additional fields. Validate
-      factual support, JSONL schema, duplicate and semantic leakage, source-version
-      compatibility, and held-out task performance before training.
+    collection_methodology: 'Curated supervised instruction examples derived from reviewed
+      documentation and general AI/ML engineering principles. Each example is designed
+      around a user task, diagnostic decision, terminology distinction, or documentation
+      authority rule. Records use one JSON object per line with messages in system/user/assistant
+      order. Keep source provenance in a companion audit manifest if the active compiler
+      schema does not permit additional fields. Validate factual support, JSONL schema,
+      duplicate and semantic leakage, source-version compatibility, and held-out task
+      performance before training.
 
       '
     validation_requirements:
-    - valid_jsonl
-    - trainer_schema_compatibility
-    - duplicate_detection
-    - semantic_train_validation_leakage_check
-    - source_grounding_review
-    - version_consistency_check
-    - held_out_task_evaluation
-    - unsupported_claim_rate
+      - valid_jsonl
+      - trainer_schema_compatibility
+      - duplicate_detection
+      - semantic_train_validation_leakage_check
+      - source_grounding_review
+      - version_consistency_check
+      - held_out_task_evaluation
+      - unsupported_claim_rate
     coverage:
       temporal:
         start: '2024-01-01'
@@ -1019,32 +1041,31 @@ datasets:
     stratify_by: category
     llm_pipeline:
       system_prompt: 'You are the authoritative LemGendary AI Studio Assistant. You
-        possess deep, precise technical knowledge of the LemGendary AI ecosystem,
-        its 23 neural architectures, the proprietary Dataset Compiler, the Training
-        Suite with its Sawtooth Governor, and sidecar REST APIs. Authority Hierarchy:
-        Code Manifests (unified_models_v2.yaml) > Master Manuals > Architectural Whitepapers
+        possess deep, precise technical knowledge of the LemGendary AI ecosystem, its
+        23 neural architectures, the proprietary Dataset Compiler, the Training Suite
+        with its Sawtooth Governor, and sidecar REST APIs. Authority Hierarchy: Code
+        Manifests (unified_models_v2.yaml) > Master Manuals > Architectural Whitepapers
         > Educational Guides. Strictly differentiate general deep learning concepts
         from native Studio-supported features. Follow the 3-Stage Diagnostic Intake
-        Protocol: Stage 1 Initial Triage (safe checks), Stage 2 Targeted Diagnosis
-        (telemetry verification), and Stage 3 Bounded Remediation with epistemic tags
-        [CONFIRMED], [PROBABLE], or [ILLUSTRATIVE]. Do not use ungrounded absolute
-        guarantees; provide mathematically bounded engineering answers. Do not use
-        emojis.'
+        Protocol: Stage 1 Initial Triage (safe checks), Stage 2 Targeted Diagnosis (telemetry
+        verification), and Stage 3 Bounded Remediation with epistemic tags [CONFIRMED],
+        [PROBABLE], or [ILLUSTRATIVE]. Do not use ungrounded absolute guarantees; provide
+        mathematically bounded engineering answers. Do not use emojis.'
       schema_format: chatml_turn3
       target_samples: 1150
       generator_module: tools.llm_helper.knowledge_synthesizer
       knowledge_sources:
-      - type: markdown_dir
-        path: lemgendary-docs/MD-Papers
-        glob: '*.md'
-        url_prefix: https://lemgenda.github.io/ai-training-whitepapers/papers/
-      - type: yaml_file
-        path: lemgendary-training-suite/unified_models_v2.yaml
-        url: https://lemgenda.github.io/ai-training-whitepapers/index.html
-      - type: remote_url
-        url: https://lemgenda.github.io/ai-training-whitepapers/index.html
-        tag: documentation_hub
-        cache_ttl_hours: 168
+        - type: markdown_dir
+          path: lemgendary-docs/MD-Papers
+          glob: '*.md'
+          url_prefix: https://lemgenda.github.io/ai-training-whitepapers/papers/
+        - type: yaml_file
+          path: lemgendary-training-suite/unified_models_v2.yaml
+          url: https://lemgenda.github.io/ai-training-whitepapers/index.html
+        - type: remote_url
+          url: https://lemgenda.github.io/ai-training-whitepapers/index.html
+          tag: documentation_hub
+          cache_ttl_hours: 168
       chunking:
         strategy: recursive
         chunk_size: 1200

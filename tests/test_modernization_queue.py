@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from tools.modernization_queue import (
     ManifoldQueueItem,
@@ -43,12 +43,14 @@ class TestModernizationQueue(unittest.TestCase):
 
             has_mds, size = _fast_has_mds(mds_dir)
             self.assertFalse(has_mds)
+            self.assertEqual(size, 0)
 
             index_file = mds_dir / "index.json"
             index_file.write_bytes(b"{}")
 
             has_mds, size = _fast_has_mds(mds_dir)
             self.assertTrue(has_mds)
+            self.assertEqual(size, len(b"{}"))
 
     def test_manifold_queue_item_structure(self) -> None:
         """Verify ManifoldQueueItem dataclass fields and defaults."""

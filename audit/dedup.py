@@ -19,6 +19,7 @@ external imagehash dependency is required.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -26,14 +27,15 @@ from PIL import Image
 from scipy.fftpack import dct
 
 
+@dataclass(frozen=True)
 class ExactHasher:
     """MD5 of raw file content. Preserves compatibility with pre-Phase-2
-    registry hashes (which were also MD5)."""
+    registry hashes (which were also MD5). ``no_hash`` turns hashing off."""
 
-    def __init__(self, no_hash: bool = False) -> None:
-        self.no_hash = no_hash
+    no_hash: bool = False
 
     def hash(self, src: str | Path | bytes | Image.Image) -> str | None:
+        """Return the MD5 hex digest of a file, bytes or PIL image; None when hashing is off."""
         if self.no_hash:
             return None
 

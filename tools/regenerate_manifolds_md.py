@@ -10,8 +10,8 @@ Rebuilds manifolds.md from:
 Scope: regenerates the master matrix and per-manifold spec sections.
 
 Usage:
-    python regenerate_manifolds_md.py
-    python regenerate_manifolds_md.py --check    # dry-run, print diff summary
+    python -m tools.regenerate_manifolds_md
+    python -m tools.regenerate_manifolds_md --check    # dry-run, print diff summary
 """
 
 from __future__ import annotations
@@ -20,12 +20,15 @@ import argparse
 import logging
 import sqlite3
 import sys
+import textwrap
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 import yaml
+
+from core.lazy_imports import load_parquet
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_YAML = ROOT / "unified_data.yaml"
@@ -63,7 +66,7 @@ def _count_from_registry(manifold_path: Path) -> int | None:
             n = cur.fetchone()[0]
             conn.close()
             return int(n)
-        except Exception as exc:
+        except (sqlite3.Error, TypeError, ValueError) as exc:
             logger.debug("Could not read count from registry %s: %s", db, exc)
     # Legacy location
     legacy = ROOT / ".cache" / f"registry_{manifold_path.name}.db"
@@ -74,7 +77,7 @@ def _count_from_registry(manifold_path: Path) -> int | None:
             n = cur.fetchone()[0]
             conn.close()
             return int(n)
-        except Exception as exc:
+        except (sqlite3.Error, TypeError, ValueError) as exc:
             logger.debug("Could not read count from legacy registry %s: %s", legacy, exc)
     return None
 
@@ -86,12 +89,12 @@ def _count_from_disk(manifold_path: Path) -> int:
     if pq_files:
         total = 0
         try:
-            import pyarrow.parquet as pq
+            pq = load_parquet()
             for pqf in pq_files:
                 try:
                     meta = pq.read_metadata(str(pqf))
                     total += meta.num_rows
-                except Exception as exc:
+                except (OSError, ValueError) as exc:
                     logger.debug("Could not read parquet metadata for %s: %s", pqf, exc)
         except ImportError as exc:
             logger.debug("pyarrow unavailable for counting parquet rows: %s", exc)
@@ -152,22 +155,27 @@ def _format_domain(task: str) -> str:
     return "Image Manipulation & Restoration"
 
 
+# Storage-layout probes, checked in order: (kind, name, label). "glob" matches
+# any file for the pattern in the manifold root; "dir" means the sub-path exists.
+_STORAGE_PROBES: tuple[tuple[str, str, str], ...] = (
+    ("glob", "*.parquet", "Parquet (Annual Shards)"),
+    ("dir", "mds", "MDS + Directory"),
+    ("dir", "litdata", "LitData + Directory"),
+    ("dir", "shards", "WebDataset + Directory"),
+    ("glob", "*.jsonl", "JSONL (Instruction Corpus)"),
+    ("dir", "targets", "Directory Pair (images/, targets/)"),
+)
+
 
 def _format_storage(manifold_path: Path) -> str:
-    if list(manifold_path.glob("*.parquet")):
-        return "Parquet (Annual Shards)"
-    if (manifold_path / "mds").exists():
-        return "MDS + Directory"
-    if (manifold_path / "litdata").exists():
-        return "LitData + Directory"
-    if (manifold_path / "shards").exists():
-        return "WebDataset + Directory"
-    if list(manifold_path.glob("*.jsonl")):
-        return "JSONL (Instruction Corpus)"
-    if (manifold_path / "targets").exists():
-        return "Directory Pair (images/, targets/)"
+    for kind, name, label in _STORAGE_PROBES:
+        if kind == "glob":
+            hit = any(True for _ in manifold_path.glob(name))
+        else:
+            hit = (manifold_path / name).exists()
+        if hit:
+            return label
     return "Directory Pair (images/, labels/)"
-
 
 
 def _bound_models(models_meta: dict, manifold_name: str) -> list[str]:
@@ -197,12 +205,10 @@ def _build_matrix(reg: dict, models_meta: dict) -> list[dict]:
         count = _sample_count(folder)
 
         # Match registry entry by name
-        dataset_key = None
         kaggle_ref = ""
-        for key, entry in reg.get("datasets", {}).items():
+        for entry in reg.get("datasets", {}).values():
             slug = entry.get("name", "")
-            if folder.name == f"LemGendized{slug}Large" or folder.name == f"LemGendized{slug}":
-                dataset_key = key
+            if folder.name in (f"LemGendized{slug}Large", f"LemGendized{slug}"):
                 kaggle_ref = entry.get("kaggle_ref", "")
                 break
 
@@ -221,32 +227,41 @@ def _build_matrix(reg: dict, models_meta: dict) -> list[dict]:
 
 
 # ─── Markdown Rendering ─────────────────────────────────────────────────────
-def _render(rows: list[dict], reg: dict) -> str:
+MD_LINE_LENGTH = 80
+
+
+def _wrap(text: str) -> list[str]:
+    """Wrap a paragraph or list item to the markdownlint line length."""
+    indent = "  " if text.startswith("- ") else ""
+    return textwrap.wrap(
+        text, width=MD_LINE_LENGTH, subsequent_indent=indent,
+        break_long_words=False, break_on_hyphens=False,
+    )
+
+
+def _render(rows: list[dict]) -> str:
     lines: list[str] = []
     lines.append("# LemGendary Dataset Manifolds Directory & Lineage Matrix")
     lines.append("")
-    lines.append(
+    lines.extend(_wrap(
         "This document provides a comprehensive operational index, physical file "
         "structure taxonomy, sample distributions, lineage tracking, and model "
         "bindings for all production dataset manifolds in the **LemGendary Dataset Suite**."
-    )
+    ))
     lines.append("")
-    lines.append(f"*Auto-generated by `regenerate_manifolds_md.py` on "
-                 f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.*")
+    lines.extend(_wrap(
+        "*Auto-generated by `regenerate_manifolds_md.py` on "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.*"
+    ))
     lines.append("")
     lines.append("---")
     lines.append("")
     lines.append("## 1. Master Manifolds Matrix")
     lines.append("")
-    lines.append(
-        "| Manifold Name | Domain | Task | Samples | Format | Upstream Sources | Bound Model(s) | Kaggle Reference |"
-    )
-    lines.append("| :--- | :--- | :--- | ---: | :--- | :--- | :--- | :--- |")
+    lines.append("| Manifold Name | Task | Samples |")
+    lines.append("| :--- | :--- | ---: |")
     for r in rows:
-        lines.append(
-            f"| `{r['name']}` | {r['domain']} | `{r['task']}` | {r['samples']:,} | "
-            f"{r['format']} | {r['sources']} | {r['models']} | `{r['kaggle_ref']}` |"
-        )
+        lines.append(f"| `{r['name']}` | `{r['task']}` | {r['samples']:,} |")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -256,12 +271,14 @@ def _render(rows: list[dict], reg: dict) -> str:
     for i, r in enumerate(rows, 1):
         lines.append(f"### 2.{i} {r['name']}")
         lines.append("")
-        lines.append(f"- **Domain**: {r['domain']}")
-        lines.append(f"- **Task Category**: `{r['task']}`")
-        lines.append(f"- **Total Samples**: {r['samples']:,}")
-        lines.append(f"- **Storage Format**: {r['format']}")
+        lines.extend(_wrap(f"- **Domain**: {r['domain']}"))
+        lines.extend(_wrap(f"- **Task Category**: `{r['task']}`"))
+        lines.extend(_wrap(f"- **Total Samples**: {r['samples']:,}"))
+        lines.extend(_wrap(f"- **Storage Format**: {r['format']}"))
+        lines.extend(_wrap(f"- **Upstream Sources**: {r['sources']}"))
+        lines.extend(_wrap(f"- **Bound Model(s)**: {r['models']}"))
         if r["kaggle_ref"] != "—":
-            lines.append(f"- **Kaggle Reference**: `{r['kaggle_ref']}`")
+            lines.extend(_wrap(f"- **Kaggle Reference**: `{r['kaggle_ref']}`"))
         lines.append("")
         # Directory layout
         lines.append("```text")
@@ -282,6 +299,7 @@ def _render(rows: list[dict], reg: dict) -> str:
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 def main(args: list[str] | argparse.Namespace | None = None) -> int:
+    """Regenerate manifolds.md (``--check`` only prints the summary); returns the exit code."""
     if isinstance(args, argparse.Namespace):
         parsed = args
     else:
@@ -302,7 +320,7 @@ def main(args: list[str] | argparse.Namespace | None = None) -> int:
         print("[WARN] No manifolds found on disk.")
         return 0
 
-    content = _render(rows, reg)
+    content = _render(rows)
 
     if parsed.check:
         print(f"[CHECK] Would write {len(content)} bytes, {len(rows)} manifolds.")

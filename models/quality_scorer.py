@@ -1,18 +1,28 @@
+"""NIMA-based image quality scoring."""
+
 import torch
-import torch.nn as nn
 from torchvision import transforms
-from .nima import NIMA_Model
+
+from .nima import NimaModel
+
 
 class QualitySentry:
     """
     Automated image quality vetting using a pre-trained NIMA model.
     """
-    def __init__(self, model_path, model_name="nima_technical", device="cuda" if torch.cuda.is_available() else "cpu"):
-        self.device = device
+
+    def __init__(
+        self,
+        model_path,
+        model_name="nima_technical",
+        device=None,
+    ):
+        # None picks CUDA when it is available (resolved per instance, not at import).
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         # Technical NIMA uses EfficientNetV2-S, Aesthetic uses MobileNetV3-Small
         backbone = "mobilenet_v2" if "aesthetic" in model_name else "efficientnet_v2_s"
-        self.model = NIMA_Model(backbone=backbone).to(self.device)
+        self.model = NimaModel(backbone=backbone).to(self.device)
 
         # Load SOTA Weights
         checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
@@ -22,10 +32,6 @@ class QualitySentry:
             self.model.load_state_dict(checkpoint)
         self.model.eval()
 
-        # Diagnostic: Checksum of classifier weights to detect 'Zombie Models'
-        w_sum = self.model.classifier[1].weight.sum().item()
-        # print(f"[JUDGE] NIMA Model Loaded. Weight Checksum: {w_sum:.6f}")
-
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)), # Reverted to 224 for standard NIMA compatibility
             transforms.ToTensor(),
@@ -33,24 +39,12 @@ class QualitySentry:
         ])
 
     @torch.no_grad()
-    def score(self, img_pil, return_probs=False):
+    def rate(self, img_pil) -> tuple[float, list[float]]:
+        """An image's mean NIMA score (1..10) and its 10-bin score distribution."""
         img_tensor = self.transform(img_pil).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            logits = self.model(img_tensor)
+        mean_score, probs = NimaModel.expected_score(self.model(img_tensor))
+        return mean_score.item(), probs[0].cpu().numpy().tolist()
 
-            # DIAGNOSTIC: Print raw logit spread for the first few images
-            if getattr(self, "_diag_count", 0) < 5:
-                self._diag_count = getattr(self, "_diag_count", 0) + 1
-                l_min, l_max = logits.min().item(), logits.max().item()
-                l_var = logits.var().item()
-                # print(f"[NEURAL] Logit Spread: {l_min:.2f} to {l_max:.2f} | Var: {l_var:.4f}")
-
-            probs = nn.functional.softmax(logits, dim=1)
-
-        # Calculate mean score from distribution [1, 10]
-        weights = torch.arange(1, 11).to(self.device).float()
-        mean_score = torch.sum(probs * weights, dim=1).item()
-
-        if return_probs:
-            return mean_score, probs[0].cpu().numpy().tolist()
-        return mean_score
+    def score(self, img_pil) -> float:
+        """An image's mean NIMA score (1..10)."""
+        return self.rate(img_pil)[0]

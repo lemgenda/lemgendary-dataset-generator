@@ -12,12 +12,16 @@ Phase 2 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class HardlinkAuditResult:
+    """Hardlink counts and sizes for one manifold directory."""
     total_files: int
     hardlinked_files: int
     hardlink_pct: float
@@ -39,6 +43,7 @@ class HardlinkAuditResult:
         return "BLOCK"
 
     def summary(self) -> str:
+        """Return a one-line summary of the hardlink counts and the verdict."""
         return (
             f"{self.hardlinked_files}/{self.total_files} files hardlinked "
             f"({self.hardlink_pct:.1f}%, {self.hardlinked_bytes / 1024**3:.2f} GB) "
@@ -65,7 +70,8 @@ def audit_hardlinks(root: str | Path, recursive: bool = True) -> HardlinkAuditRe
         current = stack.pop()
         try:
             entries = list(current.iterdir())
-        except OSError:
+        except OSError as exc:
+            logger.warning("Hardlink audit: cannot list %s: %s", current, exc)
             continue
 
         for entry in entries:
@@ -77,7 +83,8 @@ def audit_hardlinks(root: str | Path, recursive: bool = True) -> HardlinkAuditRe
                 if not entry.is_file():
                     continue
                 st = entry.stat()
-            except OSError:
+            except OSError as exc:
+                logger.debug("Hardlink audit: cannot stat %s: %s", entry, exc)
                 continue
 
             total += 1

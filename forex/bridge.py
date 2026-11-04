@@ -6,81 +6,86 @@ partial metadata that Pyrefly cannot fully introspect. This module is the
 single import site; consumers should import typed helpers from here rather
 than re-importing MetaTrader5.
 
-`_mt5` is deliberately typed as `Any`: it lets the module's helper functions
+`_MT5` is deliberately typed as `Any`: it lets the module's helper functions
 carry concrete return types (bool, int, etc.) while bypassing Pyrefly's
 incomplete view of the underlying MT5 binary.
 """
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
-import importlib
-
 try:
-    _mt5: Any = importlib.import_module("MetaTrader5")
+    _MT5: Any = importlib.import_module("MetaTrader5")
 except ImportError:
-    _mt5 = None  # sentinel when MT5 is not installed on this host
+    _MT5 = None  # sentinel when MT5 is not installed on this host
 
 
-# Timeframe constants - re-exported so consumers never touch _mt5 directly
-TIMEFRAME_M1: int = int(getattr(_mt5, "TIMEFRAME_M1", 1))
-TIMEFRAME_M5: int = int(getattr(_mt5, "TIMEFRAME_M5", 5))
-TIMEFRAME_M15: int = int(getattr(_mt5, "TIMEFRAME_M15", 15))
-TIMEFRAME_H1: int = int(getattr(_mt5, "TIMEFRAME_H1", 60))
-TIMEFRAME_H4: int = int(getattr(_mt5, "TIMEFRAME_H4", 240))
-TIMEFRAME_D1: int = int(getattr(_mt5, "TIMEFRAME_D1", 1440))
+# Timeframe constants - re-exported so consumers never touch _MT5 directly
+TIMEFRAME_M1: int = int(getattr(_MT5, "TIMEFRAME_M1", 1))
+TIMEFRAME_M5: int = int(getattr(_MT5, "TIMEFRAME_M5", 5))
+TIMEFRAME_M15: int = int(getattr(_MT5, "TIMEFRAME_M15", 15))
+TIMEFRAME_H1: int = int(getattr(_MT5, "TIMEFRAME_H1", 60))
+TIMEFRAME_H4: int = int(getattr(_MT5, "TIMEFRAME_H4", 240))
+TIMEFRAME_D1: int = int(getattr(_MT5, "TIMEFRAME_D1", 1440))
 
 
 def initialize() -> bool:
     """Initialize the MT5 terminal connection. Returns False if MT5 is unavailable."""
-    if _mt5 is None:
+    if _MT5 is None:
         return False
-    return bool(_mt5.initialize())
+    return bool(_MT5.initialize())
 
 
 def shutdown() -> None:
     """Cleanly close the MT5 terminal connection."""
-    if _mt5 is not None:
-        _mt5.shutdown()
+    if _MT5 is not None:
+        _MT5.shutdown()
 
 
 def last_error() -> Any:
     """Return the last MT5 error tuple, or None if MT5 is unavailable."""
-    return _mt5.last_error() if _mt5 is not None else None
+    return _MT5.last_error() if _MT5 is not None else None
 
 
 def account_info() -> Any:
-    return _mt5.account_info() if _mt5 is not None else None
+    """Return the MT5 account info, or None when MetaTrader5 is not installed."""
+    return _MT5.account_info() if _MT5 is not None else None
 
 
 def symbols_get(*args: Any, **kwargs: Any) -> Any:
-    return _mt5.symbols_get(*args, **kwargs) if _mt5 is not None else None
+    """Return the MT5 symbols matching the filter, or None when MetaTrader5 is not installed."""
+    return _MT5.symbols_get(*args, **kwargs) if _MT5 is not None else None
 
 
 def symbol_info(symbol: str) -> Any:
-    return _mt5.symbol_info(symbol) if _mt5 is not None else None
+    """Return MT5 info for ``symbol``, or None when MetaTrader5 is not installed."""
+    return _MT5.symbol_info(symbol) if _MT5 is not None else None
 
 
 def symbol_select(symbol: str, enable: bool = True) -> bool:
-    if _mt5 is None:
+    """Show or hide ``symbol`` in MT5 Market Watch; False when MetaTrader5 is not installed."""
+    if _MT5 is None:
         return False
-    return bool(_mt5.symbol_select(symbol, enable))
+    return bool(_MT5.symbol_select(symbol, enable))
 
 
 def copy_rates_range(symbol: str, timeframe: int, start: Any, end: Any) -> Any:
-    return _mt5.copy_rates_range(symbol, timeframe, start, end) if _mt5 is not None else None
+    """Return MT5 bars for ``symbol`` between ``start`` and ``end``, or None without MetaTrader5."""
+    return _MT5.copy_rates_range(symbol, timeframe, start, end) if _MT5 is not None else None
 
 
 def copy_rates_from_pos(symbol: str, timeframe: int, pos: int, count: int) -> Any:
-    return _mt5.copy_rates_from_pos(symbol, timeframe, pos, count) if _mt5 is not None else None
+    """Return ``count`` MT5 bars of ``symbol`` from bar ``pos``, or None without MetaTrader5."""
+    return _MT5.copy_rates_from_pos(symbol, timeframe, pos, count) if _MT5 is not None else None
 
 
 def get_timeframe_const(attr_name: str) -> int:
     """Resolve an MT5 timeframe constant by name (e.g. 'TIMEFRAME_M1')."""
-    if _mt5 is None:
+    if _MT5 is None:
         raise RuntimeError("[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5")
-    val = getattr(_mt5, attr_name, None)
+    val = getattr(_MT5, attr_name, None)
     if val is None:
         raise AttributeError(f"[MT5] Timeframe constant '{attr_name}' not found on MetaTrader5")
     return int(val)
@@ -88,11 +93,11 @@ def get_timeframe_const(attr_name: str) -> int:
 
 def call(method_name: str, *args: Any, **kwargs: Any) -> Any:
     """Invoke a method on the MetaTrader5 module dynamically through the SSOT bridge."""
-    if _mt5 is None:
+    if _MT5 is None:
         raise RuntimeError(
             "[MT5] MetaTrader5 package not installed. Run: pip install MetaTrader5"
         )
-    func = getattr(_mt5, method_name, None)
+    func = getattr(_MT5, method_name, None)
     if func is None:
         raise AttributeError(f"[MT5] Method '{method_name}' not found on MetaTrader5")
     return func(*args, **kwargs)

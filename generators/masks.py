@@ -16,18 +16,22 @@ first use. Phase 5 core ships `parsenet` only.
 from __future__ import annotations
 
 import importlib
+import logging
 from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw
 
-from .base import GenerationResult
+from .base import GenerationResult, Generator
+
+logger = logging.getLogger(__name__)
 
 
-_VALID_STRATEGIES: frozenset[str] = frozenset({"parsenet", "sam", "modnet"})
+# Accepted strategies, default first (the CLI choices come from here).
+_VALID_STRATEGIES: tuple[str, ...] = ("parsenet", "sam", "modnet")
 
 
-class MaskGenerator:
+class MaskGenerator(Generator):
     """Dispatch a mask generation call to the configured strategy."""
 
     def __init__(
@@ -40,13 +44,18 @@ class MaskGenerator:
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"Unknown mask strategy: {strategy!r}. "
-                f"Valid: {sorted(_VALID_STRATEGIES)}"
+                f"Valid: {list(_VALID_STRATEGIES)}"
             )
         self.strategy = strategy
         self._labeler = labeler
         self._size = image_size
         self._sam_predictor: Any = None
         self._modnet: Any = None
+
+    @classmethod
+    def strategies(cls) -> tuple[str, ...]:
+        """The mask strategies, default (``parsenet``) first."""
+        return _VALID_STRATEGIES
 
     def generate(
         self,
@@ -56,9 +65,9 @@ class MaskGenerator:
         if self.strategy == "parsenet":
             return self._parsenet(img)
         if self.strategy == "sam":
-            return self._sam(img)
+            return self._sam()
         if self.strategy == "modnet":
-            return self._modnet_impl(img)
+            return self._modnet_impl()
         return GenerationResult(kind="mask", value=None, strategy=self.strategy)
 
     # ── ParseNet ────────────────────────────────────────────────────────────
@@ -99,20 +108,20 @@ class MaskGenerator:
         )
 
     # ── SAM (optional) ──────────────────────────────────────────────────────
-    def _sam(self, img: Image.Image) -> GenerationResult:
+    def _sam(self) -> GenerationResult:
         try:
             importlib.import_module("segment_anything")
         except ImportError as e:
             raise ImportError(
-                "segment-anything is required for --mask-strategy sam. "
-                "Install from: pip install git+https://github.com/facebookresearch/segment-anything.git"
+                "segment-anything is required for --mask-strategy sam. Install from: pip install"
+                " git+https://github.com/facebookresearch/segment-anything.git"
             ) from e
         # SAM requires a checkpoint path and prompts; this strategy is a
         # placeholder until the deployment-specific wiring lands.
         return GenerationResult(kind="mask", value=None, strategy=self.strategy)
 
     # ── MODNet (optional) ───────────────────────────────────────────────────
-    def _modnet_impl(self, img: Image.Image) -> GenerationResult:
+    def _modnet_impl(self) -> GenerationResult:
         try:
             importlib.import_module("modnet")
         except ImportError as e:
@@ -133,7 +142,8 @@ def _pairs(flat: list[Any]) -> list[tuple[float, float]]:
     for i in range(0, n, 2):
         try:
             out.append((float(flat[i]), float(flat[i + 1])))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
+            logger.debug("Dropping non-numeric polygon point at index %d: %s", i, exc)
             continue
     return out
 

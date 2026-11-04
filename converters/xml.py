@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET
 
 
 def _require_text(el: ET.Element) -> str:
@@ -22,6 +22,24 @@ def _require_text(el: ET.Element) -> str:
     return el.text
 
 
+def _parse_object(obj: ET.Element) -> dict[str, Any] | None:
+    """Convert one VOC <object> element to an annotation dict, or None if incomplete."""
+    name_node = obj.find("name")
+    cls = name_node.text if name_node is not None and name_node.text else "unknown"
+
+    bndbox = obj.find("bndbox")
+    if bndbox is None:
+        return None
+
+    nodes = [bndbox.find(tag) for tag in ("xmin", "ymin", "xmax", "ymax")]
+    present = [node for node in nodes if node is not None]
+    if len(present) != len(nodes):
+        return None
+
+    xmin, ymin, xmax, ymax = (float(_require_text(node)) for node in present)
+    return {"class": cls, "bbox": [xmin, ymin, xmax - xmin, ymax - ymin]}
+
+
 def parse_xml(xml_path: str | Path) -> list[dict[str, Any]]:
     """Parse a Pascal VOC XML annotation file.
 
@@ -33,25 +51,8 @@ def parse_xml(xml_path: str | Path) -> list[dict[str, Any]]:
     annotations: list[dict[str, Any]] = []
 
     for obj in root.findall("object"):
-        name_node = obj.find("name")
-        cls = name_node.text if name_node is not None and name_node.text else "unknown"
-
-        bndbox = obj.find("bndbox")
-        if bndbox is None:
-            continue
-
-        xn, yn = bndbox.find("xmin"), bndbox.find("ymin")
-        xmn, ymn = bndbox.find("xmax"), bndbox.find("ymax")
-        if xn is None or yn is None or xmn is None or ymn is None:
-            continue
-
-        xmin = float(_require_text(xn))
-        ymin = float(_require_text(yn))
-        xmax = float(_require_text(xmn))
-        ymax = float(_require_text(ymn))
-
-        width = xmax - xmin
-        height = ymax - ymin
-        annotations.append({"class": cls, "bbox": [xmin, ymin, width, height]})
+        item = _parse_object(obj)
+        if item is not None:
+            annotations.append(item)
 
     return annotations

@@ -3,34 +3,40 @@ LemGendary Dataset Compiler — API and Service Orchestration Unit Tests.
 
 Phase 1 of Ecosystem Comprehensive Testing Battery.
 Tests FastAPI endpoints (Health, GUI state, Datasets, Gates, Config, Jobs, Modernize, Kaggle)
-and all 7 service layers (AuditService, CompilerService, DegradeService, DocService,
-GenerationService, MigrationService, SyncService).
+and all 7 services (audit_manifold, run_compile, run_degrade, DocService,
+run_generation, MigrationService, SyncService).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import json
-from pathlib import Path
+import asyncio
 import tempfile
-from typing import Any
 import unittest
-from unittest.mock import patch
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from json import dumps, loads
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import MagicMock, patch
 from urllib.parse import urlsplit
 
-from PIL import Image
 import yaml
+from PIL import Image
 
 from api.auth import get_or_create_token
 from api.server import app
-from services.audit_service import AuditService
-from services.compiler_service import CompilerService
-from services.degrade_service import DegradeService
+from core.ecosystem import ecosystem
+from services.audit_service import audit_manifold
+from services.compiler_service import run_compile
+from services.degrade_service import run_degrade
 from services.doc_service import DocService
-from services.generation_service import GenerationService
+from services.generation_service import run_generation
 from services.migration_service import MigrationService
 from services.sync_service import SyncService
 
+# A path that does not exist on any machine (no absolute literals in tests).
+_MISSING_DIR = Path(tempfile.gettempdir()) / "lgd_missing_dir_does_not_exist_999"
 
 @dataclass
 class _AsgiResponse:
@@ -39,11 +45,68 @@ class _AsgiResponse:
     headers: list[tuple[bytes, bytes]]
 
     def json(self) -> Any:
-        return json.loads(self.body_bytes.decode("utf-8"))
+        """Decode the body as JSON."""
+        return loads(self.body_bytes.decode("utf-8"))
 
     @property
     def text(self) -> str:
+        """Decode the body as UTF-8 text."""
         return self.body_bytes.decode("utf-8", errors="replace")
+
+
+def _http_scope(method: str, path: str, extra_headers: list[tuple[bytes, bytes]]) -> dict[str, Any]:
+    """Build the ASGI HTTP scope for one in-process request."""
+    parsed = urlsplit(path)
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": method.upper(),
+        "scheme": "http",
+        "path": parsed.path,
+        "raw_path": parsed.path.encode("utf-8"),
+        "query_string": parsed.query.encode("utf-8"),
+        "headers": [(b"host", b"testserver"), *extra_headers],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+
+
+def _single_body_receiver(body_bytes: bytes) -> Callable[[], Awaitable[dict[str, Any]]]:
+    """Return an ASGI ``receive`` that yields the body once, then disconnects."""
+    sent = False
+
+    async def receive() -> dict[str, Any]:
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body_bytes, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
+class _ResponseCollector:
+    """ASGI ``send`` sink that accumulates status, headers and body."""
+
+    def __init__(self) -> None:
+        self.status = 500
+        self.headers: list[tuple[bytes, bytes]] = []
+        self.body = bytearray()
+
+    async def send(self, msg: dict[str, Any]) -> None:
+        """Record one ASGI response message."""
+        if msg["type"] == "http.response.start":
+            self.status = int(msg["status"])
+            self.headers = list(msg.get("headers", []))
+        elif msg["type"] == "http.response.body":
+            self.body.extend(msg.get("body", b""))
+
+    def response(self) -> _AsgiResponse:
+        """Return the collected response."""
+        return _AsgiResponse(
+            status_code=self.status, body_bytes=bytes(self.body), headers=self.headers
+        )
 
 
 class InProcessAsgiClient:
@@ -59,64 +122,23 @@ class InProcessAsgiClient:
         json_body: Any = None,
         headers: dict[str, str] | None = None,
     ) -> _AsgiResponse:
-        parsed = urlsplit(path)
-        raw_headers: list[tuple[bytes, bytes]] = [(b"host", b"testserver")]
+        """Send one request through the ASGI app and collect the response."""
         body_bytes = b""
+        extra: list[tuple[bytes, bytes]] = []
         if json_body is not None:
-            body_bytes = json.dumps(json_body).encode("utf-8")
-            raw_headers.append((b"content-type", b"application/json"))
+            body_bytes = dumps(json_body).encode("utf-8")
+            extra.append((b"content-type", b"application/json"))
         for k, v in (headers or {}).items():
-            raw_headers.append((k.lower().encode("utf-8"), v.encode("utf-8")))
-
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
-            "method": method.upper(),
-            "scheme": "http",
-            "path": parsed.path,
-            "raw_path": parsed.path.encode("utf-8"),
-            "query_string": parsed.query.encode("utf-8"),
-            "headers": raw_headers,
-            "client": ("127.0.0.1", 12345),
-            "server": ("testserver", 80),
-        }
-
-        sent = False
-
-        async def receive() -> dict[str, Any]:
-            nonlocal sent
-            if not sent:
-                sent = True
-                return {"type": "http.request", "body": body_bytes, "more_body": False}
-            return {"type": "http.disconnect"}
-
-        out_status = 500
-        out_headers: list[tuple[bytes, bytes]] = []
-        out_body = bytearray()
-
-        async def send(msg: dict[str, Any]) -> None:
-            nonlocal out_status, out_headers
-            if msg["type"] == "http.response.start":
-                out_status = int(msg["status"])
-                out_headers = list(msg.get("headers", []))
-            elif msg["type"] == "http.response.body":
-                out_body.extend(msg.get("body", b""))
-
-        coro = self._app(scope, receive, send)
-        try:
-            while True:
-                coro.send(None)
-        except StopIteration:
-            pass
-
-        return _AsgiResponse(
-            status_code=out_status,
-            body_bytes=bytes(out_body),
-            headers=out_headers,
-        )
+            extra.append((k.lower().encode("utf-8"), v.encode("utf-8")))
+        collector = _ResponseCollector()
+        # A real event loop: sync routes run in the threadpool through anyio.
+        asyncio.run(self._app(
+            _http_scope(method, path, extra), _single_body_receiver(body_bytes), collector.send
+        ))
+        return collector.response()
 
     def get(self, path: str, headers: dict[str, str] | None = None) -> _AsgiResponse:
+        """Send a GET request."""
         return self.request("GET", path, headers=headers)
 
     def post(
@@ -125,6 +147,7 @@ class InProcessAsgiClient:
         json: Any = None,
         headers: dict[str, str] | None = None,
     ) -> _AsgiResponse:
+        """Send a POST request with an optional JSON body."""
         return self.request("POST", path, json_body=json, headers=headers)
 
 
@@ -138,6 +161,7 @@ class TestApiRoutes(unittest.TestCase):
         cls.auth_headers = {"X-API-Key": cls.token}
 
     def test_health_endpoint(self) -> None:
+        """GET /api/health reports the service name, status and version."""
         resp = self.client.get("/api/health")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -147,6 +171,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("uptime_seconds", data)
 
     def test_health_full_endpoint(self) -> None:
+        """GET /api/health/full includes the hardware block."""
         resp = self.client.get("/api/health/full")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -158,6 +183,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("cuda_available", hw)
 
     def test_gui_state_and_presets_endpoints(self) -> None:
+        """GET /api/gui/state lists presets, and the presets endpoint answers."""
         resp = self.client.get("/api/gui/state")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -172,6 +198,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertGreater(presets_data.get("total", 0), 0)
 
     def test_datasets_list_and_details_endpoints(self) -> None:
+        """The dataset list and detail endpoints read a manifold from the output root."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             m_dir = tmp_root / "LemGendizedTestManifold"
@@ -200,10 +227,12 @@ class TestApiRoutes(unittest.TestCase):
                 self.assertEqual(detail["classes"], ["clean", "degraded"])
 
     def test_datasets_not_found(self) -> None:
+        """An unknown dataset name returns 404."""
         resp = self.client.get("/api/datasets/non_existent_manifold_xyz_123")
         self.assertEqual(resp.status_code, 404)
 
     def test_gates_hardlinks_endpoint(self) -> None:
+        """The hardlink gate endpoint returns a verdict and percentage."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             resp = self.client.get(f"/api/gates/hardlinks?path={tmp_dir}")
             self.assertEqual(resp.status_code, 200)
@@ -211,11 +240,12 @@ class TestApiRoutes(unittest.TestCase):
             self.assertIn("verdict", data)
             self.assertIn("hardlink_pct", data)
 
-        resp_err = self.client.get("/api/gates/hardlinks?path=C:/invalid_nonexistent_dir_999")
+        resp_err = self.client.get(f"/api/gates/hardlinks?path={_MISSING_DIR.as_posix()}")
         self.assertEqual(resp_err.status_code, 404)
 
     def test_protected_config_and_jobs_endpoints(self) -> None:
         # Unauthenticated request is rejected
+        """Config and job endpoints return 401 without a token and succeed with one."""
         unauth = self.client.get("/api/config")
         self.assertEqual(unauth.status_code, 401)
 
@@ -233,6 +263,7 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("jobs", jobs_resp.json())
 
     def test_sources_and_kaggle_and_modernize_endpoints(self) -> None:
+        """The sources, Kaggle and modernize endpoints answer."""
         src_resp = self.client.get("/api/sources")
         self.assertEqual(src_resp.status_code, 200)
         self.assertIn("total_configured", src_resp.json())
@@ -250,14 +281,16 @@ class TestApiRoutes(unittest.TestCase):
             self.assertEqual(mod_resp.json(), [])
 
 
-class TestAuditService(unittest.TestCase):
-    """Test AuditService image quality and hardlink verification."""
+class TestAuditManifold(unittest.TestCase):
+    """Test audit_manifold image quality and hardlink verification."""
 
     def test_audit_manifold_nonexistent(self) -> None:
-        ret = AuditService.audit_manifold(Path("C:/does_not_exist_xyz_dir_999"), as_json=True)
+        """Auditing a missing manifold returns 1."""
+        ret = audit_manifold(_MISSING_DIR, as_json=True)
         self.assertEqual(ret, 1)
 
     def test_audit_manifold_valid_directory(self) -> None:
+        """Auditing a manifold with one valid image succeeds."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             m_path = Path(tmp_dir) / "TestManifold"
             img_dir = m_path / "images" / "train"
@@ -267,42 +300,61 @@ class TestAuditService(unittest.TestCase):
             img_file = img_dir / "sample_001.webp"
             img.save(img_file, format="WEBP")
 
-            ret = AuditService.audit_manifold(m_path, sample=5, as_json=True)
+            ret = audit_manifold(m_path, sample=5, as_json=True)
             self.assertEqual(ret, 0)
 
 
 class TestAllServicesOrchestration(unittest.TestCase):
     """Test all 7 service facade layers for in-process dispatch."""
 
+    @staticmethod
+    def _fake_manifold_compile(**process: Any) -> SimpleNamespace:
+        """A stand-in for ``core.manifold_compile`` (whose import needs torch and sklearn)."""
+        return SimpleNamespace(
+            parse_compile_args=MagicMock(return_value=SimpleNamespace(cleanup=False)),
+            process_dataset=MagicMock(**process),
+            finalize_compile=MagicMock(return_value=0),
+        )
+
     def test_compiler_service_dry_dispatch(self) -> None:
-        with patch("core.manifold_compile.process_dataset") as mock_proc:
-            mock_proc.return_value = None
-            ret = CompilerService.run_compile(
+        """run_compile parses its options as compile arguments and finalizes the outcomes."""
+        fake = self._fake_manifold_compile(return_value=["outcome"])
+        with patch("services.compiler_service.load_manifold_compile", return_value=fake):
+            ret = run_compile(
                 preset="restoration-hardlinked",
                 no_vetting=True,
                 no_labeling=True,
                 no_hash=True,
             )
-            self.assertEqual(ret, 0)
-            self.assertTrue(mock_proc.called)
+        self.assertEqual(ret, 0)
+        fake.parse_compile_args.assert_called_once_with(
+            ["--preset", "restoration-hardlinked", "--no-vetting", "--no-labeling", "--no-hash"]
+        )
+        fake.process_dataset.assert_called_once()
+        fake.finalize_compile.assert_called_once_with(["outcome"], purge_loose=False)
 
     def test_compiler_service_handles_error(self) -> None:
-        with patch("core.manifold_compile.process_dataset", side_effect=RuntimeError("Test error")):
-            ret = CompilerService.run_compile(
+        """run_compile returns 1 when process_dataset raises."""
+        fake = self._fake_manifold_compile(side_effect=RuntimeError("Test error"))
+        with patch("services.compiler_service.load_manifold_compile", return_value=fake):
+            ret = run_compile(
                 preset="restoration-hardlinked",
             )
-            self.assertEqual(ret, 1)
+        self.assertEqual(ret, 1)
+        fake.finalize_compile.assert_not_called()
 
     def test_migration_service_transcode_dispatch(self) -> None:
+        """MigrationService.transcode_images calls the image-format migration."""
         with patch("tools.migrate_manifold_image_format.run", return_value=0) as mock_run:
             ret = MigrationService.transcode_images(
-                manifold_path=Path("C:/test_manifold"),
+                manifold_path=_MISSING_DIR / "test_manifold",
                 dry_run=True,
             )
             self.assertEqual(ret, 0)
             self.assertTrue(mock_run.called)
 
     def test_migration_service_modernize_dispatch(self) -> None:
+        """MigrationService.modernize_manifolds calls modernize_manifold.run."""
         with patch("tools.modernize_manifold.run", return_value=0) as mock_run:
             ret = MigrationService.modernize_manifolds(
                 dry_run=True,
@@ -312,14 +364,23 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_run.called)
 
     def test_migration_service_reduce_and_queue_dispatch(self) -> None:
-        with patch("tools.manifold_reduce.reduce_dataset") as mock_red:
+        """MigrationService dispatches reduce and queue runs with the given options."""
+        with patch("tools.manifold_reduce.reduce_dataset", return_value=0) as mock_red:
             ret = MigrationService.reduce_manifolds(max_gb=50.0, suffix="Reduced")
             self.assertEqual(ret, 0)
-            mock_red.assert_called_once_with(max_gb_override=50.0, suffix_override="Reduced")
+            mock_red.assert_called_once_with(
+                max_gb_override=50.0,
+                suffix_override="Reduced",
+                dataset=None,
+                fraction=None,
+                assume_yes=False,
+                dry_run=False,
+            )
 
     def test_degrade_service_dispatch(self) -> None:
+        """run_degrade calls synthesize_manifold."""
         with patch("tools.generate_degrade.synthesize_manifold", return_value=0) as mock_deg:
-            ret = DegradeService.run_degrade(
+            ret = run_degrade(
                 source="clean_src",
                 output="synth_out",
                 profile="motion-blur+iso-noise",
@@ -329,15 +390,17 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_deg.called)
 
     def test_doc_service_dispatch(self) -> None:
+        """DocService.rebuild_manifolds_md calls regenerate_manifolds_md.main."""
         with patch("tools.regenerate_manifolds_md.main", return_value=0) as mock_md:
             ret = DocService.rebuild_manifolds_md(check_only=True)
             self.assertEqual(ret, 0)
             self.assertTrue(mock_md.called)
 
     def test_generation_service_dispatch(self) -> None:
+        """run_generation calls generate_cli.run."""
         with patch("tools.generate_cli.run", return_value=0) as mock_gen:
-            ret = GenerationService.generate(
-                manifold=Path("C:/test_manifold"),
+            ret = run_generation(
+                manifold=_MISSING_DIR / "test_manifold",
                 kind="label",
                 strategy="blip_caption",
                 dry_run=True,
@@ -346,13 +409,16 @@ class TestAllServicesOrchestration(unittest.TestCase):
             self.assertTrue(mock_gen.called)
 
     def test_sync_service_push_pull_and_metadata_dispatch(self) -> None:
+        """SyncService dispatches push, pull and metadata calls to the sync tools."""
         with patch("tools.manifold_sync.action_sync") as mock_push:
             ret = SyncService.push(model="nima_technical", url=None, no_wait=True)
             self.assertEqual(ret, 0)
-            mock_push.assert_called_once_with(manifold_name="nima_technical", repo_id=None, no_wait=True)
+            mock_push.assert_called_once_with(
+                manifold_name="nima_technical", repo_id=None, no_wait=True
+            )
 
         with patch("tools.manifold_sync.action_get") as mock_pull:
-            ret = SyncService.pull(url="lemtreursi/lemgendizednimatechnical")
+            ret = SyncService.pull(url=f"{ecosystem().kaggle_owner}/lemgendizednimatechnical")
             self.assertEqual(ret, 0)
             mock_pull.assert_called_once()
 

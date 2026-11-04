@@ -7,18 +7,25 @@ and granular item-by-item updates across all compilation, sharding, and ingestio
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from collections.abc import Iterable, Iterator, Sized
 from typing import Any, TypeVar
+
 from tqdm import tqdm
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 # Modern clean progress format across the entire LemGendary ecosystem:
 # Operational metadata, unconstrained percentage, numeric size/count, and rate (never truncated)
 # Visual progress bar is rendered natively by the GUI telemetry engine
 STANDARD_BAR_FORMAT = "{desc} - {percentage:5.1f}% [{n_fmt}/{total_fmt}, {rate_fmt}{postfix}]"
+
+# Minimum seconds between bar redraws unless the caller passes ``mininterval``.
+DEFAULT_MININTERVAL = 0.25
 
 
 def supports_unicode() -> bool:
@@ -28,10 +35,10 @@ def supports_unicode() -> bool:
         if "utf" in encoding.lower():
             return True
         # Check PYTHONIOENCODING or modern Windows Terminal
-        if os.environ.get("WT_SESSION") or os.environ.get("PYTHONIOENCODING", "").lower().startswith("utf"):
-            return True
-        return False
-    except Exception:
+        io_encoding = os.environ.get("PYTHONIOENCODING", "").lower()
+        return bool(os.environ.get("WT_SESSION") or io_encoding.startswith("utf"))
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("Could not determine stdout unicode support; assuming ASCII: %s", exc)
         return False
 
 
@@ -41,12 +48,15 @@ def create_progress_bar(
     unit: str = "img",
     ncols: int | None = None,
     ascii_blocks: bool | None = None,
-    mininterval: float = 0.25,
     **kwargs: Any,
 ) -> tqdm:
-    """Create a standardized tqdm progress bar guaranteed to render identically across all tools."""
+    """Create a standardized tqdm progress bar guaranteed to render identically across all tools.
+
+    Any other keyword goes straight to ``tqdm``; ``mininterval`` defaults to
+    :data:`DEFAULT_MININTERVAL` seconds.
+    """
     kwargs.setdefault("bar_format", STANDARD_BAR_FORMAT)
-    kwargs.setdefault("mininterval", mininterval)
+    kwargs.setdefault("mininterval", DEFAULT_MININTERVAL)
     kwargs.setdefault("file", sys.stdout)
 
     if ascii_blocks is None:
@@ -87,4 +97,3 @@ def track_progress(
         for item in iterable:
             yield item
             pbar.update(1)
-

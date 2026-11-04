@@ -7,21 +7,53 @@ Intake Protocols with epistemic tagging, and duplicate ID detection.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 EMOJI_PATTERN = re.compile(r"[\U00010000-\U0010ffff]", flags=re.UNICODE)
 EPISTEMIC_TAG_PATTERN = re.compile(r"\[(CONFIRMED|PROBABLE|ILLUSTRATIVE)\]")
 
 
+# Each stage of the Diagnostic Intake Protocol is present when any of its markers is.
+_DIAG_STAGE_MARKERS = (
+    ("stage 1", "triage"),
+    ("stage 2", "diagnosis"),
+    ("stage 3", "remediation"),
+)
+
+
+@dataclass(frozen=True)
 class ValidationIssue:
-    def __init__(self, record_id: str, field: str, issue: str, severity: str = "ERROR") -> None:
-        self.record_id = record_id
-        self.field = field
-        self.issue = issue
-        self.severity = severity
+    """One invariant violation: the record, the offending field, and what is wrong."""
+
+    record_id: str
+    field: str
+    issue: str
+    severity: str = "ERROR"
 
     def __repr__(self) -> str:
         return f"[{self.severity}] {self.record_id} ({self.field}): {self.issue}"
+
+
+def _collect_message_text(
+    rec_id: str, messages: list[Any], issues: list[ValidationIssue]
+) -> tuple[str, str]:
+    """Flag malformed or empty turns; return (all text, assistant text)."""
+    full_text = ""
+    assistant_text = ""
+    for idx, m in enumerate(messages):
+        if not isinstance(m, dict):
+            issues.append(
+                ValidationIssue(rec_id, f"messages[{idx}]", "Message must be a dictionary")
+            )
+            continue
+        content = m.get("content", "")
+        if not isinstance(content, str) or not content.strip():
+            issues.append(ValidationIssue(rec_id, f"messages[{idx}]", "Message content is empty"))
+        full_text += " " + str(content)
+        if m.get("role") == "assistant":
+            assistant_text += " " + str(content)
+    return full_text, assistant_text
 
 
 class QualityValidator:
@@ -38,6 +70,7 @@ class QualityValidator:
         self.enforce_diag_stages = enforce_diag_stages
 
     def validate_record(self, record: dict[str, Any]) -> list[ValidationIssue]:
+        """Return the quality issues found in one LLM training record."""
         issues: list[ValidationIssue] = []
         rec_id = str(record.get("id", "UNKNOWN_ID"))
 
@@ -53,41 +86,51 @@ class QualityValidator:
             return issues
 
         roles = [m.get("role") for m in messages if isinstance(m, dict)]
-        if roles != ["system", "user", "assistant"] and roles != ["user", "assistant"]:
+        if roles not in (["system", "user", "assistant"], ["user", "assistant"]):
             issues.append(ValidationIssue(rec_id, "messages", f"Unexpected role sequence: {roles}"))
 
-        full_text = ""
-        assistant_text = ""
-        for idx, m in enumerate(messages):
-            if not isinstance(m, dict):
-                issues.append(ValidationIssue(rec_id, f"messages[{idx}]", "Message must be a dictionary"))
-                continue
-            content = m.get("content", "")
-            if not isinstance(content, str) or not content.strip():
-                issues.append(ValidationIssue(rec_id, f"messages[{idx}]", "Message content is empty"))
-            full_text += " " + str(content)
-            if m.get("role") == "assistant":
-                assistant_text += " " + str(content)
+        full_text, assistant_text = _collect_message_text(rec_id, messages, issues)
 
         if self.zero_emojis:
             emojis = EMOJI_PATTERN.findall(full_text)
             if emojis:
-                issues.append(ValidationIssue(rec_id, "content", f"Found {len(emojis)} illegal emoji characters: {emojis}"))
+                issues.append(
+                    ValidationIssue(
+                        rec_id, "content", f"Found {len(emojis)} illegal emoji characters: {emojis}"
+                    )
+                )
 
-        cat = str(record.get("category", ""))
-        if cat == "troubleshooting_diagnostics":
-            if self.enforce_epistemic_tags:
-                matches = EPISTEMIC_TAG_PATTERN.findall(assistant_text)
-                if not matches:
-                    issues.append(ValidationIssue(rec_id, "assistant", "Missing epistemic tag in troubleshooting response", severity="WARNING"))
+        if str(record.get("category", "")) == "troubleshooting_diagnostics":
+            issues.extend(self._diagnostic_issues(rec_id, assistant_text))
 
-            if self.enforce_diag_stages:
-                has_s1 = "stage 1" in assistant_text.lower() or "triage" in assistant_text.lower()
-                has_s2 = "stage 2" in assistant_text.lower() or "diagnosis" in assistant_text.lower()
-                has_s3 = "stage 3" in assistant_text.lower() or "remediation" in assistant_text.lower()
-                if not (has_s1 and has_s2 and has_s3):
-                    issues.append(ValidationIssue(rec_id, "assistant", "Incomplete 3-Stage Diagnostic Intake Protocol in troubleshooting response", severity="WARNING"))
+        return issues
 
+    def _diagnostic_issues(self, rec_id: str, assistant_text: str) -> list[ValidationIssue]:
+        """Warnings for a troubleshooting reply without epistemic tags or the 3 stages."""
+        issues: list[ValidationIssue] = []
+        if self.enforce_epistemic_tags and not EPISTEMIC_TAG_PATTERN.findall(assistant_text):
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "assistant",
+                    "Missing epistemic tag in troubleshooting response",
+                    severity="WARNING",
+                )
+            )
+
+        lowered = assistant_text.lower()
+        if self.enforce_diag_stages and not all(
+            any(marker in lowered for marker in stage) for stage in _DIAG_STAGE_MARKERS
+        ):
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "assistant",
+                    "Incomplete 3-Stage Diagnostic Intake Protocol in troubleshooting"
+                    " response",
+                    severity="WARNING",
+                )
+            )
         return issues
 
     def validate_corpus(self, records: list[dict[str, Any]]) -> tuple[bool, list[ValidationIssue]]:
@@ -105,4 +148,3 @@ class QualityValidator:
         critical_errors = [iss for iss in all_issues if iss.severity == "ERROR"]
         is_valid = len(critical_errors) == 0
         return is_valid, all_issues
-

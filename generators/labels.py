@@ -21,42 +21,52 @@ from typing import Any
 
 from PIL import Image
 
-from .base import GenerationResult
+from .base import GenerationResult, Generator
+from .model_handles import ModelHandles
 
-
-_VALID_STRATEGIES: frozenset[str] = frozenset({
+# Accepted strategies, default first (the CLI choices come from here).
+_VALID_STRATEGIES: tuple[str, ...] = (
     "blip_caption",
     "clip_zeroshot",
     "yolo_detection",
     "parsenet_segmentation",
     "nima_quality",
-})
+)
 
 
-class LabelGenerator:
+class LabelGenerator(Generator):
     """Dispatches a task to the appropriate loaded model wrapper."""
 
     def __init__(
         self,
         strategy: str,
         *,
-        captioner: Any = None,
-        clip: Any = None,
-        labeler: Any = None,
-        sentry: Any = None,
         classes: list[str] | None = None,
+        **models: Any,
     ) -> None:
+        """Bind a strategy to its model wrappers.
+
+        ``models`` accepts the keywords ``captioner``, ``clip``, ``labeler``
+        and ``sentry`` (see ``ModelHandles``); any other keyword raises
+        ``TypeError``.
+        """
         if strategy not in _VALID_STRATEGIES:
             raise ValueError(
                 f"Unknown label strategy: {strategy!r}. "
-                f"Valid: {sorted(_VALID_STRATEGIES)}"
+                f"Valid: {list(_VALID_STRATEGIES)}"
             )
+        handles = ModelHandles.from_kwargs(type(self).__name__, models)
         self.strategy = strategy
-        self._captioner = captioner
-        self._clip = clip
-        self._labeler = labeler
-        self._sentry = sentry
+        self._captioner = handles.captioner
+        self._clip = handles.clip
+        self._labeler = handles.labeler
+        self._sentry = handles.sentry
         self._classes = classes or []
+
+    @classmethod
+    def strategies(cls) -> tuple[str, ...]:
+        """The label strategies, default (``blip_caption``) first."""
+        return _VALID_STRATEGIES
 
     def generate(
         self,
@@ -122,7 +132,7 @@ class LabelGenerator:
     def _nima(self, img: Image.Image) -> GenerationResult:
         if self._sentry is None:
             return GenerationResult(kind="label", value={}, strategy=self.strategy)
-        score, probs = self._sentry.score(img, return_probs=True)
+        score, probs = self._sentry.rate(img)
         return GenerationResult(
             kind="label",
             value={"nima_probs": probs, "nima_score": score},

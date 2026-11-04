@@ -5,16 +5,18 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-from pathlib import Path
-from typing import Optional
+from typing import Annotated
 
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
+from core import paths
+
 logger = logging.getLogger("lemgendary.api.auth")
 
-_TOKEN_FILE = Path(".lgd_server/token")
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+_TOKEN_FILE = paths.token_file()
+API_KEY_HEADER = "X-API-Key"
+_api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
 _bearer_security = HTTPBearer(auto_error=False)
 
 
@@ -44,8 +46,8 @@ def get_or_create_token() -> str:
 
 
 async def verify_token(
-    header_key: Optional[str] = Security(_api_key_header),
-    bearer_creds: Optional[HTTPAuthorizationCredentials] = Security(_bearer_security),
+    header_key: Annotated[str | None, Security(_api_key_header)],
+    bearer_creds: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_security)],
 ) -> str:
     """Validate incoming HTTP request authentication token against server master token."""
     if os.environ.get("LEMGENDARY_DISABLE_AUTH", "").lower() in ("1", "true", "yes"):
@@ -57,7 +59,10 @@ async def verify_token(
     if not provided:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API token. Provide via 'X-API-Key' header or 'Authorization: Bearer <token>'",
+            detail=(
+                "Missing API token. Provide via 'X-API-Key' header or 'Authorization: Bearer"
+                " <token>'"
+            ),
             headers={"WWW-Authenticate": "Bearer"},
         )
 

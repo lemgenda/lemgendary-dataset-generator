@@ -32,4 +32,4 @@ def is_black_image(img: Image.Image, threshold: float = 0.1) -> bool:
     grayscale = img_thumb.convert("L")
     stat = np.array(grayscale)
     black_ratio = float(np.sum(stat < 10) / stat.size)
-    return (black_ratio > (1.0 - threshold))
+    return black_ratio > (1.0 - threshold)

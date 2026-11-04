@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
 import yaml
+
+from core.task_taxonomy import taxonomy
 
 logger = logging.getLogger(__name__)
 
@@ -40,82 +44,56 @@ TASK_META: dict[str, Any] = _meta_data.get("task_metadata", {})
 if "ai_helper" not in TASK_META:
     TASK_META["ai_helper"] = {
         "category": "Technical Documentation & AI Assistant Training",
-        "desc": "Fine-tuning prompt-completion instructions and technical documentation for the LemGendary AI Assistant.",
-        "obj": "Answer architectural, operational, and development inquiries across the LemGendary ecosystem.",
-        "targets_desc": "Instruction tasks utilize prompt-response JSONL pairs; physical image targets are inapplicable.",
+        "desc": (
+            "Fine-tuning prompt-completion instructions and technical documentation for the"
+            " LemGendary AI Assistant."
+        ),
+        "obj": (
+            "Answer architectural, operational, and development inquiries across the LemGendary"
+            " ecosystem."
+        ),
+        "targets_desc": (
+            "Instruction tasks utilize prompt-response JSONL pairs; physical image targets are"
+            " inapplicable."
+        ),
     }
 
 MODELS_META: dict[str, Any] = _meta_data.get("models_metadata", {})
 
-MANIFOLD_TASK_MAP: dict[str, str] = {
-    # Modern (2026 Canonical Folder Names in LemGendaryDatasets)
-    "LemGendizedAIHelperLemGend": "ai_helper",
-    "LemGendizedClassificationMaster": "classification",
-    "LemGendizedCodeFormer": "restoration",
-    "LemGendizedFfaNetIndoor": "restoration",
-    "LemGendizedFfaNetOutdoor": "restoration",
-    "LemGendizedFilmRestorer": "restoration",
-    "LemGendizedForexUniverse": "forex",
-    "LemGendizedMirNetExposure": "restoration",
-    "LemGendizedMirNetLowLight": "restoration",
-    "LemGendizedMprNetDeraining": "restoration",
-    "LemGendizedMultitaskRestorationPro": "restoration",
-    "LemGendizedNafNetDebluring": "restoration",
-    "LemGendizedNafNetDenoising": "restoration",
-    "LemGendizedNimaAesthetic": "quality",
-    "LemGendizedNimaAuthenticity": "authenticity",
-    "LemGendizedNimaTechnical": "quality",
-    "LemGendizedParseNet": "segmentation",
-    "LemGendizedRetinaFace": "detection",
-    "LemGendizedUltraZoom": "super-resolution",
-    "LemGendizedUpnV2": "parameter_prediction",
-    "LemGendizedYoloV8n": "detection",
-    # Legacy & Aliased Names
-    "LemGendizedClassificationMasterManifold": "classification",
-    "LemGendizedRetinaFaceMobileNet": "detection",
-    "LemGendizedProfessionalMultitaskRestoration": "restoration",
-    "LemGendizedForexUniverseLarge": "forex",
-    "LemGendizedClassificationMasterManifoldLarge": "classification",
-    "LemGendizedNimaAestheticLarge": "quality",
-    "LemGendizedNimaTechnicalLarge": "quality",
-    "LemGendizedNimaAuthenticityLarge": "authenticity",
-    "LemGendizedUpnV2Large": "parameter_prediction",
-    "LemGendizedFilmRestorerLarge": "restoration",
-    "LemGendizedCodeFormerLarge": "restoration",
-    "LemGendizedParseNetLarge": "segmentation",
-    "LemGendizedRetinaFaceMobileNetLarge": "detection",
-    "LemGendizedFfaNetIndoorLarge": "restoration",
-    "LemGendizedFfaNetOutdoorLarge": "restoration",
-    "LemGendizedMirNetLowLightLarge": "restoration",
-    "LemGendizedMirNetExposureLarge": "restoration",
-    "LemGendizedMprNetDerainingLarge": "restoration",
-    "LemGendizedNafNetDebluringLarge": "restoration",
-    "LemGendizedNafNetDenoisingLarge": "restoration",
-    "LemGendizedUltraZoomLarge": "super-resolution",
-    "LemGendizedYoloV8nLarge": "detection",
-    "LemGendizedProfessionalMultitaskRestorationLarge": "restoration",
-}
+# Documentation profile key per manifold folder name (task_taxonomy.json).
+MANIFOLD_TASK_MAP: Mapping[str, str] = taxonomy().documentation_tasks
 
 FOREX_COLUMN_FIELDS: list[dict[str, str]] = [
     {
         "name": "pair",
         "type": "string",
-        "description": "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD, NAS100, DE40, USOIL, US500).",
+        "description": (
+            "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY,"
+            " XAUUSD, NAS100, DE40, USOIL, US500)."
+        ),
     },
     {
         "name": "timeframe",
         "type": "integer",
-        "description": "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min).",
+        "description": (
+            "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min),"
+            " 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
+        ),
     },
     {
         "name": "timestamp",
         "type": "integer",
-        "description": "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close.",
+        "description": (
+            "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
+        ),
     },
     {
         "name": "y_dir",
         "type": "integer",
-        "description": "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD (Sideways/Neutral), 2=BUY (Up).",
+        "description": (
+            "Causal directional classification target label over forward horizon: 0=SELL (Down),"
+            " 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
+        ),
     },
     {
         "name": "tp_pips",
@@ -130,17 +108,26 @@ FOREX_COLUMN_FIELDS: list[dict[str, str]] = [
     {
         "name": "seq_len",
         "type": "integer",
-        "description": "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1 microstructure).",
+        "description": (
+            "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1"
+            " microstructure)."
+        ),
     },
     {
         "name": "n_features",
         "type": "integer",
-        "description": "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio).",
+        "description": (
+            "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD"
+            " Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
+        ),
     },
     {
         "name": "features",
         "type": "bytes",
-        "description": "Serialized float32 binary tensor representing the normalized [seq_len, n_features] temporal feature matrix.",
+        "description": (
+            "Serialized float32 binary tensor representing the normalized [seq_len, n_features]"
+            " temporal feature matrix."
+        ),
     },
 ]
 
@@ -163,7 +150,9 @@ TASK_ARCH_BASE: dict[str, str] = {
     "detection": "Path Aggregation Network (PANet) with Darknet Backbone",
     "segmentation": "Bilateral Segmentation Network / DeepLabV3+ with ResNet Backbone",
     "restoration": "Multi-Scale Progressive Restoration / Nonlinear Activation-Free Network",
-    "quality": "Deep Convolutional Network / Vision Transformer with Earth Mover's Distance Optimization",
+    "quality": (
+        "Deep Convolutional Network / Vision Transformer with Earth Mover's Distance Optimization"
+    ),
     "authenticity": "EfficientNetV2 Feature Extractor with Distribution Scoring Head",
     "classification": "EfficientNetV2 Categorical Embedding Network",
     "parameter_prediction": "Deep Multi-Layer Perceptron / Convolutional Regressor",
@@ -208,7 +197,9 @@ def format_source(name: str) -> str:
         return f"SFHQ (Synthetic Faces High Quality){suffix}"
 
     if lower_name.startswith("compiled_"):
-        clean = lower_name.replace("compiled_", "").replace("multitask", "").replace("MultiTask", "")
+        clean = (
+            lower_name.replace("compiled_", "").replace("multitask", "").replace("MultiTask", "")
+        )
         return f"{clean} Multi-Task Sub-Manifold"
 
     patterns: list[tuple[list[str], str]] = [

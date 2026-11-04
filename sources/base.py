@@ -15,12 +15,16 @@ importing this module does not touch the network or the filesystem.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Iterable
 
 from tqdm import tqdm
+
+from core.kaggle_identity import default_owner
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Paths ──────────────────────────────────────────────────────────────────
@@ -37,21 +41,19 @@ def read_token_file(filename: str) -> str | None:
     return content or None
 
 
-def load_kaggle_credentials(default_username: str = "lemtreursi") -> bool:
+def load_kaggle_credentials(default_username: str | None = None) -> bool:
     """
     Populate KAGGLE_USERNAME / KAGGLE_KEY / KAGGLE_API_TOKEN from env or
-    .kaggle_token. Returns True if any credential is available.
+    .kaggle_token. Returns True only when a secret (API token or key) is
+    available; a username alone (including the default owner) is not a
+    credential. ``default_username`` defaults to the ecosystem Kaggle owner.
     """
     token = read_token_file(".kaggle_token")
     if token and "KAGGLE_API_TOKEN" not in os.environ:
         os.environ["KAGGLE_API_TOKEN"] = token
-    if "KAGGLE_USERNAME" not in os.environ and default_username:
-        os.environ["KAGGLE_USERNAME"] = default_username
-    return bool(
-        os.environ.get("KAGGLE_API_TOKEN")
-        or os.environ.get("KAGGLE_KEY")
-        or os.environ.get("KAGGLE_USERNAME")
-    )
+    if "KAGGLE_USERNAME" not in os.environ:
+        os.environ["KAGGLE_USERNAME"] = default_username or default_owner()
+    return bool(os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY"))
 
 
 def load_hf_credentials() -> bool:
@@ -124,6 +126,7 @@ def summarize_output(output_dir: str | Path) -> tuple[int, int]:
             if entry.is_file():
                 count += 1
                 total += entry.stat().st_size
-        except OSError:
+        except OSError as exc:
+            logger.debug("Skipping unreadable entry %s: %s", entry, exc)
             continue
     return count, total

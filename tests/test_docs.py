@@ -7,13 +7,15 @@ and backward-compatible core.doc_generator facade.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
-from PIL import Image
-import yaml
+from pathlib import Path
+from typing import Any
 
-from core import doc_generator
+import yaml
+from PIL import Image
+
+from core import doc_generator, ecosystem
 from core.docs import (
     FOREX_COLUMN_FIELDS,
     clean_readme,
@@ -28,6 +30,22 @@ from core.docs import (
     generate_readme_md,
     resolve_manifold_context,
 )
+
+
+def _read_text(case: unittest.TestCase, path: Path) -> str:
+    """Assert ``path`` exists and return its UTF-8 text."""
+    case.assertTrue(path.exists(), f"{path.name} was not generated")
+    return path.read_text(encoding="utf-8")
+
+
+def _read_json(case: unittest.TestCase, path: Path) -> Any:
+    """Assert ``path`` exists and return its parsed JSON."""
+    return json.loads(_read_text(case, path))
+
+
+def _read_yaml(case: unittest.TestCase, path: Path) -> Any:
+    """Assert ``path`` exists and return its parsed YAML."""
+    return yaml.safe_load(_read_text(case, path))
 
 
 class TestDocumentationGenerator(unittest.TestCase):
@@ -60,55 +78,38 @@ class TestDocumentationGenerator(unittest.TestCase):
                 {"name": "img_003", "source": "gopro", "split": "val", "task": "restoration"},
             ]
 
-            sample_count = generate_dataset_docs(out_root, sample_index, "LemGendizedNafNetDebluring")
+            sample_count = generate_dataset_docs(
+                out_root, sample_index, "LemGendizedNafNetDebluring"
+            )
             self.assertEqual(sample_count, 3)
 
             # Check index.json
-            idx_file = out_root / "index.json"
-            self.assertTrue(idx_file.exists())
-            with open(idx_file, "r", encoding="utf-8") as f:
-                loaded_idx = json.load(f)
-            self.assertEqual(len(loaded_idx), 3)
+            self.assertEqual(len(_read_json(self, out_root / "index.json")), 3)
 
             # Check dataset_info.yaml
-            info_file = out_root / "dataset_info.yaml"
-            self.assertTrue(info_file.exists())
-            with open(info_file, "r", encoding="utf-8") as f:
-                loaded_info = yaml.safe_load(f)
+            loaded_info = _read_yaml(self, out_root / "dataset_info.yaml")
             self.assertEqual(loaded_info["task"], "restoration")
             self.assertEqual(loaded_info["count"], 3)
             self.assertIn("GoPro Deblurring Dataset", loaded_info["original_sources"])
 
             # Check category.txt
-            cat_file = out_root / "category.txt"
-            self.assertTrue(cat_file.exists())
-            with open(cat_file, "r", encoding="utf-8") as f:
-                cat_text = f.read().strip()
-            self.assertTrue(len(cat_text) > 0)
+            self.assertTrue(len(_read_text(self, out_root / "category.txt").strip()) > 0)
 
             # Check classes.txt
-            classes_file = out_root / "classes.txt"
-            self.assertTrue(classes_file.exists())
-            with open(classes_file, "r", encoding="utf-8") as f:
-                classes_text = f.read().strip()
-            self.assertEqual(classes_text, "restoration")
+            self.assertEqual(_read_text(self, out_root / "classes.txt").strip(), "restoration")
 
             # Check README.md
-            readme_file = out_root / "README.md"
-            self.assertTrue(readme_file.exists())
-            with open(readme_file, "r", encoding="utf-8") as f:
-                readme_text = f.read()
+            readme_text = _read_text(self, out_root / "README.md")
             self.assertIn("# LemGendizedNafNetDebluring", readme_text)
             self.assertIn("GoPro Deblurring Dataset", readme_text)
             self.assertIn("Total Samples", readme_text)
 
             # Check dataset-metadata.json (Kaggle)
-            meta_file = out_root / "dataset-metadata.json"
-            self.assertTrue(meta_file.exists())
-            with open(meta_file, "r", encoding="utf-8") as f:
-                meta_payload = json.load(f)
+            meta_payload = _read_json(self, out_root / "dataset-metadata.json")
             self.assertEqual(meta_payload["licenses"][0]["name"], "CC-BY-NC-4.0")
-            self.assertEqual(meta_payload["id"], "lemtreursi/lemgendizednafnetdebluring")
+            self.assertEqual(
+                meta_payload["id"], f"{ecosystem.kaggle_owner()}/lemgendizednafnetdebluring"
+            )
             self.assertFalse(meta_payload["isPrivate"])
             self.assertTrue(len(meta_payload["keywords"]) >= 5)
 
@@ -127,14 +128,13 @@ class TestDocumentationGenerator(unittest.TestCase):
                 "category": "Forex & Financial Time-Series",
             }
 
-            sample_count = generate_dataset_docs(out_root, None, "LemGendizedForexUniverse", overrides)
+            sample_count = generate_dataset_docs(
+                out_root, None, "LemGendizedForexUniverse", overrides
+            )
             self.assertIsInstance(sample_count, int)
 
             # Check dataset_info.yaml
-            info_file = out_root / "dataset_info.yaml"
-            self.assertTrue(info_file.exists())
-            with open(info_file, "r", encoding="utf-8") as f:
-                loaded_info = yaml.safe_load(f)
+            loaded_info = _read_yaml(self, out_root / "dataset_info.yaml")
             self.assertEqual(loaded_info["task"], "forex")
             self.assertEqual(loaded_info["dataset_type"], "forex")
             self.assertEqual(loaded_info["pairs"], ["EURUSD", "GBPUSD", "USDJPY"])
@@ -143,23 +143,18 @@ class TestDocumentationGenerator(unittest.TestCase):
             self.assertEqual(loaded_info["format"], "parquet")
 
             # Check classes.txt
-            classes_file = out_root / "classes.txt"
-            self.assertTrue(classes_file.exists())
-            with open(classes_file, "r", encoding="utf-8") as f:
-                classes_text = f.read().strip()
-            self.assertEqual(classes_text, "SELL\nHOLD\nBUY")
+            self.assertEqual(
+                _read_text(self, out_root / "classes.txt").strip(), "SELL\nHOLD\nBUY"
+            )
 
             # Check dataset-metadata.json
-            meta_file = out_root / "dataset-metadata.json"
-            self.assertTrue(meta_file.exists())
-            with open(meta_file, "r", encoding="utf-8") as f:
-                meta_payload = json.load(f)
+            meta_payload = _read_json(self, out_root / "dataset-metadata.json")
             self.assertTrue(len(meta_payload["resources"]) > 0)
             first_resource = meta_payload["resources"][0]
             self.assertEqual(first_resource["schema"]["fields"], FOREX_COLUMN_FIELDS)
 
     def test_separate_generator_scripts(self) -> None:
-        """Verify each separate generator script runs independently and produces 100% accurate output."""
+        """Each document generator runs on its own and produces the expected output."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             manifold_dir = Path(tmp_dir) / "LemGendizedCodeFormer"
             manifold_dir.mkdir(parents=True, exist_ok=True)
@@ -168,13 +163,12 @@ class TestDocumentationGenerator(unittest.TestCase):
 
             # 1. category_txt
             cat_file = generate_category_txt(ctx)
-            self.assertTrue(cat_file.exists())
-            self.assertEqual(cat_file.read_text(encoding="utf-8").strip(), "Image Restoration")
+            self.assertEqual(_read_text(self, cat_file).strip(), "Image Restoration")
 
             # 2. classes_txt
-            cls_file = generate_classes_txt(ctx)
-            self.assertTrue(cls_file.exists())
-            self.assertEqual(cls_file.read_text(encoding="utf-8").strip(), "restoration")
+            self.assertEqual(
+                _read_text(self, generate_classes_txt(ctx)).strip(), "restoration"
+            )
 
             # 3. cover_image
             img_file = generate_cover_image(ctx)
@@ -183,20 +177,22 @@ class TestDocumentationGenerator(unittest.TestCase):
                 self.assertEqual(im.size, (564, 284))
 
             # 4. dataset_info_yaml
-            yaml_file = generate_dataset_info_yaml(ctx)
-            self.assertTrue(yaml_file.exists())
-            with open(yaml_file, "r", encoding="utf-8") as yf:
-                info = yaml.safe_load(yf)
+            info = _read_yaml(self, generate_dataset_info_yaml(ctx))
             self.assertEqual(info["task"], "restoration")
             self.assertEqual(info["name"], "LemGendizedCodeFormer")
 
             # 5. index_json
-            sample_idx = [{"id": 0, "name": "sample_0", "source": "FFHQ", "split": "train", "task": "restoration"}]
+            sample_idx = [
+                {
+                    "id": 0,
+                    "name": "sample_0",
+                    "source": "FFHQ",
+                    "split": "train",
+                    "task": "restoration",
+                }
+            ]
             idx_file = generate_index_json(ctx, final_index=sample_idx)
-            self.assertTrue(idx_file.exists())
-            with open(idx_file, "r", encoding="utf-8") as jf:
-                data = json.load(jf)
-            self.assertEqual(len(data), 1)
+            self.assertEqual(len(_read_json(self, idx_file)), 1)
 
             # 6. readme_md
             readme_file, readme_text = generate_readme_md(ctx)
@@ -206,10 +202,9 @@ class TestDocumentationGenerator(unittest.TestCase):
 
             # 7. kaggle_metadata
             meta_data = generate_kaggle_metadata(ctx, readme_content=readme_text)
-            meta_file = manifold_dir / "dataset-metadata.json"
-            self.assertTrue(meta_file.exists())
+            self.assertTrue((manifold_dir / "dataset-metadata.json").exists())
             self.assertEqual(meta_data["title"], "LemGendized CodeFormer")
-            self.assertEqual(meta_data["id"], "lemtreursi/lemgendizedcodeformer")
+            self.assertEqual(meta_data["id"], f"{ecosystem.kaggle_owner()}/lemgendizedcodeformer")
             self.assertTrue(20 <= len(meta_data["subtitle"]) <= 80)
             self.assertEqual(meta_data["headerImage"], img_file.name)
             self.assertTrue(len(meta_data["resources"]) >= 6)

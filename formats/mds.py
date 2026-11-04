@@ -15,12 +15,11 @@ from __future__ import annotations
 import importlib
 import json
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Any
 
-from .base import Sample
-
+from .base import Sample, Writer
 
 # Column schema. All vision manifolds share this shape; task-specific
 # fields (labels, targets, masks) are present only when the source has
@@ -35,8 +34,20 @@ _COLUMNS: dict[str, str] = {
     "metadata": "json",
 }
 
+# Column schema for shards packaged straight from a loose images/targets
+# directory or zip (tools/modernization_queue, tools/stream_zip_to_container).
+LOOSE_MDS_COLUMNS: dict[str, str] = {
+    "image": "jpeg",
+    "target": "jpeg",
+    "mask": "jpeg",
+    "label": "str",
+    "task": "str",
+    "split": "str",
+    "name": "str",
+}
 
-class MDSWriter:
+
+class MDSWriter(Writer):
     """MosaicML Streaming writer with Zstd compression."""
 
     def __init__(self) -> None:
@@ -54,10 +65,10 @@ class MDSWriter:
                 "Install it with: pip install mosaicml-streaming"
             ) from e
 
-        mds_writer_cls = getattr(streaming, "MDSWriter")
+        mds_writer_cls = streaming.MDSWriter
         self._out_dir = Path(output_root) / "mds"
         # mosaicml-streaming parses `out` with urllib.parse.urlparse to detect cloud vs
-        # local paths. On Windows, an absolute path such as C:\... is parsed as scheme 'c'
+        # local paths. On Windows, an absolute drive-letter path is parsed as scheme 'c'
         # which is not a recognised cloud provider prefix, causing ValueError. Using a
         # relative path produces an empty scheme and correctly routes to LocalUploader.
         try:

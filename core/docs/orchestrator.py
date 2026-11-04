@@ -15,12 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-import sys
 from typing import Any
-
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
 
 from core.docs.context import resolve_manifold_context
 from core.docs.generators import (
@@ -32,7 +27,7 @@ from core.docs.generators import (
     generate_kaggle_metadata,
     generate_readme_md,
 )
-from core.docs.metadata import UNIFIED_DATA
+from core.error_types import DOC_GENERATION_ERRORS
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +82,7 @@ def generate_dataset_docs(
     # 7. dataset-metadata.json (Kaggle API metadata)
     generate_kaggle_metadata(ctx, readme_content=readme_content)
 
-    return ctx.total_samples
+    return ctx.lineage.total_samples
 
 
 def regenerate_all_docs(
@@ -97,7 +92,11 @@ def regenerate_all_docs(
     """Regenerate documentation for all existing manifolds discovered in workspace."""
     if datasets_dir is None:
         cand = Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets"
-        datasets_dir = cand if cand.exists() else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+        datasets_dir = (
+            cand
+            if cand.exists()
+            else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+        )
     datasets_dir = Path(datasets_dir).resolve()
 
     if not datasets_dir.exists():
@@ -126,7 +125,7 @@ def regenerate_all_docs(
             )
             print(f"  Success: {m_dir.name} -> Total Samples: {samples:,}")
             count += 1
-        except Exception as exc:
+        except DOC_GENERATION_ERRORS as exc:
             print(f"  Error on {m_dir.name}: {exc}")
             logger.exception("Failed to regenerate docs for %s", m_dir.name)
 
@@ -140,13 +139,21 @@ regenerate_all_non_forex = regenerate_all_docs
 def main() -> None:
     """Command-line entrypoint for LemGendary Dataset Documentation Orchestrator."""
     parser = argparse.ArgumentParser(description="LemGendary Dataset Doc Orchestrator")
-    parser.add_argument("--all", action="store_true", help="Regenerate documentation for all manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Specific manifold folder name or path")
+    parser.add_argument(
+        "--all", action="store_true", help="Regenerate documentation for all manifolds"
+    )
+    parser.add_argument(
+        "--manifold", type=str, default=None, help="Specific manifold folder name or path"
+    )
     parser.add_argument("--force-images", action="store_true", help="Force regenerate cover images")
     args = parser.parse_args()
 
     cand_root = Path(__file__).resolve().parent.parent.parent.parent / "LemGendaryDatasets"
-    datasets_root = cand_root if cand_root.exists() else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+    datasets_root = (
+        cand_root
+        if cand_root.exists()
+        else Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
+    )
 
     if args.manifold:
         m_path = Path(args.manifold)

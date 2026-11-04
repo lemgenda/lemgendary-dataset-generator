@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from audit.hardlinks import audit_hardlinks
@@ -12,7 +13,9 @@ router = APIRouter(prefix="/gates", tags=["Gates"])
 
 
 @router.get("/hardlinks")
-async def evaluate_hardlinks_gate(path: str = Query(..., description="Manifold directory path to audit")) -> Dict[str, Any]:
+async def evaluate_hardlinks_gate(
+    path: str = Query(..., description="Manifold directory path to audit"),
+) -> dict[str, Any]:
     """Audit the hardlink fraction of a manifold and return the container write verdict."""
     target = Path(path)
     if not target.exists() or not target.is_dir():

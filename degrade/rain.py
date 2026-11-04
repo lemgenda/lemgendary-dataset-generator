@@ -11,31 +11,33 @@ Pure NumPy / SciPy implementation for:
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from scipy.ndimage import convolve
 
+from .base import DegradationFilter
 from .blur import create_motion_kernel
 
 
-class RainStreaks:
+@dataclass
+class RainStreaks(DegradationFilter):
 
     """Simulates physical rain streaks falling at a specified wind angle."""
 
     name = "rain_streaks"
 
-    def __init__(
-        self,
-        density: float = 0.015,
-        length: int = 25,
-        angle_deg: float = 75.0,
-        opacity: float = 0.65,
-    ) -> None:
-        self.density = max(0.001, min(0.2, float(density)))
-        self.length = max(5, int(length))
-        self.angle_deg = float(angle_deg)
-        self.opacity = max(0.1, min(1.0, float(opacity)))
+    density: float = 0.015
+    length: int = 25
+    angle_deg: float = 75.0
+    opacity: float = 0.65
+
+    def __post_init__(self) -> None:
+        self.density = max(0.001, min(0.2, float(self.density)))
+        self.length = max(5, int(self.length))
+        self.angle_deg = float(self.angle_deg)
+        self.opacity = max(0.1, min(1.0, float(self.opacity)))
 
     def __call__(
         self,
@@ -75,13 +77,16 @@ class RainStreaks:
         return out, params
 
 
-class RainMist:
+@dataclass
+class RainMist(DegradationFilter):
     """Simulates fine mist / droplet scattering during heavy rain."""
 
     name = "rain_mist"
 
-    def __init__(self, intensity: float = 0.3) -> None:
-        self.intensity = max(0.05, min(1.0, float(intensity)))
+    intensity: float = 0.3
+
+    def __post_init__(self) -> None:
+        self.intensity = max(0.05, min(1.0, float(self.intensity)))
 
     def __call__(
         self,

@@ -1,45 +1,78 @@
-"""Persistent SQLite-backed job queue and asynchronous process executor."""
+"""Persistent SQLite-backed job queue and asynchronous process executor.
+
+The job manager is the one place in the API that spawns processes. Routes
+describe service work as a :class:`services.invocation.ServiceInvocation`;
+:func:`job_command` turns it into the argv of this project's interpreter.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import datetime
 import json
 import logging
-import os
 import sqlite3
 import subprocess
-import sys
 import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from api.events import manager
+from api.job_stream import (
+    ClaimedJob,
+    broadcast_start,
+    broadcast_termination,
+    creation_flags,
+    stream_line,
+    subprocess_env,
+    utc_now_iso,
+)
 from api.models import JobResponse, JobState, JobType
+from core import paths
+from core.cli_args import venv_python
+from services.invocation import ServiceInvocation
 
 logger = logging.getLogger("lemgendary.api.jobs")
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_DB_DIR = _PROJECT_ROOT / ".lgd_server"
+_DB_DIR = paths.state_dir()
 _DB_PATH = _DB_DIR / "jobs.db"
 _LOGS_DIR = _DB_DIR / "logs"
 
 
 class JobManager:
-    """Manages persistent SQLite job registry, background subprocess execution, and log streaming."""
+    """Persistent SQLite job registry, background subprocess execution and log streaming."""
 
     def __init__(self, db_path: Path = _DB_PATH, logs_dir: Path = _LOGS_DIR) -> None:
         self.db_path = db_path
         self.logs_dir = logs_dir
-        self.active_processes: Dict[str, subprocess.Popen[str]] = {}
+        self.active_processes: dict[str, subprocess.Popen[str]] = {}
         self._lock = threading.Lock()
         self._init_storage()
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        """A connection that commits on success, rolls back on error and is always closed."""
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    def _log_path(self, stored: str) -> Path:
+        """Resolve a stored log path (relative to the state dir; old rows are absolute)."""
+        path = Path(stored)
+        return path if path.is_absolute() else self.db_path.parent / path
+
+    def _stored_log_path(self, job_id: str) -> str:
+        """The log path recorded for a job: relative to the state dir when possible."""
+        log_file = self.logs_dir / f"{job_id}.log"
+        try:
+            return log_file.relative_to(self.db_path.parent).as_posix()
+        except ValueError:
+            return str(log_file)
 
     def _init_storage(self) -> None:
         """Create database tables, logs directory, and perform restart interruption recovery."""
@@ -65,7 +98,7 @@ class JobManager:
                 """
             )
             # Restart recovery: Mark any leftover pending/running jobs as interrupted
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            now_iso = utc_now_iso()
             cursor = conn.execute(
                 """
                 UPDATE jobs
@@ -81,19 +114,22 @@ class JobManager:
                 ),
             )
             if cursor.rowcount > 0:
-                logger.info("Marked %d orphaned jobs as interrupted following server reboot", cursor.rowcount)
+                logger.info(
+                    "Marked %d orphaned jobs as interrupted following server reboot",
+                    cursor.rowcount,
+                )
             conn.commit()
 
     def create_job(
         self,
         job_type: JobType,
-        command: List[str],
-        parameters: Dict[str, Any],
+        command: list[str],
+        parameters: dict[str, Any],
     ) -> JobResponse:
         """Register a new job in pending state and return the job descriptor."""
         job_id = str(uuid.uuid4())
-        created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        log_file_rel = str(self.logs_dir / f"{job_id}.log")
+        created_at = utc_now_iso()
+        log_file_rel = self._stored_log_path(job_id)
 
         with self._get_connection() as conn:
             conn.execute(
@@ -116,8 +152,8 @@ class JobManager:
             conn.commit()
 
         logger.info("Created job %s (%s)", job_id, job_type.value)
-        return self._build_response(
-            job_id=job_id,
+        return JobResponse(
+            id=job_id,
             job_type=job_type,
             state=JobState.PENDING,
             created_at=created_at,
@@ -139,130 +175,111 @@ class JobManager:
         )
         thread.start()
 
-    def _execute_job_thread(self, job_id: str, loop: asyncio.AbstractEventLoop) -> None:
-        """Worker thread executing the subprocess, writing disk logs, and streaming lines."""
+    def _claim_job(self, job_id: str) -> ClaimedJob | None:
+        """Mark a registered job RUNNING and return what is needed to execute it."""
         with self._get_connection() as conn:
-            row = conn.execute("SELECT command, parameters, log_file, job_type FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            row = conn.execute(
+                "SELECT command, parameters, log_file, job_type FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
             if not row:
                 logger.error("Job %s not found for execution", job_id)
-                return
+                return None
 
-            cmd: List[str] = json.loads(row["command"])
-            log_file = Path(row["log_file"])
-            started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            claimed = ClaimedJob(
+                job_id=job_id,
+                command=json.loads(row["command"]),
+                log_file=self._log_path(row["log_file"]),
+                started_at=utc_now_iso(),
+                job_type=row["job_type"],
+            )
+            # Only a still-pending job is claimed: one cancelled meanwhile stays cancelled.
+            updated = conn.execute(
+                "UPDATE jobs SET state = ?, started_at = ? WHERE id = ? AND state = ?",
+                (JobState.RUNNING.value, claimed.started_at, job_id, JobState.PENDING.value),
+            ).rowcount
+        if not updated:
+            logger.info("Job %s is no longer pending (cancelled before start); not running it",
+                        job_id)
+            return None
+        return claimed
 
-            conn.execute("UPDATE jobs SET state = ?, started_at = ? WHERE id = ?", (JobState.RUNNING.value, started_at, job_id))
-            conn.commit()
+    def _execute_job_thread(self, job_id: str, loop: asyncio.AbstractEventLoop) -> None:
+        """Worker thread executing the subprocess, writing disk logs, and streaming lines."""
+        claimed = self._claim_job(job_id)
+        if claimed is None:
+            return
+        cmd = claimed.command
 
         logger.info("Executing job %s: %s", job_id, " ".join(cmd))
-        log_file.parent.mkdir(parents=True, exist_ok=True)
+        claimed.log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Broadcast job launch to global dashboard stream
-        start_payload = {
-            "job_id": job_id,
-            "type": "event",
-            "step_name": "Compiler",
-            "status": "info",
-            "message": f"[JOB_START] Job {job_id} ({row['job_type']}) started: {' '.join(cmd)}",
-            "timestamp": started_at,
-        }
-        asyncio.run_coroutine_threadsafe(
-            manager.broadcast_global(start_payload),
-            loop,
-        )
+        broadcast_start(loop, claimed)
 
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["PYTHONUTF8"] = "1"
+        exit_code, error_message = self._run_process(job_id, claimed, loop)
+        final_state, completed_at = self._finalize_job(job_id, exit_code, error_message)
+        broadcast_termination(loop, claimed, final_state, exit_code, completed_at)
 
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-
+    def _run_process(
+        self, job_id: str, claimed: ClaimedJob, loop: asyncio.AbstractEventLoop
+    ) -> tuple[int, str | None]:
+        """Run the job command, tee its output to the log file and the WebSocket streams."""
         try:
-            with open(log_file, "w", encoding="utf-8", buffering=1) as lf:
-                proc = subprocess.Popen(
-                    cmd,
+            with (
+                open(claimed.log_file, "w", encoding="utf-8", buffering=1) as lf,
+                subprocess.Popen(
+                    claimed.command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
                     encoding="utf-8",
                     errors="replace",
                     bufsize=1,
-                    env=env,
-                    cwd=str(_PROJECT_ROOT),
-                    creationflags=creationflags,
-                )
+                    env=subprocess_env(),
+                    cwd=str(paths.PROJECT_ROOT),
+                    creationflags=creation_flags(),
+                ) as proc,
+            ):
                 with self._lock:
                     self.active_processes[job_id] = proc
 
                 assert proc.stdout is not None
                 for line in proc.stdout:
                     lf.write(line)
-                    # Broadcast to active WebSocket subscribers asynchronously
-                    asyncio.run_coroutine_threadsafe(
-                        manager.broadcast_job_log(job_id, line),
-                        loop,
-                    )
-                    # Broadcast to global dashboard stream
-                    clean_line = line.rstrip("\r\n")
-                    if not clean_line.strip():
-                        continue
-
-                    is_progress = (
-                        "\r" in line
-                        or ("%" in clean_line and ("|" in clean_line or "/" in clean_line))
-                        or "ARCHIVING:" in clean_line
-                        or "Uploading:" in clean_line
-                        or "EXTRACTING" in clean_line
-                        or "UNPACKING" in clean_line
-                        or "KAGGLE EXTRACTION" in clean_line
-                        or "it/s" in clean_line
-                        or "B/s" in clean_line
-                    )
-
-                    # Strip outdated ASCII progress bars; the modern GUI progress tracker renders the bar
-                    if is_progress:
-                        import re
-                        clean_line = re.sub(r"(\|[ █━─\-=#]+?\||\[[ █━─\-=#]+?\])", "", clean_line)
-                        clean_line = re.sub(r"\s{2,}", " ", clean_line).strip()
-
-                    global_log = {
-                        "job_id": job_id,
-                        "type": "log",
-                        "step_name": "Compiler",
-                        "status": "info",
-                        "chunk": line,
-                        "message": clean_line,
-                        "is_progress": is_progress,
-                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    }
-                    asyncio.run_coroutine_threadsafe(
-                        manager.broadcast_global(global_log),
-                        loop,
-                    )
+                    stream_line(loop, job_id, line)
 
                 proc.wait()
                 exit_code = proc.returncode
 
-        except Exception as exc:
-            logger.exception("Unexpected error executing job %s: %s", job_id, exc)
-            exit_code = 1
-            error_message = str(exc)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            # Background job boundary: log-file I/O, process spawn (OSError /
+            # SubprocessError), stdout decoding (ValueError) and broadcasting on a
+            # closed event loop (RuntimeError) become a FAILED job status instead
+            # of killing the runner thread and leaving the job stuck in RUNNING.
+            logger.exception("Unexpected error executing job %s", job_id)
+            return 1, str(exc)
         else:
-            error_message = None if exit_code == 0 else f"Process exited with non-zero status code: {exit_code}"
+            error_message = (
+                None if exit_code == 0 else f"Process exited with non-zero status code: {exit_code}"
+            )
+            return exit_code, error_message
         finally:
             with self._lock:
                 if job_id in self.active_processes:
                     del self.active_processes[job_id]
 
-        completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    def _finalize_job(
+        self, job_id: str, exit_code: int, error_message: str | None
+    ) -> tuple[JobState, str]:
+        """Persist the terminal state (keeping CANCELLED) and return it with its timestamp."""
+        completed_at = utc_now_iso()
         final_state = JobState.COMPLETED if exit_code == 0 else JobState.FAILED
 
         # Check if process was actively cancelled
         with self._get_connection() as conn:
-            current_state = conn.execute("SELECT state FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            current_state = conn.execute(
+                "SELECT state FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
             if current_state and current_state["state"] == JobState.CANCELLED.value:
                 final_state = JobState.CANCELLED
 
@@ -276,25 +293,10 @@ class JobManager:
             )
             conn.commit()
 
-        logger.info("Job %s finalized with state: %s (exit code: %s)", job_id, final_state.value, exit_code)
-        # Notify WebSocket subscribers of completion
-        terminal_event = f"\n[PROCESS_TERMINATED] Job {job_id} {final_state.value.upper()} (Exit Code: {exit_code})\n"
-        asyncio.run_coroutine_threadsafe(
-            manager.broadcast_job_log(job_id, terminal_event),
-            loop,
+        logger.info(
+            "Job %s finalized with state: %s (exit code: %s)", job_id, final_state.value, exit_code
         )
-        term_payload = {
-            "job_id": job_id,
-            "type": "event",
-            "step_name": "Compiler",
-            "status": "success" if final_state == JobState.COMPLETED else "error",
-            "message": f"[JOB_{final_state.value.upper()}] Job {job_id} ({row['job_type']}) finished with exit code {exit_code}",
-            "timestamp": completed_at,
-        }
-        asyncio.run_coroutine_threadsafe(
-            manager.broadcast_global(term_payload),
-            loop,
-        )
+        return final_state, completed_at
 
     def cancel_job(self, job_id: str) -> bool:
         """Terminate a running process and update state to cancelled."""
@@ -310,12 +312,18 @@ class JobManager:
         with self._get_connection() as conn:
             conn.execute(
                 "UPDATE jobs SET state = ?, error_message = ? WHERE id = ? AND state IN (?, ?)",
-                (JobState.CANCELLED.value, "Process cancelled by user request.", job_id, JobState.PENDING.value, JobState.RUNNING.value),
+                (
+                    JobState.CANCELLED.value,
+                    "Process cancelled by user request.",
+                    job_id,
+                    JobState.PENDING.value,
+                    JobState.RUNNING.value,
+                ),
             )
             conn.commit()
             return conn.total_changes > 0
 
-    def get_job(self, job_id: str) -> Optional[JobResponse]:
+    def get_job(self, job_id: str) -> JobResponse | None:
         """Fetch single job record by ID."""
         with self._get_connection() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -327,12 +335,12 @@ class JobManager:
         self,
         limit: int = 50,
         offset: int = 0,
-        state: Optional[JobState] = None,
-        job_type: Optional[JobType] = None,
-    ) -> List[JobResponse]:
+        state: JobState | None = None,
+        job_type: JobType | None = None,
+    ) -> list[JobResponse]:
         """Fetch paginated job records with optional filtering."""
         query = "SELECT * FROM jobs WHERE 1=1"
-        params: List[Any] = []
+        params: list[Any] = []
 
         if state:
             query += " AND state = ?"
@@ -363,9 +371,9 @@ class JobManager:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM jobs").fetchone()
             return int(row["cnt"]) if row else 0
 
-    def get_log_content(self, job_id: str, tail_lines: Optional[int] = None) -> str:
+    def get_log_content(self, job_id: str, tail_lines: int | None = None) -> str:
         """Read log file content from disk."""
-        log_file = self.logs_dir / f"{job_id}.log"
+        log_file = self._log_path(self._stored_log_path(job_id))
         if not log_file.exists():
             return ""
         try:
@@ -378,41 +386,18 @@ class JobManager:
             logger.warning("Failed reading log file %s: %s", log_file, exc)
             return ""
 
-    @staticmethod
-    def _build_response(
-        job_id: str,
-        job_type: JobType,
-        state: JobState,
-        created_at: str,
-        started_at: Optional[str],
-        completed_at: Optional[str],
-        exit_code: Optional[int],
-        error_message: Optional[str],
-        log_file: str,
-        parameters: Dict[str, Any],
-    ) -> JobResponse:
-        return JobResponse(
-            id=job_id,
-            job_type=job_type,
-            state=state,
-            created_at=created_at,
-            started_at=started_at,
-            completed_at=completed_at,
-            exit_code=exit_code,
-            error_message=error_message,
-            log_file=log_file,
-            parameters=parameters,
-        )
-
     def _row_to_response(self, row: sqlite3.Row) -> JobResponse:
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         try:
             params = json.loads(row["parameters"])
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Job %s has unparseable parameters JSON; using empty parameters: %s", row["id"], exc
+            )
             params = {}
 
-        return self._build_response(
-            job_id=row["id"],
+        return JobResponse(
+            id=row["id"],
             job_type=JobType(row["job_type"]),
             state=JobState(row["state"]),
             created_at=row["created_at"],
@@ -423,6 +408,26 @@ class JobManager:
             log_file=row["log_file"],
             parameters=params,
         )
+
+
+def job_command(work: ServiceInvocation) -> list[str]:
+    """The argv a job runs: a service entry point on the project interpreter."""
+    return work.argv(venv_python())
+
+
+def submit_job(
+    jobs: JobManager,
+    job_type: JobType,
+    work: ServiceInvocation,
+    parameters: dict[str, Any],
+) -> JobResponse:
+    """Register a job on ``jobs`` and start it on the running event loop.
+
+    Must be called from a coroutine (route handler); returns the pending job.
+    """
+    job = jobs.create_job(job_type=job_type, command=job_command(work), parameters=parameters)
+    jobs.start_job(job.id, asyncio.get_running_loop())
+    return job
 
 
 job_manager = JobManager()

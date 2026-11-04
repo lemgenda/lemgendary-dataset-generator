@@ -11,11 +11,35 @@ import time
 from pathlib import Path
 
 
+def _rename_shards(shards_dir: Path, from_ext: str, to_ext: str, dry_run: bool) -> tuple[int, int]:
+    """Rename every ``from_ext`` shard under ``shards_dir``; return (count, bytes)."""
+    renamed = 0
+    total_bytes = 0
+    # Find all matching shard files (direct or split subdirectories)
+    for src in sorted(shards_dir.glob(f"**/*{from_ext}")):
+        total_bytes += src.stat().st_size
+        if not dry_run:
+            src.rename(src.with_suffix(to_ext))
+        renamed += 1
+    return renamed, total_bytes
+
+
+def _verify_migration(datasets_root: Path, from_ext: str) -> int:
+    """Post-migration check that no ``from_ext`` shards remain; return exit code."""
+    remaining_tars = list(datasets_root.glob(f"**/shards/**/*{from_ext}"))
+    if remaining_tars:
+        print(f"[WARNING] {len(remaining_tars)} shard(s) still remain with {from_ext}!")
+        return 1
+    print(f"[VERIFIED] 0 remaining {from_ext} shards. Ingestion obfuscation active.")
+    return 0
+
+
 def migrate_shards(
     datasets_root: Path,
     dry_run: bool = False,
     reverse: bool = False,
 ) -> int:
+    """Rename WebDataset shards under ``datasets_root`` .tar to .data, or back (``reverse``)."""
     datasets_root = datasets_root.resolve()
     if not datasets_root.exists() or not datasets_root.is_dir():
         print(f"[ERROR] Datasets directory not found: {datasets_root}")
@@ -36,30 +60,16 @@ def migrate_shards(
     dataset_summary: dict[str, int] = {}
 
     for manifold_dir in sorted(datasets_root.iterdir()):
-        if not manifold_dir.is_dir():
-            continue
-
         shards_dir = manifold_dir / "shards"
-        if not shards_dir.exists() or not shards_dir.is_dir():
+        if not manifold_dir.is_dir() or not shards_dir.is_dir():
             continue
 
-        # Find all matching shard files (direct or split subdirectories)
-        shard_files = sorted(shards_dir.glob(f"**/*{from_ext}"))
-        if not shard_files:
+        manifold_renamed, manifold_bytes = _rename_shards(shards_dir, from_ext, to_ext, dry_run)
+        if not manifold_renamed:
             continue
-
-        manifold_renamed = 0
-        for src in shard_files:
-            dst = src.with_suffix(to_ext)
-            file_size = src.stat().st_size
-            total_bytes += file_size
-
-            if not dry_run:
-                src.rename(dst)
-
-            manifold_renamed += 1
 
         total_renamed += manifold_renamed
+        total_bytes += manifold_bytes
         dataset_summary[manifold_dir.name] = manifold_renamed
         print(f"[OK] {manifold_dir.name}: {manifold_renamed} shard(s) {from_ext} -> {to_ext}")
 
@@ -67,23 +77,21 @@ def migrate_shards(
     gb_processed = total_bytes / (1024 ** 3)
 
     print("-" * 80)
-    print(f"Migration Complete: {total_renamed} shard(s) migrated across {len(dataset_summary)} dataset(s).")
+    print(
+        f"Migration Complete: {total_renamed} shard(s) migrated across {len(dataset_summary)}"
+        " dataset(s)."
+    )
     print(f"Total Shard Volume: {gb_processed:.2f} GB")
     print(f"Elapsed Time: {elapsed:.2f}s")
     print("=" * 80)
 
-    # Post-migration verification
     if not dry_run:
-        remaining_tars = list(datasets_root.glob(f"**/shards/**/*{from_ext}"))
-        if remaining_tars:
-            print(f"[WARNING] {len(remaining_tars)} shard(s) still remain with {from_ext}!")
-            return 1
-        print(f"[VERIFIED] 0 remaining {from_ext} shards. Ingestion obfuscation active.")
-
+        return _verify_migration(datasets_root, from_ext)
     return 0
 
 
 def main() -> None:
+    """Parse the CLI arguments and run the shard rename."""
     parser = argparse.ArgumentParser(description="Migrate WebDataset shards .tar <-> .data")
     parser.add_argument(
         "--root",
@@ -91,7 +99,9 @@ def main() -> None:
         default=Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets",
         help="Path to LemGendaryDatasets root directory",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Simulate renames without writing changes")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Simulate renames without writing changes"
+    )
     parser.add_argument("--reverse", action="store_true", help="Reverse migration (.data -> .tar)")
     args = parser.parse_args()
 

@@ -9,21 +9,124 @@ from __future__ import annotations
 
 import argparse
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-import sys
-
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from core.docs.context import ManifoldContext, resolve_manifold_context
+from core.docs.context import ManifoldContext
+from core.docs.generators.common import (
+    ensure_context,
+    manifold_parser,
+    run_manifold_cli,
+)
 
 logger = logging.getLogger(__name__)
 
 STANDARD_BANNER_WIDTH = 564
 STANDARD_BANNER_HEIGHT = 284
+
+
+_BANNER_BG = (15, 20, 28)
+_BORDER_BLUE = (56, 139, 253)
+_ACCENT_GREEN = (46, 160, 67)
+_BADGE_FILL = (22, 27, 34)
+_RULE_GREY = (48, 54, 61)
+_LINK_BLUE = (88, 166, 255)
+_MUTED_GREY = (139, 148, 158)
+
+
+@dataclass
+class _BannerFonts:
+    """Fonts used on the banner (Arial when available, Pillow's default otherwise)."""
+
+    large: Any
+    small: Any
+    badge: Any
+
+
+def _load_fonts() -> _BannerFonts:
+    """Load the banner fonts, falling back to Pillow's built-in bitmap font."""
+    try:
+        return _BannerFonts(
+            large=ImageFont.truetype("arial.ttf", 26),
+            small=ImageFont.truetype("arial.ttf", 15),
+            badge=ImageFont.truetype("arialbd.ttf", 11),
+        )
+    except OSError:
+        return _BannerFonts(
+            large=ImageFont.load_default(),
+            small=ImageFont.load_default(),
+            badge=ImageFont.load_default(),
+        )
+
+
+def _draw_background(draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Paint the subtle vertical gradient background."""
+    for y in range(height):
+        ratio = y / height
+        r = int(15 + ratio * 20)
+        g = int(22 + ratio * 24)
+        b = int(35 + ratio * 35)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+
+def _draw_frame(draw: ImageDraw.ImageDraw, width: int, height: int) -> None:
+    """Draw the double accent frame and the green corner brackets."""
+    draw.rectangle([6, 6, width - 7, height - 7], outline=_BORDER_BLUE, width=2)
+    draw.rectangle([10, 10, width - 11, height - 11], outline=(30, 41, 59), width=1)
+
+    corner_len = 24
+    left, top, right, bottom = 6, 6, width - 7, height - 7
+    for x, y, dx, dy in (
+        (left, top, 1, 1),
+        (right, top, -1, 1),
+        (left, bottom, 1, -1),
+        (right, bottom, -1, -1),
+    ):
+        draw.line([(x, y), (x + dx * corner_len, y)], fill=_ACCENT_GREEN, width=3)
+        draw.line([(x, y), (x, y + dy * corner_len)], fill=_ACCENT_GREEN, width=3)
+
+
+def _draw_text(
+    draw: ImageDraw.ImageDraw, width: int, title: str, subtitle_lines: tuple[str, str]
+) -> None:
+    """Draw the badges, title, category/archetype lines and the footer."""
+    fonts = _load_fonts()
+
+    # Brand badge top-left
+    draw.rectangle([20, 20, 190, 42], fill=_BADGE_FILL, outline=_RULE_GREY, width=1)
+    draw.text((28, 25), "LEMGENDARY ECOSYSTEM", fill=_LINK_BLUE, font=fonts.badge)
+
+    # Status badge top-right
+    draw.rectangle(
+        [width - 150, 20, width - 20, 42], fill=_BADGE_FILL, outline=_ACCENT_GREEN, width=1
+    )
+    draw.text((width - 138, 25), "PRODUCTION V26", fill=_ACCENT_GREEN, font=fonts.badge)
+
+    # Main Title
+    display_title = title if len(title) <= 32 else title[:30] + "..."
+    draw.text((24, 90), display_title, fill=(240, 246, 252), font=fonts.large)
+
+    # Subtitle / Category
+    draw.text((24, 135), subtitle_lines[0], fill=_MUTED_GREY, font=fonts.small)
+    draw.text((24, 162), subtitle_lines[1], fill=(110, 118, 129), font=fonts.small)
+
+    # Lower status line
+    draw.line([(24, 210), (width - 24, 210)], fill=_RULE_GREY, width=1)
+    draw.text(
+        (24, 225),
+        "Standardized Streaming Container Topology  WebDataset / Parquet / MDS",
+        fill=_LINK_BLUE,
+        font=fonts.badge,
+    )
+    draw.text(
+        (24, 245),
+        "Verified Lineage  Curated Benchmark Splits  Deterministic Pipeline",
+        fill=_MUTED_GREY,
+        font=fonts.badge,
+    )
 
 
 def _create_fallback_banner(
@@ -34,67 +137,17 @@ def _create_fallback_banner(
 ) -> Path:
     """Create a high-quality 564x284 synthetic branding banner using Pillow."""
     width, height = STANDARD_BANNER_WIDTH, STANDARD_BANNER_HEIGHT
-    img = Image.new("RGB", (width, height), color=(15, 20, 28))
+    img = Image.new("RGB", (width, height), color=_BANNER_BG)
     draw = ImageDraw.Draw(img)
 
-    # 1. Subtle horizontal gradient
-    for y in range(height):
-        ratio = y / height
-        r = int(15 + ratio * 20)
-        g = int(22 + ratio * 24)
-        b = int(35 + ratio * 35)
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
-
-    # 2. Tech accent frame
-    border_color = (56, 139, 253)
-    accent_green = (46, 160, 67)
-    draw.rectangle([6, 6, width - 7, height - 7], outline=border_color, width=2)
-    draw.rectangle([10, 10, width - 11, height - 11], outline=(30, 41, 59), width=1)
-
-    # Corner decorations
-    corner_len = 24
-    draw.line([(6, 6), (6 + corner_len, 6)], fill=accent_green, width=3)
-    draw.line([(6, 6), (6, 6 + corner_len)], fill=accent_green, width=3)
-    draw.line([(width - 7, 6), (width - 7 - corner_len, 6)], fill=accent_green, width=3)
-    draw.line([(width - 7, 6), (width - 7, 6 + corner_len)], fill=accent_green, width=3)
-    draw.line([(6, height - 7), (6 + corner_len, height - 7)], fill=accent_green, width=3)
-    draw.line([(6, height - 7), (6, height - 7 - corner_len)], fill=accent_green, width=3)
-    draw.line([(width - 7, height - 7), (width - 7 - corner_len, height - 7)], fill=accent_green, width=3)
-    draw.line([(width - 7, height - 7), (width - 7, height - 7 - corner_len)], fill=accent_green, width=3)
-
-    # 3. Badges and Text
-    font_large = None
-    font_small = None
-    font_badge = None
-    try:
-        font_large = ImageFont.truetype("arial.ttf", 26)
-        font_small = ImageFont.truetype("arial.ttf", 15)
-        font_badge = ImageFont.truetype("arialbd.ttf", 11)
-    except OSError:
-        font_large = ImageFont.load_default()
-        font_small = ImageFont.load_default()
-        font_badge = ImageFont.load_default()
-
-    # Brand badge top-left
-    draw.rectangle([20, 20, 190, 42], fill=(22, 27, 34), outline=(48, 54, 61), width=1)
-    draw.text((28, 25), "LEMGENDARY ECOSYSTEM", fill=(88, 166, 255), font=font_badge)
-
-    # Status badge top-right
-    draw.rectangle([width - 150, 20, width - 20, 42], fill=(22, 27, 34), outline=accent_green, width=1)
-    draw.text((width - 138, 25), "PRODUCTION V26", fill=accent_green, font=font_badge)
-
-    # Main Title
-    display_title = title if len(title) <= 32 else title[:30] + "..."
-    draw.text((24, 90), display_title, fill=(240, 246, 252), font=font_large)
-
-    # Subtitle / Category
-    draw.text((24, 135), f"Category: {category}", fill=(139, 148, 158), font=font_small)
-    draw.text((24, 162), f"Archetype: {task.upper()} | High-Fidelity Manifold", fill=(110, 118, 129), font=font_small)
-
-    # Lower status line
-    draw.line([(24, 210), (width - 24, 210)], fill=(48, 54, 61), width=1)
-    draw.text((24, 225), "Standardized Streaming Container Topology  WebDataset / Parquet / MDS", fill=(88, 166, 255), font=font_badge)
-    draw.text((24, 245), "Verified Lineage  Curated Benchmark Splits  Deterministic Pipeline", fill=(139, 148, 158), font=font_badge)
+    _draw_background(draw, width, height)
+    _draw_frame(draw, width, height)
+    _draw_text(
+        draw,
+        width,
+        title,
+        (f"Category: {category}", f"Archetype: {task.upper()} | High-Fidelity Manifold"),
+    )
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(target_path, "JPEG", quality=95)
@@ -114,13 +167,10 @@ def generate_cover_image(
     Returns:
         Path to the valid cover image file.
     """
-    if isinstance(context_or_path, ManifoldContext):
-        ctx = context_or_path
-    else:
-        ctx = resolve_manifold_context(Path(context_or_path))
+    ctx = ensure_context(context_or_path)
 
     target_dir = ctx.manifold_path
-    image_name = ctx.cover_image_name or f"{ctx.manifold_name}.jpg"
+    image_name = ctx.inventory.cover_image_name or f"{ctx.manifold_name}.jpg"
     image_path = target_dir / image_name
 
     # Check for any existing jpg/png if specific name doesn't exist
@@ -137,53 +187,35 @@ def generate_cover_image(
                 im.verify()
             logger.info("Validated existing cover image: %s", image_path)
             return image_path
-        except Exception as exc:
+        except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as exc:
             logger.warning("Corrupted image at %s (%s); regenerating...", image_path, exc)
 
     # Generate banner
     _create_fallback_banner(
         target_path=image_path,
-        title=ctx.title,
-        category=ctx.category,
+        title=ctx.listing.title,
+        category=ctx.profile.category,
         task=ctx.task,
     )
     return image_path
 
 
+def _cli_process(manifold_dir: Path, args: argparse.Namespace) -> str:
+    """Validate or generate the cover image of one manifold and describe the result."""
+    out = generate_cover_image(manifold_dir, force_regenerate=args.force)
+    with Image.open(out) as im:
+        sz = im.size
+    return f"{out.name} ({sz[0]}x{sz[1]})"
+
+
 def main() -> None:
     """CLI entrypoint for cover image generation."""
-    parser = argparse.ArgumentParser(description="Validate/Generate cover image (<ModelName>.jpg) for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Process cover images for all manifolds")
+    parser = manifold_parser(
+        "Validate/Generate cover image (<ModelName>.jpg) for dataset manifolds",
+        "Process cover images for all manifolds",
+    )
     parser.add_argument("--force", action="store_true", help="Force regenerate existing images")
-    args = parser.parse_args()
-
-    cand = _MODULE_ROOT.parent / "LemGendaryDatasets"
-    datasets_root = cand if cand.exists() else _MODULE_ROOT / "LemGendaryDatasets"
-
-    if args.all:
-        if not datasets_root.exists():
-            print(f"[ERROR] Datasets directory not found at {datasets_root}")
-            sys.exit(1)
-        count = 0
-        for m_dir in sorted(datasets_root.iterdir()):
-            if m_dir.is_dir() and not m_dir.name.startswith("."):
-                out = generate_cover_image(m_dir, force_regenerate=args.force)
-                with Image.open(out) as im:
-                    sz = im.size
-                print(f"[OK] {m_dir.name} -> {out.name} ({sz[0]}x{sz[1]})")
-                count += 1
-        print(f"Processed cover images for {count} manifolds.")
-    elif args.manifold:
-        p = Path(args.manifold)
-        if not p.is_dir() and (datasets_root / args.manifold).is_dir():
-            p = datasets_root / args.manifold
-        out = generate_cover_image(p, force_regenerate=args.force)
-        with Image.open(out) as im:
-            sz = im.size
-        print(f"[OK] {p.name} -> {out.name} ({sz[0]}x{sz[1]})")
-    else:
-        parser.print_help()
+    run_manifold_cli(parser, _cli_process, "Processed cover images")
 
 
 if __name__ == "__main__":

@@ -3,34 +3,56 @@ LemGendary Dataset Compiler — Smart Archive Utility.
 
 Provides robust compression, verification, and chunked extraction
 for datasets (.zip, .tar, .tar.gz, .tgz) with real-time progress tracking.
+
+This module is the stable facade and CLI entry point. The implementation
+lives in:
+
+    utils.archive_io       — chunk constants, tar modes, progress, stream copy
+    utils.archive_create   — create_archive
+    utils.archive_extract  — smart_extract (7-Zip / tar / Python fallback)
 """
 
 from __future__ import annotations
 
 import argparse
-import os
-from pathlib import Path
+import logging
 import sys
 import tarfile
-from typing import Sequence
 import zipfile
+from collections.abc import Callable, Sequence
+from pathlib import Path
 
-try:
-    from utils.progress import create_progress_bar
-except ImportError:
-    from .progress import create_progress_bar
+from utils.archive_create import create_archive
+from utils.archive_extract import (
+    _find_7z,
+    _find_tar,
+    _flatten_common_root,
+    smart_extract,
+)
+from utils.archive_io import CHUNK_SIZE, LARGE_FILE_THRESHOLD, is_tar_path, tar_mode
 
-CHUNK_SIZE = 1024 * 1024  # 1MB chunks for smooth real-time progress tracking
-LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "CHUNK_SIZE",
+    "LARGE_FILE_THRESHOLD",
+    "_find_7z",
+    "_find_tar",
+    "_flatten_common_root",
+    "create_archive",
+    "main",
+    "smart_extract",
+    "verify_archive",
+    "verify_zip",
+]
 
 
 def verify_archive(archive_path: str | Path) -> bool:
     """Check if archive is fully readable and uncorrupted."""
     path_str = str(archive_path)
     try:
-        if path_str.endswith((".tar", ".tar.gz", ".tgz")):
-            mode = "r:gz" if path_str.endswith((".tar.gz", ".tgz")) else "r:"
-            with tarfile.open(path_str, mode) as tf:
+        if is_tar_path(path_str):
+            with tarfile.open(path_str, tar_mode(path_str, "r")) as tf:
                 for member in tf.getmembers():
                     _ = member
             return True
@@ -45,387 +67,75 @@ def verify_archive(archive_path: str | Path) -> bool:
         return False
 
 
-def create_archive(
-    source_dir: str | Path,
-    output_path: str | Path,
-    archive_format: str = "zip",
-    root_dir: str | Path | None = None,
-    base_dir: str | None = None,
-) -> bool:
-    """Create a zip or tar archive with uniform real-time byte-level progress bar."""
-    source_path = Path(source_dir).resolve()
-    target_output = Path(output_path).resolve()
-    target_output.parent.mkdir(parents=True, exist_ok=True)
-
-    if not source_path.exists():
-        print(f"[ERROR] Source directory not found: {source_path}")
-        return False
-
-    # Collect files and calculate exact total uncompressed bytes
-    file_entries: list[tuple[Path, str, int]] = []
-    total_bytes = 0
-
-    for root, _, files in os.walk(source_path):
-        for f in files:
-            full_path = Path(root) / f
-            try:
-                size = full_path.stat().st_size
-                if root_dir is not None and base_dir is not None:
-                    arcname = full_path.relative_to(Path(root_dir).resolve()).as_posix()
-                elif base_dir:
-                    rel_to_source = full_path.relative_to(source_path)
-                    arcname = (Path(base_dir) / rel_to_source).as_posix()
-                elif root_dir is not None:
-                    arcname = full_path.relative_to(Path(root_dir).resolve()).as_posix()
-                else:
-                    # Default: archive entries retain manifold directory name
-                    arcname = full_path.relative_to(source_path.parent).as_posix()
-
-                file_entries.append((full_path, arcname, size))
-                total_bytes += size
-            except OSError:
-                continue
-
-    if not file_entries:
-        print(f"[WARN] No files found to archive in {source_path}")
-        return False
-
-    archive_name = target_output.name
-    print(f"Archiving {len(file_entries)} files ({total_bytes / (1024**2):.2f} MB) -> {archive_name}")
-
-    try:
-        pbar_kwargs = {
-            "total": total_bytes,
-            "unit": "B",
-            "unit_scale": True,
-            "unit_divisor": 1024,
-            "desc": f"ARCHIVING: {archive_name}",
-        }
-        if archive_format.lower() in ["tar", "tar.gz", "tgz"]:
-            mode = "w:gz" if archive_format.lower() in ["tar.gz", "tgz"] else "w:"
-            with tarfile.open(target_output, mode) as tf:
-                with create_progress_bar(**pbar_kwargs) as pbar:
-                    for full_path, arcname, size in file_entries:
-                        tar_info = tf.gettarinfo(str(full_path), arcname=arcname)
-                        if size > LARGE_FILE_THRESHOLD:
-                            with open(full_path, "rb") as f_in:
-                                tf.addfile(tar_info, f_in)
-                                pbar.update(size)
-                        else:
-                            tf.add(str(full_path), arcname=arcname, recursive=False)
-                            pbar.update(size)
-        else:
-            with zipfile.ZipFile(target_output, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-                with create_progress_bar(**pbar_kwargs) as pbar:
-                    for full_path, arcname, size in file_entries:
-                        if size > LARGE_FILE_THRESHOLD:
-                            with open(full_path, "rb") as f_in:
-                                with zf.open(arcname, "w", force_zip64=True) as zf_out:
-                                    while True:
-                                        chunk = f_in.read(CHUNK_SIZE)
-                                        if not chunk:
-                                            break
-                                        zf_out.write(chunk)
-                                        pbar.update(len(chunk))
-                        else:
-                            zf.write(full_path, arcname)
-                            pbar.update(size)
-
-        print(f"[SUCCESS] Archive created successfully: {target_output}")
-        return True
-    except (OSError, zipfile.BadZipFile, tarfile.TarError) as e:
-        print(f"[ERROR] Failed to create archive {target_output}: {e}")
-        if target_output.exists():
-            try:
-                os.remove(target_output)
-            except OSError as err:
-                print(f"[WARNING] Could not remove partial archive {target_output}: {err}")
-        return False
-
-
-def _find_7z() -> str | None:
-    """Locate 7-Zip executable on Windows or system PATH."""
-    for c in ["C:\\Program Files\\7-Zip\\7z.exe", "C:\\Program Files (x86)\\7-Zip\\7z.exe"]:
-        if os.path.isfile(c):
-            return c
-    import shutil
-    return shutil.which("7z") or shutil.which("7z.exe")
-
-
-def _find_tar() -> str | None:
-    """Locate native tar executable."""
-    import shutil
-    return shutil.which("tar") or shutil.which("tar.exe")
-
-
-def _flatten_common_root(dest_path: Path) -> None:
-    """Promote children of a single top-level wrapper directory (e.g. LemGendizedMirNetExposureLarge)."""
-    try:
-        entries = [e for e in dest_path.iterdir() if e.name not in (".git", ".tmp")]
-        subdirs = [e for e in entries if e.is_dir()]
-        files = [e for e in entries if e.is_file()]
-        if len(subdirs) == 1 and len(files) <= 5:
-            cand = subdirs[0]
-            if cand.name.lower() == dest_path.name.lower() or cand.name.startswith("LemGendized") or dest_path.name.startswith("LemGendized"):
-                import shutil
-                for child in list(cand.iterdir()):
-                    dest_child = dest_path / child.name
-                    if dest_child.exists():
-                        if dest_child.is_dir() and child.is_dir():
-                            for subchild in list(child.iterdir()):
-                                target_sub = dest_child / subchild.name
-                                if not target_sub.exists():
-                                    shutil.move(str(subchild), str(target_sub))
-                            try:
-                                child.rmdir()
-                            except OSError:
-                                pass
-                        else:
-                            try:
-                                os.remove(dest_child)
-                            except OSError:
-                                pass
-                            shutil.move(str(child), str(dest_child))
-                    else:
-                        shutil.move(str(child), str(dest_child))
-                try:
-                    cand.rmdir()
-                except OSError:
-                    pass
-    except Exception as exc:
-        print(f"[DEBUG] Directory flattening note: {exc}")
-
-
-def smart_extract(archive_path: str | Path, dest_dir: str | Path, delete_after: bool = True) -> bool:
-    """Extract archive using native 7-Zip/tar engines when available with Python fallback."""
-    source_archive = Path(archive_path).resolve()
-    dest_path = Path(dest_dir).resolve()
-    dest_path.mkdir(parents=True, exist_ok=True)
-
-    if not source_archive.exists():
-        print(f"[ERROR] Archive not found: {source_archive}")
-        return False
-
-    archive_str = str(source_archive)
-    is_tar = archive_str.endswith((".tar", ".tar.gz", ".tgz"))
-
-    # Native 7-Zip acceleration
-    seven_z = _find_7z()
-    if seven_z:
-        print(f"[EXTRACT] High-throughput native extraction via 7-Zip: {source_archive.name}")
-        import subprocess
-        cmd = [
-            seven_z,
-            "x",
-            str(source_archive),
-            f"-o{dest_path}",
-            "-aos",
-            "-bsp0",
-            "-mmt=on",
-            "-y",
-        ]
-        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
-        try:
-            proc = subprocess.run(cmd, creationflags=cflags)
-            if proc.returncode == 0:
-                _flatten_common_root(dest_path)
-                if delete_after:
-                    print(f"Extraction successful. Deleting source archive: {source_archive.name}")
-                    try:
-                        os.remove(source_archive)
-                    except OSError as ex:
-                        print(f"[WARN] Could not remove source archive: {ex}")
-                return True
-            print(f"[WARN] 7-Zip exited with return code {proc.returncode}. Attempting fallback...")
-        except Exception as exc:
-            print(f"[WARN] 7-Zip extraction encountered error: {exc}. Attempting fallback...")
-
-    # Native tar acceleration for tar archives
-    native_tar = _find_tar()
-    if is_tar and native_tar:
-        print(f"[EXTRACT] Native extraction via tar: {source_archive.name}")
-        import subprocess
-        cmd = [native_tar, "-xf", str(source_archive), "-C", str(dest_path)]
-        cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
-        try:
-            proc = subprocess.run(cmd, creationflags=cflags)
-            if proc.returncode == 0:
-                _flatten_common_root(dest_path)
-                if delete_after:
-                    print(f"Extraction successful. Deleting source archive: {source_archive.name}")
-                    try:
-                        os.remove(source_archive)
-                    except OSError as ex:
-                        print(f"[WARN] Could not remove source archive: {ex}")
-                return True
-        except Exception as exc:
-            print(f"[WARN] Native tar extraction encountered error: {exc}. Attempting fallback...")
-
-    print(f"Opening archive: {source_archive.name}")
-    try:
-        if is_tar:
-            mode = "r:gz" if archive_str.endswith((".tar.gz", ".tgz")) else "r:"
-            with tarfile.open(archive_str, mode) as tf:
-                members = [m for m in tf.getmembers() if m.isfile()]
-                total_files = len(members)
-
-                # Detect if archive contains a common top-level directory covering all files
-                all_names = [m.name for m in members]
-                has_common_root = len(all_names) > 0 and all(len(Path(name).parts) > 1 for name in all_names)
-                common_root = None
-                if has_common_root:
-                    first_parts = {Path(name).parts[0] for name in all_names}
-                    if len(first_parts) == 1:
-                        common_root = first_parts.pop()
-
-                strip_root = bool(common_root and (dest_path.name.lower() == common_root.lower() or dest_path.name.startswith("LemGendized")))
-
-                to_extract: list[tuple[tarfile.TarInfo, Path]] = []
-                total_bytes = 0
-
-                for member in members:
-                    rel_name = Path(member.name).relative_to(common_root) if (strip_root and common_root) else Path(member.name)
-                    target_file = dest_path / rel_name
-                    if not target_file.exists() or target_file.stat().st_size == 0:
-                        to_extract.append((member, target_file))
-                        total_bytes += member.size
-
-                print(f"Found {len(to_extract)} missing files ({total_bytes / (1024**2):.2f} MB) out of {total_files} total.")
-
-                if to_extract:
-                    pbar_kwargs = {
-                        "total": total_bytes,
-                        "unit": "B",
-                        "unit_scale": True,
-                        "unit_divisor": 1024,
-                        "desc": f"EXTRACTING: {source_archive.name}",
-                    }
-                    with create_progress_bar(**pbar_kwargs) as pbar:
-                        for member, target_file in to_extract:
-                            target_file.parent.mkdir(parents=True, exist_ok=True)
-                            source = tf.extractfile(member)
-                            if source is not None:
-                                with open(target_file, "wb") as target:
-                                    while True:
-                                        chunk = source.read(CHUNK_SIZE)
-                                        if not chunk:
-                                            break
-                                        target.write(chunk)
-                                        pbar.update(len(chunk))
-                                source.close()
-                else:
-                    print("All files already extracted.")
-        else:
-            with zipfile.ZipFile(source_archive, "r") as zf:
-                members = zf.infolist()
-                file_members = [m for m in members if not m.is_dir()]
-                total_files = len(file_members)
-
-                # Detect if archive contains a common top-level directory covering all files
-                all_names = [m.filename for m in file_members]
-                has_common_root = len(all_names) > 0 and all(len(Path(name).parts) > 1 for name in all_names)
-                common_root = None
-                if has_common_root:
-                    first_parts = {Path(name).parts[0] for name in all_names}
-                    if len(first_parts) == 1:
-                        common_root = first_parts.pop()
-
-                strip_root = bool(common_root and (dest_path.name.lower() == common_root.lower() or dest_path.name.startswith("LemGendized")))
-
-                to_extract_zip: list[tuple[zipfile.ZipInfo, Path]] = []
-                total_bytes = 0
-
-                for member_zip in file_members:
-                    rel_name = Path(member_zip.filename).relative_to(common_root) if (strip_root and common_root) else Path(member_zip.filename)
-                    target_file = dest_path / rel_name
-                    if not target_file.exists() or target_file.stat().st_size == 0:
-                        to_extract_zip.append((member_zip, target_file))
-                        total_bytes += member_zip.file_size
-
-                print(f"Found {len(to_extract_zip)} missing files ({total_bytes / (1024**2):.2f} MB) out of {total_files} total.")
-
-                if to_extract_zip:
-                    pbar_kwargs = {
-                        "total": total_bytes,
-                        "unit": "B",
-                        "unit_scale": True,
-                        "unit_divisor": 1024,
-                        "desc": f"EXTRACTING: {source_archive.name}",
-                    }
-                    with create_progress_bar(**pbar_kwargs) as pbar:
-                        for member_zip, target_file in to_extract_zip:
-                            target_file.parent.mkdir(parents=True, exist_ok=True)
-                            if member_zip.file_size > LARGE_FILE_THRESHOLD:
-                                with zf.open(member_zip) as source, open(target_file, "wb") as target:
-                                    while True:
-                                        chunk = source.read(CHUNK_SIZE)
-                                        if not chunk:
-                                            break
-                                        target.write(chunk)
-                                        pbar.update(len(chunk))
-                            else:
-                                with zf.open(member_zip) as source, open(target_file, "wb") as target:
-                                    while True:
-                                        chunk = source.read(CHUNK_SIZE)
-                                        if not chunk:
-                                            break
-                                        target.write(chunk)
-                                        pbar.update(len(chunk))
-                else:
-                    print("All files already extracted.")
-
-        if delete_after:
-            print(f"Extraction successful. Deleting source archive: {source_archive.name}")
-            try:
-                os.remove(source_archive)
-            except OSError as ex:
-                print(f"[WARN] Could not remove source archive: {ex}")
-        return True
-    except (OSError, zipfile.BadZipFile, tarfile.TarError) as e:
-        print(f"[ERROR] Extraction failed for {source_archive}: {e}")
-        return False
-
-
 # Backward compatibility alias
 verify_zip = verify_archive
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="LemGendary Smart Archive Manager")
+    parser.add_argument(
+        "--action",
+        type=str,
+        choices=["verify", "extract", "archive"],
+        required=True,
+        help="Action to perform",
+    )
+    parser.add_argument(
+        "--zip", "--archive", dest="archive_path", type=str, help="Path to the archive file"
+    )
+    parser.add_argument(
+        "--dest", type=str, help="Path to extract destination or output archive file"
+    )
+    parser.add_argument("--source", type=str, help="Path to source directory for archiving")
+    parser.add_argument(
+        "--format",
+        type=str,
+        default="zip",
+        choices=["zip", "tar", "tar.gz", "tgz"],
+        help="Archive format for creation",
+    )
+    parser.add_argument(
+        "--keep-archive", action="store_true", help="Do not delete archive after extraction"
+    )
+    return parser
+
+
+def _cli_verify(args: argparse.Namespace) -> int:
+    if not args.archive_path:
+        print("[ERROR] --zip/--archive is required for verify action.")
+        return 1
+    return 0 if verify_archive(args.archive_path) else 1
+
+
+def _cli_extract(args: argparse.Namespace) -> int:
+    if not args.archive_path or not args.dest:
+        print("[ERROR] --zip/--archive and --dest are required for extract action.")
+        return 1
+    success = smart_extract(args.archive_path, args.dest, delete_after=not args.keep_archive)
+    return 0 if success else 1
+
+
+def _cli_archive(args: argparse.Namespace) -> int:
+    source_dir = args.source
+    dest_archive = args.dest or args.archive_path
+    if not source_dir or not dest_archive:
+        print("[ERROR] --source and --dest are required for archive action.")
+        return 1
+    return 0 if create_archive(source_dir, dest_archive, archive_format=args.format) else 1
+
+
+_CLI_ACTIONS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "verify": _cli_verify,
+    "extract": _cli_extract,
+    "archive": _cli_archive,
+}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point for archive manager."""
-    parser = argparse.ArgumentParser(description="LemGendary Smart Archive Manager")
-    parser.add_argument("--action", type=str, choices=["verify", "extract", "archive"], required=True, help="Action to perform")
-    parser.add_argument("--zip", "--archive", dest="archive_path", type=str, help="Path to the archive file")
-    parser.add_argument("--dest", type=str, help="Path to extract destination or output archive file")
-    parser.add_argument("--source", type=str, help="Path to source directory for archiving")
-    parser.add_argument("--format", type=str, default="zip", choices=["zip", "tar", "tar.gz", "tgz"], help="Archive format for creation")
-    parser.add_argument("--keep-archive", action="store_true", help="Do not delete archive after extraction")
-
-    args = parser.parse_args(argv)
-
-    if args.action == "verify":
-        if not args.archive_path:
-            print("[ERROR] --zip/--archive is required for verify action.")
-            return 1
-        success = verify_archive(args.archive_path)
-        return 0 if success else 1
-
-    if args.action == "extract":
-        if not args.archive_path or not args.dest:
-            print("[ERROR] --zip/--archive and --dest are required for extract action.")
-            return 1
-        success = smart_extract(args.archive_path, args.dest, delete_after=not args.keep_archive)
-        return 0 if success else 1
-
-    if args.action == "archive":
-        source_dir = args.source
-        dest_archive = args.dest or args.archive_path
-        if not source_dir or not dest_archive:
-            print("[ERROR] --source and --dest are required for archive action.")
-            return 1
-        success = create_archive(source_dir, dest_archive, archive_format=args.format)
-        return 0 if success else 1
-
-    return 1
+    args = _build_parser().parse_args(argv)
+    handler = _CLI_ACTIONS.get(args.action)
+    return handler(args) if handler is not None else 1
 
 
 if __name__ == "__main__":

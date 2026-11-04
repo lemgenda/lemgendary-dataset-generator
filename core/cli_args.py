@@ -18,15 +18,18 @@ Downstream convention:
 from __future__ import annotations
 
 import argparse
+import functools
 import multiprocessing
 import shutil
 import sys
 from pathlib import Path
 
+from core import ecosystem
+from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.5"
+__version__ = "16.9.67"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────
@@ -59,8 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     # ── Mode selectors ──────────────────────────────────────────────────────
     parser.add_argument("--reduce", action="store_true",
                         help="Start in Reduce mode")
-    parser.add_argument("--cleanup", action="store_true",
-                        help="Start in Cleanup mode")
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="After a successful compile, purge the loose directory layout "
+        "(images/labels/targets/masks) of manifolds that were packed into a container",
+    )
     parser.add_argument("--finalize", action="store_true",
                         help="Sharding + README only — skip re-processing")
 
@@ -88,8 +95,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--also-format", dest="also_format", type=str, default=None,
                         help="Comma-separated container formats to write in addition "
                              "to the canonical directory layout (e.g. 'mds' or 'mds,litdata')")
-    parser.add_argument("--shard-ext", dest="shard_ext", type=str, default="data",
-                        help="WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle backend ingestion)")
+    parser.add_argument(
+        "--shard-ext",
+        dest="shard_ext",
+        type=str,
+        default="data",
+        help=(
+            "WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle"
+            " backend ingestion)"
+        ),
+    )
     parser.add_argument("--force-duplicate", dest="force_duplicate", action="store_true",
                         help="Proceed with container write despite WARN-tier hardlink fraction")
     parser.add_argument("--accept-space-loss", dest="accept_space_loss", action="store_true",
@@ -97,66 +112,64 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── Smart-generation strategy overrides (Phase 5) ───────────────────────
     parser.add_argument("--label-strategy", dest="label_strategy", type=str, default=None,
-                        choices=["blip_caption", "clip_zeroshot", "yolo_detection",
-                                 "parsenet_segmentation", "nima_quality"],
+                        choices=LabelGenerator.strategies(),
                         help="Label generation strategy (default: inferred from task)")
     parser.add_argument("--prompt-strategy", dest="prompt_strategy", type=str, default=None,
+                        choices=PromptGenerator.strategies(),
                         help="Prompt template name (default: diffusers-v1)")
     parser.add_argument("--mask-strategy", dest="mask_strategy", type=str, default=None,
-                        choices=["parsenet", "sam", "modnet"],
+                        choices=MaskGenerator.strategies(),
                         help="Mask generation strategy (default: parsenet for segmentation)")
 
     # ── Compiler Preset Profiles (Phase 8) ─────────────────────────────────
-    parser.add_argument("--preset", dest="preset", type=str, default=None,
-                        help="Compiler preset profile name from presets.yaml (e.g. quality-vision, restoration-hardlinked)")
+    parser.add_argument(
+        "--preset",
+        dest="preset",
+        type=str,
+        default=None,
+        help=(
+            "Compiler preset profile name from presets.yaml (e.g. quality-vision,"
+            " restoration-hardlinked)"
+        ),
+    )
 
     return parser
 
 
-
-
 # ─── lem-env discovery ──────────────────────────────────────────────────────
-_LEM_ENV_CACHE: str | None = None
-
-
+@functools.cache
 def resolve_lem_env() -> str:
     """Locate the `lem-env` executable. Raises FileNotFoundError if absent.
 
-    Resolution order:
+    Resolution order (the env-manager folder is the ``env-manager`` service's
+    project in the shared ecosystem file, see :mod:`core.ecosystem`):
       1. `shutil.which("lem-env")` — hits if the venv is activated or
          lem-env is installed on PATH.
-      2. `../lemgendary-env-manager/.venv/Scripts/lem-env.exe` — Windows venv.
-      3. `../lemgendary-env-manager/.venv/Scripts/lem-env` — rare shebang case.
-      4. `../lemgendary-env-manager/.venv/bin/lem-env` — POSIX venv.
+      2. `<env-manager>/.venv/Scripts/lem-env.exe` — Windows venv.
+      3. `<env-manager>/.venv/Scripts/lem-env` — rare shebang case.
+      4. `<env-manager>/.venv/bin/lem-env` — POSIX venv.
     """
-    global _LEM_ENV_CACHE
-    if _LEM_ENV_CACHE is not None:
-        return _LEM_ENV_CACHE
-
     found = shutil.which("lem-env")
     if found:
-        _LEM_ENV_CACHE = found
         return found
 
-    here = Path(__file__).parent.resolve()
-    proj_root = here.parent if here.name == "core" else here
-    workspace_root = proj_root.parent
+    env_manager_dir = ecosystem.project_dir(ecosystem.ENV_MANAGER_SERVICE)
+    venv_dir = env_manager_dir / ".venv"
     candidates = [
-        workspace_root / "lemgendary-env-manager" / ".venv" / "Scripts" / "lem-env.exe",
-        workspace_root / "lemgendary-env-manager" / ".venv" / "Scripts" / "lem-env",
-        workspace_root / "lemgendary-env-manager" / ".venv" / "bin" / "lem-env",
+        venv_dir / "Scripts" / "lem-env.exe",
+        venv_dir / "Scripts" / "lem-env",
+        venv_dir / "bin" / "lem-env",
     ]
     for candidate in candidates:
         if candidate.exists():
-            _LEM_ENV_CACHE = str(candidate)
-            return _LEM_ENV_CACHE
+            return str(candidate)
 
     raise FileNotFoundError(
         "lem-env executable not found. Install the LemGendary Environment "
         "Manager by running:\n"
-        "    cd ..\\lemgendary-env-manager\n"
+        f"    cd {env_manager_dir}\n"
         "    .\\.venv\\Scripts\\python.exe -m pip install -e .\n"
-        "Or ensure ../lemgendary-env-manager/.venv/Scripts/lem-env.exe exists."
+        f"Or ensure {candidates[0]} exists."
     )
 
 

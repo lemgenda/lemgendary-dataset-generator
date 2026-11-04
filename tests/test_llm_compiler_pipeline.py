@@ -1,14 +1,15 @@
 """Comprehensive unit tests covering , , and  deliverables."""
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
+
 import yaml
 
 from core.config_schema import UnifiedData
-from tools.llm_helper.base_compiler import BaseLLMCompiler
 from tools.llm_helper.chunker import KnowledgeChunk, RecursiveChunker
-from tools.llm_helper.knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
+from tools.llm_helper.knowledge_ingestor import KnowledgeIngestor
+from tools.llm_helper.metadata_compiler import generate_llm_metadata
 from tools.llm_helper.quality_validator import QualityValidator
 
 
@@ -44,7 +45,12 @@ class TestLLMCompilerPipeline(unittest.TestCase):
             "messages": [
                 {"role": "system", "content": "You are assistant."},
                 {"role": "user", "content": "Help me."},
-                {"role": "assistant", "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."},
+                {
+                    "role": "assistant",
+                    "content": (
+                        "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."
+                    ),
+                },
             ],
         }
         issues = validator.validate_record(valid)
@@ -65,12 +71,25 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             train_recs = [
-                {"id": "t1", "category": "api_procedure", "messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]}
+                {
+                    "id": "t1",
+                    "category": "api_procedure",
+                    "messages": [
+                        {"role": "user", "content": "q"},
+                        {"role": "assistant", "content": "a"},
+                    ],
+                }
             ]
             val_recs = [
-                {"id": "v1", "category": "api_procedure", "messages": [{"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"}]}
+                {
+                    "id": "v1",
+                    "category": "api_procedure",
+                    "messages": [
+                        {"role": "user", "content": "q2"},
+                        {"role": "assistant", "content": "a2"},
+                    ],
+                }
             ]
-            from tools.llm_helper.metadata_compiler import generate_llm_metadata
             generate_llm_metadata(
                 manifold_dir=tmp,
                 dataset_name="LemGendizedUnitTestLLM",
@@ -106,12 +125,13 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         self.assertEqual(ai.dataset_type, "llm")
         self.assertEqual(ai.split_strategy, "stratified")
         self.assertEqual(ai.val_split, 0.20)
-        self.assertIsNotNone(ai.llm_pipeline)
-        self.assertEqual(ai.llm_pipeline.schema_format, "chatml_turn3")
-        self.assertTrue(len(ai.llm_pipeline.knowledge_sources) >= 3)
+        pipeline = ai.llm_pipeline
+        if pipeline is None:
+            self.fail("ai_helper_lemgend declares no llm_pipeline")
+        self.assertEqual(pipeline.schema_format, "chatml_turn3")
+        self.assertTrue(len(pipeline.knowledge_sources) >= 3)
 
 
 
 if __name__ == "__main__":
     unittest.main()
-

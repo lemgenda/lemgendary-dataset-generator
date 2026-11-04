@@ -41,8 +41,15 @@ class Generator(Protocol):
 
     strategy: str
 
+    @classmethod
+    def strategies(cls) -> tuple[str, ...]:
+        """The strategy (or template) names this generator accepts, default first."""
+        ...
+
     def generate(
         self,
         img: Image.Image,
         context: dict[str, Any] | None = None,
-    ) -> GenerationResult: ...
+    ) -> GenerationResult:
+        """Generate the output for one image."""
+        ...

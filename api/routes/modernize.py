@@ -2,31 +2,36 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, fields
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-import yaml
 
-from api.jobs import job_manager
+from api.jobs import job_manager, submit_job
 from api.models import JobResponse, JobType
-from core.cli_args import venv_python
+from api.routes.datasets import _resolve_output_root
+from core import paths
+from services.doc_service import DocService
+from services.invocation import ServiceInvocation
+from services.migration_service import queue_invocation, reduce_invocation
 from tools.modernization_queue import load_queue_manifest
+from tools.modernize.queue_items import (
+    API_LABEL_STYLE,
+    ManifoldQueueItem,
+    ManifoldRegistryEntry,
+    queue_status_labels,
+)
 
 logger = logging.getLogger("lemgendary.api.routes.modernize")
 router = APIRouter(prefix="/modernize", tags=["Modernization Hub"])
 
 
-class QueueItemResponse(BaseModel):
-    key: str
-    name: str
-    canonical_format: str
-    modernized_folder: str
-    kaggle_ref: str
-    title: str
-    subtitle: str
+@dataclass
+class QueueItemResponse(ManifoldRegistryEntry):
+    """One dataset in the modernization queue."""
+
     is_containerized: bool
     has_loose_files: bool
     container_bytes: int
@@ -36,128 +41,152 @@ class QueueItemResponse(BaseModel):
 
 
 class ModernizeRunRequest(BaseModel):
-    datasets: Optional[List[str]] = Field(None, description="Specific dataset key(s) to modernize. Omit for full batch.")
-    workers: Optional[int] = Field(12, description="Transcoding worker threads")
-    mds_shard_mb: Optional[int] = Field(512, description="MDS shard size in MB")
-    purge_loose: bool = Field(True, description="Purge loose extracted images post-conversion")
-    push_kaggle: bool = Field(False, description="Push modernized package to Kaggle automatically")
+    """Request body for a modernization run."""
+
+    datasets: list[str] | None = Field(
+        default=None,
+        description="Specific dataset key(s) to modernize. Omit (with `dataset`) for full batch.",
+    )
+    dataset: str | None = Field(
+        default=None,
+        description="Single dataset key or folder to modernize (merged with `datasets`)."
+    )
+    workers: int | None = Field(default=12, description="Transcoding worker threads")
+    mds_shard_mb: int | None = Field(default=512, description="MDS shard size in MB")
+    purge_loose: bool = Field(
+        default=False,
+        description=(
+            "Delete source material (zip, legacy folder, loose images) after a successful"
+            " conversion. False keeps every source."
+        ),
+    )
+    push_kaggle: bool = Field(
+        default=False, description="Push modernized package to Kaggle automatically"
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="Report the plan only: nothing is converted, deleted, written or uploaded",
+    )
+    force: bool = Field(
+        default=False, description="Re-convert manifolds that are already containerized"
+    )
+
+    def target_datasets(self) -> list[str]:
+        """Return ``dataset`` plus ``datasets`` as one key list, de-duplicated in order."""
+        keys = [self.dataset] if self.dataset else []
+        keys.extend(self.datasets or [])
+        return list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
 
 
 class ManifoldReduceRequest(BaseModel):
-    dataset_key: Optional[str] = Field(None, description="Target dataset key to reduce")
-    scale: Optional[int] = Field(2, description="Downsampling scale factor (e.g. 2, 4)")
-    workers: Optional[int] = Field(8, description="Worker threads count")
+    """Request body for creating a reduced manifold variant."""
+
+    dataset_key: str | None = Field(
+        default=None, description="Target manifold folder or dataset key to reduce"
+    )
+    manifold: str | None = Field(
+        default=None, description="Alias of `dataset_key` (manifold folder name)"
+    )
+    scale: float | None = Field(
+        default=2,
+        gt=0,
+        description=(
+            "Sampling scale: a fraction in (0, 1] keeps that share of samples (0.25 = 25%); "
+            "a value above 1 is a downsampling factor (2 keeps 1/2)."
+        ),
+    )
+    workers: int | None = Field(
+        default=8, description="Worker threads count (not used by the reduce tool)"
+    )
+    max_gb: float | None = Field(
+        default=None, gt=0, description="Optional size cap in GB for the reduced manifold"
+    )
+    suffix: str | None = Field(
+        default=None, description="Suffix for the reduced manifold folder (default: Reduced)"
+    )
+    dry_run: bool = Field(default=False, description="Report the plan only: nothing is written")
 
 
-@router.get("/queue", response_model=List[QueueItemResponse])
-async def get_modernization_queue() -> List[QueueItemResponse]:
+def build_modernize_command(req: ModernizeRunRequest) -> ServiceInvocation:
+    """The modernization queue job; shares its argument contract with the CLI."""
+    return queue_invocation(
+        datasets=req.target_datasets(),
+        workers=req.workers or 12,
+        mds_shard_mb=req.mds_shard_mb or 512,
+        purge_source=req.purge_loose,
+        push_kaggle=req.push_kaggle,
+        dry_run=req.dry_run,
+        force=req.force,
+    )
+
+
+def scale_to_fraction(scale: float | None) -> float | None:
+    """Map the API ``scale`` to the reduce tool's sampling fraction."""
+    if scale is None:
+        return None
+    return scale if scale <= 1 else 1.0 / scale
+
+
+def build_reduce_command(req: ManifoldReduceRequest) -> ServiceInvocation:
+    """A non-interactive reduce job (``yes``) with the options the reduce service takes."""
+    target = req.manifold or req.dataset_key
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A manifold (`manifold` or `dataset_key`) is required for reduction.",
+        )
+    return reduce_invocation(
+        dataset=target,
+        fraction=scale_to_fraction(req.scale),
+        max_gb=req.max_gb,
+        suffix=req.suffix or None,
+        yes=True,
+        dry_run=req.dry_run,
+    )
+
+
+@router.get("/queue", response_model=list[QueueItemResponse])
+async def get_modernization_queue() -> list[QueueItemResponse]:
     """Scan and retrieve real-time modernization status queue across all manifolds."""
-    root = Path("../LemGendaryDatasets").resolve()
-    unified_yaml = Path("unified_data.yaml").resolve()
-    if not unified_yaml.exists():
-        unified_yaml = Path(__file__).resolve().parent.parent.parent / "unified_data.yaml"
+    root = _resolve_output_root()
+    unified_yaml = paths.UNIFIED_DATA
 
     items = load_queue_manifest(root, unified_yaml) if unified_yaml.exists() else []
-    results: List[QueueItemResponse] = []
+    return [_queue_item_response(it) for it in items]
 
-    for it in items:
-        size_gb = round(it.container_bytes / (1024**3), 2)
-        if it.is_containerized:
-            status_str = f"CONTAINERIZED ({size_gb:.1f} GB)"
-            src_str = "Shards ready"
-        elif it.zip_path:
-            zip_gb = round(it.zip_path.stat().st_size / (1024**3), 2)
-            status_str = "PENDING STREAM"
-            src_str = f"ZIP ({zip_gb:.1f} GB)"
-        elif it.has_loose_files:
-            status_str = "PENDING PACK"
-            src_str = "Loose WebP/Images"
-        elif it.legacy_dir:
-            status_str = "PENDING LEGACY"
-            src_str = f"{it.legacy_dir.name}/"
-        else:
-            status_str = "MISSING SOURCE"
-            src_str = "None"
 
-        results.append(
-            QueueItemResponse(
-                key=it.key,
-                name=it.name,
-                canonical_format=it.canonical_format,
-                modernized_folder=it.modernized_folder,
-                kaggle_ref=it.kaggle_ref,
-                title=it.title,
-                subtitle=it.subtitle,
-                is_containerized=it.is_containerized,
-                has_loose_files=it.has_loose_files,
-                container_bytes=it.container_bytes,
-                container_gb=size_gb,
-                status_label=status_str,
-                source_label=src_str,
-            )
-        )
-
-    return results
+def _queue_item_response(it: ManifoldQueueItem) -> QueueItemResponse:
+    """Map a scanned queue item to its API representation."""
+    status_str, src_str = queue_status_labels(it, API_LABEL_STYLE)
+    identity = {f.name: getattr(it, f.name) for f in fields(ManifoldRegistryEntry)}
+    return QueueItemResponse(
+        **identity,
+        is_containerized=it.is_containerized,
+        has_loose_files=it.has_loose_files,
+        container_bytes=it.container_bytes,
+        container_gb=round(it.container_bytes / (1024**3), 2),
+        status_label=status_str,
+        source_label=src_str,
+    )
 
 
 @router.post("/run", response_model=JobResponse)
 async def run_modernization(req: ModernizeRunRequest) -> JobResponse:
     """Launch asynchronous modernization queue execution."""
-    cmd = [
-        venv_python(),
-        "tools/modernization_queue.py",
-        "--workers", str(req.workers or 12),
-        "--mds-shard-mb", str(req.mds_shard_mb or 512),
-    ]
-    if req.purge_loose:
-        cmd.append("--purge-loose")
-    else:
-        cmd.append("--keep-zip")
-
-    if req.push_kaggle:
-        cmd.append("--push-kaggle")
-
-    if req.datasets:
-        for ds in req.datasets:
-            cmd.extend(["--datasets", ds])
-
-    job = job_manager.create_job(
-        job_type=JobType.MODERNIZE,
-        command=cmd,
-        parameters=req.model_dump(),
+    return submit_job(
+        job_manager, JobType.MODERNIZE, build_modernize_command(req), req.model_dump()
     )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
 
 
 @router.post("/reduce", response_model=JobResponse)
 async def run_reduce(req: ManifoldReduceRequest) -> JobResponse:
-    """Launch asynchronous manifold scale reduction."""
-    cmd = [
-        venv_python(),
-        "tools/manifold_reduce.py",
-        "--reduce",
-    ]
-    if req.dataset_key:
-        cmd.extend(["--model", req.dataset_key])
-    if req.scale:
-        cmd.extend(["--scale", str(req.scale)])
-
-    job = job_manager.create_job(
-        job_type=JobType.REDUCE,
-        command=cmd,
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    """Launch asynchronous, non-interactive manifold scale reduction."""
+    return submit_job(job_manager, JobType.REDUCE, build_reduce_command(req), req.model_dump())
 
 
 @router.post("/regenerate-manifolds")
-async def regenerate_manifolds_documentation() -> Dict[str, Any]:
+async def regenerate_manifolds_documentation() -> dict[str, Any]:
     """Regenerate authoritative manifolds.md matrix from on-disk status and registries."""
-    from services.doc_service import DocService
     code = DocService.rebuild_manifolds_md(check_only=False)
     if code != 0:
         raise HTTPException(

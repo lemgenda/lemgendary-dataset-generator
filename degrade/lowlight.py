@@ -12,25 +12,29 @@ Simulates extreme sensor photon starvation:
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
+from .base import DegradationFilter
 
-class LowLight:
+
+@dataclass
+class LowLight(DegradationFilter):
     """Simulates realistic low-light / underexposed camera capture."""
 
     name = "low_light"
 
-    def __init__(
-        self,
-        gamma: float = 2.2,
-        color_shift: tuple[float, float, float] = (0.92, 0.95, 1.05),
-        noise_scale: float = 0.02,
-    ) -> None:
-        self.gamma = max(1.0, float(gamma))
-        self.color_shift = np.array(color_shift, dtype=np.float32)
-        self.noise_scale = max(0.0, float(noise_scale))
+    gamma: float = 2.2
+    color_shift: tuple[float, float, float] = (0.92, 0.95, 1.05)
+    noise_scale: float = 0.02
+    shift: np.ndarray = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self.gamma = max(1.0, float(self.gamma))
+        self.shift = np.array(self.color_shift, dtype=np.float32)
+        self.noise_scale = max(0.0, float(self.noise_scale))
 
     def __call__(
         self,
@@ -44,7 +48,7 @@ class LowLight:
         darkened = np.power(np.maximum(img, 0.0), self.gamma)
 
         # 2. Color temperature tint in dark environment
-        tinted = darkened * self.color_shift
+        tinted = darkened * self.shift
 
         # 3. Readout noise visible in shadow regions
         if self.noise_scale > 0:
@@ -56,7 +60,7 @@ class LowLight:
 
         params = {
             "gamma": round(self.gamma, 3),
-            "color_shift": [round(float(x), 3) for x in self.color_shift],
+            "color_shift": [round(float(x), 3) for x in self.shift],
             "noise_scale": round(self.noise_scale, 4),
         }
         return out, params

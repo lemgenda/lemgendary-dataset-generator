@@ -6,6 +6,6 @@ compiler_core.py, which previously applied these side effects at import time.
 """
 from __future__ import annotations
 
-__all__ = ["bootstrap_runtime", "get_device_info"]
+from .environment import bootstrap_runtime, get_device_info, load_torch
 
-from .environment import bootstrap_runtime, get_device_info
+__all__ = ["bootstrap_runtime", "get_device_info", "load_torch"]

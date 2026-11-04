@@ -13,18 +13,17 @@ Phase 4 of the 2026 modernization roadmap.
 
 from __future__ import annotations
 
-import io
-from pathlib import Path
+import json
 import sys
+from pathlib import Path
 from typing import Any
 
-import webdataset as wds
 from webdataset.writer import ShardWriter as WdsShardWriter
 
-from .base import Sample
+from .base import Sample, Writer
 
 
-class WebDatasetWriter:
+class WebDatasetWriter(Writer):
     """WebDataset .tar shard writer, driven by the Sample stream."""
 
     def __init__(self) -> None:
@@ -36,8 +35,7 @@ class WebDatasetWriter:
         self._out_dir.mkdir(parents=True, exist_ok=True)
         max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
         shard_ext = getattr(policy, "shard_extension", "data")
-        if shard_ext.startswith("."):
-            shard_ext = shard_ext[1:]
+        shard_ext = shard_ext.removeprefix(".")
         shard_path = (self._out_dir / f"shard-%05d.{shard_ext}").resolve()
         pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self._sink = WdsShardWriter(
@@ -60,7 +58,6 @@ class WebDatasetWriter:
         if sample.label:
             row["txt"] = sample.label.encode("utf-8")
         if sample.metadata:
-            import json
             row["json"] = json.dumps(sample.metadata).encode("utf-8")
         self._sink.write(row)
 
@@ -87,7 +84,7 @@ class ShardWriter:
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        shard_ext = extension[1:] if extension.startswith(".") else extension
+        shard_ext = extension.removeprefix(".")
         shard_path = (self.output_dir / f"{prefix}-%05d.{shard_ext}").resolve()
         pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self.sink: Any = WdsShardWriter(
@@ -96,6 +93,7 @@ class ShardWriter:
         )
 
     def write(self, name: str, img_bytes: bytes, caption: str) -> None:
+        """Write one image with its caption as a WebDataset sample."""
         self.sink.write({
             "__key__": name,
             "jpg": img_bytes,
@@ -103,4 +101,5 @@ class ShardWriter:
         })
 
     def close(self) -> None:
+        """Close the underlying tar sink."""
         self.sink.close()

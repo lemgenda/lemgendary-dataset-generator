@@ -8,21 +8,96 @@ and container topology to dataset_info.yaml for automated PyTorch loaders.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
-import sys
 from typing import Any
+
 import yaml
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
-from core.docs.context import ManifoldContext, resolve_manifold_context
+from core.docs.context import ManifoldContext
+from core.docs.generators.common import (
+    count_lines,
+    ensure_context,
+    jsonl_split_files,
+    manifold_parser,
+    run_manifold_cli,
+)
 from core.docs.scanner import scan_forex_manifold
 
 logger = logging.getLogger(__name__)
+
+
+_DEFAULT_FOREX_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "NAS100", "DE40", "USOIL", "US500"]
+_DEFAULT_TIMEFRAMES = [1, 5, 15, 60, 240, 1440]
+
+
+def _canonical_format(ctx: ManifoldContext) -> str:
+    """Return the declared canonical container format, or detect it from the task/layout."""
+    canonical_format = ctx.spec.unified_entry.get("canonical_format")
+    if canonical_format:
+        return canonical_format
+    if ctx.task == "forex":
+        return "parquet"
+    if ctx.is_llm:
+        return "jsonl"
+    if (ctx.manifold_path / "mds").exists():
+        return "mds"
+    return "webdataset"
+
+
+def _forex_fields(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the Forex-specific fields (pairs, rungs, start date, lookback, format)."""
+    forex_scan = scan_forex_manifold(ctx.manifold_path)
+
+    def pick(key: str, *fallbacks: Any) -> Any:
+        value = (overrides.get(key) if overrides else None) or ctx.spec.overrides.get(key)
+        for fallback in fallbacks:
+            value = value or fallback
+        return value
+
+    pairs = pick("pairs", forex_scan.get("pairs"), _DEFAULT_FOREX_PAIRS)
+    tfs = pick("timeframe_rungs", forex_scan.get("timeframes"), _DEFAULT_TIMEFRAMES)
+    return {
+        "dataset_type": "forex",
+        "pairs": [str(p) for p in pairs],
+        "timeframe_rungs": [int(tf) for tf in tfs],
+        "start_date": str(pick("start_date", "2019-01-01")),
+        "lookback_bars": int(pick("lookback_bars", 168)),
+        "format": "parquet",
+        "compression": "zstd",
+    }
+
+
+def _instruction_fields(ctx: ManifoldContext) -> dict[str, Any]:
+    """Return the train/val line counts of an instruction (JSONL) manifold."""
+    train_file, val_file = jsonl_split_files(ctx)
+    return {"train_samples": count_lines(train_file), "val_samples": count_lines(val_file)}
+
+
+def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> str | None:
+    """Compiler task id (task_taxonomy.json) of the manifold.
+
+    The compiler passes it as the ``task_type`` override. A docs-only
+    regeneration takes it from the registry entry, else keeps the value of the
+    existing dataset_info.yaml.
+    """
+    if overrides and overrides.get("task_type"):
+        return str(overrides["task_type"])
+    entry = ctx.spec.unified_entry
+    registered = entry.get("task_override") or entry.get("task")
+    if registered:
+        return str(registered)
+    existing = ctx.manifold_path / "dataset_info.yaml"
+    if existing.exists():
+        try:
+            data = yaml.safe_load(existing.read_text(encoding="utf-8")) or {}
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning("Cannot read task_type from %s: %s", existing, exc)
+            return None
+        if isinstance(data, dict) and data.get("task_type"):
+            return str(data["task_type"])
+    return None
 
 
 def generate_dataset_info_yaml(
@@ -38,100 +113,42 @@ def generate_dataset_info_yaml(
     Returns:
         Path to the generated dataset_info.yaml file.
     """
-    if isinstance(context_or_path, ManifoldContext):
-        ctx = context_or_path
-    else:
-        ctx = resolve_manifold_context(Path(context_or_path), overrides=overrides)
-
-    target_dir = ctx.manifold_path
+    ctx = ensure_context(context_or_path, overrides=overrides)
     manifold_name = ctx.manifold_name
-    relative_path = str(Path("..") / "LemGendaryDatasets" / manifold_name)
 
     # Resolve sources list
-    src_keys = list(ctx.sources.keys()) if ctx.sources else ctx.provenance_sources
+    src_keys = list(ctx.lineage.sources.keys()) if ctx.lineage.sources else (
+        ctx.lineage.provenance_sources
+    )
     if not src_keys:
         src_keys = [f"{manifold_name}-source"]
 
-    # Canonical format detection
-    canonical_format = ctx.unified_entry.get("canonical_format")
-    if not canonical_format:
-        if ctx.task == "forex":
-            canonical_format = "parquet"
-        elif ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper"):
-            canonical_format = "jsonl"
-        elif (target_dir / "mds").exists():
-            canonical_format = "mds"
-        else:
-            canonical_format = "webdataset"
-
     info_payload: dict[str, Any] = {
         "name": manifold_name,
-        "count": ctx.total_samples,
+        "count": ctx.lineage.total_samples,
         "task": ctx.task,
-        "category": ctx.category,
-        "canonical_format": canonical_format,
+        "task_type": _task_type(ctx, overrides),
+        "category": ctx.profile.category,
+        "canonical_format": _canonical_format(ctx),
         "original_sources": src_keys,
-        "path": relative_path,
+        "path": str(Path("..") / "LemGendaryDatasets" / manifold_name),
         "source": f"{manifold_name}-manifold",
-        "last_processed": datetime.now(timezone.utc).isoformat(),
+        "last_processed": datetime.now(UTC).isoformat(),
     }
 
+    if info_payload["task_type"] is None:
+        del info_payload["task_type"]
     if ctx.task == "forex":
-        forex_scan = scan_forex_manifold(target_dir)
-        pairs = (
-            (overrides.get("pairs") if overrides else None)
-            or ctx.overrides.get("pairs")
-            or forex_scan.get("pairs")
-            or ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "NAS100", "DE40", "USOIL", "US500"]
-        )
-        tfs = (
-            (overrides.get("timeframe_rungs") if overrides else None)
-            or ctx.overrides.get("timeframe_rungs")
-            or forex_scan.get("timeframes")
-            or [1, 5, 15, 60, 240, 1440]
-        )
-        start_date = (
-            (overrides.get("start_date") if overrides else None)
-            or ctx.overrides.get("start_date")
-            or "2019-01-01"
-        )
-        lookback = int(
-            (overrides.get("lookback_bars") if overrides else None)
-            or ctx.overrides.get("lookback_bars")
-            or 168
-        )
-
-        info_payload["dataset_type"] = "forex"
-        info_payload["pairs"] = [str(p) for p in pairs]
-        info_payload["timeframe_rungs"] = [int(tf) for tf in tfs]
-        info_payload["start_date"] = str(start_date)
-        info_payload["lookback_bars"] = lookback
-        info_payload["format"] = "parquet"
-        info_payload["compression"] = "zstd"
-
-    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
-    if is_llm_task:
-        train_file_rel = ctx.unified_entry.get("train_file")
-        val_file_rel = ctx.unified_entry.get("val_file")
-        train_file = (target_dir / train_file_rel) if train_file_rel else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
-        val_file = (target_dir / val_file_rel) if val_file_rel else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
-        if not train_file.exists():
-            train_file = target_dir / "data" / "ai_helper_train.jsonl"
-            val_file = target_dir / "data" / "ai_helper_val.jsonl"
-        if not train_file.exists():
-            train_file = target_dir / "ai_helper_train.jsonl"
-            val_file = target_dir / "ai_helper_val.jsonl"
-        tr_cnt = sum(1 for _ in train_file.open(encoding="utf-8")) if train_file.exists() else 0
-        vl_cnt = sum(1 for _ in val_file.open(encoding="utf-8")) if val_file.exists() else 0
-        info_payload["train_samples"] = tr_cnt
-        info_payload["val_samples"] = vl_cnt
+        info_payload.update(_forex_fields(ctx, overrides))
+    if ctx.is_llm:
+        info_payload.update(_instruction_fields(ctx))
 
     if overrides:
         for k, v in overrides.items():
             if k not in ["name", "last_processed"]:
                 info_payload[k] = v
 
-    target_file = target_dir / "dataset_info.yaml"
+    target_file = ctx.manifold_path / "dataset_info.yaml"
     with open(target_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(
             info_payload,
@@ -145,39 +162,21 @@ def generate_dataset_info_yaml(
     return target_file
 
 
+def _cli_process(manifold_dir: Path, _args: argparse.Namespace) -> str:
+    """Generate dataset_info.yaml for one manifold and describe the result."""
+    out = generate_dataset_info_yaml(manifold_dir)
+    with open(out, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return f"{out.name} (samples={data.get('count')}, task={data.get('task')})"
+
+
 def main() -> None:
     """CLI entrypoint for dataset_info.yaml generation."""
-    parser = argparse.ArgumentParser(description="Generate dataset_info.yaml for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Generate dataset_info.yaml for all manifolds")
-    args = parser.parse_args()
-
-    cand = _MODULE_ROOT.parent / "LemGendaryDatasets"
-    datasets_root = cand if cand.exists() else _MODULE_ROOT / "LemGendaryDatasets"
-
-    if args.all:
-        if not datasets_root.exists():
-            print(f"[ERROR] Datasets directory not found at {datasets_root}")
-            sys.exit(1)
-        count = 0
-        for m_dir in sorted(datasets_root.iterdir()):
-            if m_dir.is_dir() and not m_dir.name.startswith("."):
-                out = generate_dataset_info_yaml(m_dir)
-                with open(out, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                print(f"[OK] {m_dir.name} -> {out.name} (samples={data.get('count')}, task={data.get('task')})")
-                count += 1
-        print(f"Generated dataset_info.yaml for {count} manifolds.")
-    elif args.manifold:
-        p = Path(args.manifold)
-        if not p.is_dir() and (datasets_root / args.manifold).is_dir():
-            p = datasets_root / args.manifold
-        out = generate_dataset_info_yaml(p)
-        with open(out, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        print(f"[OK] {p.name} -> {out.name} (samples={data.get('count')}, task={data.get('task')})")
-    else:
-        parser.print_help()
+    parser = manifold_parser(
+        "Generate dataset_info.yaml for dataset manifolds",
+        "Generate dataset_info.yaml for all manifolds",
+    )
+    run_manifold_cli(parser, _cli_process, "Generated dataset_info.yaml")
 
 
 if __name__ == "__main__":

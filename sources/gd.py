@@ -1,29 +1,50 @@
-# 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
-# (common_sync, archive_manager, etc.) resolve when this file is invoked
-# directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""Google Drive source: download a shared file or folder with gdown.
+
+Run from the project root as ``python -m sources.gd``.
+"""
 import argparse
+import logging
 import os
-import shutil
 
 try:
     import gdown
 except ImportError:
     gdown = None
 
+logger = logging.getLogger(__name__)
+
+
+def _gdown_errors() -> tuple[type[BaseException], ...]:
+    """Exceptions gdown is expected to raise for a failed/unauthorised download."""
+    errors: list[type[BaseException]] = [OSError, ValueError, RuntimeError]
+    exc_mod = getattr(gdown, "exceptions", None)
+    for name in ("FileURLRetrievalError", "FolderContentsMaximumLimitError"):
+        cls = getattr(exc_mod, name, None)
+        if isinstance(cls, type) and issubclass(cls, BaseException):
+            errors.append(cls)
+    return tuple(errors)
+
 # 2026 Resilience: Force ASCII progress bars globally to prevent Unicode Mojibake in PowerShell
 # Removed TQDM_ASCII override to allow Unicode block characters
 
 def main():
+    """Download a Google Drive file or folder (CLI entry point)."""
     parser = argparse.ArgumentParser(description="LemGendary Google Drive Downloader")
     parser.add_argument("--repo_id", type=str, required=True, help="Google Drive File or Folder ID")
-    parser.add_argument("--output_dir", type=str, required=True, help="Output directory path (will be converted to .zip in parent dir)")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Output directory path (will be converted to .zip in parent dir)",
+    )
     parser.add_argument("--action", type=str, default="download")
     args = parser.parse_args()
 
     if gdown is None:
-        raise RuntimeError("gdown package is required for Google Drive operations. Please install via pip: pip install gdown")
+        raise RuntimeError(
+            "gdown package is required for Google Drive operations. Please install via pip: pip"
+            " install gdown"
+        )
 
     if args.action == "download":
         print(f"STATUS:GD-PULLING {args.repo_id}")
@@ -31,6 +52,7 @@ def main():
         parent_dir = os.path.dirname(args.output_dir)
         slug = os.path.basename(args.output_dir)
         zip_path = os.path.join(parent_dir, f"{slug}.zip")
+        gdown_errors = _gdown_errors()
 
         try:
             print(f"Attempting to download {args.repo_id} as a file archive to {zip_path}...")
@@ -39,7 +61,12 @@ def main():
             if res is None:
                 raise RuntimeError("Failed to download as a file.")
             print("STATUS:DOWNLOADED")
-        except Exception as e:
+        except gdown_errors as e:
+            logger.warning(
+                "Google Drive file download failed for %s; trying folder download: %s",
+                args.repo_id,
+                e,
+            )
             print(f"WARNING: File download failed ({e}). Attempting folder download...")
             if os.path.exists(zip_path):
                 try:
@@ -52,7 +79,8 @@ def main():
                 if res is None:
                     raise RuntimeError("Failed to download as a folder.") from e
                 print("STATUS:COMPLETED")
-            except Exception as e2:
+            except gdown_errors as e2:
+                logger.error("Could not download Google Drive source %s: %s", args.repo_id, e2)
                 print(f"ERROR: Could not download Google Drive source {args.repo_id}: {e2}")
                 print("STATUS:FAILED")
 

@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
-from .base import Sample
+from .base import Sample, Writer
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +31,27 @@ logger = logging.getLogger(__name__)
 _VALID_SPLITS = ("train", "val", "test")
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
+# Top-level folders that make up the loose (uncontainerized) directory layout.
+LOOSE_LAYOUT_DIRS = ("images", "labels", "targets", "masks")
 
-class DirectoryWriter:
+
+def purge_loose_layout(root: Path) -> list[Path]:
+    """Remove the loose directory layout under ``root`` and return what was removed.
+
+    Callers must only purge after the samples were written to a packed
+    container; the directory layout is otherwise the only copy.
+    """
+    removed: list[Path] = []
+    for sub in LOOSE_LAYOUT_DIRS:
+        path = Path(root) / sub
+        if path.exists():
+            shutil.rmtree(path)
+            removed.append(path)
+    logger.info("Purged loose layout under %s: %s", root, [p.name for p in removed])
+    return removed
+
+
+class DirectoryWriter(Writer):
     """No-op writer.
 
     The canonical directory layout is always produced by the compile
@@ -123,34 +144,17 @@ class DirectorySampleSource:
 
         try:
             image_bytes = img_path.read_bytes()
-        except OSError:
+        except OSError as exc:
+            logger.warning("Failed reading image %s: %s", img_path, exc)
             return None
 
         image_format = img_path.suffix.lstrip(".").lower() or "bin"
 
-        target_path = self._target_index.get(split, {}).get(name)
-        target_bytes = None
-        if target_path is not None and target_path.exists():
-            try:
-                target_bytes = target_path.read_bytes()
-            except OSError as exc:
-                logger.debug("Failed reading target bytes for %s: %s", target_path, exc)
-
-        mask_path = self._mask_index.get(split, {}).get(name)
-        mask_bytes = None
-        if mask_path is not None and mask_path.exists():
-            try:
-                mask_bytes = mask_path.read_bytes()
-            except OSError as exc:
-                logger.debug("Failed reading mask bytes for %s: %s", mask_path, exc)
-
-        label_path = self._label_index.get(split, {}).get(name)
-        label_text = None
-        if label_path is not None and label_path.exists():
-            try:
-                label_text = label_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as exc:
-                logger.debug("Failed reading label text for %s: %s", label_path, exc)
+        target_bytes = _read_optional_bytes(
+            self._target_index.get(split, {}).get(name), "target"
+        )
+        mask_bytes = _read_optional_bytes(self._mask_index.get(split, {}).get(name), "mask")
+        label_text = _read_optional_text(self._label_index.get(split, {}).get(name))
 
         metadata = {
             k: v for k, v in entry.items()
@@ -168,3 +172,25 @@ class DirectorySampleSource:
             label=label_text,
             metadata=metadata,
         )
+
+
+def _read_optional_bytes(path: Path | None, what: str) -> bytes | None:
+    """Read an optional companion file's bytes; None if absent or unreadable."""
+    if path is None or not path.exists():
+        return None
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        logger.debug("Failed reading %s bytes for %s: %s", what, path, exc)
+        return None
+
+
+def _read_optional_text(path: Path | None) -> str | None:
+    """Read an optional label file's UTF-8 text; None if absent or unreadable."""
+    if path is None or not path.exists():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.debug("Failed reading label text for %s: %s", path, exc)
+        return None

@@ -1,25 +1,34 @@
+"""NIMA aesthetic and technical quality model."""
+
 import torch
-import torch.nn as nn
+from torch import nn
 from torchvision import models
 
-class NIMA_Model(nn.Module):
+
+class NimaModel(nn.Module):
     """
     NIMA (Neural IMage Assessment) Model.
     Uses MobileNetV3-Small features and predicts a 10-class distribution of quality scores.
     """
     def __init__(self, backbone="mobilenet_v3_small"):
-        super(NIMA_Model, self).__init__()
-        
+        super().__init__()
+
         # 2026 SOTA Upgrade: Branching backbones for high-precision technical assessment
         if backbone == "efficientnet_v2_s":
             # EfficientNetV2-S offers significantly higher spatial awareness for micro-defects
-            self.features = models.efficientnet_v2_s(weights=models.EfficientNet_V2_S_Weights.IMAGENET1K_V1).features
+            self.features = models.efficientnet_v2_s(
+                weights=models.EfficientNet_V2_S_Weights.IMAGENET1K_V1
+            ).features
             in_features = 1280
         elif backbone == "mobilenet_v2":
-            self.features = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1).features
+            self.features = models.mobilenet_v2(
+                weights=models.MobileNet_V2_Weights.IMAGENET1K_V1
+            ).features
             in_features = 1280
         else:
-            self.features = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1).features
+            self.features = models.mobilenet_v3_small(
+                weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
+            ).features
             in_features = 576
 
         # Flatten and predict 10 classes (representing scores 1 through 10)
@@ -30,6 +39,7 @@ class NIMA_Model(nn.Module):
 
     def forward(self, x):
         # 2026 High-Velocity Tensor Mapping
+        """Return the score-distribution logits for a batch of images."""
         x = self.features(x)
         x = nn.functional.adaptive_avg_pool2d(x, (1, 1)) # Robust GAP
         x = torch.flatten(x, 1)
@@ -37,5 +47,12 @@ class NIMA_Model(nn.Module):
         # 2026 Resilience: Internal Logit Safety Valve
         # Clamping to +/-10.0 ensures stability during first-iteration resumption (FP16 safe)
         return x
+
+    @staticmethod
+    def expected_score(logits):
+        """Mean score on the 1..10 scale and the softmax distribution, per batch row."""
+        probs = nn.functional.softmax(logits, dim=1)
+        weights = torch.arange(1, 11, device=logits.device, dtype=probs.dtype)
+        return torch.sum(probs * weights, dim=1), probs
 
 # Unified Loss Logic moved to training/train.py for 2026 Resiliency Synchronization.

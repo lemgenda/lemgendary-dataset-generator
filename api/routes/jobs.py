@@ -2,23 +2,33 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+import logging
+from typing import cast
+
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from api.events import manager
-from api.jobs import job_manager
+from api.jobs import job_manager, submit_job
 from api.models import (
     CompileJobRequest,
     DegradeJobRequest,
-    GenericJobRequest,
     JobListResponse,
     JobResponse,
     JobState,
     JobType,
 )
-from core.cli_args import venv_python
+from services.compiler_service import CompileOptions, compile_invocation
+from services.degrade_service import DegradeOptions, degrade_invocation
+from services.invocation import ServiceInvocation
+
+logger = logging.getLogger("lemgendary.api.routes.jobs")
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -27,8 +37,8 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 async def list_jobs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    state: Optional[JobState] = None,
-    job_type: Optional[JobType] = None,
+    state: JobState | None = None,
+    job_type: JobType | None = None,
 ) -> JobListResponse:
     """List historical and active jobs with pagination."""
     jobs = job_manager.list_jobs(limit=limit, offset=offset, state=state, job_type=job_type)
@@ -49,7 +59,7 @@ async def get_job(job_id: str) -> JobResponse:
 
 
 @router.get("/{job_id}/logs")
-async def get_job_logs(job_id: str, tail: Optional[int] = Query(None, ge=1)) -> dict[str, str]:
+async def get_job_logs(job_id: str, tail: int | None = Query(None, ge=1)) -> dict[str, str]:
     """Retrieve raw text logs for a specific job."""
     job = job_manager.get_job(job_id)
     if not job:
@@ -61,96 +71,25 @@ async def get_job_logs(job_id: str, tail: Optional[int] = Query(None, ge=1)) -> 
     return {"job_id": job_id, "logs": content}
 
 
+def _compile_command(req: CompileJobRequest) -> ServiceInvocation:
+    """``services.compiler_service`` invocation for a compile job request."""
+    # Same option table as the in-process CLI path (services.run_compile), so
+    # every request field (preset and shard_ext included) is forwarded.
+    return compile_invocation(cast(CompileOptions, req.model_dump()))
+
+
 @router.post("/compile", response_model=JobResponse)
 async def submit_compile_job(req: CompileJobRequest) -> JobResponse:
     """Submit a manifold compile job."""
-    cmd = [venv_python(), "core/manifold_compile.py"]
-    if req.model:
-        cmd.extend(["--model", req.model])
-    if req.max_gb is not None:
-        cmd.extend(["--max_gb", str(req.max_gb)])
-    if req.suffix:
-        cmd.extend(["--suffix", req.suffix])
-    if req.workers is not None:
-        cmd.extend(["--workers", str(req.workers)])
-    if req.no_vetting:
-        cmd.append("--no-vetting")
-    if req.no_labeling:
-        cmd.append("--no-labeling")
-    if req.no_hash:
-        cmd.append("--no-hash")
-    if req.image_format:
-        cmd.extend(["--image-format", req.image_format])
-    if req.image_quality is not None:
-        cmd.extend(["--image-quality", str(req.image_quality)])
-    if req.target_quality is not None:
-        cmd.extend(["--target-quality", str(req.target_quality)])
-    if req.mask_format:
-        cmd.extend(["--mask-format", req.mask_format])
-    if req.also_format:
-        cmd.extend(["--also-format", req.also_format])
-    if req.force_duplicate:
-        cmd.append("--force-duplicate")
-    if req.accept_space_loss:
-        cmd.append("--accept-space-loss")
-    if req.label_strategy:
-        cmd.extend(["--label-strategy", req.label_strategy])
-    if req.prompt_strategy:
-        cmd.extend(["--prompt-strategy", req.prompt_strategy])
-    if req.mask_strategy:
-        cmd.extend(["--mask-strategy", req.mask_strategy])
-
-    job = job_manager.create_job(
-        job_type=JobType.COMPILE,
-        command=cmd,
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    return submit_job(job_manager, JobType.COMPILE, _compile_command(req), req.model_dump())
 
 
 @router.post("/degrade", response_model=JobResponse)
 async def submit_degrade_job(req: DegradeJobRequest) -> JobResponse:
-    degrade_script = "tools/generate_degrade.py" if (Path(__file__).resolve().parent.parent.parent / "tools" / "generate_degrade.py").exists() else "generate_degrade.py"
-    cmd = [
-        venv_python(), degrade_script,
-        "--source", req.source,
-        "--output", req.output,
-        "--profile", req.profile,
-        "--intensity", req.intensity,
-        "--val-split", str(req.val_split),
-        "--seed", str(req.seed),
-        "--image-format", req.image_format,
-    ]
-    if req.pairs is not None:
-        cmd.extend(["--pairs", str(req.pairs)])
-    if req.workers is not None:
-        cmd.extend(["--workers", str(req.workers)])
-    if req.dry_run:
-        cmd.append("--dry-run")
-
-    job = job_manager.create_job(
-        job_type=JobType.DEGRADE,
-        command=cmd,
-        parameters=req.model_dump(),
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
-
-
-@router.post("/generic", response_model=JobResponse)
-async def submit_generic_job(req: GenericJobRequest) -> JobResponse:
-    """Submit a generic job command."""
-    job = job_manager.create_job(
-        job_type=req.job_type,
-        command=req.command,
-        parameters=req.parameters,
-    )
-    loop = asyncio.get_running_loop()
-    job_manager.start_job(job.id, loop)
-    return job
+    """Start a degradation job that synthesises a paired manifold from a clean source."""
+    options = cast(DegradeOptions, req.model_dump(exclude={"source", "output"}))
+    invocation = degrade_invocation(req.source, req.output, options)
+    return submit_job(job_manager, JobType.DEGRADE, invocation, req.model_dump())
 
 
 @router.post("/{job_id}/cancel")
@@ -183,7 +122,8 @@ async def stream_job_logs(websocket: WebSocket, job_id: str) -> None:
     if backlog:
         try:
             await websocket.send_json({"job_id": job_id, "type": "backlog", "chunk": backlog})
-        except Exception:
+        except (WebSocketDisconnect, RuntimeError, OSError) as exc:
+            logger.debug("Failed sending log backlog for job %s; dropping client: %s", job_id, exc)
             await manager.disconnect_job(job_id, websocket)
             return
 
@@ -192,5 +132,6 @@ async def stream_job_logs(websocket: WebSocket, job_id: str) -> None:
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect_job(job_id, websocket)
-    except Exception:
+    except (RuntimeError, OSError) as exc:
+        logger.debug("Job %s websocket client error: %s", job_id, exc)
         await manager.disconnect_job(job_id, websocket)

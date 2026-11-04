@@ -23,7 +23,7 @@ Usage:
     legacy = data.to_legacy_dict()
 
 CLI:
-    python config_schema.py         # validates ./unified_data.yaml
+    python -m core.config_schema    # validates ./unified_data.yaml
 """
 
 from __future__ import annotations
@@ -35,8 +35,15 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core import paths
+from core.task_taxonomy import taxonomy
+
 
 # ─── Ref-level ──────────────────────────────────────────────────────────────
+class UnifiedDataError(ValueError):
+    """``unified_data.yaml`` is empty or its root is not a mapping."""
+
+
 class SourceRef(BaseModel):
     """A single source dataset reference inside a manifold definition."""
 
@@ -98,7 +105,15 @@ class KnowledgeSourceConfig(BaseModel):
     """Declarative specification of an offline or online knowledge source."""
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["markdown_dir", "markdown_file", "yaml_file", "json_file", "text_file", "csv_file", "remote_url"]
+    type: Literal[
+        "markdown_dir",
+        "markdown_file",
+        "yaml_file",
+        "json_file",
+        "text_file",
+        "csv_file",
+        "remote_url",
+    ]
     path: str | None = None
     glob: str | None = None
     url: str | None = None
@@ -160,12 +175,16 @@ class DatasetEntry(BaseModel):
     labeling: bool = True
     vetting: bool = True
 
-    # Task routing
+    # Task routing: ids from task_taxonomy.json. ``task_confirmed: false``
+    # marks a task kept from the name heuristic pending owner confirmation.
     task_override: str | None = None
     task: str | None = None
+    task_confirmed: bool = True
 
     # Domain classification
-    dataset_type: Literal["vision", "forex", "diffusion", "vlm", "ai_helper", "nlp", "llm"] = "vision"
+    dataset_type: Literal["vision", "forex", "diffusion", "vlm", "ai_helper", "nlp", "llm"] = (
+        "vision"
+    )
     acquisition_mode: Literal[
         "hf", "kaggle", "gh", "gdrive", "mt5_terminal", "local"
     ] = "kaggle"
@@ -217,6 +236,17 @@ class DatasetEntry(BaseModel):
     llm_pipeline: LLMPipelineConfig | None = None
 
 
+def _check_task_ids(key: str, entry: DatasetEntry) -> None:
+    """Raise when ``task`` or ``task_override`` is not a task_taxonomy.json id."""
+    known = taxonomy().task_ids
+    for field_name in ("task", "task_override"):
+        value = getattr(entry, field_name)
+        if value is not None and value not in known:
+            raise ValueError(
+                f"Dataset '{key}': {field_name}='{value}' is not a task id of"
+                f" task_taxonomy.json {list(known)}."
+            )
+
 
 # ─── Root document ──────────────────────────────────────────────────────────
 class UnifiedData(BaseModel):
@@ -239,7 +269,7 @@ class UnifiedData(BaseModel):
 
     # Cross-field rules
     @model_validator(mode="after")
-    def _validate_cross_field_rules(self) -> "UnifiedData":
+    def _validate_cross_field_rules(self) -> UnifiedData:
         for key, entry in self.datasets.items():
             if entry.dataset_type == "forex":
                 if not entry.pairs:
@@ -250,6 +280,7 @@ class UnifiedData(BaseModel):
                     raise ValueError(
                         f"Dataset '{key}': dataset_type='forex' requires 'timeframe_rungs'."
                     )
+            _check_task_ids(key, entry)
             if entry.acquisition_mode == "mt5_terminal" and entry.dataset_type != "forex":
                 raise ValueError(
                     f"Dataset '{key}': acquisition_mode='mt5_terminal' "
@@ -287,9 +318,9 @@ def load_unified_data(path: Path | str) -> UnifiedData:
     with open(p, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     if raw is None:
-        raise ValueError(f"unified_data.yaml is empty: {p}")
+        raise UnifiedDataError(f"unified_data.yaml is empty: {p}")
     if not isinstance(raw, dict):
-        raise ValueError(
+        raise UnifiedDataError(
             f"unified_data.yaml root must be a mapping, got {type(raw).__name__}"
         )
     return UnifiedData.model_validate(raw)
@@ -298,23 +329,14 @@ def load_unified_data(path: Path | str) -> UnifiedData:
 # ─── CLI ────────────────────────────────────────────────────────────────────
 def _cli_validate() -> int:
     """CLI entry point for `lemgendary config validate`."""
-    here = Path(__file__).resolve().parent
-    proj_root = here.parent if here.name == "core" else here
-    candidates = [
-        proj_root / "unified_data.yaml",
-        Path("./unified_data.yaml"),
-        proj_root.parent / "lemgendary-datasets" / "unified_data.yaml",
-    ]
-    target = next((p for p in candidates if p.exists()), None)
-    if target is None:
-        print("[ERROR] unified_data.yaml not found in any of:")
-        for c in candidates:
-            print(f"  -> {c}")
+    target = paths.UNIFIED_DATA
+    if not target.exists():
+        print(f"[ERROR] unified_data.yaml not found at {target}")
         return 1
 
     try:
         data = load_unified_data(target)
-    except Exception as e:
+    except (OSError, ValueError, yaml.YAMLError) as e:
         print(f"[ERROR] Configuration validation failed for {target}:")
         print(f"  {type(e).__name__}: {e}")
         return 1
@@ -323,7 +345,10 @@ def _cli_validate() -> int:
     print(f"[OK] Configuration validated: {target}")
     print(f"     version={rm.version}  prefix='{rm.name_prefix}'  suffix='{rm.name_suffix}'")
     print(f"     output_folder='{rm.output_folder_name}'")
-    print(f"     global_constraints: min={rm.global_constraints.min_size_gb}GB  max={rm.global_constraints.max_size_gb}GB")
+    print(
+        f"     global_constraints: min={rm.global_constraints.min_size_gb}GB "
+        f" max={rm.global_constraints.max_size_gb}GB"
+    )
     print(f"     datasets: {len(data.datasets)}")
     print()
     for key, entry in sorted(data.datasets.items()):

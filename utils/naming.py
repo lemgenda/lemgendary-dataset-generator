@@ -19,7 +19,7 @@ def clean_slug(slug: str) -> str:
     return slug.replace(".tar.gz", "").replace(".tgz", "").replace(".zip", "")
 
 
-def map_category(cat_name_or_id, source_name, category_map: dict | None = None) -> int:
+def map_category(cat_name_or_id, _source_name, category_map: dict | None = None) -> int:
     """Map a category name/ID to the local class index (default 0 = Person).
 
     ``category_map`` must be passed explicitly — the pre-1.5.5 version reached

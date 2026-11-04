@@ -1,5 +1,10 @@
+"""Convert the NIMA and RetinaFace .txt labels of the legacy manifolds to JSON files."""
+
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def parse_nima_line(line: str):
@@ -33,8 +38,62 @@ def parse_retinaface_lines(lines: list):
     return {"face_count": len(faces), "objects": faces}
 
 
+def _label_payload(file_path: Path, model_type: str, lines: list[str]) -> dict:
+    """Structure JSON payload based on the model's objective."""
+    if model_type == "nima":
+        return {"filename": f"{file_path.stem}.jpg", "nima_scores": parse_nima_line(lines[0])}
+    # retinaface
+    return {"filename": f"{file_path.stem}.jpg", **parse_retinaface_lines(lines)}
+
+
+def _convert_file(file_path: Path, model_type: str, dest_json_dir: Path) -> bool:
+    """Write the JSON label for one .txt label; False when it is empty or unreadable."""
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        if not lines:
+            return False
+
+        json_data = _label_payload(file_path, model_type, lines)
+
+        # Write output JSON
+        output_file = dest_json_dir / f"{file_path.stem}.json"
+        with open(output_file, "w", encoding="utf-8") as jf:
+            json.dump(json_data, jf, indent=2)
+        return True
+
+    except (OSError, ValueError, IndexError) as e:
+        logger.warning("Error converting label file %s: %s", file_path, e)
+        print(f"  Error processing {file_path.name}: {e}")
+        return False
+
+
+def _convert_split(model_path: Path, model_type: str, split: str) -> None:
+    src_label_dir = model_path / "labels" / split
+    dest_json_dir = model_path / "json-labels" / split
+
+    if not src_label_dir.exists():
+        print(f"  Warning: Directory not found, skipping split: {src_label_dir}")
+        return
+
+    dest_json_dir.mkdir(parents=True, exist_ok=True)
+    txt_files = list(src_label_dir.glob("*.txt"))
+
+    if not txt_files:
+        print(f"  Info: No .txt files in {split} split.")
+        return
+
+    print(f"  Found {len(txt_files)} files in '{split}'. Converting...")
+    converted_count = sum(
+        1 for file_path in txt_files if _convert_file(file_path, model_type, dest_json_dir)
+    )
+    print(f"  Finished '{split}': Converted {converted_count} files.")
+
+
 def convert_labels():
     # Base configuration based on your paths
+    """Write a JSON label file next to every .txt label of the configured manifolds."""
     base_dir = Path(__file__).resolve().parent.parent.parent / "LemGendaryDatasets"
 
     models = {
@@ -51,50 +110,7 @@ def convert_labels():
         print(f"\nProcessing model: {model_name} ({model_type})")
 
         for split in splits:
-            src_label_dir = model_path / "labels" / split
-            dest_json_dir = model_path / "json-labels" / split
-
-            if not src_label_dir.exists():
-                print(f"  Warning: Directory not found, skipping split: {src_label_dir}")
-                continue
-
-            dest_json_dir.mkdir(parents=True, exist_ok=True)
-            txt_files = list(src_label_dir.glob("*.txt"))
-
-            if not txt_files:
-                print(f"  Info: No .txt files in {split} split.")
-                continue
-
-            print(f"  Found {len(txt_files)} files in '{split}'. Converting...")
-            converted_count = 0
-
-            for file_path in txt_files:
-                try:
-                    with open(file_path, encoding="utf-8") as f:
-                        lines = f.readlines()
-
-                    if not lines:
-                        continue
-
-                    # Structure JSON payload based on the model's objective
-                    if model_type == "nima":
-                        parsed_data = parse_nima_line(lines[0])
-                        json_data = {"filename": f"{file_path.stem}.jpg", "nima_scores": parsed_data}
-                    else:  # retinaface
-                        parsed_data = parse_retinaface_lines(lines)
-                        json_data = {"filename": f"{file_path.stem}.jpg", **parsed_data}
-
-                    # Write output JSON
-                    output_file = dest_json_dir / f"{file_path.stem}.json"
-                    with open(output_file, "w", encoding="utf-8") as jf:
-                        json.dump(json_data, jf, indent=2)
-
-                    converted_count += 1
-
-                except Exception as e:
-                    print(f"  Error processing {file_path.name}: {e}")
-
-            print(f"  Finished '{split}': Converted {converted_count} files.")
+            _convert_split(model_path, model_type, split)
 
 
 if __name__ == "__main__":

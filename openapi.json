@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.5.0"
+    "version": "16.9.67"
   },
   "paths": {
     "/api/health": {
@@ -14,6 +14,26 @@
         "summary": "Check Health",
         "description": "Basic health and liveness endpoint.",
         "operationId": "check_health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check Health",
+        "description": "Basic health and liveness endpoint.",
+        "operationId": "check_health_api_health_head",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -177,15 +197,49 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
+        }
+      }
+    },
+    "/api/gui/custom-compile": {
+      "post": {
+        "tags": [
+          "Desktop GUI"
+        ],
+        "summary": "Custom Compile",
+        "description": "Compile a new custom dataset manifold from a list of multi-source repositories.\n\nThe preset is validated and the registry entry is written (atomically,\nnever overwriting an existing key) before any job is created; if either\nstep fails, no job is started.",
+        "operationId": "custom_compile_api_gui_custom_compile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomCompileRequest"
+              }
+            }
           },
-          {
-            "HTTPBearer": []
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        ]
+        }
       }
     },
     "/api/datasets": {
@@ -309,6 +363,490 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Evaluate Hardlinks Gate Api Gates Hardlinks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/status": {
+      "get": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Get Kaggle Status",
+        "description": "Inspect Kaggle authentication and local credential files.",
+        "operationId": "get_kaggle_status_api_kaggle_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Kaggle Status Api Kaggle Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/registry-datasets": {
+      "get": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "List Registry Kaggle Datasets",
+        "description": "List the production manifolds in unified_data.yaml that can move through Kaggle.",
+        "operationId": "list_registry_kaggle_datasets_api_kaggle_registry_datasets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KaggleDatasetRegistryItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Registry Kaggle Datasets Api Kaggle Registry Datasets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/download": {
+      "post": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Download Kaggle Dataset",
+        "description": "Download a manifold or custom dataset directly from Kaggle.",
+        "operationId": "download_kaggle_dataset_api_kaggle_download_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KaggleDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/upload": {
+      "post": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Upload Kaggle Dataset",
+        "description": "Zip and push a local compiled manifold to Kaggle.",
+        "operationId": "upload_kaggle_dataset_api_kaggle_upload_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KaggleUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/sync": {
+      "post": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Trigger Kaggle Sync",
+        "description": "Start a Kaggle push (sync) or pull (get) job through SyncService.sync_manifold.",
+        "operationId": "trigger_kaggle_sync_api_kaggle_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KaggleSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kaggle/update-metadata": {
+      "post": {
+        "tags": [
+          "Kaggle"
+        ],
+        "summary": "Update Kaggle Metadata",
+        "description": "Push Kaggle metadata (title, description, license, columns) without re-uploading data.",
+        "operationId": "update_kaggle_metadata_api_kaggle_update_metadata_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KaggleMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/modernize/queue": {
+      "get": {
+        "tags": [
+          "Modernization Hub"
+        ],
+        "summary": "Get Modernization Queue",
+        "description": "Scan and retrieve real-time modernization status queue across all manifolds.",
+        "operationId": "get_modernization_queue_api_modernize_queue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QueueItemResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Modernization Queue Api Modernize Queue Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/modernize/run": {
+      "post": {
+        "tags": [
+          "Modernization Hub"
+        ],
+        "summary": "Run Modernization",
+        "description": "Launch asynchronous modernization queue execution.",
+        "operationId": "run_modernization_api_modernize_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModernizeRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/modernize/reduce": {
+      "post": {
+        "tags": [
+          "Modernization Hub"
+        ],
+        "summary": "Run Reduce",
+        "description": "Launch asynchronous, non-interactive manifold scale reduction.",
+        "operationId": "run_reduce_api_modernize_reduce_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManifoldReduceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/modernize/regenerate-manifolds": {
+      "post": {
+        "tags": [
+          "Modernization Hub"
+        ],
+        "summary": "Regenerate Manifolds Documentation",
+        "description": "Regenerate authoritative manifolds.md matrix from on-disk status and registries.",
+        "operationId": "regenerate_manifolds_documentation_api_modernize_regenerate_manifolds_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Regenerate Manifolds Documentation Api Modernize Regenerate Manifolds Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm/compile": {
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Compile Llm Dataset",
+        "description": "Compile an LLM instruction manifold using BaseLLMCompiler and unified_data.yaml.\n\nThe route is ``async`` so the job runner receives the server's running\nevent loop (its log broadcasts are scheduled on it). The synchronous\ncompile path runs in a worker thread so it never blocks that loop.",
+        "operationId": "compile_llm_dataset_api_llm_compile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMCompileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Compile Llm Dataset Api Llm Compile Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm/validate": {
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Validate Llm Corpus",
+        "description": "Run QualityValidator on an LLM dataset file inside the dataset root or on inline records.",
+        "operationId": "validate_llm_corpus_api_llm_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Validate Llm Corpus Api Llm Validate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm/test-suite": {
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Run Dataset Tests",
+        "description": "Execute dataset test suite in-process and return structured test outcome.",
+        "operationId": "run_dataset_tests_api_llm_test_suite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetTestSuiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Run Dataset Tests Api Llm Test Suite Post"
                 }
               }
             }
@@ -666,63 +1204,13 @@
           "Jobs"
         ],
         "summary": "Submit Degrade Job",
-        "description": "Submit a synthetic degradation manifold derivation job.",
+        "description": "Start a degradation job that synthesises a paired manifold from a clean source.",
         "operationId": "submit_degrade_job_api_jobs_degrade_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DegradeJobRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/jobs/generic": {
-      "post": {
-        "tags": [
-          "Jobs"
-        ],
-        "summary": "Submit Generic Job",
-        "description": "Submit a generic job command.",
-        "operationId": "submit_generic_job_api_jobs_generic_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenericJobRequest"
               }
             }
           },
@@ -813,88 +1301,6 @@
             }
           }
         }
-      }
-    },
-    "/api/kaggle/status": {
-      "get": {
-        "tags": [
-          "Kaggle"
-        ],
-        "summary": "Get Kaggle Status",
-        "description": "Inspect Kaggle authentication and local credential files.",
-        "operationId": "get_kaggle_status_api_kaggle_status_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Get Kaggle Status Api Kaggle Status Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/kaggle/sync": {
-      "post": {
-        "tags": [
-          "Kaggle"
-        ],
-        "summary": "Trigger Kaggle Sync",
-        "description": "Queue a Kaggle dataset synchronization task.",
-        "operationId": "trigger_kaggle_sync_api_kaggle_sync_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KaggleSyncRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ]
       }
     },
     "/api/env/status": {
@@ -1061,7 +1467,8 @@
           "state",
           "created_at"
         ],
-        "title": "ActiveJobTelemetry"
+        "title": "ActiveJobTelemetry",
+        "description": "Progress telemetry for one running job."
       },
       "ActiveJobsResponse": {
         "properties": {
@@ -1082,7 +1489,8 @@
           "active_jobs",
           "count"
         ],
-        "title": "ActiveJobsResponse"
+        "title": "ActiveJobsResponse",
+        "description": "The running jobs with their count."
       },
       "CompileJobRequest": {
         "properties": {
@@ -1174,8 +1582,7 @@
               }
             ],
             "title": "Image Format",
-            "description": "Target image format (webp, jpeg, png, keep)",
-            "default": "webp"
+            "description": "Target image format (webp, jpeg, png, keep); unset uses the preset or config"
           },
           "image_quality": {
             "anyOf": [
@@ -1187,8 +1594,7 @@
               }
             ],
             "title": "Image Quality",
-            "description": "Target image quality (1-100)",
-            "default": 92
+            "description": "Target image quality (1-100); unset uses the preset or config"
           },
           "target_quality": {
             "anyOf": [
@@ -1200,8 +1606,7 @@
               }
             ],
             "title": "Target Quality",
-            "description": "Target quality for restoration ground truth",
-            "default": 95
+            "description": "Target quality for restoration ground truth; unset uses the preset or config"
           },
           "mask_format": {
             "anyOf": [
@@ -1213,8 +1618,7 @@
               }
             ],
             "title": "Mask Format",
-            "description": "Target mask format",
-            "default": "webp-lossless"
+            "description": "Target mask format; unset uses the preset or config"
           },
           "also_format": {
             "anyOf": [
@@ -1275,10 +1679,24 @@
             ],
             "title": "Mask Strategy",
             "description": "Segmentation mask strategy"
+          },
+          "shard_ext": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shard Ext",
+            "description": "WebDataset shard file extension without dot (default: 'data')",
+            "default": "data"
           }
         },
         "type": "object",
-        "title": "CompileJobRequest"
+        "title": "CompileJobRequest",
+        "description": "Request body for a dataset compile job."
       },
       "CompilerPresetModel": {
         "properties": {
@@ -1377,13 +1795,95 @@
           "image_format",
           "image_quality"
         ],
-        "title": "CompilerPresetModel"
+        "title": "CompilerPresetModel",
+        "description": "A compiler preset as exposed by the API."
+      },
+      "CustomCompileRequest": {
+        "properties": {
+          "custom_name": {
+            "type": "string",
+            "title": "Custom Name",
+            "description": "Unique dataset manifold name (e.g. CustomFaceEnhance)"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task",
+            "description": "Task type (restoration, segmentation, detection, quality, vision)",
+            "default": "vision"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset",
+            "description": "Compiler preset ID from presets.yaml; omitted means presets.yaml `default_preset`"
+          },
+          "canonical_format": {
+            "type": "string",
+            "title": "Canonical Format",
+            "description": "Target container format",
+            "default": "webdataset"
+          },
+          "shard_size": {
+            "type": "integer",
+            "title": "Shard Size",
+            "description": "Samples per shard container",
+            "default": 5000
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "List of source URLs or refs (kaggle://, hf://, gd://, gh://, or URLs)"
+          },
+          "purge_loose_images": {
+            "type": "boolean",
+            "title": "Purge Loose Images",
+            "description": "After a successful compile, purge loose images of manifolds packed into a container",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "custom_name"
+        ],
+        "title": "CustomCompileRequest",
+        "description": "Request body for compiling a custom multi-source dataset."
       },
       "DatasetDetailStats": {
         "properties": {
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
           },
           "path": {
             "type": "string",
@@ -1405,8 +1905,42 @@
             "type": "number",
             "title": "Size Gb"
           },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format",
+            "default": "directory"
+          },
+          "canonical_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Format",
+            "default": "webdataset"
+          },
           "formats": {
             "$ref": "#/components/schemas/DatasetFormatStats"
+          },
+          "shards_count": {
+            "type": "integer",
+            "title": "Shards Count",
+            "default": 0
+          },
+          "is_compiled": {
+            "type": "boolean",
+            "title": "Is Compiled",
+            "default": false
           },
           "has_hardlinks": {
             "type": "boolean",
@@ -1415,6 +1949,25 @@
           "hardlink_ratio": {
             "type": "number",
             "title": "Hardlink Ratio"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetSourceInfo"
+            },
+            "type": "array",
+            "title": "Sources",
+            "default": []
+          },
+          "kaggle_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kaggle Ref"
           }
         },
         "type": "object",
@@ -1429,7 +1982,8 @@
           "has_hardlinks",
           "hardlink_ratio"
         ],
-        "title": "DatasetDetailStats"
+        "title": "DatasetDetailStats",
+        "description": "Detailed statistics for one compiled dataset."
       },
       "DatasetFormatStats": {
         "properties": {
@@ -1460,7 +2014,8 @@
           }
         },
         "type": "object",
-        "title": "DatasetFormatStats"
+        "title": "DatasetFormatStats",
+        "description": "Per-format file counts for a dataset."
       },
       "DatasetInfoResponse": {
         "properties": {
@@ -1511,7 +2066,8 @@
           "has_hardlinks",
           "hardlink_ratio"
         ],
-        "title": "DatasetInfoResponse"
+        "title": "DatasetInfoResponse",
+        "description": "Summary of one compiled dataset on disk."
       },
       "DatasetListResponse": {
         "properties": {
@@ -1532,7 +2088,56 @@
           "datasets",
           "total"
         ],
-        "title": "DatasetListResponse"
+        "title": "DatasetListResponse",
+        "description": "A list of compiled datasets with their total count."
+      },
+      "DatasetSourceInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type",
+            "default": "SOURCE"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DatasetSourceInfo",
+        "description": "One upstream source a dataset was compiled from."
       },
       "DatasetStatsListResponse": {
         "properties": {
@@ -1563,7 +2168,21 @@
           "total_size_bytes",
           "total_size_gb"
         ],
-        "title": "DatasetStatsListResponse"
+        "title": "DatasetStatsListResponse",
+        "description": "Detailed statistics for all compiled datasets with size totals."
+      },
+      "DatasetTestSuiteRequest": {
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "title": "Pattern",
+            "description": "Test discovery file pattern",
+            "default": "test_*.py"
+          }
+        },
+        "type": "object",
+        "title": "DatasetTestSuiteRequest",
+        "description": "Payload for triggering in-process test discovery sweep."
       },
       "DegradeJobRequest": {
         "properties": {
@@ -1643,7 +2262,8 @@
           "source",
           "output"
         ],
-        "title": "DegradeJobRequest"
+        "title": "DegradeJobRequest",
+        "description": "Request body for a degradation (synthetic pair) job."
       },
       "EnvPassthroughResponse": {
         "properties": {
@@ -1666,7 +2286,8 @@
           "returncode",
           "output"
         ],
-        "title": "EnvPassthroughResponse"
+        "title": "EnvPassthroughResponse",
+        "description": "Result of a command passed through to the environment manager."
       },
       "FullHealthResponse": {
         "properties": {
@@ -1703,35 +2324,8 @@
           "active_jobs",
           "hardware"
         ],
-        "title": "FullHealthResponse"
-      },
-      "GenericJobRequest": {
-        "properties": {
-          "job_type": {
-            "$ref": "#/components/schemas/JobType",
-            "description": "Type of job to execute",
-            "default": "custom"
-          },
-          "command": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Command",
-            "description": "Command and argument list"
-          },
-          "parameters": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Parameters",
-            "description": "Metadata dictionary"
-          }
-        },
-        "type": "object",
-        "required": [
-          "command"
-        ],
-        "title": "GenericJobRequest"
+        "title": "FullHealthResponse",
+        "description": "Liveness response with host hardware details."
       },
       "GuiStateResponse": {
         "properties": {
@@ -1786,7 +2380,8 @@
           "hardware",
           "presets"
         ],
-        "title": "GuiStateResponse"
+        "title": "GuiStateResponse",
+        "description": "Dashboard summary for the GUI."
       },
       "HTTPValidationError": {
         "properties": {
@@ -1837,7 +2432,8 @@
           "device_name",
           "active_workers"
         ],
-        "title": "HardwareInfo"
+        "title": "HardwareInfo",
+        "description": "Host CPU, memory and CUDA details."
       },
       "HealthResponse": {
         "properties": {
@@ -1870,7 +2466,8 @@
           "uptime_seconds",
           "active_jobs"
         ],
-        "title": "HealthResponse"
+        "title": "HealthResponse",
+        "description": "Basic liveness response."
       },
       "JobListResponse": {
         "properties": {
@@ -1891,7 +2488,8 @@
           "jobs",
           "total"
         ],
-        "title": "JobListResponse"
+        "title": "JobListResponse",
+        "description": "A list of jobs with their total count."
       },
       "JobResponse": {
         "properties": {
@@ -1981,7 +2579,8 @@
           "created_at",
           "log_file"
         ],
-        "title": "JobResponse"
+        "title": "JobResponse",
+        "description": "A background job and its current state."
       },
       "JobState": {
         "type": "string",
@@ -1993,7 +2592,8 @@
           "interrupted",
           "cancelled"
         ],
-        "title": "JobState"
+        "title": "JobState",
+        "description": "Lifecycle state of a background job."
       },
       "JobType": {
         "type": "string",
@@ -2007,9 +2607,137 @@
           "mask",
           "audit",
           "sync",
-          "custom"
+          "custom",
+          "llm"
         ],
-        "title": "JobType"
+        "title": "JobType",
+        "description": "Category of work a background job performs."
+      },
+      "KaggleDatasetRegistryItem": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "modernized_folder": {
+            "type": "string",
+            "title": "Modernized Folder"
+          },
+          "kaggle_ref": {
+            "type": "string",
+            "title": "Kaggle Ref"
+          },
+          "clean_repo_id": {
+            "type": "string",
+            "title": "Clean Repo Id"
+          },
+          "is_local_present": {
+            "type": "boolean",
+            "title": "Is Local Present",
+            "default": false
+          },
+          "canonical_format": {
+            "type": "string",
+            "title": "Canonical Format",
+            "default": "webdataset"
+          },
+          "sample_count": {
+            "type": "integer",
+            "title": "Sample Count",
+            "default": 0
+          },
+          "size_gb": {
+            "type": "number",
+            "title": "Size Gb",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "name",
+          "modernized_folder",
+          "kaggle_ref",
+          "clean_repo_id"
+        ],
+        "title": "KaggleDatasetRegistryItem",
+        "description": "A Kaggle-published dataset from the unified registry."
+      },
+      "KaggleDownloadRequest": {
+        "properties": {
+          "kaggle_ref": {
+            "type": "string",
+            "title": "Kaggle Ref",
+            "description": "Kaggle dataset handle, kaggle:// URI, or URL"
+          },
+          "target_folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Folder",
+            "description": "Destination folder name under datasets root"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Force overwrite existing folder",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kaggle_ref"
+        ],
+        "title": "KaggleDownloadRequest",
+        "description": "Request body for downloading a Kaggle dataset."
+      },
+      "KaggleMetadataRequest": {
+        "properties": {
+          "manifold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifold"
+          },
+          "kaggle_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kaggle Ref"
+          },
+          "all_datasets": {
+            "type": "boolean",
+            "title": "All Datasets",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "KaggleMetadataRequest",
+        "description": "Request body for a Kaggle metadata update."
       },
       "KaggleSyncRequest": {
         "properties": {
@@ -2045,7 +2773,282 @@
           }
         },
         "type": "object",
-        "title": "KaggleSyncRequest"
+        "title": "KaggleSyncRequest",
+        "description": "Request body for a Kaggle push or pull of one manifold."
+      },
+      "KaggleUploadRequest": {
+        "properties": {
+          "manifold": {
+            "type": "string",
+            "title": "Manifold",
+            "description": "Local manifold folder name or registry key"
+          },
+          "kaggle_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kaggle Ref",
+            "description": "Optional target Kaggle dataset handle"
+          },
+          "no_wait": {
+            "type": "boolean",
+            "title": "No Wait",
+            "description": "Do not wait for server-side extraction verification",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "manifold"
+        ],
+        "title": "KaggleUploadRequest",
+        "description": "Request body for uploading a manifold to Kaggle."
+      },
+      "LLMCompileRequest": {
+        "properties": {
+          "dataset_key": {
+            "type": "string",
+            "title": "Dataset Key",
+            "description": "Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)"
+          },
+          "target_samples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Samples",
+            "description": "Override target sample count"
+          },
+          "async_mode": {
+            "type": "boolean",
+            "title": "Async Mode",
+            "description": "Run compilation as a background worker job",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset_key"
+        ],
+        "title": "LLMCompileRequest",
+        "description": "Request payload for compiling an LLM instruction dataset."
+      },
+      "LLMValidationRequest": {
+        "properties": {
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Path",
+            "description": "Path to a .jsonl file inside the dataset root, preferably relative to it (e.g. ai_helper_lemgend/data/ai_helper_lemgend_train.jsonl). Absolute paths are accepted only when they resolve inside the dataset root."
+          },
+          "records": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records",
+            "description": "Inline list of records to validate"
+          }
+        },
+        "type": "object",
+        "title": "LLMValidationRequest",
+        "description": "Request payload for validating an LLM dataset JSONL file."
+      },
+      "ManifoldReduceRequest": {
+        "properties": {
+          "dataset_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Key",
+            "description": "Target manifold folder or dataset key to reduce"
+          },
+          "manifold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifold",
+            "description": "Alias of `dataset_key` (manifold folder name)"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale",
+            "description": "Sampling scale: a fraction in (0, 1] keeps that share of samples (0.25 = 25%); a value above 1 is a downsampling factor (2 keeps 1/2).",
+            "default": 2
+          },
+          "workers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workers",
+            "description": "Worker threads count (not used by the reduce tool)",
+            "default": 8
+          },
+          "max_gb": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Gb",
+            "description": "Optional size cap in GB for the reduced manifold"
+          },
+          "suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix",
+            "description": "Suffix for the reduced manifold folder (default: Reduced)"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "description": "Report the plan only: nothing is written",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ManifoldReduceRequest",
+        "description": "Request body for creating a reduced manifold variant."
+      },
+      "ModernizeRunRequest": {
+        "properties": {
+          "datasets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datasets",
+            "description": "Specific dataset key(s) to modernize. Omit (with `dataset`) for full batch."
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset",
+            "description": "Single dataset key or folder to modernize (merged with `datasets`)."
+          },
+          "workers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workers",
+            "description": "Transcoding worker threads",
+            "default": 12
+          },
+          "mds_shard_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mds Shard Mb",
+            "description": "MDS shard size in MB",
+            "default": 512
+          },
+          "purge_loose": {
+            "type": "boolean",
+            "title": "Purge Loose",
+            "description": "Delete source material (zip, legacy folder, loose images) after a successful conversion. False keeps every source.",
+            "default": false
+          },
+          "push_kaggle": {
+            "type": "boolean",
+            "title": "Push Kaggle",
+            "description": "Push modernized package to Kaggle automatically",
+            "default": false
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "description": "Report the plan only: nothing is converted, deleted, written or uploaded",
+            "default": false
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Re-convert manifolds that are already containerized",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ModernizeRunRequest",
+        "description": "Request body for a modernization run."
       },
       "PresetListResponse": {
         "properties": {
@@ -2066,7 +3069,82 @@
           "presets",
           "total"
         ],
-        "title": "PresetListResponse"
+        "title": "PresetListResponse",
+        "description": "All compiler presets keyed by name."
+      },
+      "QueueItemResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "canonical_format": {
+            "type": "string",
+            "title": "Canonical Format"
+          },
+          "modernized_folder": {
+            "type": "string",
+            "title": "Modernized Folder"
+          },
+          "kaggle_ref": {
+            "type": "string",
+            "title": "Kaggle Ref"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "subtitle": {
+            "type": "string",
+            "title": "Subtitle"
+          },
+          "is_containerized": {
+            "type": "boolean",
+            "title": "Is Containerized"
+          },
+          "has_loose_files": {
+            "type": "boolean",
+            "title": "Has Loose Files"
+          },
+          "container_bytes": {
+            "type": "integer",
+            "title": "Container Bytes"
+          },
+          "container_gb": {
+            "type": "number",
+            "title": "Container Gb"
+          },
+          "status_label": {
+            "type": "string",
+            "title": "Status Label"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "canonical_format",
+          "modernized_folder",
+          "kaggle_ref",
+          "title",
+          "subtitle",
+          "is_containerized",
+          "has_loose_files",
+          "container_bytes",
+          "container_gb",
+          "status_label",
+          "source_label"
+        ],
+        "title": "QueueItemResponse",
+        "description": "One dataset in the modernization queue."
       },
       "QuickCompileRequest": {
         "properties": {
@@ -2110,7 +3188,8 @@
         "required": [
           "model"
         ],
-        "title": "QuickCompileRequest"
+        "title": "QuickCompileRequest",
+        "description": "Request body for compiling a dataset with a preset."
       },
       "ValidationError": {
         "properties": {

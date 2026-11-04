@@ -9,13 +9,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import sys
-
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
 
 from core.docs.context import ManifoldContext, resolve_manifold_context
+from core.docs.generators.common import manifold_parser, run_manifold_cli
 
 
 def resolve_classes_list(manifold_name: str, task: str) -> list[str]:
@@ -63,37 +59,19 @@ def generate_classes_txt(
     return target_file
 
 
+def _cli_process(manifold_dir: Path, _args: argparse.Namespace) -> str:
+    """Generate classes.txt for one manifold and describe the result."""
+    out = generate_classes_txt(manifold_dir)
+    line_count = len(out.read_text(encoding="utf-8").strip().splitlines())
+    return f"{out.name} ({line_count} classes)"
+
+
 def main() -> None:
     """CLI entrypoint for classes.txt generation."""
-    parser = argparse.ArgumentParser(description="Generate classes.txt for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Generate classes.txt for all manifolds")
-    args = parser.parse_args()
-
-    cand = _MODULE_ROOT.parent / "LemGendaryDatasets"
-    datasets_root = cand if cand.exists() else _MODULE_ROOT / "LemGendaryDatasets"
-
-    if args.all:
-        if not datasets_root.exists():
-            print(f"[ERROR] Datasets directory not found at {datasets_root}")
-            sys.exit(1)
-        count = 0
-        for m_dir in sorted(datasets_root.iterdir()):
-            if m_dir.is_dir() and not m_dir.name.startswith("."):
-                out = generate_classes_txt(m_dir)
-                line_count = len(out.read_text(encoding="utf-8").strip().splitlines())
-                print(f"[OK] {m_dir.name} -> {out.name} ({line_count} classes)")
-                count += 1
-        print(f"Generated classes.txt for {count} manifolds.")
-    elif args.manifold:
-        p = Path(args.manifold)
-        if not p.is_dir() and (datasets_root / args.manifold).is_dir():
-            p = datasets_root / args.manifold
-        out = generate_classes_txt(p)
-        line_count = len(out.read_text(encoding="utf-8").strip().splitlines())
-        print(f"[OK] {p.name} -> {out.name} ({line_count} classes)")
-    else:
-        parser.print_help()
+    parser = manifold_parser(
+        "Generate classes.txt for dataset manifolds", "Generate classes.txt for all manifolds"
+    )
+    run_manifold_cli(parser, _cli_process, "Generated classes.txt")
 
 
 if __name__ == "__main__":

@@ -20,29 +20,37 @@ unaffected. The registry's `img_format` column records the actual byte
 format.
 
 Usage:
-    python migrate_manifold_image_format.py --manifold <path>
-    python migrate_manifold_image_format.py --manifold <path> --dry-run
+    python -m tools.migrate_manifold_image_format --manifold <path>
+    python -m tools.migrate_manifold_image_format --manifold <path> --dry-run
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
 import sqlite3
 import sys
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator, Literal
+from typing import Literal
 
 from PIL import Image
-
-_ROOT = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "tools" else Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 from core.config_schema import ImageFormatPolicy
 from formats.transcode import ImageTranscoder
 
+logger = logging.getLogger(__name__)
 
 _IMAGE_EXTS: set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+
+# ImageFormatPolicy field -> argparse destination of the CLI flag that sets it.
+_POLICY_ARGS: tuple[tuple[str, str], ...] = (
+    ("format", "image_format"),
+    ("quality", "image_quality"),
+    ("target_quality", "target_quality"),
+    ("mask_format", "mask_format"),
+)
 
 # Transcode kind, matching ImageTranscoder.encode()'s Literal parameter.
 _KindLiteral = Literal["image", "target", "mask"]
@@ -59,7 +67,8 @@ def _iter_manifold_images(manifold: Path) -> Iterator[Path]:
                 for p in d.iterdir():
                     if p.is_file() and p.suffix.lower() in _IMAGE_EXTS:
                         yield p
-            except OSError:
+            except OSError as exc:
+                logger.warning("Could not list manifold directory %s: %s", d, exc)
                 continue
 
 
@@ -73,6 +82,7 @@ def _kind_from_path(p: Path, root: Path) -> _KindLiteral:
     try:
         rel = p.relative_to(root)
     except ValueError:
+        logger.debug("Path %s is outside manifold root %s; treating as image", p, root)
         return "image"
     top = rel.parts[0].lower() if rel.parts else "images"
     if top == "masks":
@@ -92,7 +102,8 @@ def _unique_by_inode(paths: Iterable[Path]) -> Iterator[Path]:
     for p in paths:
         try:
             st = p.stat()
-        except OSError:
+        except OSError as exc:
+            logger.warning("Could not stat %s, skipping: %s", p, exc)
             continue
         key = (st.st_dev, st.st_ino)
         if key in seen:
@@ -142,6 +153,62 @@ def _update_registry_sizes(
         print(f"[WARN] Registry update failed: {e}")
 
 
+@dataclass
+class _MigrationTally:
+    """Running totals of an in-place transcode pass."""
+
+    total_old: int = 0
+    total_new: int = 0
+    processed: int = 0
+    failed: int = 0
+    registry_updates: list[tuple[int, str, str]] = field(default_factory=list)
+
+
+def _registry_format(transcoder: ImageTranscoder, kind: _KindLiteral) -> str:
+    """Return the registry `img_format` value written for a file of `kind`."""
+    fmt = transcoder.policy.mask_format if kind == "mask" else transcoder.policy.format
+    return "webp" if fmt == "webp-lossless" else fmt
+
+
+def _transcode_all(
+    manifold: Path, unique_paths: list[Path], transcoder: ImageTranscoder
+) -> _MigrationTally:
+    """Transcode every path in place, collecting sizes and registry updates."""
+    tally = _MigrationTally()
+    for path in unique_paths:
+        kind = _kind_from_path(path, manifold)
+        try:
+            old, new = _transcode_in_place(path, transcoder, kind=kind)
+            tally.total_old += old
+            tally.total_new += new
+            tally.processed += 1
+            tally.registry_updates.append((new, _registry_format(transcoder, kind), path.stem))
+            if tally.processed % 500 == 0:
+                print(f"  [{tally.processed}/{len(unique_paths)}] processed...")
+        except (OSError, ValueError, RuntimeError) as e:
+            tally.failed += 1
+            logger.warning("Transcode failed for %s: %s", path, e)
+            print(f"  [FAIL] {path.name}: {e}")
+    return tally
+
+
+def _report_tally(tally: _MigrationTally, db_path: Path) -> None:
+    """Print the size summary and write the registry updates."""
+    print()
+    print(f"[DONE] processed: {tally.processed}  failed: {tally.failed}")
+    if tally.total_old > 0:
+        saved_pct = (1 - tally.total_new / tally.total_old) * 100
+        print(
+            f"[DONE] old: {tally.total_old / 1024**3:.2f} GB  "
+            f"new: {tally.total_new / 1024**3:.2f} GB  "
+            f"({saved_pct:.1f}% saved)"
+        )
+
+    if tally.registry_updates:
+        _update_registry_sizes(db_path, tally.registry_updates)
+        print(f"[DONE] registry updated for {len(tally.registry_updates)} rows")
+
+
 def migrate_manifold(
     manifold: Path,
     policy: ImageFormatPolicy,
@@ -169,53 +236,13 @@ def migrate_manifold(
         print("[DRY-RUN] Not writing any files.")
         return 0
 
-    db_path = manifold / "manifold_registry.db"
-    registry_updates: list[tuple[int, str, str]] = []
-
-    total_old = 0
-    total_new = 0
-    processed = 0
-    failed = 0
-
-    for path in unique_paths:
-        kind = _kind_from_path(path, manifold)
-        try:
-            old, new = _transcode_in_place(path, transcoder, kind=kind)
-            total_old += old
-            total_new += new
-            processed += 1
-            fmt = (
-                transcoder.policy.mask_format
-                if kind == "mask"
-                else transcoder.policy.format
-            )
-            if fmt == "webp-lossless":
-                fmt = "webp"
-            registry_updates.append((new, fmt, path.stem))
-            if processed % 500 == 0:
-                print(f"  [{processed}/{len(unique_paths)}] processed...")
-        except Exception as e:
-            failed += 1
-            print(f"  [FAIL] {path.name}: {e}")
-
-    print()
-    print(f"[DONE] processed: {processed}  failed: {failed}")
-    if total_old > 0:
-        saved_pct = (1 - total_new / total_old) * 100
-        print(
-            f"[DONE] old: {total_old / 1024**3:.2f} GB  "
-            f"new: {total_new / 1024**3:.2f} GB  "
-            f"({saved_pct:.1f}% saved)"
-        )
-
-    if registry_updates:
-        _update_registry_sizes(db_path, registry_updates)
-        print(f"[DONE] registry updated for {len(registry_updates)} rows")
-
+    tally = _transcode_all(manifold, unique_paths, transcoder)
+    _report_tally(tally, manifold / "manifold_registry.db")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for the image-format migration."""
     parser = argparse.ArgumentParser(
         description="Retroactive image-format migration"
     )
@@ -238,24 +265,25 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
+    """Transcode a manifold's images to the requested format; returns the exit code."""
     manifold = Path(args.manifold)
     if not manifold.exists():
         print(f"[ERROR] Manifold not found: {manifold}")
         return 1
 
-    policy = ImageFormatPolicy(
-        format=args.image_format,
-        quality=args.image_quality,
-        target_quality=args.target_quality,
-        mask_format=args.mask_format,
+    return migrate_manifold(manifold, image_policy_from_args(args), args.dry_run)
+
+
+def image_policy_from_args(args: argparse.Namespace) -> ImageFormatPolicy:
+    """Build an ImageFormatPolicy from the --image-format/--*-quality/--mask-format args."""
+    return ImageFormatPolicy(
+        **{field_name: getattr(args, arg_name) for field_name, arg_name in _POLICY_ARGS}
     )
-    return migrate_manifold(manifold, policy, args.dry_run)
 
 
 def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
-    return run(args)
+    """Parse the CLI arguments and run the image-format migration."""
+    return run(build_parser().parse_args())
 
 
 if __name__ == "__main__":

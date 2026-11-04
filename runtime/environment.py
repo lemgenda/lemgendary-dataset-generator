@@ -22,15 +22,18 @@ effect beyond the first invocation.
 
 from __future__ import annotations
 
+import functools
+import importlib
 import logging
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
+
+import yaml
+from yaml import YAMLError
 
 logger = logging.getLogger(__name__)
-
-_BOOTSTRAPPED = False
-
 
 # Fallback values mirror lem-gendary-env-manager/requirements/runtime_env.yaml.
 # When the YAML is present, its values take precedence and this dict is
@@ -72,26 +75,18 @@ def _find_runtime_env_yaml() -> Path | None:
 def _load_env_from_yaml(yaml_path: Path) -> dict[str, str] | None:
     """Parse runtime_env.yaml into a flat name->value dict.
 
-    Returns None on any parse failure (caller falls back to defaults).
-
-    Imports yaml and YAMLError together — if only yaml were imported and
-    a sibling except clause referenced YAMLError, Pyrefly would (correctly)
-    flag an unbound-name error when the import fails.
+    Returns None on any read or parse failure (caller falls back to defaults).
     """
     try:
         raw = yaml_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-
-    try:
-        import yaml
-        from yaml import YAMLError
-    except ImportError:
+    except OSError as exc:
+        logger.debug("runtime env YAML %s not readable; using defaults: %s", yaml_path, exc)
         return None
 
     try:
         data = yaml.safe_load(raw) or {}
-    except YAMLError:
+    except YAMLError as exc:
+        logger.warning("Malformed runtime env YAML %s; using defaults: %s", yaml_path, exc)
         return None
 
     result: dict[str, str] = {}
@@ -127,6 +122,30 @@ def _apply_stdio_reconfigure() -> None:
         stderr_reconfigure(encoding="utf-8")
 
 
+# torch.cuda's private capability checks that reject the P100 (sm_60) build.
+_CUDA_CAPABILITY_CHECKS = ("_check_capability", "_check_cubins")
+
+
+def _drop_queued_capability_checks(cuda) -> None:
+    """Adapter over torch.cuda's private lazy-init queue (no public API exists).
+
+    Removes queued ``_check_capability`` / ``_check_cubins`` calls in place so
+    they never run when CUDA lazily initialises. The list object is mutated
+    rather than reassigned, so torch keeps the same reference.
+    """
+    queued = getattr(cuda, "_queued_calls", None)
+    if not isinstance(queued, list):
+        return
+    queued[:] = [
+        c for c in queued
+        if not (
+            isinstance(c, tuple)
+            and len(c) > 0
+            and getattr(c[0], "__name__", "") in _CUDA_CAPABILITY_CHECKS
+        )
+    ]
+
+
 def _apply_torch_patches() -> None:
     """Short-circuit torch.cuda capability checks for P100 compatibility.
 
@@ -135,37 +154,25 @@ def _apply_torch_patches() -> None:
     torch is not importable.
     """
     try:
-        import torch
-    except ImportError:
+        torch = _import_torch()
+    except ImportError as exc:
+        logger.debug("torch not importable; skipping CUDA patches: %s", exc)
         return
 
     cuda = getattr(torch, "cuda", None)
     if cuda is None:
         return
 
-    queued = getattr(cuda, "_queued_calls", None)
-    if isinstance(queued, list):
-        cuda._queued_calls = [
-            c for c in queued
-            if not (
-                isinstance(c, tuple)
-                and len(c) > 0
-                and getattr(c[0], "__name__", "") in ("_check_capability", "_check_cubins")
-            )
-        ]
+    _drop_queued_capability_checks(cuda)
 
-    if hasattr(cuda, "_check_capability"):
-        setattr(cuda, "_check_capability", lambda *a, **k: None)
-    if hasattr(cuda, "_check_cubins"):
-        setattr(cuda, "_check_cubins", lambda *a, **k: None)
+    for check_name in _CUDA_CAPABILITY_CHECKS:
+        if hasattr(cuda, check_name):
+            setattr(cuda, check_name, lambda *a, **k: None)
 
 
+@functools.cache
 def bootstrap_runtime() -> None:
-    """Apply all runtime environment mutations. Safe to call repeatedly."""
-    global _BOOTSTRAPPED
-    if _BOOTSTRAPPED:
-        return
-
+    """Apply all runtime environment mutations once; later calls are no-ops."""
     yaml_path = _find_runtime_env_yaml()
     if yaml_path is not None:
         env_vars = _load_env_from_yaml(yaml_path)
@@ -189,15 +196,30 @@ def bootstrap_runtime() -> None:
     _apply_stdio_reconfigure()
     _apply_torch_patches()
 
-    _BOOTSTRAPPED = True
+
+def _import_torch() -> ModuleType:
+    """Import torch. The only import site of torch in the compiler."""
+    return importlib.import_module("torch")
+
+
+def load_torch() -> ModuleType:
+    """Return the torch module, applying the runtime environment before its first import.
+
+    torch reads TORCH_CUDA_ARCH_LIST, CUDA_FORCE_PTX_JIT and
+    PYTORCH_CUDA_ALLOC_CONF when it loads, so every module that needs torch
+    gets it from here instead of importing it directly. Raises ImportError
+    if torch is not installed.
+    """
+    bootstrap_runtime()
+    return _import_torch()
 
 
 def get_device_info() -> str:
     """Return a human-readable description of the active compute device."""
     try:
-        import torch
+        torch = load_torch()
         if torch.cuda.is_available():
             return f"CUDA ({torch.cuda.get_device_name(0)})"
-    except (ImportError, Exception) as exc:
+    except (ImportError, OSError, RuntimeError, AssertionError) as exc:
         logger.debug("PyTorch device detection unavailable: %s", exc)
     return "CPU (No CUDA detected)"

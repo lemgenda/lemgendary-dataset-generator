@@ -11,19 +11,25 @@ from __future__ import annotations
 
 import io
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from PIL import Image
 
+from .base import DegradationFilter
 
-class JPEGCompression:
+
+@dataclass
+class JPEGCompression(DegradationFilter):
     """Simulates realistic lossy JPEG compression artifacts."""
 
     name = "jpeg_compression"
 
-    def __init__(self, quality: int = 40) -> None:
-        self.quality = max(5, min(95, int(quality)))
+    quality: int = 40
+
+    def __post_init__(self) -> None:
+        self.quality = max(5, min(95, int(self.quality)))
 
     def __call__(
         self,

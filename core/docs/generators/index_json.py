@@ -12,17 +12,99 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-import sys
 from typing import Any
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
-from core.docs.context import ManifoldContext, resolve_manifold_context
+from core.docs.context import ManifoldContext
+from core.docs.generators.common import (
+    ensure_context,
+    jsonl_split_files,
+    manifold_parser,
+    run_manifold_cli,
+)
 from core.docs.scanner import scan_forex_manifold
 
 logger = logging.getLogger(__name__)
+
+
+def _existing_index_is_valid(index_file: Path) -> bool:
+    """True when index.json already holds a non-empty list of samples."""
+    if not index_file.exists() or index_file.stat().st_size <= 2:
+        return False
+    try:
+        with open(index_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list) and len(data) > 0:
+            logger.info("Validated existing index.json (%d entries)", len(data))
+            return True
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Corrupted index.json at %s (%s); rebuilding...", index_file, exc)
+    return False
+
+
+def _instruction_hash(line_str: str, split: str, line_num: int) -> str:
+    """Hash the prompt of a JSONL record, or its position when it is not a JSON object."""
+    try:
+        record = json.loads(line_str)
+    except json.JSONDecodeError as exc:
+        logger.debug(
+            "Line %d of %s split is not JSON (%s); hashing its position",
+            line_num,
+            split,
+            exc,
+        )
+        record = None
+    if isinstance(record, dict):
+        prompt_text = str(record.get("prompt", record.get("instruction", "")))
+        return hashlib.sha256(prompt_text.encode()).hexdigest()[:16]
+    return hashlib.sha256(f"{split}_{line_num}".encode()).hexdigest()[:16]
+
+
+def _build_instruction_index(ctx: ManifoldContext) -> list[dict[str, Any]]:
+    """Build the sample index of an instruction (JSONL) manifold."""
+    train_file, val_file = jsonl_split_files(ctx)
+    prefix = "AIHelper" if ctx.task == "ai_helper" else ctx.slug.title().replace("_", "")
+    constructed_index: list[dict[str, Any]] = []
+    for split, filepath in [("train", train_file), ("val", val_file)]:
+        if not filepath.exists():
+            continue
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f):
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                constructed_index.append({
+                    "id": len(constructed_index),
+                    "name": f"{prefix}_{split}_{line_num:06d}",
+                    "source": "LemGendary-AI-Documentation",
+                    "task": ctx.task,
+                    "split": split,
+                    "hash": _instruction_hash(line_str, split, line_num),
+                    "nima_score": 1.0,
+                    "caption": None,
+                    "style_tag": None,
+                    "cluster_id": -1,
+                })
+    return constructed_index
+
+
+def _build_forex_index(ctx: ManifoldContext) -> list[dict[str, Any]]:
+    """Build the shard-level index of a Forex manifold."""
+    forex_data = scan_forex_manifold(ctx.manifold_path)
+    return [
+        {
+            "id": idx_counter,
+            "name": f"Forex_{entry['pair']}_{entry['timeframe']}m_{entry['year']}",
+            "source": "MetaTrader-5-Native-Cache",
+            "task": "forex",
+            "split": "train" if entry["year"] < 2025 else "val",
+            "hash": None,
+            "year": entry["year"],
+            "pair": entry["pair"],
+            "timeframe": entry["timeframe"],
+            "samples": entry["count"],
+        }
+        for idx_counter, entry in enumerate(forex_data.get("details", []))
+    ]
 
 
 def generate_index_json(
@@ -38,13 +120,8 @@ def generate_index_json(
     Returns:
         Path to the generated index.json file.
     """
-    if isinstance(context_or_path, ManifoldContext):
-        ctx = context_or_path
-    else:
-        ctx = resolve_manifold_context(Path(context_or_path), final_index=final_index)
-
-    target_dir = ctx.manifold_path
-    index_file = target_dir / "index.json"
+    ctx = ensure_context(context_or_path, final_index=final_index)
+    index_file = ctx.manifold_path / "index.json"
 
     # 1. If explicit final_index provided by compilation pipeline
     if final_index is not None:
@@ -53,81 +130,15 @@ def generate_index_json(
         return index_file
 
     # 2. If index.json already exists and is non-empty, validate
-    if index_file.exists() and index_file.stat().st_size > 2:
-        try:
-            with open(index_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list) and len(data) > 0:
-                logger.info("Validated existing index.json (%d entries)", len(data))
-                return index_file
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Corrupted index.json at %s (%s); rebuilding...", index_file, exc)
+    if _existing_index_is_valid(index_file):
+        return index_file
 
     # 3. Task-specific index reconstruction
     constructed_index: list[dict[str, Any]] = []
-
-    is_llm_task = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
-    if is_llm_task:
-        # Build index from JSONL instruction datasets
-        train_file_rel = ctx.unified_entry.get("train_file")
-        val_file_rel = ctx.unified_entry.get("val_file")
-        train_file = (target_dir / train_file_rel) if train_file_rel else (target_dir / "data" / f"{ctx.slug}_train.jsonl")
-        val_file = (target_dir / val_file_rel) if val_file_rel else (target_dir / "data" / f"{ctx.slug}_val.jsonl")
-        if not train_file.exists():
-            train_file = target_dir / "data" / "ai_helper_train.jsonl"
-            val_file = target_dir / "data" / "ai_helper_val.jsonl"
-        if not train_file.exists():
-            train_file = target_dir / "ai_helper_train.jsonl"
-            val_file = target_dir / "ai_helper_val.jsonl"
-        idx_counter = 0
-
-        prefix = "AIHelper" if ctx.task == "ai_helper" else ctx.slug.title().replace("_", "")
-        for split, filepath in [("train", train_file), ("val", val_file)]:
-            if filepath.exists():
-                with open(filepath, "r", encoding="utf-8") as f:
-                    for line_num, line in enumerate(f):
-                        line_str = line.strip()
-                        if not line_str:
-                            continue
-                        try:
-                            record = json.loads(line_str)
-                            prompt_text = str(record.get("prompt", record.get("instruction", "")))
-                            h = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:16]
-                        except Exception:
-                            h = hashlib.sha256(f"{split}_{line_num}".encode("utf-8")).hexdigest()[:16]
-
-                        constructed_index.append({
-                            "id": idx_counter,
-                            "name": f"{prefix}_{split}_{line_num:06d}",
-                            "source": "LemGendary-AI-Documentation",
-                            "task": ctx.task,
-                            "split": split,
-                            "hash": h,
-                            "nima_score": 1.0,
-                            "caption": None,
-                            "style_tag": None,
-                            "cluster_id": -1,
-                        })
-                        idx_counter += 1
-
+    if ctx.is_llm:
+        constructed_index = _build_instruction_index(ctx)
     elif ctx.task == "forex":
-        # Build shard-level index for Forex Parquet files
-        forex_data = scan_forex_manifold(target_dir)
-        idx_counter = 0
-        for entry in forex_data.get("details", []):
-            constructed_index.append({
-                "id": idx_counter,
-                "name": f"Forex_{entry['pair']}_{entry['timeframe']}m_{entry['year']}",
-                "source": "MetaTrader-5-Native-Cache",
-                "task": "forex",
-                "split": "train" if entry["year"] < 2025 else "val",
-                "hash": None,
-                "year": entry["year"],
-                "pair": entry["pair"],
-                "timeframe": entry["timeframe"],
-                "samples": entry["count"],
-            })
-            idx_counter += 1
+        constructed_index = _build_forex_index(ctx)
 
     if constructed_index:
         with open(index_file, "w", encoding="utf-8") as f:
@@ -136,37 +147,20 @@ def generate_index_json(
     return index_file
 
 
+def _cli_process(manifold_dir: Path, _args: argparse.Namespace) -> str:
+    """Generate or validate index.json for one manifold and describe the result."""
+    out = generate_index_json(manifold_dir)
+    sz = out.stat().st_size if out.exists() else 0
+    return f"{out.name} ({sz:,} bytes)"
+
+
 def main() -> None:
     """CLI entrypoint for index.json generation."""
-    parser = argparse.ArgumentParser(description="Generate/Validate index.json for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Process index.json for all manifolds")
-    args = parser.parse_args()
-
-    cand = _MODULE_ROOT.parent / "LemGendaryDatasets"
-    datasets_root = cand if cand.exists() else _MODULE_ROOT / "LemGendaryDatasets"
-
-    if args.all:
-        if not datasets_root.exists():
-            print(f"[ERROR] Datasets directory not found at {datasets_root}")
-            sys.exit(1)
-        count = 0
-        for m_dir in sorted(datasets_root.iterdir()):
-            if m_dir.is_dir() and not m_dir.name.startswith("."):
-                out = generate_index_json(m_dir)
-                sz = out.stat().st_size if out.exists() else 0
-                print(f"[OK] {m_dir.name} -> {out.name} ({sz:,} bytes)")
-                count += 1
-        print(f"Processed index.json for {count} manifolds.")
-    elif args.manifold:
-        p = Path(args.manifold)
-        if not p.is_dir() and (datasets_root / args.manifold).is_dir():
-            p = datasets_root / args.manifold
-        out = generate_index_json(p)
-        sz = out.stat().st_size if out.exists() else 0
-        print(f"[OK] {p.name} -> {out.name} ({sz:,} bytes)")
-    else:
-        parser.print_help()
+    parser = manifold_parser(
+        "Generate/Validate index.json for dataset manifolds",
+        "Process index.json for all manifolds",
+    )
+    run_manifold_cli(parser, _cli_process, "Processed index.json")
 
 
 if __name__ == "__main__":

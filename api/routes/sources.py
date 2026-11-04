@@ -1,18 +1,22 @@
+"""Routes that list local raw datasets and their upstream references."""
+
 import logging
-from pathlib import Path
-from typing import Any, Dict, List
-from fastapi import APIRouter
+from typing import Any
+
 import yaml
+from fastapi import APIRouter
+
+from core import paths
 
 logger = logging.getLogger("lemgendary.api.routes.sources")
 router = APIRouter(prefix="/sources", tags=["Sources"])
-_RAW_SETS = Path("raw-sets")
+_RAW_SETS = paths.RAW_SETS
 
 
-@router.get("", response_model=Dict[str, Any])
-async def list_sources() -> Dict[str, Any]:
+@router.get("", response_model=dict[str, Any])
+def list_sources() -> dict[str, Any]:
     """List local raw datasets and configured upstream references."""
-    local_sources: List[Dict[str, Any]] = []
+    local_sources: list[dict[str, Any]] = []
     if _RAW_SETS.exists():
         for entry in _RAW_SETS.iterdir():
             if entry.is_dir() and not entry.name.startswith("."):
@@ -22,14 +26,14 @@ async def list_sources() -> Dict[str, Any]:
                     "type": "directory",
                 })
 
-    configured_datasets: Dict[str, Any] = {}
-    config_file = Path("unified_data.yaml")
+    configured_datasets: dict[str, Any] = {}
+    config_file = paths.UNIFIED_DATA
     if config_file.exists():
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
                 configured_datasets = data.get("datasets", {})
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
             logger.debug("Failed reading %s in sources listing: %s", config_file, exc)
 
     return {

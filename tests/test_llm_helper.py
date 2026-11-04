@@ -1,17 +1,20 @@
 """Unit tests for tools.llm_helper (generic ingestion, chunking, and validation)."""
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
+from tests.llm_records import chat_record
 from tools.llm_helper.chunker import RecursiveChunker
 from tools.llm_helper.knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
 from tools.llm_helper.quality_validator import QualityValidator
 
 
 class TestLLMHelper(unittest.TestCase):
+    """Ingestion, chunking and validation in tools.llm_helper."""
     def test_knowledge_ingestion_markdown_and_json(self):
+        """KnowledgeIngestor reads Markdown and JSON sources."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             md_file = tmp / "sample.md"
@@ -28,6 +31,7 @@ class TestLLMHelper(unittest.TestCase):
             self.assertIn("json", types)
 
     def test_recursive_chunker(self):
+        """RecursiveChunker splits a long document into several chunks."""
         doc = KnowledgeDocument(
             doc_id="test.md",
             content="# Section 1\n\n" + ("Word " * 200) + "\n\n## Section 2\n\n" + ("Other " * 200),
@@ -42,17 +46,10 @@ class TestLLMHelper(unittest.TestCase):
             self.assertTrue(c.chunk_id.startswith("test.md_c"))
 
     def test_quality_validator_rules(self):
+        """QualityValidator accepts a valid record and flags rule violations."""
         validator = QualityValidator(zero_emojis=True, enforce_epistemic_tags=True)
 
-        valid_record = {
-            "id": "valid_rec_1",
-            "category": "troubleshooting_diagnostics",
-            "messages": [
-                {"role": "system", "content": "System prompt."},
-                {"role": "user", "content": "Help me."},
-                {"role": "assistant", "content": "[CONFIRMED] Stage 1 triage, Stage 2 diagnosis, Stage 3 remediation."},
-            ],
-        }
+        valid_record = chat_record("valid_rec_1")
         issues = validator.validate_record(valid_record)
         self.assertEqual(len(issues), 0)
 
@@ -69,4 +66,3 @@ class TestLLMHelper(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

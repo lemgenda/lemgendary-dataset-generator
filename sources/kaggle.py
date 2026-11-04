@@ -1,46 +1,33 @@
-# 2026 Phase 1.2: Ensure project root is on sys.path so sibling imports
-# (common_sync, archive_manager, etc.) resolve when this file is invoked
-# directly via `python sources/<name>.py` — which is how the hub PS1 calls it.
-# Also prune the script directory (sources/) from sys.path to prevent sources/kaggle.py
-# from shadowing the installed PyPI 'kaggle' package.
-import os
-import sys
-
-_script_dir = os.path.dirname(os.path.abspath(__file__))
-_project_root = os.path.dirname(_script_dir)
-sys.path = [p for p in sys.path if os.path.abspath(p) != _script_dir]
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
 """
 LemGendary Kaggle Dataset Manager CLI
 =====================================
 Unified interface for uploading, downloading, extracting, and monitoring Kaggle manifolds.
-"""
 
+Run from the project root as ``python -m sources.kaggle``. Running it as a
+module keeps ``sources/`` off ``sys.path``, so this file cannot shadow the
+PyPI ``kaggle`` package.
+"""
 import argparse
 import logging
+import socket
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-logging.getLogger("kagglehub").setLevel(logging.ERROR)
+import yaml
 
 from core.common_sync import (
-    CHUNK_SIZE,
-    DatasetVersionInfo,
-    setup_kaggle_auth,
-    robust_staging_cleanup,
-    cleanup_temp_archives,
-    get_dataset_version_info,
-    get_dataset_status,
-    track_kaggle_dataset_status,
-    copy_with_progress,
-    copy_tree_with_progress,
-    perform_dataset_upload,
+    DownloadRequest,
     perform_dataset_download,
-    push_kaggle_dataset_metadata,
-    ensure_kaggle_dataset_exists,
-    is_kaggle_large_manifold,
+    perform_dataset_upload,
+    setup_kaggle_auth,
+    track_kaggle_dataset_status,
 )
+from core.kaggle_identity import default_owner
+from tools.sync_kaggle_metadata import sync_metadata
+
+logger = logging.getLogger(__name__)
+logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 
 def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, Path, str, str]:
@@ -54,7 +41,6 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
         root_datasets_dir = target_dir
         manifold_name = slug
         try:
-            import yaml
             yd_path = Path(__file__).parent.parent / "unified_data.yaml"
             if not yd_path.exists():
                 yd_path = Path(__file__).parent / "unified_data.yaml"
@@ -63,77 +49,118 @@ def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, 
                     ydata = yaml.safe_load(yf) or {}
                 prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
                 suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
-                for _, entry in ydata.get("datasets", {}).items():
+                for entry in ydata.get("datasets", {}).values():
                     ref = entry.get("kaggle_ref", "")
                     if slug.lower() in ref.lower():
                         mod_folder = entry.get("modernized_folder")
                         manifold_name = mod_folder or f"{prefix}{entry.get('name', '')}{suffix}"
                         break
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
+            logger.debug("Kaggle manifold name lookup fallback: %s", exc)
             print(f"[DEBUG] Kaggle manifold name lookup fallback: {exc}")
         target_dir = root_datasets_dir / manifold_name
     return target_dir, root_datasets_dir, manifold_name, slug
 
 
-def main():
-    """Main CLI entrypoint for Kaggle dataset operations."""
-    import socket
-    socket.setdefaulttimeout(60.0)
-    parser = argparse.ArgumentParser(description="LemGendary Kaggle Manager")
-    parser.add_argument("--repo_id", required=True, help="Kaggle dataset handle or URL")
-    parser.add_argument("--output_dir", default="", help="Target local directory")
-    parser.add_argument("--is_competition", action="store_true", help="Download from competition")
-    parser.add_argument("--action", default="download", choices=["download", "upload", "status", "metadata"], help="Action to perform")
-    parser.add_argument("--all-datasets", action="store_true", help="Update metadata for all datasets in unified_data.yaml (metadata action only)")
-    parser.add_argument("--no-wait", action="store_true", help="Skip monitoring server-side extraction after upload")
-    args = parser.parse_args()
+@dataclass(frozen=True)
+class KaggleRequest:
+    """One Kaggle operation: the action, its dataset handle and target folder."""
 
-    if args.action in ["download", "upload"] and not args.output_dir:
-        parser.error(f"--output_dir is required when --action is '{args.action}'.")
+    action: str
+    repo_id: str
+    output_dir: str = ""
+    is_competition: bool = False
+    all_datasets: bool = False
+    no_wait: bool = False
 
-    clean_repo_id = args.repo_id.replace("kaggle://", "")
-    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else "lemtreursi"
-    setup_kaggle_auth(default_user=owner)
 
-    if args.action == "download":
-        print(f"PULLING: {clean_repo_id}")
-        target_dir, root_datasets_dir, manifold_name, slug = _resolve_manifold_paths(clean_repo_id, args.output_dir)
-        success = perform_dataset_download(
+def _download(req: KaggleRequest, clean_repo_id: str) -> bool:
+    print(f"PULLING: {clean_repo_id}")
+    target_dir, root_datasets_dir, manifold_name, slug = _resolve_manifold_paths(
+        clean_repo_id, req.output_dir
+    )
+    return perform_dataset_download(
+        DownloadRequest(
             clean_repo_id=clean_repo_id,
             target_dir=target_dir,
             root_datasets_dir=root_datasets_dir,
             manifold_name=manifold_name,
             slug=slug,
-            is_competition=args.is_competition
+            is_competition=req.is_competition,
         )
-        if not success:
-            sys.exit(1)
+    )
 
-    elif args.action == "upload":
-        print(f"PUSHING: {clean_repo_id}")
-        src_path = Path(args.output_dir).resolve()
-        success = perform_dataset_upload(
-            src_path=src_path,
-            clean_repo_id=clean_repo_id,
-            no_wait=args.no_wait
+
+def _upload(req: KaggleRequest, clean_repo_id: str) -> bool:
+    print(f"PUSHING: {clean_repo_id}")
+    return perform_dataset_upload(
+        src_path=Path(req.output_dir).resolve(), clean_repo_id=clean_repo_id, no_wait=req.no_wait
+    )
+
+
+def run_kaggle_action(req: KaggleRequest) -> int:
+    """Authenticate and run one Kaggle download, upload, status check or metadata push.
+
+    Returns the exit code (0 on success). ``download`` and ``upload`` need
+    ``output_dir``; a missing one raises ``ValueError``.
+    """
+    if req.action in ("download", "upload") and not req.output_dir:
+        raise ValueError(f"output_dir is required when action is '{req.action}'.")
+    socket.setdefaulttimeout(60.0)
+    clean_repo_id = req.repo_id.replace("kaggle://", "")
+    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else default_owner()
+    setup_kaggle_auth(default_user=owner)
+
+    if req.action == "download":
+        return 0 if _download(req, clean_repo_id) else 1
+    if req.action == "upload":
+        return 0 if _upload(req, clean_repo_id) else 1
+    if req.action == "status":
+        return 0 if track_kaggle_dataset_status(clean_repo_id) else 1
+    if req.action == "metadata":
+        return sync_metadata(
+            repo_id=None if req.all_datasets else clean_repo_id,
+            metadata_dir=req.output_dir or None,
+            all_datasets=req.all_datasets,
         )
-        if not success:
-            sys.exit(1)
+    raise ValueError(f"Unknown Kaggle action '{req.action}'.")
 
-    elif args.action == "status":
-        success = track_kaggle_dataset_status(clean_repo_id)
-        if not success:
-            sys.exit(1)
 
-    elif args.action == "metadata":
-        from tools.sync_kaggle_metadata import sync_metadata
-        code = sync_metadata(
-            repo_id=None if args.all_datasets else clean_repo_id,
-            metadata_dir=args.output_dir or None,
-            all_datasets=args.all_datasets,
-        )
-        if code != 0:
-            sys.exit(code)
+def main():
+    """Main CLI entrypoint for Kaggle dataset operations."""
+    parser = argparse.ArgumentParser(description="LemGendary Kaggle Manager")
+    parser.add_argument("--repo_id", required=True, help="Kaggle dataset handle or URL")
+    parser.add_argument("--output_dir", default="", help="Target local directory")
+    parser.add_argument("--is_competition", action="store_true", help="Download from competition")
+    parser.add_argument(
+        "--action",
+        default="download",
+        choices=["download", "upload", "status", "metadata"],
+        help="Action to perform",
+    )
+    parser.add_argument(
+        "--all-datasets",
+        action="store_true",
+        help="Update metadata for all datasets in unified_data.yaml (metadata action only)",
+    )
+    parser.add_argument(
+        "--no-wait", action="store_true", help="Skip monitoring server-side extraction after upload"
+    )
+    args = parser.parse_args()
+
+    if args.action in ["download", "upload"] and not args.output_dir:
+        parser.error(f"--output_dir is required when --action is '{args.action}'.")
+
+    code = run_kaggle_action(KaggleRequest(
+        action=args.action,
+        repo_id=args.repo_id,
+        output_dir=args.output_dir,
+        is_competition=args.is_competition,
+        all_datasets=args.all_datasets,
+        no_wait=args.no_wait,
+    ))
+    if code != 0:
+        sys.exit(code)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ def ensure_registry_schema(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE registry ADD COLUMN {col_name} {col_def}")
             except sqlite3.Error:
                 if "DEFAULT" in col_def:
-                    fallback = col_def.split("DEFAULT")[0].strip()
+                    fallback = col_def.split("DEFAULT", maxsplit=1)[0].strip()
                     conn.execute(f"ALTER TABLE registry ADD COLUMN {col_name} {fallback}")
                 else:
                     raise

@@ -12,23 +12,27 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
-import sys
 from typing import Any
+
 from PIL import Image
 
-_MODULE_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_MODULE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MODULE_ROOT))
-
-from core.docs.context import ManifoldContext, resolve_manifold_context
+from core.docs.context import ManifoldContext
+from core.docs.generators.common import (
+    count_lines,
+    ensure_context,
+    manifold_parser,
+    run_manifold_cli,
+)
 from core.docs.metadata import FOREX_COLUMN_FIELDS
+from core.kaggle_identity import default_owner
 
 logger = logging.getLogger(__name__)
 
 
 def extract_kaggle_description(readme_content: str) -> str:
-    """Extract section from '## Dataset Overview' (inclusive) up to '## Repository Structure' (exclusive)."""
+    """Return the text from '## Dataset Overview' up to '## Repository Structure'."""
     start_marker = "## Dataset Overview"
     end_marker = "## Repository Structure"
 
@@ -41,31 +45,168 @@ def extract_kaggle_description(readme_content: str) -> str:
     return readme_content.strip()
 
 
-def introspect_root_resources(
-    output_root: Path,
-    ctx: ManifoldContext,
-) -> tuple[list[dict[str, Any]], str | None]:
-    """Introspect every file and directory in output_root and generate accurate Frictionless descriptors."""
-    resources: list[dict[str, Any]] = []
-    header_image: str | None = None
-    is_forex = (ctx.task == "forex")
-    seen_paths: set[str] = set()
+_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
 
-    # For Forex manifolds, prioritize annual Parquet data shards at the very top of resources
-    if is_forex:
-        for y in range(2019, 2027):
-            pq_name = f"ForexUniverse{y}.parquet"
-            resources.append({
-                "path": pq_name,
-                "description": f"Annual OHLCV and feature tensor shard ({y}) with 14 engineered technical indicators and causal direction targets (Zstandard compressed).",
-                "schema": {"fields": FOREX_COLUMN_FIELDS},
-            })
-            seen_paths.add(pq_name)
+_IMAGES_DESCRIPTION = "Partitioned visual imagery assets and target frames formatted for training."
+_DIR_DESCRIPTIONS = {
+    "mds": (
+        "MosaicML Streaming (MDS) container directory with sharded indexed binary"
+        " tensors for cloud multi-node streaming training."
+    ),
+    "labels": (
+        "Pre-computed categorical class labels, bounding ground truths, and train/val"
+        " split indices."
+    ),
+    "images": _IMAGES_DESCRIPTION,
+    "imgs": _IMAGES_DESCRIPTION,
+    "targets": (
+        "High-resolution clean ground truth reference targets paired identically 1-to-1"
+        " against input images."
+    ),
+}
 
-    if not output_root.exists() or not output_root.is_dir():
-        return resources, header_image
+Resource = dict[str, Any]
 
-    entries = sorted(
+
+def _forex_shard_description(year: object) -> str:
+    """Describe one annual Forex Parquet shard."""
+    return (
+        f"Annual OHLCV and feature tensor shard ({year}) with 14 engineered technical"
+        " indicators and causal direction targets (Zstandard compressed)."
+    )
+
+
+def _jsonl_description(is_train: bool, line_count: int) -> str:
+    """Describe a train or validation JSONL instruction split."""
+    if is_train:
+        return (
+            "Fine-tuning prompt-completion instructions training corpus"
+            f" ({line_count:,} instruction pairs)."
+        )
+    return (
+        "Evaluation validation prompt-completion instructions benchmark split"
+        f" ({line_count:,} evaluation pairs)."
+    )
+
+
+def _instruction_data_resources(data_dir: Path) -> list[Resource]:
+    """Describe each JSONL split inside the ``data/`` folder of an instruction manifold."""
+    return [
+        {
+            "path": f"data/{sub_f.name}",
+            "description": _jsonl_description("train" in sub_f.name, count_lines(sub_f)),
+        }
+        for sub_f in sorted(data_dir.iterdir())
+        if sub_f.is_file() and sub_f.name.endswith(".jsonl")
+    ]
+
+
+def _describe_directory(p: Path) -> str:
+    """Describe a root-level folder of the manifold."""
+    dir_name_lower = p.name.lower()
+    if dir_name_lower in ["shards", "webdataset"]:
+        tar_count = sum(1 for _ in p.glob("*.tar"))
+        total_mb = sum(f.stat().st_size for f in p.glob("*.tar")) / (1024 * 1024)
+        if tar_count > 0:
+            return (
+                f"Sharded WebDataset container directory containing {tar_count} tar"
+                f" archives ({total_mb:.1f} MB) with paired image-tensor samples for"
+                " high-throughput streaming training."
+            )
+        return (
+            "Sharded WebDataset tar archive hierarchy containing paired image-tensor"
+            " samples for high-throughput streaming."
+        )
+    return _DIR_DESCRIPTIONS.get(dir_name_lower, f"Directory partition containing {p.name} assets.")
+
+
+def _count_label(total_samples: int, fallback: str) -> str:
+    """Format a sample count, or ``fallback`` when the count is unknown."""
+    return f"{total_samples:,}" if total_samples > 0 else fallback
+
+
+def _describe_index(_p: Path, ctx: ManifoldContext) -> str:
+    """Describe index.json."""
+    count_str = _count_label(ctx.lineage.total_samples, "compiled")
+    return (
+        f"Master sample inventory mapping {count_str} samples with split partitions and"
+        " source provenance."
+    )
+
+
+def _describe_info_yaml(_p: Path, ctx: ManifoldContext) -> str:
+    """Describe dataset_info.yaml."""
+    count_str = _count_label(ctx.lineage.total_samples, "manifold")
+    return (
+        f"Machine-readable YAML manifest detailing sample counts ({count_str} samples),"
+        " verified source lineage, and container topology."
+    )
+
+
+def _describe_classes(p: Path, _ctx: ManifoldContext) -> str:
+    """Describe classes.txt with its number of classes."""
+    try:
+        cls_lines = len(p.read_text(encoding="utf-8").strip().splitlines())
+    except OSError:
+        return "Exhaustive newline-delimited class dictionary."
+    return f"Exhaustive newline-delimited class dictionary ({cls_lines} target classes)."
+
+
+def _describe_category(_p: Path, ctx: ManifoldContext) -> str:
+    """Describe category.txt."""
+    return f"Top-level domain taxonomy classification descriptor ('{ctx.profile.category}')."
+
+
+def _describe_readme(_p: Path, _ctx: ManifoldContext) -> str:
+    """Describe README.md."""
+    return "Authoritative manifold documentation, lineage matrix, and SOTA metric targets."
+
+
+_NAMED_FILE_DESCRIPTIONS: dict[str, Callable[[Path, ManifoldContext], str]] = {
+    "index.json": _describe_index,
+    "dataset_info.yaml": _describe_info_yaml,
+    "classes.txt": _describe_classes,
+    "category.txt": _describe_category,
+    "readme.md": _describe_readme,
+}
+
+
+def _describe_banner(p: Path) -> str:
+    """Describe the cover image with its pixel size."""
+    try:
+        with Image.open(p) as im:
+            w, h = im.size
+    except (OSError, Image.DecompressionBombError) as exc:
+        logger.debug("Could not read banner size of %s (%s); using the canonical size", p, exc)
+        return "Canonical 564x284 architecture banner and visual sample preview."
+    return f"Canonical {w}x{h} architecture banner and visual sample preview."
+
+
+def _describe_file(p: Path, ctx: ManifoldContext) -> tuple[str, dict[str, Any] | None]:
+    """Describe a root-level file; also return its column schema for Forex shards."""
+    fn_lower = p.name.lower()
+    named = _NAMED_FILE_DESCRIPTIONS.get(fn_lower)
+    if named is not None:
+        return named(p, ctx), None
+    if fn_lower.endswith(_IMAGE_SUFFIXES):
+        return _describe_banner(p), None
+    if fn_lower.endswith(".ipynb"):
+        platform = "Google Colab" if "colab" in fn_lower else "Kaggle"
+        return (
+            f"Standalone {platform} GPU training notebook configured for accelerated cloud"
+            " execution."
+        ), None
+    if fn_lower.startswith("forexuniverse") and fn_lower.endswith(".parquet"):
+        shard_year = p.name.replace("ForexUniverse", "").replace(".parquet", "")
+        return _forex_shard_description(shard_year), {"fields": FOREX_COLUMN_FIELDS}
+    if fn_lower.endswith(".jsonl"):
+        return _jsonl_description("train" in fn_lower, count_lines(p)), None
+    return f"{p.name} data asset.", None
+
+
+def _sorted_root_entries(output_root: Path) -> list[Path]:
+    """Return visible root entries (folders first) excluding dataset-metadata.json."""
+    return sorted(
         [
             p for p in output_root.iterdir()
             if not p.name.startswith(".") and p.name != "dataset-metadata.json"
@@ -73,107 +214,93 @@ def introspect_root_resources(
         key=lambda p: (not p.is_dir(), p.name.lower()),
     )
 
-    # Locate header image
-    for p in entries:
-        if p.is_file() and p.suffix.lower() in [".jpg", ".jpeg", ".png"]:
-            header_image = p.name
-            break
+
+def _describe_entry(p: Path, ctx: ManifoldContext) -> Resource:
+    """Return the Frictionless resource descriptor of one root-level entry."""
+    schema = None
+    if p.is_dir():
+        desc = _describe_directory(p)
+    else:
+        desc, schema = _describe_file(p, ctx)
+    res_entry: Resource = {"path": p.name, "description": desc}
+    if schema:
+        res_entry["schema"] = schema
+    return res_entry
+
+
+def introspect_root_resources(
+    output_root: Path,
+    ctx: ManifoldContext,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Return Frictionless resource descriptors for every file and directory in output_root."""
+    resources: list[Resource] = []
+
+    # For Forex manifolds, prioritize annual Parquet data shards at the very top of resources
+    if ctx.task == "forex":
+        resources = [
+            {
+                "path": f"ForexUniverse{y}.parquet",
+                "description": _forex_shard_description(y),
+                "schema": {"fields": FOREX_COLUMN_FIELDS},
+            }
+            for y in range(2019, 2027)
+        ]
+    seen_paths = {r["path"] for r in resources}
+
+    if not output_root.exists() or not output_root.is_dir():
+        return resources, None
+
+    entries = _sorted_root_entries(output_root)
+    header_image = next(
+        (p.name for p in entries if p.is_file() and p.suffix.lower() in _IMAGE_SUFFIXES), None
+    )
 
     for p in entries:
-        name = p.name
-        rel_path = name
-        if rel_path in seen_paths:
+        if p.name in seen_paths:
             continue
-        is_dir = p.is_dir()
-
-        desc = ""
-        schema = None
-
-        if is_dir:
-            dir_name_lower = name.lower()
-            is_llm = ctx.task in ("ai_helper", "llm") or ctx.unified_entry.get("dataset_type") in ("llm", "ai_helper")
-            if dir_name_lower == "data" and is_llm:
-                for sub_f in sorted(p.iterdir()):
-                    if sub_f.is_file() and sub_f.name.endswith(".jsonl"):
-                        sub_rel = f"data/{sub_f.name}"
-                        sub_cnt = sum(1 for _ in sub_f.open(encoding="utf-8")) if sub_f.exists() else 0
-                        if "train" in sub_f.name:
-                            sub_desc = f"Fine-tuning prompt-completion instructions training corpus ({sub_cnt:,} instruction pairs)."
-                        else:
-                            sub_desc = f"Evaluation validation prompt-completion instructions benchmark split ({sub_cnt:,} evaluation pairs)."
-                        resources.append({"path": sub_rel, "description": sub_desc})
-                        seen_paths.add(sub_rel)
-                continue
-            elif dir_name_lower in ["shards", "webdataset"]:
-                tar_count = sum(1 for _ in p.glob("*.tar"))
-                total_mb = sum(f.stat().st_size for f in p.glob("*.tar")) / (1024 * 1024)
-                if tar_count > 0:
-                    desc = f"Sharded WebDataset container directory containing {tar_count} tar archives ({total_mb:.1f} MB) with paired image-tensor samples for high-throughput streaming training."
-                else:
-                    desc = "Sharded WebDataset tar archive hierarchy containing paired image-tensor samples for high-throughput streaming."
-            elif dir_name_lower == "mds":
-                desc = "MosaicML Streaming (MDS) container directory with sharded indexed binary tensors for cloud multi-node streaming training."
-            elif dir_name_lower == "labels":
-                desc = "Pre-computed categorical class labels, bounding ground truths, and train/val split indices."
-            elif dir_name_lower in ["images", "imgs"]:
-                desc = "Partitioned visual imagery assets and target frames formatted for training."
-            elif dir_name_lower == "targets":
-                desc = "High-resolution clean ground truth reference targets paired identically 1-to-1 against input images."
-            else:
-                desc = f"Directory partition containing {name} assets."
+        if p.is_dir() and p.name.lower() == "data" and ctx.is_llm:
+            data_resources = _instruction_data_resources(p)
         else:
-            fn_lower = name.lower()
-            if fn_lower == "index.json":
-                count_str = f"{ctx.total_samples:,}" if ctx.total_samples > 0 else "compiled"
-                desc = f"Master sample inventory mapping {count_str} samples with split partitions and source provenance."
-            elif fn_lower == "dataset_info.yaml":
-                count_str = f"{ctx.total_samples:,}" if ctx.total_samples > 0 else "manifold"
-                desc = f"Machine-readable YAML manifest detailing sample counts ({count_str} samples), verified source lineage, and container topology."
-            elif fn_lower == "classes.txt":
-                try:
-                    cls_lines = len(p.read_text(encoding="utf-8").strip().splitlines())
-                    desc = f"Exhaustive newline-delimited class dictionary ({cls_lines} target classes)."
-                except OSError:
-                    desc = "Exhaustive newline-delimited class dictionary."
-            elif fn_lower == "category.txt":
-                desc = f"Top-level domain taxonomy classification descriptor ('{ctx.category}')."
-            elif fn_lower == "readme.md":
-                desc = "Authoritative manifold documentation, lineage matrix, and SOTA metric targets."
-            elif fn_lower.endswith((".jpg", ".jpeg", ".png")):
-                try:
-                    with Image.open(p) as im:
-                        w, h = im.size
-                    desc = f"Canonical {w}x{h} architecture banner and visual sample preview."
-                except Exception:
-                    desc = "Canonical 564x284 architecture banner and visual sample preview."
-            elif "colab" in fn_lower and fn_lower.endswith(".ipynb"):
-                desc = "Standalone Google Colab GPU training notebook configured for accelerated cloud execution."
-            elif fn_lower.endswith(".ipynb"):
-                desc = "Standalone Kaggle GPU training notebook configured for accelerated cloud execution."
-            elif fn_lower.startswith("forexuniverse") and fn_lower.endswith(".parquet"):
-                shard_year = name.replace("ForexUniverse", "").replace(".parquet", "")
-                desc = f"Annual OHLCV and feature tensor shard ({shard_year}) with 14 engineered technical indicators and causal direction targets (Zstandard compressed)."
-                schema = {"fields": FOREX_COLUMN_FIELDS}
-            elif fn_lower.endswith(".jsonl"):
-                line_cnt = sum(1 for _ in p.open(encoding="utf-8")) if p.exists() else 0
-                if "train" in fn_lower:
-                    desc = f"Fine-tuning prompt-completion instructions training corpus ({line_cnt:,} instruction pairs)."
-                else:
-                    desc = f"Evaluation validation prompt-completion instructions benchmark split ({line_cnt:,} evaluation pairs)."
-            else:
-                desc = f"{name} data asset."
-
-        res_entry: dict[str, Any] = {
-            "path": rel_path,
-            "description": desc,
-        }
-        if schema:
-            res_entry["schema"] = schema
-
-        resources.append(res_entry)
-        seen_paths.add(rel_path)
+            data_resources = [_describe_entry(p, ctx)]
+        resources += data_resources
+        seen_paths.update(r["path"] for r in data_resources)
 
     return resources, header_image
+
+
+def _resolve_readme(ctx: ManifoldContext, readme_content: str | None) -> str:
+    """Return the README text used for the Kaggle description."""
+    if readme_content is not None:
+        return readme_content
+    readme_file = ctx.manifold_path / "README.md"
+    if readme_file.exists():
+        return readme_file.read_text(encoding="utf-8")
+    return ctx.profile.description
+
+
+def _optional_fields(ctx: ManifoldContext, header_image: str | None) -> dict[str, Any]:
+    """Return the optional Kaggle fields that have a value."""
+    candidates = {
+        "headerImage": header_image,
+        "provenanceSources": ctx.lineage.provenance_sources,
+        "collectionMethodology": ctx.lineage.collection_methodology,
+        "citations": ctx.lineage.citations,
+        "coverage": ctx.lineage.coverage,
+    }
+    return {key: value for key, value in candidates.items() if value}
+
+
+def _tabular_data_files(resources: list[Resource]) -> list[dict[str, Any]]:
+    """Return column schemas of tabular resources for direct Kaggle settings sync."""
+    return [
+        {
+            "name": r["path"],
+            "description": r.get("description", ""),
+            "columns": r["schema"]["fields"],
+        }
+        for r in resources
+        if "schema" in r and r.get("schema", {}).get("fields")
+    ]
 
 
 def generate_kaggle_metadata(
@@ -189,111 +316,57 @@ def generate_kaggle_metadata(
     Returns:
         The generated metadata dictionary.
     """
-    if isinstance(context_or_path, ManifoldContext):
-        ctx = context_or_path
-    else:
-        ctx = resolve_manifold_context(Path(context_or_path))
-
-    target_dir = ctx.manifold_path
-
-    # Resolve README content for description
-    if readme_content is None:
-        readme_file = target_dir / "README.md"
-        if readme_file.exists():
-            readme_content = readme_file.read_text(encoding="utf-8")
-        else:
-            readme_content = ctx.description
-
-    description = extract_kaggle_description(readme_content)
-    resources, header_image = introspect_root_resources(target_dir, ctx)
-
-    # Fallback to context cover image
-    if not header_image and ctx.cover_image_name:
-        header_image = ctx.cover_image_name
+    ctx = ensure_context(context_or_path)
+    resources, header_image = introspect_root_resources(ctx.manifold_path, ctx)
+    listing = ctx.listing
 
     metadata_payload: dict[str, Any] = {
-        "title": ctx.title,
-        "id": f"lemtreursi/{ctx.slug}",
-        "subtitle": ctx.subtitle,
-        "description": description,
-        "keywords": ctx.keywords,
-        "licenses": [{"name": ctx.license_name}],
-        "isPrivate": ctx.is_private,
-        "expectedUpdateFrequency": ctx.update_frequency,
-        "author": ctx.author_name,
+        "title": listing.title,
+        "id": f"{default_owner()}/{ctx.slug}",
+        "subtitle": listing.subtitle,
+        "description": extract_kaggle_description(_resolve_readme(ctx, readme_content)),
+        "keywords": listing.keywords,
+        "licenses": [{"name": listing.license_name}],
+        "isPrivate": listing.is_private,
+        "expectedUpdateFrequency": listing.update_frequency,
+        "author": listing.author.name,
         "authors": [
             {
-                "name": ctx.author_name,
-                "bio": ctx.author_bio,
+                "name": listing.author.name,
+                "bio": listing.author.bio,
                 "role": "Author",
             }
         ],
         "resources": resources,
     }
-
-    if header_image:
-        metadata_payload["headerImage"] = header_image
-
-    if ctx.provenance_sources:
-        metadata_payload["provenanceSources"] = ctx.provenance_sources
-
-    if ctx.collection_methodology:
-        metadata_payload["collectionMethodology"] = ctx.collection_methodology
-
-    if ctx.citations:
-        metadata_payload["citations"] = ctx.citations
-
-    if ctx.coverage:
-        metadata_payload["coverage"] = ctx.coverage
-
-    # Tabular column schemas in 'data' array for direct Kaggle settings sync
-    data_files: list[dict[str, Any]] = []
-    for r in resources:
-        if "schema" in r and r.get("schema", {}).get("fields"):
-            data_files.append({
-                "name": r["path"],
-                "description": r.get("description", ""),
-                "columns": r["schema"]["fields"],
-            })
+    # Header image falls back to the context cover image name
+    metadata_payload.update(
+        _optional_fields(ctx, header_image or ctx.inventory.cover_image_name)
+    )
+    data_files = _tabular_data_files(resources)
     if data_files:
         metadata_payload["data"] = data_files
 
-    target_file = target_dir / "dataset-metadata.json"
+    target_file = ctx.manifold_path / "dataset-metadata.json"
     with open(target_file, "w", encoding="utf-8") as f:
         json.dump(metadata_payload, f, indent=2)
 
     return metadata_payload
 
 
+def _cli_process(manifold_dir: Path, _args: argparse.Namespace) -> str:
+    """Generate dataset-metadata.json for one manifold and describe the result."""
+    out = generate_kaggle_metadata(manifold_dir)
+    return f"{out.get('title')} (resources={len(out.get('resources', []))})"
+
+
 def main() -> None:
     """CLI entrypoint for dataset-metadata.json generation."""
-    parser = argparse.ArgumentParser(description="Generate dataset-metadata.json for dataset manifolds")
-    parser.add_argument("--manifold", type=str, default=None, help="Manifold directory name or path")
-    parser.add_argument("--all", action="store_true", help="Generate dataset-metadata.json for all manifolds")
-    args = parser.parse_args()
-
-    cand = _MODULE_ROOT.parent / "LemGendaryDatasets"
-    datasets_root = cand if cand.exists() else _MODULE_ROOT / "LemGendaryDatasets"
-
-    if args.all:
-        if not datasets_root.exists():
-            print(f"[ERROR] Datasets directory not found at {datasets_root}")
-            sys.exit(1)
-        count = 0
-        for m_dir in sorted(datasets_root.iterdir()):
-            if m_dir.is_dir() and not m_dir.name.startswith("."):
-                out = generate_kaggle_metadata(m_dir)
-                print(f"[OK] {m_dir.name} -> {out.get('title')} (resources={len(out.get('resources', []))})")
-                count += 1
-        print(f"Generated dataset-metadata.json for {count} manifolds.")
-    elif args.manifold:
-        p = Path(args.manifold)
-        if not p.is_dir() and (datasets_root / args.manifold).is_dir():
-            p = datasets_root / args.manifold
-        out = generate_kaggle_metadata(p)
-        print(f"[OK] {p.name} -> {out.get('title')} (resources={len(out.get('resources', []))})")
-    else:
-        parser.print_help()
+    parser = manifold_parser(
+        "Generate dataset-metadata.json for dataset manifolds",
+        "Generate dataset-metadata.json for all manifolds",
+    )
+    run_manifold_cli(parser, _cli_process, "Generated dataset-metadata.json")
 
 
 if __name__ == "__main__":

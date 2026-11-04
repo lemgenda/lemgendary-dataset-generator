@@ -24,25 +24,26 @@ Public surface:
 from __future__ import annotations
 
 __all__ = [
+    "DirectorySampleSource",
+    "DirectoryWriter",
+    "ImageTranscoder",
+    "KeepFormatError",
+    "LitDataWriter",
+    "MDSWriter",
+    "ParquetWriter",
     "Sample",
+    "ShardWriter",
+    "WebDatasetWriter",
     "Writer",
     "make_writer",
     "parse_also_format",
-    "DirectoryWriter",
-    "DirectorySampleSource",
-    "MDSWriter",
-    "LitDataWriter",
-    "WebDatasetWriter",
-    "ParquetWriter",
-    "ShardWriter",
-    "ImageTranscoder",
-    "KeepFormatError",
 ]
 
-from .base import Sample, Writer, make_writer, parse_also_format
-from .directory import DirectoryWriter, DirectorySampleSource
-from .mds import MDSWriter
+from .base import Sample, Writer, parse_also_format
+from .directory import DirectorySampleSource, DirectoryWriter
+from .factory import make_writer
 from .litdata import LitDataWriter
-from .webdataset import WebDatasetWriter, ShardWriter
+from .mds import MDSWriter
 from .parquet import ParquetWriter
 from .transcode import ImageTranscoder, KeepFormatError
+from .webdataset import ShardWriter, WebDatasetWriter

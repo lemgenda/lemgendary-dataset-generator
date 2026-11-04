@@ -17,10 +17,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .base import Sample
+from .base import Sample, Writer
 
 
-class ParquetWriter:
+class ParquetWriter(Writer):
     """Parquet writer, one row per Sample, Zstd-compressed."""
 
     def __init__(self) -> None:

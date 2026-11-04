@@ -1,22 +1,41 @@
 $Env:PYTHONUTF8 = "1"
 $Env:PYTHONUNBUFFERED = "1"
+# Entry points run as modules (`python -m pkg.module`), so the project root
+# must be importable from any working directory, Start-Job children included.
+$Env:PYTHONPATH = $PSScriptRoot
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+function Write-Ui {
+    # Show a line to the user on the information stream (visible by default,
+    # capturable with 6>), coloured with ANSI codes when a colour is named.
+    param([string]$Message = "", [string]$Color = "")
+    $codes = @{
+        Black = 30; DarkRed = 31; DarkGreen = 32; DarkYellow = 33; DarkBlue = 34; DarkMagenta = 35
+        DarkCyan = 36; Gray = 37; DarkGray = 90; Red = 91; Green = 92; Yellow = 93; Blue = 94
+        Magenta = 95; Cyan = 96; White = 97
+    }
+    if ($Color -and $codes.ContainsKey($Color)) {
+        $esc = [char]27
+        $Message = "$esc[$($codes[$Color])m$Message$esc[0m"
+    }
+    Write-Information -MessageData $Message -InformationAction Continue
+}
+
 $Vpy = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path $Vpy)) {
     $EnvMgrScript = Join-Path (Split-Path -Parent $PSScriptRoot) "lemgendary-env-manager\lemgendary_env_manager.ps1"
     if (Test-Path $EnvMgrScript) {
-        Write-Host "[INIT] Initializing environment via LemGendary Environment Manager..." -ForegroundColor Cyan
+        Write-Ui "[INIT] Initializing environment via LemGendary Environment Manager..." -Color Cyan
         & $EnvMgrScript install --project lemgendary-datasets
     }
 }
 $Reg = Join-Path $PSScriptRoot 'unified_data.yaml'
 $Raw = Join-Path $PSScriptRoot 'raw-sets'
-# 2026 Phase 1.2: managers relocated to sources/ package.
-$hfManagerPath = Join-Path $PSScriptRoot 'sources\hf.py'
-$ghManagerPath = Join-Path $PSScriptRoot 'sources\gh.py'
-$kagManagerPath = Join-Path $PSScriptRoot 'sources\kaggle.py'
-$gdManagerPath = Join-Path $PSScriptRoot 'sources\gd.py'
+# Source managers live in the sources/ package and run as modules.
+$hfManagerModule = 'sources.hf'
+$ghManagerModule = 'sources.gh'
+$kagManagerModule = 'sources.kaggle'
+$gdManagerModule = 'sources.gd'
 
 $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
 if (Test-Path $TokenPath) {
@@ -33,9 +52,9 @@ $DownloadSB = {
 
     Write-Output "STATUS:KAG-PULLING"
     if ($isC) {
-        & $vpy $kagManager --repo_id $ref --output_dir $fold --is_competition
+        & $vpy -m $kagManager --repo_id $ref --output_dir $fold --is_competition
     } else {
-        & $vpy $kagManager --repo_id $ref --output_dir $fold
+        & $vpy -m $kagManager --repo_id $ref --output_dir $fold
     }
 
     $z = Join-Path $sharedPath ($dn + '.zip')
@@ -64,7 +83,7 @@ $HuggingFaceSB = {
     $outFold = Join-Path $sharedPath $dn
 
     Write-Output "STATUS:HF-PULLING"
-    & $vpy $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
+    & $vpy -m $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
 
     if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
          Write-Output "RESULT:COMPLETED"
@@ -80,7 +99,7 @@ $GHSourceSB = {
     $outFold = Join-Path $sharedPath $dn
 
     Write-Output "STATUS:GH-CLONING"
-    & $vpy $ghManager --repo_url $repoId --output_dir $outFold 2>&1
+    & $vpy -m $ghManager --repo_url $repoId --output_dir $outFold 2>&1
 
     if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
          Write-Output "RESULT:COMPLETED"
@@ -96,7 +115,7 @@ $GDriveSB = {
     $outFold = Join-Path $sharedPath $dn
 
     Write-Output "STATUS:GD-PULLING"
-    & $vpy $gdManager --repo_id $repoId --output_dir $outFold 2>&1
+    & $vpy -m $gdManager --repo_id $repoId --output_dir $outFold 2>&1
 
     $z = Join-Path $sharedPath ($dn + '.zip')
     if (Test-Path $z) {
@@ -115,12 +134,6 @@ $UnpackSB = {
     $z = Join-Path $sharedPath ($dn + '.zip')
 
     try {
-        $projRoot = Split-Path $vpy -Parent | Split-Path -Parent | Split-Path -Parent
-        $ArchMgr = Join-Path $projRoot 'utils\archive.py'
-        if (!(Test-Path $ArchMgr)) {
-            $ArchMgr = Join-Path $projRoot 'archive_manager.py'
-        }
-
         # If the zip is missing, it means HF or Kaggle messed up. But HF emits COMPLETED so it bypasses this!
         if (!(Test-Path $z)) {
             Write-Output "NOTIFICATION:Zip not found for extraction: $dn"
@@ -128,7 +141,7 @@ $UnpackSB = {
             return
         }
 
-        & $vpy $ArchMgr --zip $z --dest $fold --action extract 2>&1
+        & $vpy -m utils.archive --zip $z --dest $fold --action extract 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Output "NOTIFICATION:Extraction Finished & Zip Deleted: $dn"
             Write-Output "RESULT:COMPLETED"
@@ -142,47 +155,46 @@ $UnpackSB = {
 }
 
 function Initialize-Environment {
-    Write-Host "[PRE-FLIGHT] Verifying LemGendary Environment..." -ForegroundColor Gray
-
+    Write-Ui "[PRE-FLIGHT] Verifying LemGendary Environment..." -Color Gray
     if (!(Test-Path $Vpy)) {
-        Write-Host "[WARNING] Virtual environment (.venv) not found!" -ForegroundColor Yellow
+        Write-Ui "[WARNING] Virtual environment (.venv) not found!" -Color Yellow
         $Choice = Read-Host "Would you like to create and initialize the environment now? (Y/N)"
         if ($Choice -match '^y') {
-            Write-Host "Creating .venv..." -ForegroundColor Cyan
+            Write-Ui "Creating .venv..." -Color Cyan
             & python -m venv .venv
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "[ERROR] Failed to create .venv. Ensure Python is installed." -ForegroundColor Red
+                Write-Ui "[ERROR] Failed to create .venv. Ensure Python is installed." -Color Red
                 Read-Host "Press Enter to exit"
                 exit 1
             }
         } else {
-            Write-Host "[ERROR] Cannot proceed without .venv. Exiting." -ForegroundColor Red
+            Write-Ui "[ERROR] Cannot proceed without .venv. Exiting." -Color Red
             Read-Host "Press Enter to exit"
             exit 1
         }
     }
 
-    Write-Host "Checking Hardware Acceleration..." -ForegroundColor Gray
+    Write-Ui "Checking Hardware Acceleration..." -Color Gray
     $Check = & $Vpy -c "import torch; print('CUDA_OK' if torch.cuda.is_available() else 'CPU_ONLY')"
 
     if ($Check -notmatch 'CUDA_OK') {
-        Write-Host "[ENVIRONMENT] GPU Acceleration (CUDA) is NOT detected!" -ForegroundColor Yellow
+        Write-Ui "[ENVIRONMENT] GPU Acceleration (CUDA) is NOT detected!" -Color Yellow
         $Choice = Read-Host "Would you like to repair/install dependencies from requirements.txt? (Y/N)"
         if ($Choice -match '^y') {
-            Write-Host "Installing/Repairing dependencies (this may take several minutes)..." -ForegroundColor Cyan
+            Write-Ui "Installing/Repairing dependencies (this may take several minutes)..." -Color Cyan
             & $Vpy -m pip install -r requirements.txt
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "[SUCCESS] Environment repaired successfully!" -ForegroundColor Green
+                Write-Ui "[SUCCESS] Environment repaired successfully!" -Color Green
                 Start-Sleep -Seconds 2
             } else {
-                Write-Host "[ERROR] Installation failed. Check internet connection." -ForegroundColor Red
+                Write-Ui "[ERROR] Installation failed. Check internet connection." -Color Red
                 Read-Host "Press Enter to exit"
                 exit 1
             }
         }
     } else {
         # 2026: SOTA Stealth Sync - Silently update CUDA status for the Menu
-        $global:CudaReady = $true
+        $script:CudaReady = $true
         Start-Sleep -Milliseconds 100
     }
 }
@@ -193,9 +205,9 @@ Initialize-Environment
 # 2026 Phase 1.7: Load runtime env contract from Environment Manager SSOT.
 # Env vars are set in the parent PowerShell session so that every child
 # subprocess spawned by this script inherits them via normal process
-# inheritance (this covers `& $Vpy manifold_compile.py ...`). Start-Job
+# inheritance (this covers `& $Vpy -m core.manifold_compile ...`). Start-Job
 # runspaces do not inherit process env, but fetcher jobs do not require
-# any of these vars — only the compiler path does, and that path uses a
+# any of these vars - only the compiler path does, and that path uses a
 # direct subprocess.
 function Import-RuntimeEnv {
     param(
@@ -203,7 +215,7 @@ function Import-RuntimeEnv {
         [string]$YamlPath
     )
     if (-not (Test-Path $YamlPath)) {
-        Write-Host "[WARN] runtime_env.yaml not found at $YamlPath; using defaults" -ForegroundColor Yellow
+        Write-Ui "[WARN] runtime_env.yaml not found at $YamlPath; using defaults" -Color Yellow
         return
     }
 
@@ -234,9 +246,9 @@ print(json.dumps(out))
         foreach ($Prop in $Parsed.PSObject.Properties) {
             [Environment]::SetEnvironmentVariable($Prop.Name, $Prop.Value, 'Process')
         }
-        Write-Host ("[OK] Runtime env loaded ({0} vars)" -f $Parsed.PSObject.Properties.Count) -ForegroundColor DarkGray
+        Write-Ui ("[OK] Runtime env loaded ({0} vars)" -f $Parsed.PSObject.Properties.Count) -Color DarkGray
     } catch {
-        Write-Host "[WARN] Failed to apply runtime env: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Ui "[WARN] Failed to apply runtime env: $($_.Exception.Message)" -Color Yellow
     }
 }
 
@@ -244,10 +256,9 @@ $RuntimeEnvYaml = Join-Path (Split-Path $PSScriptRoot -Parent) 'lemgendary-env-m
 Import-RuntimeEnv -VpyPath $Vpy -YamlPath $RuntimeEnvYaml
 
 function Get-RegData {
-    if (!(test-path $Reg)) { Write-Host '  [ERROR] unified_data.yaml missing!' -Fore Red; return $null }
-    $RegFixed = $Reg.Replace('\', '/')
-    $YJ = & $Vpy -c "import yaml, json, sys; print(json.dumps(yaml.safe_load(open('$RegFixed'))))"
-    if (!$YJ) { Write-Host '  [ERROR] Manifest load failed!' -Fore Red; return $null }
+    if (!(test-path $Reg)) { Write-Ui '  [ERROR] unified_data.yaml missing!' -Color Red; return $null }
+    $YJ = & $Vpy -c "import yaml, json, sys; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8'))))" $Reg
+    if (!$YJ) { Write-Ui '  [ERROR] Manifest load failed!' -Color Red; return $null }
     return $YJ | ConvertFrom-Json
 }
 
@@ -318,7 +329,7 @@ function Resolve-ManifoldPath {
     return Join-Path $OutDir ($Prefix + $Slug)
 }
 
-function Show-Stats {
+function Show-Stat {
     if (Test-Path $Out) {
         $Lat = Get-ChildItem $Out -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($Lat) {
@@ -330,9 +341,9 @@ function Show-Stats {
                     $IdxFixed = $IdxPath.Replace('\', '/')
                     $Cnt = & $Vpy -c "import json; print(len(json.load(open(r'$IdxFixed', encoding='utf-8'))))"
                     if ($Cnt) {
-                        Write-Host ("  [STATS] Latest: " + $Lat.Name + " | Total: " + $Cnt) -ForegroundColor Cyan
+                        Write-Ui ("  [STATS] Latest: " + $Lat.Name + " | Total: " + $Cnt) -Color Cyan
                     }
-                } catch { }
+                } catch { Write-Warning "Could not read dataset stats from $($IdxFixed): $($_.Exception.Message)" }
             }
         }
     }
@@ -407,7 +418,7 @@ function Get-RefStatus {
     }
 } # end function Get-RefStatus
 
-function Test-MissingDatasets {
+function Test-MissingDataset {
     param([string[]]$TargetModels = $null, [switch]$SkipIfCompiled)
     $RegData = Get-RegData
     if (!$RegData) {
@@ -427,7 +438,7 @@ function Test-MissingDatasets {
 
         # 2026: Check if the FULL manifold exists locally or on Kaggle mirror
         if ($SkipIfCompiled -and (Test-ManifoldData -Path $ManifoldPath)) {
-            Write-Host "  [OK] $Slug manifold verified locally." -ForegroundColor Green
+            Write-Ui "  [OK] $Slug manifold verified locally." -Color Green
             continue
         }
 
@@ -435,7 +446,7 @@ function Test-MissingDatasets {
         if ($kagRef) {
             $Stat = Get-RefStatus -Ref $kagRef -SharedPath $Raw -KaggleRef $kagRef
             if ($Stat -eq "Extracted") {
-                Write-Host "  [OK] $Slug manifold verified via Kaggle Mirror." -ForegroundColor Green
+                Write-Ui "  [OK] $Slug manifold verified via Kaggle Mirror." -Color Green
                 continue
             }
         }
@@ -453,32 +464,35 @@ function Test-MissingDatasets {
 }
 
 function Start-Acquisition {
+    [CmdletBinding(SupportsShouldProcess)]
     param([string[]]$ForcedRefs = $null)
+    if (-not $PSCmdlet.ShouldProcess("dataset acquisition", "Start")) { return }
 
-    $Cred = @{ username = 'lemgenda'; key = 'd28f8f8b8eef9a8f688e8b8c7c9e8e8' }
-    $KPath = Join-Path $env:USERPROFILE '.kaggle'
-    if (!(Test-Path $KPath)) { [void](New-Item -ItemType Directory -Path $KPath -Force) }
-    [System.IO.File]::WriteAllText((Join-Path $KPath 'kaggle.json'), ($Cred | ConvertTo-Json))
+    $kaggleDir = if ($env:KAGGLE_CONFIG_DIR) { $env:KAGGLE_CONFIG_DIR } `
+        else { Join-Path $HOME '.kaggle' }
+    if (-not (Test-Path (Join-Path $kaggleDir 'kaggle.json'))) {
+        throw "kaggle.json not found in $kaggleDir. Create a key on kaggle.com."
+    }
 
     $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
     if (Test-Path $TokenPath) {
-        Copy-Item -Path $TokenPath -Destination (Join-Path $KPath 'access_token') -Force
+        Copy-Item -Path $TokenPath -Destination (Join-Path $kaggleDir 'access_token') -Force
     }
 
     $RegData = Get-RegData
     if (!$RegData) { return }
 
-    $global:LogBuffer = @()
+    $script:LogBuffer = @()
     $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
     $DoExtract = $true
     $ProcessList = @()
 
     if ($null -eq $ForcedRefs) {
-        Write-Host "`n--- SELECT DATASET TO ACQUIRE ---" -ForegroundColor Cyan
+        Write-Ui "`n--- SELECT DATASET TO ACQUIRE ---" -Color Cyan
         for ($i=0; $i -lt $DatasetNames.Count; $i++) {
-            Write-Host "$($i+1). $($DatasetNames[$i])"
+            Write-Ui "$($i+1). $($DatasetNames[$i])"
         }
-        Write-Host "a. All Datasets"
+        Write-Ui "a. All Datasets"
         $Sel = Read-Host "Selection"
 
         $TargetDatasets = @()
@@ -489,20 +503,20 @@ function Start-Acquisition {
             if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
                 $TargetDatasets += $DatasetNames[$Idx]
             } else {
-                Write-Host "Invalid selection." -Fore Red
+                Write-Ui "Invalid selection." -Color Red
                 return
             }
         }
 
-        Write-Host "`nOptions:"
-        Write-Host "1. Download only"
-        Write-Host "2. Download and extract"
+        Write-Ui "`nOptions:"
+        Write-Ui "1. Download only"
+        Write-Ui "2. Download and extract"
         $Opt = Read-Host "Selection"
         $DoExtract = ($Opt -eq '2')
 
-        Write-Host "`n--- SOURCE STATUS CHECK ---" -ForegroundColor Cyan
+        Write-Ui "`n--- SOURCE STATUS CHECK ---" -Color Cyan
         foreach ($td in $TargetDatasets) {
-            Write-Host "[$td]" -ForegroundColor Yellow
+            Write-Ui "[$td]" -Color Yellow
             foreach ($E in $RegData.datasets.$td.refs) {
                 # 2026: Consolidated Status Logic (v5.4)
                 $Stat = Get-RefStatus -Ref $E.ref -SharedPath $Raw
@@ -511,21 +525,21 @@ function Start-Acquisition {
                 $AlreadyQueued = $ProcessList | Where-Object { $_.Ref -eq $E.ref }
                 if (!$AlreadyQueued) {
                     switch ($Stat) {
-                        "Extracted" { Write-Host "  [OK] $Slug (Verified)" -ForegroundColor Green }
+                        "Extracted" { Write-Ui "  [OK] $Slug (Verified)" -Color Green }
                         "HF_Partial" {
-                            Write-Host "  [SYNC] $Slug (Resuming HF)" -ForegroundColor Yellow
+                            Write-Ui "  [SYNC] $Slug (Resuming HF)" -Color Yellow
                             $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
                         }
                         "ZipOnly" {
                             if ($DoExtract) {
-                                Write-Host "  [UNPACK] $Slug (Ready)" -ForegroundColor Magenta
+                                Write-Ui "  [UNPACK] $Slug (Ready)" -Color Magenta
                                 $ProcessList += @{ Ref = $E.ref; Action = 'UnpackOnly' }
                             } else {
-                                Write-Host "  [SKIP] $Slug (Zip exists)" -ForegroundColor DarkGray
+                                Write-Ui "  [SKIP] $Slug (Zip exists)" -Color DarkGray
                             }
                         }
                         Default {
-                            Write-Host "  [DL QUEUED] $Slug (Missing)" -ForegroundColor Red
+                            Write-Ui "  [DL QUEUED] $Slug (Missing)" -Color Red
                             $ProcessList += @{ Ref = $E.ref; Action = 'Download' }
                         }
                     }
@@ -546,13 +560,12 @@ function Start-Acquisition {
     }
 
     if ($ProcessList.Count -eq 0) {
-        Write-Host "`n  [OK] All required sources are already acquired/extracted!" -ForegroundColor Green
+        Write-Ui "`n  [OK] All required sources are already acquired/extracted!" -Color Green
         if ($null -eq $ForcedRefs) { Read-Host "Press Enter to return" }
         return
     }
 
-    Write-Host "`n--- ACQUISITION MANIFEST ---" -ForegroundColor Yellow
-
+    Write-Ui "`n--- ACQUISITION MANIFEST ---" -Color Yellow
     if (!(Test-Path $Raw)) { [void](New-Item -ItemType Directory -Path $Raw -Force) }
 
     $UniqueDatasets = @{}
@@ -585,16 +598,16 @@ function Start-Acquisition {
                     $NextDl.ProgressId = $BaseId + $i
                     $NextDl.Status = 'Starting DL'
                     if ($NextDl.Ref -match 'hf://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $HuggingFaceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $hfManagerModule).Id
                     } elseif ($NextDl.Ref -match 'gh://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $GHSourceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $ghManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $GHSourceSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $ghManagerModule).Id
                     } elseif ($NextDl.Ref -match 'kaggle://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerModule).Id
                     } elseif ($NextDl.Ref -match 'gdrive://') {
-                        $NextDl.JobId = (Start-Job -ScriptBlock $GDriveSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $gdManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $GDriveSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $gdManagerModule).Id
                     } else {
                         # Legacy fallback
-                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerPath).Id
+                        $NextDl.JobId = (Start-Job -ScriptBlock $DownloadSB -ArgumentList $NextDl.Ref, $Raw, $Vpy, $kagManagerModule).Id
                     }
                 }
             }
@@ -625,8 +638,8 @@ function Start-Acquisition {
                 foreach ($ls in $Outputs) {
                     if ($ls -match 'STATUS:(.*)') { $ti.Status = $Matches[1] }
                     elseif ($ls -match 'NOTIFICATION:(.*)') {
-                        if ($global:LogBuffer.Count -ge 5) { $global:LogBuffer = $global:LogBuffer[1..4] }
-                        $global:LogBuffer += "  [!] $($Matches[1])"
+                        if ($script:LogBuffer.Count -ge 5) { $script:LogBuffer = $script:LogBuffer[1..4] }
+                        $script:LogBuffer += "  [!] $($Matches[1])"
                     }
                     elseif ($ls -match 'RESULT:(.*)') {
                         $ti.Status = $Matches[1]
@@ -640,8 +653,8 @@ function Start-Acquisition {
                         if ($ti.Status -eq 'FAILED') {
                             $ti.ProgressId = 0
                             # 2026: SOTA Failure Guard - Ensure a clean line for the error debrief
-                            if ($global:LogBuffer.Count -ge 5) { $global:LogBuffer = $global:LogBuffer[1..4] }
-                            $global:LogBuffer += "  [!] Job FAILED: $($ti.Slug) (Source Offline or Restricted)"
+                            if ($script:LogBuffer.Count -ge 5) { $script:LogBuffer = $script:LogBuffer[1..4] }
+                            $script:LogBuffer += "  [!] Job FAILED: $($ti.Slug) (Source Offline or Restricted)"
                             Start-Sleep -Seconds 1 # Force UI to settle
                         }
                     } else {
@@ -650,8 +663,8 @@ function Start-Acquisition {
 
                             # 2026: SOTA Buffered Logger - Store notifications to prevent console overlap
                             if ($LineStr -match '^\[.*\]' -and $LineStr -notmatch '\[DL\]|%') {
-                                if ($global:LogBuffer.Count -ge 5) { $global:LogBuffer = $global:LogBuffer[1..4] }
-                                $global:LogBuffer += "    $($ti.Slug)> $LineStr"
+                                if ($script:LogBuffer.Count -ge 5) { $script:LogBuffer = $script:LogBuffer[1..4] }
+                                $script:LogBuffer += "    $($ti.Slug)> $LineStr"
                             } elseif ($LineStr -match '\[.*\]' -or $LineStr -match '%') {
                                 $ti.Status = $LineStr.Trim()
                             }
@@ -670,9 +683,9 @@ function Start-Acquisition {
 
         # Build the dynamic status display
         $DisplayLines = @()
-        if ($global:LogBuffer) {
+        if ($script:LogBuffer) {
             $DisplayLines += "--- EVENT LOG ---"
-            foreach ($log in $global:LogBuffer) { $DisplayLines += $log }
+            foreach ($log in $script:LogBuffer) { $DisplayLines += $log }
             $DisplayLines += "-----------------"
         }
         $DisplayLines += "[OVERALL] $D/$T ($P%)"
@@ -693,7 +706,7 @@ function Start-Acquisition {
         if (($StartTop + $DisplayLines.Count) -ge $BufferHeight) {
             # Scroll the terminal up by printing newlines
             $Needed = ($StartTop + $DisplayLines.Count) - $BufferHeight + 1
-            for ($k=0; $k -le $Needed; $k++) { Write-Host "" }
+            for ($k=0; $k -le $Needed; $k++) { Write-Ui "" }
             $StartTop = [System.Console]::CursorTop - $DisplayLines.Count - 1
             if ($StartTop -lt 0) { $StartTop = 0 }
         }
@@ -711,7 +724,8 @@ function Start-Acquisition {
                 elseif ($Line -match '\[DL\]') { $Color = 'Yellow' }
                 elseif ($Line -match '\[UNPACK\]|Extracting|processed|SUCCESS|Done') { $Color = 'Green' }
 
-                Write-Host $Line.PadRight($WindowWidth) -ForegroundColor $Color -NoNewline
+                # Redraw in place: the host UI writes without a newline.
+                $Host.UI.Write([System.ConsoleColor]$Color, $Host.UI.RawUI.BackgroundColor, $Line.PadRight($WindowWidth))
             }
         }
 
@@ -725,62 +739,59 @@ function Start-Acquisition {
     } # end while
 
 
-    Write-Host "`n================================================================================" -ForegroundColor Cyan
-    Write-Host " [MISSION DEBRIEF] ACQUISITION SUMMARY" -ForegroundColor Cyan
-    Write-Host "================================================================================" -ForegroundColor Cyan
-
+    Write-Ui "`n================================================================================" -Color Cyan
+    Write-Ui " [MISSION DEBRIEF] ACQUISITION SUMMARY" -Color Cyan
+    Write-Ui "================================================================================" -Color Cyan
     $Successes = @($UniqueList | Where-Object { $_.Status -match 'COMPLETED|Done|FOUND|SUCCESS|processed' })
     $Failures = @($UniqueList | Where-Object { $_.Status -eq 'FAILED' })
 
     if ($Successes.Count -gt 0) {
-        Write-Host "`n [SUCCESSES]" -ForegroundColor Green
+        Write-Ui "`n [SUCCESSES]" -Color Green
         $Successes | ForEach-Object {
             $LocalDir = Join-Path $Raw $_.Slug
-            Write-Host "  - $($_.Slug.PadRight(30)) | Path: $LocalDir"
+            Write-Ui "  - $($_.Slug.PadRight(30)) | Path: $LocalDir"
         }
     }
 
     if ($Failures.Count -gt 0) {
-        Write-Host "`n [FAILURES]" -ForegroundColor Red
+        Write-Ui "`n [FAILURES]" -Color Red
         $Failures | ForEach-Object {
-            Write-Host "  - $($_.Slug.PadRight(30)) | Ref: $($_.Ref)"
+            Write-Ui "  - $($_.Slug.PadRight(30)) | Ref: $($_.Ref)"
         }
     }
-    Write-Host "`n================================================================================" -ForegroundColor Cyan
-
-    Write-Host "`n[OK] ACQUISITION MISSION ENDED." -ForegroundColor Green
+    Write-Ui "`n================================================================================" -Color Cyan
+    Write-Ui "`n[OK] ACQUISITION MISSION ENDED." -Color Green
     if ($null -eq $ForcedRefs) { Read-Host "Press Enter to return to menu" }
 } # end function Start-Acquisition
 
 while ($true) {
     # 2026: Resilient Header - Safer than Clear-Host in background/remote shells
-    if ($Host.Name -eq 'ConsoleHost') { Clear-Host } else { Write-Host "`n`n`n" }
-    Write-Host '--- LEMGENDARY DATASETS HUB v5.3 ---' -ForegroundColor Yellow
-
+    if ($Host.Name -eq 'ConsoleHost') { Clear-Host } else { Write-Ui "`n`n`n" }
+    Write-Ui '--- LEMGENDARY DATASETS HUB v5.3 ---' -Color Yellow
     # 2026 Resilience: Use cached CUDA status to prevent 5-second menu delays
-    if ($null -eq $global:CudaReady) {
+    if ($null -eq $script:CudaReady) {
         $CudaStatus = & $Vpy -c "import torch; print('OK' if torch.cuda.is_available() else 'OFF')"
-        $global:CudaReady = ($CudaStatus -match "OK")
+        $script:CudaReady = ($CudaStatus -match "OK")
     }
 
-    if (!$global:CudaReady) {
-        Write-Host "[SYSTEM] NO CUDA DETECTED! AI tasks will run on CPU (SLOW)." -ForegroundColor Red
+    if (!$script:CudaReady) {
+        Write-Ui "[SYSTEM] NO CUDA DETECTED! AI tasks will run on CPU (SLOW)." -Color Red
     } else {
-        Write-Host "[SYSTEM] CUDA READY (GPU Accelerated)" -ForegroundColor Green
+        Write-Ui "[SYSTEM] CUDA READY (GPU Accelerated)" -Color Green
     }
 
-    Show-Stats
-    Write-Host '1. [COMPILE] Build new SOTA manifold' -ForegroundColor Gray
-    Write-Host '2. [REDUCE]  Create downsampled variant' -ForegroundColor Gray
-    Write-Host '3. [SYNC]    Kaggle Manifolds Sync (Push / Get)' -ForegroundColor Gray
-    Write-Host '4. [MODERNIZE] Convert Large sets to modern format' -ForegroundColor Gray
-    Write-Host 'Q. [QUIT]    Exit Dashboard' -ForegroundColor Gray
+    Show-Stat
+    Write-Ui '1. [COMPILE] Build new SOTA manifold' -Color Gray
+    Write-Ui '2. [REDUCE]  Create downsampled variant' -Color Gray
+    Write-Ui '3. [SYNC]    Kaggle Manifolds Sync (Push / Get)' -Color Gray
+    Write-Ui '4. [MODERNIZE] Convert Large sets to modern format' -Color Gray
+    Write-Ui 'Q. [QUIT]    Exit Dashboard' -Color Gray
     $I = Read-Host 'Selection'
     if ($I -eq '1') {
         $RegData = Get-RegData
         $DatasetNames = @($RegData.datasets.PSObject.Properties.Name)
 
-        Write-Host "`n--- SELECT DATASET TO COMPILE ---" -ForegroundColor Cyan
+        Write-Ui "`n--- SELECT DATASET TO COMPILE ---" -Color Cyan
         $Prefix = $RegData._registry_metadata.name_prefix
         $Suffix = $RegData._registry_metadata.name_suffix
         for ($i=0; $i -lt $DatasetNames.Count; $i++) {
@@ -788,12 +799,12 @@ while ($true) {
             $slug = $RegData.datasets.$dsName.name
             $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $slug -Suffix $Suffix
             if (Test-ManifoldData -Path $ManifoldPath) {
-                Write-Host "$($i+1). $dsName [COMPILED]" -ForegroundColor Green
+                Write-Ui "$($i+1). $dsName [COMPILED]" -Color Green
             } else {
-                Write-Host "$($i+1). $dsName" -ForegroundColor Gray
+                Write-Ui "$($i+1). $dsName" -Color Gray
             }
         }
-        Write-Host "a. All Datasets"
+        Write-Ui "a. All Datasets"
         $Sel = Read-Host "Selection"
 
         $TargetModels = @()
@@ -801,17 +812,17 @@ while ($true) {
             $TargetModels = $DatasetNames
         } else {
             $Idx = -1
-            try { $Idx = [int]$Sel - 1 } catch {}
+            $SelNum = 0; if ([int]::TryParse($Sel, [ref]$SelNum)) { $Idx = $SelNum - 1 }
             if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
                 $TargetModels += $DatasetNames[$Idx]
             } else {
-                Write-Host "Invalid selection. Please enter a valid number or 'a'." -Fore Red
+                Write-Ui "Invalid selection. Please enter a valid number or 'a'." -Color Red
                 Start-Sleep -Seconds 2
                 continue
             }
         }
 
-        # ─── CHECK IF ANY FOREX DATASET IS SELECTED ──────────────────────
+        # --- CHECK IF ANY FOREX DATASET IS SELECTED ----------------------
         $IsForex = $false
         foreach ($tm in $TargetModels) {
             $dsInfo = $RegData.datasets.$tm
@@ -826,36 +837,36 @@ while ($true) {
             $RawForex = Join-Path $Raw 'forex'
             $TsForex = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'lemgendary-training-suite') 'data\forex'
             if (!(Test-Path $RawForex) -and !(Test-Path $TsForex)) {
-                Write-Host "`n================================================================================" -ForegroundColor Yellow
-                Write-Host " [MT5] METATRADER 5 SETUP INSTRUCTIONS FOR FOREX MANIFOLD DATASET" -ForegroundColor Cyan
-                Write-Host "================================================================================" -ForegroundColor Yellow
-                Write-Host " 1. Download MetaTrader 5: https://www.metatrader5.com/en/download" -ForegroundColor Green
-                Write-Host " 2. Install & Open MetaTrader 5." -ForegroundColor White
-                Write-Host " 3. Register a free Demo Account: File -> Open an Account -> 'MetaQuotes-Demo'." -ForegroundColor White
-                Write-Host " 4. Keep MetaTrader 5 open and logged in." -ForegroundColor White
-                Write-Host " 5. The compiler will automatically attach and download all pairs/shards directly." -ForegroundColor Green
-                Write-Host "================================================================================`n" -ForegroundColor Yellow
+                Write-Ui "`n================================================================================" -Color Yellow
+                Write-Ui " [MT5] METATRADER 5 SETUP INSTRUCTIONS FOR FOREX MANIFOLD DATASET" -Color Cyan
+                Write-Ui "================================================================================" -Color Yellow
+                Write-Ui " 1. Download MetaTrader 5: https://www.metatrader5.com/en/download" -Color Green
+                Write-Ui " 2. Install & Open MetaTrader 5." -Color White
+                Write-Ui " 3. Register a free Demo Account: File -> Open an Account -> 'MetaQuotes-Demo'." -Color White
+                Write-Ui " 4. Keep MetaTrader 5 open and logged in." -Color White
+                Write-Ui " 5. The compiler will automatically attach and download all pairs/shards directly." -Color Green
+                Write-Ui "================================================================================`n" -Color Yellow
             }
         }
 
         # Check missing sets (with Manifold-Aware skip)
-        $Missing = Test-MissingDatasets -TargetModels $TargetModels
+        $Missing = Test-MissingDataset -TargetModels $TargetModels
 
         if ($Missing.Count -gt 0) {
-            Write-Host "`n[WARNING] Some raw datasets are missing or empty for this compilation:" -ForegroundColor Yellow
-            $Missing | ForEach-Object { Write-Host "  - $_" -ForegroundColor Gray }
+            Write-Ui "`n[WARNING] Some raw datasets are missing or empty for this compilation:" -Color Yellow
+            $Missing | ForEach-Object { Write-Ui "  - $_" -Color Gray }
             $Choice = Read-Host "`nWould you like to acquire missing sets before compiling? (Y/N)"
             if ($Choice -match '^y') {
                 Start-Acquisition -ForcedRefs $Missing
             } else {
-                Write-Host "Proceeding with missing data... might fail if manifold isn't sufficient." -ForegroundColor Red
+                Write-Ui "Proceeding with missing data... might fail if manifold isn't sufficient." -Color Red
                 Start-Sleep -Seconds 2
             }
         }
 
-        # ─── ASK FOR OVERRIDES (SKIP MAX SIZE FOR FOREX) ────────────────
+        # --- ASK FOR OVERRIDES (SKIP MAX SIZE FOR FOREX) ----------------
         if ($IsForex) {
-            Write-Host "`n[FOREX] Max size is unlimited (compiler will not enforce a limit)." -ForegroundColor Cyan
+            Write-Ui "`n[FOREX] Max size is unlimited (compiler will not enforce a limit)." -Color Cyan
             $MaxSize = 9999  # effectively unlimited
             # Still ask for suffix
             $Suffix = Read-Host "Enter Suffix [Default: $($RegData._registry_metadata.name_suffix)]"
@@ -874,8 +885,8 @@ while ($true) {
         Start-Sleep -Milliseconds 100
 
         foreach ($tm in $TargetModels) {
-            Write-Host "`n[SYSTEM] Compiling dataset model: $tm" -ForegroundColor Cyan
-            & $Vpy core\manifold_compile.py --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
+            Write-Ui "`n[SYSTEM] Compiling dataset model: $tm" -Color Cyan
+            & $Vpy -m core.manifold_compile --model $tm --max_gb $MaxSize --suffix $Suffix @WorkerArg
 
             # Post-Compile Verification
             $OutFolder = Join-Path (Get-Location) $OutFolderName
@@ -884,25 +895,24 @@ while ($true) {
             }
 
             if (Test-Path (Join-Path $OutFolder "README.md")) {
-                Write-Host "  [OK] Dataset compiled successfully!" -ForegroundColor Green
+                Write-Ui "  [OK] Dataset compiled successfully!" -Color Green
             }
         }
         # 2026: Finalized Global Cleanup (Moved outside loop to prevent I/O collisions)
-        Write-Host "`n[JANITOR] Purging compilation temp files..." -ForegroundColor Gray
-        & $Vpy core\manifold_compile.py --cleanup
+        Write-Ui "`n[JANITOR] Purging compilation temp files..." -Color Gray
+        & $Vpy -m core.manifold_compile --cleanup
     }
     elseif ($I -eq '2') {
-        $ReduceScript = if (Test-Path 'tools\manifold_reduce.py') { 'tools\manifold_reduce.py' } else { 'manifold_reduce.py' }
-        & $Vpy $ReduceScript --reduce
+        & $Vpy -m tools.manifold_reduce --reduce
     }
     elseif ($I -eq '3') {
         while ($true) {
-            Write-Host "`n--- KAGGLE MANIFOLDS SYNC ---" -ForegroundColor Cyan
-            Write-Host "1. [SYNC] Sync to Kaggle (Push compiled manifold to Kaggle)" -ForegroundColor Gray
-            Write-Host "2. [GET]  Get from Kaggle (Download precompiled LemGendized set from Kaggle)" -ForegroundColor Gray
-            Write-Host "3. [META] Update Kaggle Metadata Only (single dataset - no re-upload)" -ForegroundColor Gray
-            Write-Host "A. [ALL]  Update ALL Datasets Metadata from unified_data.yaml" -ForegroundColor Gray
-            Write-Host "B. [BACK] Return to Dashboard" -ForegroundColor Gray
+            Write-Ui "`n--- KAGGLE MANIFOLDS SYNC ---" -Color Cyan
+            Write-Ui "1. [SYNC] Sync to Kaggle (Push compiled manifold to Kaggle)" -Color Gray
+            Write-Ui "2. [GET]  Get from Kaggle (Download precompiled LemGendized set from Kaggle)" -Color Gray
+            Write-Ui "3. [META] Update Kaggle Metadata Only (single dataset - no re-upload)" -Color Gray
+            Write-Ui "A. [ALL]  Update ALL Datasets Metadata from unified_data.yaml" -Color Gray
+            Write-Ui "B. [BACK] Return to Dashboard" -Color Gray
             $SyncChoice = Read-Host "Selection"
 
             if ($SyncChoice -eq '1') {
@@ -911,24 +921,24 @@ while ($true) {
                 $Prefix = $RegData._registry_metadata.name_prefix
                 $Suffix = $RegData._registry_metadata.name_suffix
 
-                Write-Host "`n--- SELECT MANIFOLD TO SYNC TO KAGGLE ---" -ForegroundColor Cyan
+                Write-Ui "`n--- SELECT MANIFOLD TO SYNC TO KAGGLE ---" -Color Cyan
                 for ($i=0; $i -lt $DatasetNames.Count; $i++) {
                     $dsName = $DatasetNames[$i]
                     $slug = $RegData.datasets.$dsName.name
                     $ManifoldPath = Resolve-ManifoldPath -OutDir $Out -Prefix $Prefix -Slug $slug -Suffix $Suffix
                     $ManifoldName = Split-Path $ManifoldPath -Leaf
                     if (Test-ManifoldData -Path $ManifoldPath) {
-                        Write-Host "$($i+1). $dsName [READY] ($ManifoldName)" -ForegroundColor Green
+                        Write-Ui "$($i+1). $dsName [READY] ($ManifoldName)" -Color Green
                     } elseif (Test-Path $ManifoldPath) {
-                        Write-Host "$($i+1). $dsName [NO DATA] ($ManifoldName)" -ForegroundColor Yellow
+                        Write-Ui "$($i+1). $dsName [NO DATA] ($ManifoldName)" -Color Yellow
                     } else {
-                        Write-Host "$($i+1). $dsName [NOT COMPILED]" -ForegroundColor DarkGray
+                        Write-Ui "$($i+1). $dsName [NOT COMPILED]" -Color DarkGray
                     }
                 }
                 $Sel = Read-Host "Selection (or 'b' to cancel)"
                 if ($Sel -match '^[bB]') { continue }
                 $Idx = -1
-                try { $Idx = [int]$Sel - 1 } catch {}
+                $SelNum = 0; if ([int]::TryParse($Sel, [ref]$SelNum)) { $Idx = $SelNum - 1 }
                 if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
                     $tm = $DatasetNames[$Idx]
                     $ds_info = $RegData.datasets.$tm
@@ -937,7 +947,7 @@ while ($true) {
                     $ManifoldName = Split-Path $ManifoldPath -Leaf
 
                     if (!(Test-ManifoldData -Path $ManifoldPath)) {
-                        Write-Host "  [ERROR] Compiled manifold contains no actual data at $ManifoldPath" -ForegroundColor Red
+                        Write-Ui "  [ERROR] Compiled manifold contains no actual data at $ManifoldPath" -Color Red
                         Read-Host "Press Enter to return"
                         continue
                     }
@@ -950,7 +960,7 @@ while ($true) {
                             if ($MetaContent.id) {
                                 $KagHandle = $MetaContent.id
                             }
-                        } catch {}
+                        } catch { Write-Warning "Could not read $($MetaJson): $($_.Exception.Message)" }
                     }
                     if (!$KagHandle -and $ds_info.kaggle_ref) {
                         $KagHandle = $ds_info.kaggle_ref.Replace("kaggle://", "").Trim()
@@ -965,12 +975,12 @@ while ($true) {
                     }
 
                     if ($KagHandle) {
-                        Write-Host "`n[SYNC] Initiating Hybrid Sync for $ManifoldName..." -ForegroundColor Cyan
-                        & $Vpy $kagManagerPath --action upload --repo_id $KagHandle --output_dir $ManifoldPath
+                        Write-Ui "`n[SYNC] Initiating Hybrid Sync for $ManifoldName..." -Color Cyan
+                        & $Vpy -m $kagManagerModule --action upload --repo_id $KagHandle --output_dir $ManifoldPath
                         if ($LASTEXITCODE -eq 0) {
-                            Write-Host "[OK] [SYNC] Manifold successfully synchronized!" -ForegroundColor Green
+                            Write-Ui "[OK] [SYNC] Manifold successfully synchronized!" -Color Green
                         } else {
-                            Write-Host "[FAILED] [SYNC] Synchronization failed." -ForegroundColor Red
+                            Write-Ui "[FAILED] [SYNC] Synchronization failed." -Color Red
                         }
                     }
                     Read-Host "Press Enter to return"
@@ -982,7 +992,7 @@ while ($true) {
                 $Prefix = $RegData._registry_metadata.name_prefix
                 $Suffix = $RegData._registry_metadata.name_suffix
 
-                Write-Host "`n--- SELECT MANIFOLD TO GET FROM KAGGLE ---" -ForegroundColor Cyan
+                Write-Ui "`n--- SELECT MANIFOLD TO GET FROM KAGGLE ---" -Color Cyan
                 for ($i=0; $i -lt $DatasetNames.Count; $i++) {
                     $dsName = $DatasetNames[$i]
                     $ds_info = $RegData.datasets.$dsName
@@ -991,14 +1001,14 @@ while ($true) {
                     $KagRef = if ($ds_info.kaggle_ref) { $ds_info.kaggle_ref.Replace("kaggle://", "") } else { "NOT CONFIGURED" }
 
                     if (Test-ManifoldData -Path $ManifoldPath) {
-                        Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: READY]" -ForegroundColor Green
+                        Write-Ui "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: READY]" -Color Green
                     } elseif (Test-Path $ManifoldPath) {
-                        Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NO DATA]" -ForegroundColor Yellow
+                        Write-Ui "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NO DATA]" -Color Yellow
                     } else {
-                        Write-Host "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NOT FOUND]" -ForegroundColor DarkGray
+                        Write-Ui "$($i+1). $($dsName.PadRight(35)) -> $KagRef [LOCAL: NOT FOUND]" -Color DarkGray
                     }
                 }
-                Write-Host "c. Custom Kaggle Handle (e.g. username/dataset-slug)" -ForegroundColor Gray
+                Write-Ui "c. Custom Kaggle Handle (e.g. username/dataset-slug)" -Color Gray
                 $Sel = Read-Host "Selection (or 'b' to cancel)"
                 if ($Sel -match '^[bB]') { continue }
 
@@ -1014,7 +1024,7 @@ while ($true) {
                     }
                 } else {
                     $Idx = -1
-                    try { $Idx = [int]$Sel - 1 } catch {}
+                    $SelNum = 0; if ([int]::TryParse($Sel, [ref]$SelNum)) { $Idx = $SelNum - 1 }
                     if ($Idx -ge 0 -and $Idx -lt $DatasetNames.Count) {
                         $tm = $DatasetNames[$Idx]
                         $ds_info = $RegData.datasets.$tm
@@ -1031,7 +1041,7 @@ while ($true) {
                             $TargetHandle = Read-Host "No Kaggle ref configured in registry. Enter Kaggle Handle"
                         }
                     } else {
-                        Write-Host "Invalid selection." -ForegroundColor Red
+                        Write-Ui "Invalid selection." -Color Red
                         Start-Sleep -Seconds 2
                         continue
                     }
@@ -1044,36 +1054,35 @@ while ($true) {
                     $SlugZip = Join-Path $Out ($Slug + ".zip")
 
                     if ((Test-Path $DestPath) -and (Test-ManifoldData -Path $DestPath)) {
-                        Write-Host "`n[INFO] Local manifold '$TargetFolder' exists and contains data at $DestPath." -ForegroundColor Cyan
+                        Write-Ui "`n[INFO] Local manifold '$TargetFolder' exists and contains data at $DestPath." -Color Cyan
                         $Confirm = Read-Host "Resume extraction / synchronize missing files? (Y/n/overwrite)"
                         if ($Confirm -match '^[oO]') {
                             $Really = Read-Host "[CRITICAL] Type 'YES' to delete existing manifold folder"
                             if ($Really -eq 'YES') {
                                 Remove-Item -Path $DestPath -Recurse -Force
                             } else {
-                                Write-Host "[ABORTED] Cancellation confirmed." -ForegroundColor Yellow
+                                Write-Ui "[ABORTED] Cancellation confirmed." -Color Yellow
                                 continue
                             }
                         } elseif ($Confirm -match '^[nN]') {
-                            Write-Host "[ABORTED] Download cancelled." -ForegroundColor Yellow
+                            Write-Ui "[ABORTED] Download cancelled." -Color Yellow
                             Read-Host "Press Enter to return"
                             continue
                         }
                     } elseif (Test-Path $DestPath) {
-                        Write-Host "`n[INFO] Local manifold folder '$TargetFolder' exists at $DestPath but contains no sample data." -ForegroundColor Yellow
+                        Write-Ui "`n[INFO] Local manifold folder '$TargetFolder' exists at $DestPath but contains no sample data." -Color Yellow
                     } elseif ((Test-Path $ExistingZip) -or (Test-Path $SlugZip)) {
-                        Write-Host "`n[RESUME] Found existing downloaded archive in LemGendaryDatasets root! Resuming extraction..." -ForegroundColor Green
+                        Write-Ui "`n[RESUME] Found existing downloaded archive in LemGendaryDatasets root! Resuming extraction..." -Color Green
                     }
 
-                    Write-Host "`n[GET] Downloading precompiled LemGendized manifold from Kaggle..." -ForegroundColor Cyan
-                    Write-Host "  Target: $TargetHandle" -ForegroundColor Gray
-                    Write-Host "  Destination: $DestPath" -ForegroundColor Gray
-
-                    & $Vpy $kagManagerPath --action download --repo_id $TargetHandle --output_dir $DestPath
+                    Write-Ui "`n[GET] Downloading precompiled LemGendized manifold from Kaggle..." -Color Cyan
+                    Write-Ui "  Target: $TargetHandle" -Color Gray
+                    Write-Ui "  Destination: $DestPath" -Color Gray
+                    & $Vpy -m $kagManagerModule --action download --repo_id $TargetHandle --output_dir $DestPath
                     if ($LASTEXITCODE -eq 0) {
-                        Write-Host "[OK] [GET] Manifold successfully acquired from Kaggle!" -ForegroundColor Green
+                        Write-Ui "[OK] [GET] Manifold successfully acquired from Kaggle!" -Color Green
                     } else {
-                        Write-Host "[FAILED] [GET] Download or extraction interrupted. Archive preserved for resumption." -ForegroundColor Yellow
+                        Write-Ui "[FAILED] [GET] Download or extraction interrupted. Archive preserved for resumption." -Color Yellow
                     }
                     Read-Host "Press Enter to return"
                 }
@@ -1087,7 +1096,7 @@ while ($true) {
                 $Prefix = $RegData._registry_metadata.name_prefix
                 $Suffix = $RegData._registry_metadata.name_suffix
 
-                Write-Host "`n--- SELECT MANIFOLD TO UPDATE METADATA ON KAGGLE ---" -ForegroundColor Cyan
+                Write-Ui "`n--- SELECT MANIFOLD TO UPDATE METADATA ON KAGGLE ---" -Color Cyan
                 for ($i=0; $i -lt $DatasetNames.Count; $i++) {
                     $dsName = $DatasetNames[$i]
                     $slug = $RegData.datasets.$dsName.name
@@ -1096,14 +1105,14 @@ while ($true) {
                     $MetaFile = Join-Path $ManifoldPath 'dataset-metadata.json'
                     $MetaStatus = if (Test-Path $MetaFile) { '[META OK]' } else { '[NO META]' }
                     $Color = if (Test-Path $MetaFile) { 'Green' } else { 'Yellow' }
-                    Write-Host "$($i+1). $dsName $MetaStatus ($ManifoldName)" -ForegroundColor $Color
+                    Write-Ui "$($i+1). $dsName $MetaStatus ($ManifoldName)" -Color $Color
                 }
 
                 $MetaChoice = Read-Host "Select dataset number (or B to cancel)"
                 if ($MetaChoice -match '^[bBqQ]') { continue }
                 $MetaIdx = [int]$MetaChoice - 1
                 if ($MetaIdx -lt 0 -or $MetaIdx -ge $DatasetNames.Count) {
-                    Write-Host "Invalid selection." -ForegroundColor Red
+                    Write-Ui "Invalid selection." -Color Red
                     Start-Sleep -Seconds 1
                     continue
                 }
@@ -1115,7 +1124,7 @@ while ($true) {
                 $MetaFile = Join-Path $MetaManifold 'dataset-metadata.json'
 
                 if (-not (Test-Path $MetaFile)) {
-                    Write-Host "[ERROR] No dataset-metadata.json found in $MetaManifold. Cannot update metadata without it." -ForegroundColor Red
+                    Write-Ui "[ERROR] No dataset-metadata.json found in $MetaManifold. Cannot update metadata without it." -Color Red
                     Read-Host "Press Enter to continue"
                     continue
                 }
@@ -1131,44 +1140,43 @@ while ($true) {
                     if ($HandleInput.Trim()) { $KagHandle = $HandleInput.Replace("kaggle://", "").Trim() }
                 }
 
-                Write-Host "`n[META] Updating Kaggle metadata for $KagHandle..." -ForegroundColor Cyan
-                Write-Host "  Manifold: $MetaManifold" -ForegroundColor Gray
-                Write-Host "  (No data re-upload - only title, description, license and column info)" -ForegroundColor DarkGray
-
-                & $Vpy $kagManagerPath --action metadata --repo_id $KagHandle --output_dir $MetaManifold
+                Write-Ui "`n[META] Updating Kaggle metadata for $KagHandle..." -Color Cyan
+                Write-Ui "  Manifold: $MetaManifold" -Color Gray
+                Write-Ui "  (No data re-upload - only title, description, license and column info)" -Color DarkGray
+                & $Vpy -m $kagManagerModule --action metadata --repo_id $KagHandle --output_dir $MetaManifold
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] [META] Kaggle metadata updated successfully for $KagHandle!" -ForegroundColor Green
+                    Write-Ui "[OK] [META] Kaggle metadata updated successfully for $KagHandle!" -Color Green
                 } else {
-                    Write-Host "[FAILED] [META] Metadata update failed. Check output above for details." -ForegroundColor Red
+                    Write-Ui "[FAILED] [META] Metadata update failed. Check output above for details." -Color Red
                 }
                 Read-Host "Press Enter to return"
             }
             elseif ($SyncChoice -match '^[aA]$') {
-                Write-Host "`n[ALL META] Updating Kaggle metadata for ALL datasets in unified_data.yaml..." -ForegroundColor Cyan
-                Write-Host "  (No data re-upload - only title, description, license and column info for each dataset)" -ForegroundColor DarkGray
-
-                & $Vpy $kagManagerPath --action metadata --repo_id lemtreursi/placeholder --all-datasets --output_dir $Out
+                Write-Ui "`n[ALL META] Updating Kaggle metadata for ALL datasets in unified_data.yaml..." -Color Cyan
+                Write-Ui "  (No data re-upload - only title, description, license and column info for each dataset)" -Color DarkGray
+                $KagOwner = (& $Vpy -c "from core.ecosystem import ecosystem; print(ecosystem().kaggle_owner)").Trim()
+                & $Vpy -m $kagManagerModule --action metadata --repo_id "$KagOwner/placeholder" --all-datasets --output_dir $Out
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] [ALL META] Metadata updated for all configured datasets!" -ForegroundColor Green
+                    Write-Ui "[OK] [ALL META] Metadata updated for all configured datasets!" -Color Green
                 } else {
-                    Write-Host "[WARN] [ALL META] Some datasets may have failed. Review output above." -ForegroundColor Yellow
+                    Write-Ui "[WARN] [ALL META] Some datasets may have failed. Review output above." -Color Yellow
                 }
                 Read-Host "Press Enter to return"
             }
             else {
-                Write-Host "Invalid selection. Please choose 1, 2, 3, A, or B." -ForegroundColor Red
+                Write-Ui "Invalid selection. Please choose 1, 2, 3, A, or B." -Color Red
                 Start-Sleep -Seconds 1
             }
         }
     }
     elseif ($I -eq '4') {
         while ($true) {
-            Write-Host "`n--- LEMGENDARY DATASET MODERNIZATION & CONVERSION HUB ---" -ForegroundColor Cyan
-            Write-Host "1. [QUEUE]   View Modernization Status & Storage Matrix" -ForegroundColor Gray
-            Write-Host "2. [CONVERT] Select & Modernize Specific Manifold(s) (Shards / WebP / Containers)" -ForegroundColor Gray
-            Write-Host "3. [BATCH]   Run Full Modernization Queue (All Pending Sets)" -ForegroundColor Gray
-            Write-Host "4. [LEGACY]  Run Legacy Directory Suffix-Removal Tool" -ForegroundColor Gray
-            Write-Host "B. [BACK]    Return to Main Dashboard" -ForegroundColor Gray
+            Write-Ui "`n--- LEMGENDARY DATASET MODERNIZATION & CONVERSION HUB ---" -Color Cyan
+            Write-Ui "1. [QUEUE]   View Modernization Status & Storage Matrix" -Color Gray
+            Write-Ui "2. [CONVERT] Select & Modernize Specific Manifold(s) (Shards / WebP / Containers)" -Color Gray
+            Write-Ui "3. [BATCH]   Run Full Modernization Queue (All Pending Sets)" -Color Gray
+            Write-Ui "4. [LEGACY]  Run Legacy Directory Suffix-Removal Tool" -Color Gray
+            Write-Ui "B. [BACK]    Return to Main Dashboard" -Color Gray
             $ModChoice = Read-Host "Selection"
 
             $QueueScript = Join-Path $PSScriptRoot 'tools\modernization_queue.py'
@@ -1178,16 +1186,16 @@ while ($true) {
 
             if ($ModChoice -eq '1') {
                 if (Test-Path $QueueScript) {
-                    & $Vpy $QueueScript --list
+                    & $Vpy -m tools.modernization_queue --list
                 } else {
-                    Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
+                    Write-Ui "[ERROR] modernization_queue.py not found at $QueueScript" -Color Red
                 }
                 Read-Host "`nPress Enter to continue"
             }
             elseif ($ModChoice -eq '2') {
                 if (Test-Path $QueueScript) {
-                    Write-Host "`n[MODERNIZE] Scanning dataset modernization states..." -ForegroundColor Cyan
-                    & $Vpy $QueueScript --list
+                    Write-Ui "`n[MODERNIZE] Scanning dataset modernization states..." -Color Cyan
+                    & $Vpy -m tools.modernization_queue --list
                     $TargetSet = Read-Host "`nEnter dataset key(s) to modernize (e.g. nafnet_debluring, or 'b' to cancel)"
                     if ($TargetSet -match '^[bB]') { continue }
                     if ($TargetSet) {
@@ -1197,28 +1205,28 @@ while ($true) {
                         if (-not $MdsShardMb) { $MdsShardMb = '512' }
                         $PurgeChoice = Read-Host "Purge source archives and loose images post-conversion? (Y/N, default: Y)"
                         $PurgeFlag = if ($PurgeChoice -match '^[nN]') { '--keep-zip' } else { '--purge-loose' }
-                        Write-Host "`n[START] Launching modernization for: $TargetSet..." -ForegroundColor Green
-                        & $Vpy $QueueScript --datasets $TargetSet --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
+                        Write-Ui "`n[START] Launching modernization for: $TargetSet..." -Color Green
+                        & $Vpy -m tools.modernization_queue --datasets $TargetSet --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
                         Read-Host "`nPress Enter to return"
                     }
                 } else {
-                    Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
+                    Write-Ui "[ERROR] modernization_queue.py not found at $QueueScript" -Color Red
                     Read-Host "`nPress Enter to return"
                 }
             }
             elseif ($ModChoice -eq '3') {
                 if (Test-Path $QueueScript) {
-                    Write-Host "`n[BATCH] Launching full modernization queue across all pending datasets..." -ForegroundColor Green
+                    Write-Ui "`n[BATCH] Launching full modernization queue across all pending datasets..." -Color Green
                     $Workers = Read-Host "Transcoding worker threads (default: 12)"
                     if (-not $Workers) { $Workers = '12' }
                     $MdsShardMb = Read-Host "MDS shard size in MB (default: 512, only applies to MDS-format manifolds)"
                     if (-not $MdsShardMb) { $MdsShardMb = '512' }
                     $PurgeChoice = Read-Host "Purge source archives and loose images post-conversion? (Y/N, default: Y)"
                     $PurgeFlag = if ($PurgeChoice -match '^[nN]') { '--keep-zip' } else { '--purge-loose' }
-                    & $Vpy $QueueScript --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
+                    & $Vpy -m tools.modernization_queue --workers ([int]$Workers) --mds-shard-mb ([int]$MdsShardMb) $PurgeFlag
                     Read-Host "`nPress Enter to return"
                 } else {
-                    Write-Host "[ERROR] modernization_queue.py not found at $QueueScript" -ForegroundColor Red
+                    Write-Ui "[ERROR] modernization_queue.py not found at $QueueScript" -Color Red
                     Read-Host "`nPress Enter to return"
                 }
             }
@@ -1228,9 +1236,9 @@ while ($true) {
                     $ModernizeScript = Join-Path $PSScriptRoot 'modernize_manifold.py'
                 }
                 if (Test-Path $ModernizeScript) {
-                    & $Vpy $ModernizeScript
+                    & $Vpy -m tools.modernize_manifold
                 } else {
-                    Write-Host "[ERROR] modernize_manifold.py not found at $ModernizeScript" -ForegroundColor Red
+                    Write-Ui "[ERROR] modernize_manifold.py not found at $ModernizeScript" -Color Red
                 }
                 Read-Host "`nPress Enter to return"
             }
@@ -1238,17 +1246,17 @@ while ($true) {
                 break
             }
             else {
-                Write-Host "Invalid selection. Please choose 1, 2, 3, 4, or B." -ForegroundColor Red
+                Write-Ui "Invalid selection. Please choose 1, 2, 3, 4, or B." -Color Red
                 Start-Sleep -Seconds 1
             }
         }
     }
     elseif ($I -match '^q') { break }
     else {
-        Write-Host "Command finished or unrecognized input." -ForegroundColor DarkGray
+        Write-Ui "Command finished or unrecognized input." -Color DarkGray
     }
 
     # 2026: SOTA Debugging Pause - Prevent screen clear if there was an error
-    Write-Host "`nPress Enter to return to Dashboard..." -ForegroundColor Yellow
+    Write-Ui "`nPress Enter to return to Dashboard..." -Color Yellow
     Read-Host
 }

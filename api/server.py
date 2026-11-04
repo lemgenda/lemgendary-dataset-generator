@@ -7,12 +7,10 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Any, Dict
 
+import uvicorn
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 
 from api.auth import verify_token
 from api.events import drain_event_queue, manager
@@ -22,15 +20,23 @@ from api.routes.env import router as env_router
 from api.routes.gates import router as gates_router
 from api.routes.gui import router as gui_router
 from api.routes.health import router as health_router
-from api.routes.jobs import router as jobs_router, ws_router as jobs_ws_router
+from api.routes.jobs import router as jobs_router
+from api.routes.jobs import ws_router as jobs_ws_router
 from api.routes.kaggle import router as kaggle_router
+from api.routes.llm import router as llm_router
 from api.routes.modernize import router as modernize_router
 from api.routes.sources import router as sources_router
-from api.routes.llm import router as llm_router
+from api.security import (
+    ALLOWED_HEADERS,
+    ALLOWED_METHODS,
+    ALLOWED_ORIGINS,
+    origin_guard_middleware,
+)
+from core import ecosystem, paths
 from core.cli_args import __version__
 
 logger = logging.getLogger("lemgendary.api.server")
-_PID_FILE = Path(".lgd_server/server.pid")
+_PID_FILE = paths.pid_file()
 
 
 @asynccontextmanager
@@ -79,11 +85,13 @@ def create_app() -> FastAPI:
 
     app_instance.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=list(ALLOWED_ORIGINS),
+        allow_credentials=False,
+        allow_methods=list(ALLOWED_METHODS),
+        allow_headers=list(ALLOWED_HEADERS),
     )
+    # Added last, so it runs first: refuses foreign origins before CORS or routing.
+    app_instance.add_middleware(origin_guard_middleware)
 
     # Public diagnostic and inspection routers
     app_instance.include_router(health_router, prefix="/api")
@@ -110,7 +118,7 @@ def create_app() -> FastAPI:
                 await websocket.receive_text()
         except WebSocketDisconnect:
             await manager.disconnect_global(websocket)
-        except Exception as exc:
+        except (RuntimeError, OSError) as exc:
             logger.debug("Global websocket client error: %s", exc)
             await manager.disconnect_global(websocket)
 
@@ -120,12 +128,15 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8100, reload: bool = False) -> None:
-    """Launch the uvicorn ASGI server with the dataset compiler API application."""
+def run_server(host: str | None = None, port: int | None = None, reload: bool = False) -> None:
+    """Launch the uvicorn ASGI server with the dataset compiler API application.
+
+    ``host`` and ``port`` default to the ``dataset-compiler`` entry of ecosystem.json.
+    """
     uvicorn.run(
         "api.server:app",
-        host=host,
-        port=port,
+        host=host or ecosystem.bind_host(),
+        port=port or ecosystem.service_port(ecosystem.DATASETS_SERVICE),
         reload=reload,
         log_level="info",
     )

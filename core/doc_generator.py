@@ -5,13 +5,6 @@ Backward-compatible facade delegating to the modular core.docs subpackage.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
 from core.docs import (
     FOREX_COLUMN_FIELDS,
     MANIFEST_CACHE,
@@ -20,13 +13,15 @@ from core.docs import (
     TASK_ARCH_BASE,
     TASK_META,
     UNIFIED_DATA,
-    clean_readme as _clean_readme,
     format_source,
     generate_dataset_docs,
     main,
     regenerate_all_docs,
     regenerate_all_non_forex,
     scan_forex_manifold,
+)
+from core.docs import (
+    clean_readme as _clean_readme,
 )
 from core.docs.metadata import (
     MANIFEST_CACHE_PATH,
