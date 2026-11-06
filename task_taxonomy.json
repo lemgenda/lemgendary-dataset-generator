@@ -86,6 +86,20 @@
       "label_strategy": null,
       "mask_strategy": null,
       "name_patterns": []
+    },
+    {
+      "id": "forex",
+      "layout_dir": null,
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": ["forex"]
+    },
+    {
+      "id": "ai_helper",
+      "layout_dir": null,
+      "label_strategy": null,
+      "mask_strategy": null,
+      "name_patterns": ["ai_helper", "llm"]
     }
   ],
   "documentation_tasks": {

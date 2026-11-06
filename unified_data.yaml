@@ -108,7 +108,7 @@ datasets:
   nima_authenticity:
     name: NimaAuthenticity
     task: quality
-    task_confirmed: false
+    task_confirmed: true
     kaggle_ref: kaggle://lemtreursi/lemgendizednimaauthenticity
     val_split: 0.12
     refs:
@@ -334,7 +334,7 @@ datasets:
   retinaface_mobilenet:
     name: RetinaFace
     task: pose
-    task_confirmed: false
+    task_confirmed: true
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinaface
     val_split: 0.12
     labeling: true
@@ -888,8 +888,8 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   forex_universe:
     name: ForexUniverse
-    task: detection
-    task_confirmed: false
+    task: forex
+    task_confirmed: true
     kaggle_ref: kaggle://lemtreursi/lemgendizedforexuniverse
     kaggle_dataset_urls:
       - https://www.kaggle.com/datasets/lemtreursi/lemgendizedforexuniverselarge
@@ -959,8 +959,8 @@ datasets:
     author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
   ai_helper_lemgend:
     name: AIHelperLemGend
-    task: detection
-    task_confirmed: false
+    task: ai_helper
+    task_confirmed: true
     dataset_type: llm
     category: Technical Documentation & AI Assistant Training
     modernized_folder: LemGendizedAIHelperLemGend

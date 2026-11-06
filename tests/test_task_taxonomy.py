@@ -35,12 +35,7 @@ from generators.labels import LabelGenerator
 from generators.masks import MaskGenerator
 
 SCHEMA_FILE = PROJECT_ROOT / "task_taxonomy.schema.json"
-PENDING_OWNER_CONFIRMATION = {
-    "retinaface_mobilenet": "pose",
-    "nima_authenticity": "quality",
-    "forex_universe": "detection",
-    "ai_helper_lemgend": "detection",
-}
+PENDING_OWNER_CONFIRMATION: dict[str, str] = {}
 
 
 def _registry() -> dict[str, dict[str, Any]]:
@@ -159,12 +154,10 @@ class RegistryTaxonomyConsistencyTests(unittest.TestCase):
                 self.assertEqual(resolve_task(registry, entry["name"]), entry["task"])
 
     def test_pending_owner_confirmation_entries(self) -> None:
-        """Exactly the four heuristic-derived tasks carry task_confirmed: false."""
+        """All registry tasks are owner-confirmed (zero task_confirmed: false entries)."""
         registry = _registry()
         pending = {k: e["task"] for k, e in registry.items() if e.get("task_confirmed") is False}
         self.assertEqual(pending, PENDING_OWNER_CONFIRMATION)
-        for key, task in pending.items():
-            self.assertEqual(taxonomy().infer_from_name(key), task)
 
     def test_schema_validation_rejects_unknown_tasks(self) -> None:
         """load_unified_data refuses a task id the taxonomy does not define."""
@@ -232,8 +225,8 @@ class TaskTypeWrittenTests(unittest.TestCase):
             compile_forex_manifold("forex_universe", config, root, root.name,
                                    config["task"])
             info = yaml.safe_load((root / "dataset_info.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(info["task_type"], "detection")
-        self.assertEqual(docs.call_args.kwargs["overrides"]["task_type"], "detection")
+        self.assertEqual(info["task_type"], "forex")
+        self.assertEqual(docs.call_args.kwargs["overrides"]["task_type"], "forex")
 
     @unittest.skipUnless(
         all(importlib.util.find_spec(m) for m in ("pandas", "torch")), "needs pandas and torch"

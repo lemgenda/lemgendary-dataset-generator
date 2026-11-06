@@ -25,8 +25,13 @@
 
 ## Changelog
 
-### v16.9.69 - 80-Column Markdown and Yamllint Compliance for Generated Assets
+### v16.9.69 - 80-Column Markdown, Yamllint Compliance, and D-12 Task Confirmation
 
+- `task_taxonomy.json` & `unified_data.yaml`: added `"forex"` and `"ai_helper"`
+  task IDs to `task_taxonomy.json` and confirmed all four pending dataset tasks
+  (`retinaface_mobilenet: pose`, `nima_authenticity: quality`,
+  `forex_universe: forex`, `ai_helper_lemgend: ai_helper` with
+  `task_confirmed: true`).
 - `core/docs/templates.py` & `core/docs/generators/readme_md.py`: wrapped
   generated dataset `README.md` blockquotes, bullets, paragraphs, source
   tables, and Kaggle links to 80 columns and enforced LF line endings.
