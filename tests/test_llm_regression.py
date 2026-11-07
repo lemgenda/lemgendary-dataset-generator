@@ -10,6 +10,7 @@ Verifies:
 
 from __future__ import annotations
 
+import hashlib
 import unittest
 
 from tools.llm_helper.base_compiler import _partition_records
@@ -147,6 +148,28 @@ class TestLLMCompilerRegression(unittest.TestCase):
         is_valid, issues = validator.validate_corpus(recs)
         self.assertTrue(is_valid)  # Warnings do not block validity
         self.assertTrue(any(i.field == "prompt" for i in issues))
+
+    def test_bit_level_dual_build_reproducibility(self) -> None:
+        """Dual compiler executions under identical inputs must produce bit-for-bit hashes."""
+        records = [
+            {
+                "id": f"rec_{i}",
+                "source_doc": "doc.md",
+                "category": "cli_command",
+                "messages": [
+                    {"role": "system", "content": "Sys."},
+                    {"role": "user", "content": f"User question {i}?"},
+                    {"role": "assistant", "content": f"Assistant answer {i}."},
+                ],
+            }
+            for i in range(20)
+        ]
+        train1, val1, test1 = _partition_records(records, val_split=0.15, test_split=0.15)
+        train2, val2, test2 = _partition_records(records, val_split=0.15, test_split=0.15)
+
+        h1 = hashlib.sha256(str(train1 + val1 + test1).encode("utf-8")).hexdigest()
+        h2 = hashlib.sha256(str(train2 + val2 + test2).encode("utf-8")).hexdigest()
+        self.assertEqual(h1, h2, "Dual partition runs must produce bit-level identical hashes")
 
 
 if __name__ == "__main__":

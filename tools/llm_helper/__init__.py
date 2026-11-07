@@ -12,6 +12,8 @@ from . import (
     knowledge_ingestor,
     metadata_compiler,
     quality_validator,
+    registry,
+    taxonomy,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "knowledge_ingestor",
     "metadata_compiler",
     "quality_validator",
+    "registry",
+    "taxonomy",
 ]

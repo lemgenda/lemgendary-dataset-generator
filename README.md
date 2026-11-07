@@ -42,6 +42,16 @@
   ingest declared `yaml_file`, `json_file`, and `remote_url` configurations.
 - `tools/llm_helper/quality_validator.py`: fixed category matching for
   `troubleshooting_diagnostic` and added duplicate prompt collision detection.
+- `tools/llm_helper/taxonomy.py`: extracted controlled domain classification
+  and authority tier resolvers into dedicated taxonomy module.
+- `tools/llm_helper/registry.py`: introduced decoupled plugin registry for
+  source adapters, chunking strategies, and task synthesizers.
+- `tools/llm_helper/base_compiler.py`: added atomic staging directory swap
+  and post-write verification before publishing.
+- `tools/llm_helper/metadata_compiler.py`: added `source_manifest.json`,
+  `build_manifest.json`, and `quality_report.json` generation.
+- `tests/test_llm_regression.py`: added regression verification for bit-level
+  dual build reproducibility and category stratification.
 
 ### v16.9.70 - Authoritative .secrets.yaml SSOT & Credential Hardening
 

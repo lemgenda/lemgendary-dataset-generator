@@ -14,20 +14,17 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
+from .taxonomy import (
+    classify_category as _classify_category,
+)
+from .taxonomy import (
+    resolve_authority_tier as _authority_tier,
+)
 
 logger = logging.getLogger("lemdata.llm.synthesizer")
-
-
-# (category, doc_id keywords, section-title keywords), checked in order; first hit wins.
-_CATEGORY_RULES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
-    ("troubleshooting_diagnostic", ("trouble",), ("diagnostic", "failure")),
-    ("gui_procedure", ("gui", "control"), ("interface",)),
-    ("cli_command", ("cli",), ("command", "flag")),
-    ("api_procedure", ("api",), ("endpoint", "rest")),
-    ("terminology_concept", ("glossary",), ("terminology", "definition")),
-    ("model_pipeline", ("paper",), ("architecture", "mathematical")),
-)
 
 # category -> (user prompt template, assistant reply template). Placeholders:
 # {h} cleaned section title, {doc_id}, {doc_base}, {text} cleaned section body.
@@ -64,33 +61,6 @@ _DIAGNOSTIC_TEMPLATE = (
 )
 
 _HEADER_PATTERN = re.compile(r"^(#{1,3})\s+(.+)$")
-
-
-def _tokenize_text(text: str) -> set[str]:
-    """Extract lowercase alpha-numeric tokens for word-boundary matching."""
-    return set(re.findall(r"[a-zA-Z0-9]+", text.lower()))
-
-
-def _classify_category(doc_id: str, section_title: str) -> str:
-    """Classify knowledge chunk into domain categories using token boundaries."""
-    doc_tokens = _tokenize_text(doc_id)
-    title_tokens = _tokenize_text(section_title)
-    for category, doc_keys, title_keys in _CATEGORY_RULES:
-        if any(k in doc_tokens for k in doc_keys) or any(k in title_tokens for k in title_keys):
-            return category
-    return "general_knowledge"
-
-
-def _authority_tier(doc_id: str) -> str:
-    """Classify the document into an authoritative provenance tier."""
-    lower = doc_id.lower()
-    if any(k in lower for k in ("manifest", "canonical", "unified_data", "unified_models")):
-        return "tier_1_manifest"
-    if any(k in lower for k in ("manual", "cli", "api", "operations")):
-        return "tier_2_operational_manual"
-    if any(k in lower for k in ("paper", "architecture", "whitepaper", "specification")):
-        return "tier_3_whitepaper"
-    return "tier_4_educational"
 
 
 def _clean_content(text: str) -> str:
@@ -173,12 +143,14 @@ def _ingest_sources(knowledge_sources: list[dict[str, Any]], root: Path) -> list
                 )
             )
         elif src_type in ("markdown_file", "yaml_file", "json_file", "text_file", "csv_file"):
-            all_docs.extend(
-                ingestor.ingest_path(
-                    root / src.get("path", ""),
-                    url_prefix=src.get("url_prefix"),
-                )
+            docs = ingestor.ingest_path(
+                root / src.get("path", ""),
+                url_prefix=src.get("url_prefix"),
             )
+            if src_type == "yaml_file":
+                for d in docs:
+                    d.content = _convert_yaml_to_markdown_sections(d.content)
+            all_docs.extend(docs)
         elif src_type == "remote_url":
             url = src.get("url")
             if url:
@@ -190,6 +162,107 @@ def _ingest_sources(knowledge_sources: list[dict[str, Any]], root: Path) -> list
                 if doc:
                     all_docs.append(doc)
     return all_docs
+
+
+def _convert_yaml_to_markdown_sections(content: str) -> str:
+    """Format structured YAML specifications into sectioned Markdown documents."""
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return content
+    if not isinstance(data, dict):
+        return content
+
+    md_blocks: list[str] = []
+    if any(k in data for k in ("forex_predictor", "nima_aesthetic", "parsenet", "codeformer")):
+        _append_model_manifest_sections(data, md_blocks)
+    elif "platform_capabilities" in data or "desktop_client_baseline" in data:
+        _append_capabilities_sections(data, md_blocks)
+
+    return "\n\n".join(md_blocks) if md_blocks else content
+
+
+def _append_model_manifest_sections(data: dict[str, Any], md_blocks: list[str]) -> None:
+    """Format model architectures from unified_models_v2 into markdown."""
+    for m_key, m_info in data.items():
+        if m_key.startswith("_") or not isinstance(m_info, dict):
+            continue
+        _append_single_model_section(m_key, m_info, md_blocks)
+
+
+def _append_single_model_section(
+    m_key: str, m_info: dict[str, Any], md_blocks: list[str]
+) -> None:
+    """Format one model entry from unified_models_v2."""
+    name = m_info.get("name", m_key)
+    arch = m_info.get("architecture_type", "Neural Architecture")
+    params = m_info.get("parameters_m", "N/A")
+    loss = m_info.get("loss_fn", "N/A")
+    desc = m_info.get("description", "").strip()
+    chkpt = m_info.get("checkpoint", "N/A")
+    cat = m_info.get("category", "general")
+    sec = (
+        f"## Neural Model Architecture: {name} ({m_key})\n\n"
+        f"The **{name}** (`{m_key}`) is a native architecture in `{cat}`.\n"
+        f"- Architecture: {arch}\n"
+        f"- Parameters: {params}M\n"
+        f"- Loss: {loss}\n"
+        f"- Checkpoint: {chkpt}\n\n"
+    )
+    if desc:
+        sec += f"### Description and Operational Scope for {name}\n\n{desc}\n\n"
+    if m_info.get("optimization"):
+        sec += (
+            f"### Optimization Dynamics for {name}\n\n"
+            f"This model uses Sawtooth Governor training optimization parameters.\n\n"
+        )
+    md_blocks.append(sec)
+
+
+def _append_capabilities_sections(data: dict[str, Any], md_blocks: list[str]) -> None:
+    """Format governance baselines and platform capabilities into markdown."""
+    s_ver = data.get("schema_version")
+    d_ver = data.get("document_baseline")
+    md_blocks.append(
+        f"## Canonical System Baselines and Governance\n\n"
+        f"Schema Version: {s_ver}\n"
+        f"Document Baseline: {d_ver}\n\n"
+    )
+    for m in data.get("models", []):
+        _append_capability_model(m, md_blocks)
+    for cap in data.get("platform_capabilities", []):
+        _append_capability_entry(cap, md_blocks)
+
+
+def _append_capability_model(m: dict[str, Any], md_blocks: list[str]) -> None:
+    """Format model capability entry."""
+    mid = m.get("id", "model")
+    mname = m.get("name", mid)
+    mdom = m.get("domain", "general")
+    march = m.get("architecture_type", "Neural Architecture")
+    ctrl = m.get("control_planes", {})
+    cli_cmd = ctrl.get("cli", {}).get("command", "N/A")
+    api_route = ctrl.get("api", {}).get("route", "N/A")
+    sec = (
+        f"## Canonical Model Specification: {mname} ({mid})\n\n"
+        f"Domain: `{mdom}`\nArchitecture: {march}\n"
+        f"CLI Command: `{cli_cmd}`\nAPI Route: `{api_route}`\n\n"
+    )
+    md_blocks.append(sec)
+
+
+def _append_capability_entry(cap: dict[str, Any], md_blocks: list[str]) -> None:
+    """Format single platform capability entry."""
+    cid = cap.get("id", "cap")
+    cname = cap.get("name", cid)
+    owner = cap.get("owner_project", "ecosystem")
+    desc = cap.get("delivery", cap.get("request", ""))
+    sec = (
+        f"## Platform Capability: {cname} ({cid})\n\n"
+        f"Maintained by `{owner}`.\n\n"
+        f"### Operational Mechanics\n\n{desc}\n\n"
+    )
+    md_blocks.append(sec)
 
 
 def _iter_sections(content: str) -> Iterator[tuple[str, str, str]]:
@@ -238,7 +311,9 @@ def _iter_sections(content: str) -> Iterator[tuple[str, str, str]]:
             yield current_leaf, current_path or current_leaf, body
 
 
-def _synthesize_records(docs: list[KnowledgeDocument], system_prompt: str) -> list[dict[str, Any]]:
+def _synthesize_records(
+    docs: list[KnowledgeDocument], system_prompt: str
+) -> list[dict[str, Any]]:
     """Turn every usable document section into a record, numbering only the kept ones."""
     raw_records: list[dict[str, Any]] = []
     for doc in docs:

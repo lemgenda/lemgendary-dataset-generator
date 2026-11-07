@@ -1054,20 +1054,34 @@ datasets:
         [PROBABLE], or [ILLUSTRATIVE]. Do not use ungrounded absolute guarantees; provide
         mathematically bounded engineering answers. Do not use emojis.'
       schema_format: chatml_turn3
-      target_samples: 1150
+      target_samples: 1600
       generator_module: tools.llm_helper.knowledge_synthesizer
       knowledge_sources:
         - type: markdown_dir
           path: lemgendary-docs/MD-Papers
           glob: '*.md'
           url_prefix: https://lemgenda.github.io/ai-training-whitepapers/papers/
+        - type: markdown_file
+          path: lemgendary-docs/README.md
+          url_prefix: https://lemgenda.github.io/ai-training-whitepapers/
+        - type: markdown_file
+          path: lemgendary-docs/REVIEW_REPORT.md
+          url_prefix: https://lemgenda.github.io/ai-training-whitepapers/
+        - type: markdown_file
+          path: lemgendary-docs/INVESTOR_STRATEGY_LEMGENDARY_2026.md
+          url_prefix: https://lemgenda.github.io/ai-training-whitepapers/
+        - type: markdown_file
+          path: lemgendary-training-suite/README.md
+          url_prefix: https://github.com/lemtreursi/model-training
+        - type: markdown_file
+          path: lemgendary-datasets/README.md
+          url_prefix: https://github.com/lemtreursi/model-training
         - type: yaml_file
           path: lemgendary-training-suite/unified_models_v2.yaml
           url: https://lemgenda.github.io/ai-training-whitepapers/index.html
-        - type: remote_url
+        - type: yaml_file
+          path: lemgendary-docs/canonical_capabilities.yaml
           url: https://lemgenda.github.io/ai-training-whitepapers/index.html
-          tag: documentation_hub
-          cache_ttl_hours: 168
       chunking:
         strategy: recursive
         chunk_size: 1200

@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import logging
 import random
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -63,23 +65,26 @@ class BaseLLMCompiler:
         dataset_key: str,
         custom_records: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Compile a complete LLM manifold declared in unified_data.yaml."""
+        """Compile a complete LLM manifold declared in unified_data.yaml with atomic swap."""
         cfg = self._get_dataset_config(dataset_key)
         folder = cfg.get("modernized_folder", dataset_key)
         target_dir = self.workspace_root / "LemGendaryDatasets" / folder
-        (target_dir / "data").mkdir(parents=True, exist_ok=True)
 
-        if custom_records is not None:
-            records = custom_records
-        else:
-            records = self._generate_records(dataset_key, cfg)
+        records = custom_records or self._generate_records(dataset_key, cfg)
         self._require_valid(records)
 
         val_ratio = float(cfg.get("val_split", 0.20) or 0.20)
         test_ratio = float(cfg.get("test_split") or 0.0)
         splits = _partition_records(records, val_ratio, test_ratio)
 
-        return self._write_outputs(target_dir, dataset_key, cfg, splits, len(records))
+        with tempfile.TemporaryDirectory(prefix=f".staging_build_{dataset_key}_") as tmp_dir:
+            staging_dir = Path(tmp_dir)
+            (staging_dir / "data").mkdir(parents=True, exist_ok=True)
+            res = self._write_outputs(staging_dir, dataset_key, cfg, splits, len(records))
+            _atomic_sync_directories(staging_dir, target_dir)
+
+        _remap_output_paths(res, target_dir, cfg, dataset_key)
+        return res
 
     def _get_dataset_config(self, dataset_key: str) -> dict[str, Any]:
         """Retrieve and validate dataset configuration."""
@@ -158,6 +163,31 @@ class BaseLLMCompiler:
                 f"{critical_errors[:5]}"
             )
             raise ValueError(err_msg)
+
+
+def _atomic_sync_directories(staging_dir: Path, target_dir: Path) -> None:
+    """Synchronize staging contents into target directory atomically."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for item in staging_dir.rglob("*"):
+        if item.is_file():
+            rel_path = item.relative_to(staging_dir)
+            dest_file = target_dir / rel_path
+            dest_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, dest_file)
+
+
+def _remap_output_paths(
+    res: dict[str, Any], target_dir: Path, cfg: dict[str, Any], dataset_key: str
+) -> None:
+    """Remap staged outcome paths to target destination paths."""
+    res["target_dir"] = str(target_dir)
+    tr_file = cfg.get("train_file", f"data/{dataset_key}_train.jsonl")
+    res["train_path"] = str(target_dir / Path(tr_file))
+    vl_file = cfg.get("val_file", f"data/{dataset_key}_val.jsonl")
+    res["val_path"] = str(target_dir / Path(vl_file))
+    if "test_path" in res:
+        ts_file = cfg.get("test_file", f"data/{dataset_key}_test.jsonl")
+        res["test_path"] = str(target_dir / Path(ts_file))
 
 
 def _partition_records(
