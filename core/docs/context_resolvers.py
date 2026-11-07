@@ -275,12 +275,15 @@ def _tally_ai_helper(output_root: Path, unified_entry: dict[str, Any]) -> tuple[
     """Tally instruction pairs of the AI helper JSONL splits."""
     train_file = output_root / "data" / "ai_helper_train.jsonl"
     val_file = output_root / "data" / "ai_helper_val.jsonl"
+    test_file = output_root / "data" / "ai_helper_test.jsonl"
     if not train_file.exists():
         train_file = output_root / "ai_helper_train.jsonl"
         val_file = output_root / "ai_helper_val.jsonl"
+        test_file = output_root / "ai_helper_test.jsonl"
     tr_cnt = _count_lines_or_zero(train_file)
     vl_cnt = _count_lines_or_zero(val_file)
-    total_samples = tr_cnt + vl_cnt
+    ts_cnt = _count_lines_or_zero(test_file)
+    total_samples = tr_cnt + vl_cnt + ts_cnt
     if total_samples == 0:
         total_samples = read_yaml_count(output_root)
     sources: SourceTally = {}

@@ -165,6 +165,21 @@ TASK_ARCH_BASE: dict[str, str] = {
 def format_source(name: str) -> str:
     """Format and normalize raw source dataset names into canonical display titles."""
     lower_name = name.lower()
+    if any(
+        k in lower_name
+        for k in (
+            "manifest",
+            "manual",
+            "paper",
+            "glossary",
+            "curated",
+            "hub",
+            "reference",
+            "training",
+        )
+    ):
+        return name
+
     exact_map = {
         "celebamask": "CelebAMask",
         "affectnet": "AffectNet",
@@ -191,6 +206,11 @@ def format_source(name: str) -> str:
     if lower_name in ["ava", "aadb", "coco", "csiq", "spaq", "live"]:
         return lower_name.upper()
 
+    return _format_pattern_source(name, lower_name)
+
+
+def _format_pattern_source(name: str, lower_name: str) -> str:
+    """Sub-matcher for patterned source names."""
     if "synthetic-faces" in lower_name or "sfhq" in lower_name:
         parts = lower_name.split("-")
         suffix = f" Part {parts[-1]}" if parts[-1].isdigit() else ""

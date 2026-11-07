@@ -77,9 +77,22 @@ def _forex_fields(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> dic
 
 
 def _instruction_fields(ctx: ManifoldContext) -> dict[str, Any]:
-    """Return the train/val line counts of an instruction (JSONL) manifold."""
+    """Return the train/val/test line counts of an instruction (JSONL) manifold."""
     train_file, val_file = jsonl_split_files(ctx)
-    return {"train_samples": count_lines(train_file), "val_samples": count_lines(val_file)}
+    entry = ctx.spec.unified_entry
+    test_file_rel = entry.get("test_file")
+    test_file = (ctx.manifold_path / test_file_rel) if test_file_rel else None
+    if not test_file or not test_file.exists():
+        for base in (ctx.manifold_path / "data", ctx.manifold_path):
+            cand = base / "ai_helper_test.jsonl"
+            if cand.exists():
+                test_file = cand
+                break
+
+    fields = {"train_samples": count_lines(train_file), "val_samples": count_lines(val_file)}
+    if test_file and test_file.exists():
+        fields["test_samples"] = count_lines(test_file)
+    return fields
 
 
 def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> str | None:
@@ -124,8 +137,10 @@ def generate_dataset_info_yaml(
     manifold_name = ctx.manifold_name
 
     # Resolve sources list
-    src_keys = list(ctx.lineage.sources.keys()) if ctx.lineage.sources else (
-        ctx.lineage.provenance_sources
+    src_keys = (
+        list(ctx.lineage.sources.keys())
+        if ctx.lineage.sources
+        else ctx.lineage.provenance_sources
     )
     if not src_keys:
         src_keys = [f"{manifold_name}-source"]
@@ -174,7 +189,7 @@ def generate_dataset_info_yaml(
 def _cli_process(manifold_dir: Path, _args: argparse.Namespace) -> str:
     """Generate dataset_info.yaml for one manifold and describe the result."""
     out = generate_dataset_info_yaml(manifold_dir)
-    with open(out, "r", encoding="utf-8") as f:
+    with open(out, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return f"{out.name} (samples={data.get('count')}, task={data.get('task')})"
 

@@ -46,10 +46,7 @@ _PROMPT_TEMPLATES: dict[str, tuple[str, str]] = {
         _REFERENCE_REPLY,
     ),
     "terminology_concept": (
-        (
-            "Explain the concept and mathematical/architectural definition of {h} in"
-            " LemGendary AI."
-        ),
+        ("Explain the concept and mathematical/architectural definition of {h} in LemGendary AI."),
         _REFERENCE_REPLY,
     ),
 }
@@ -69,14 +66,31 @@ _DIAGNOSTIC_TEMPLATE = (
 _HEADER_PATTERN = re.compile(r"^(#{1,3})\s+(.+)$")
 
 
+def _tokenize_text(text: str) -> set[str]:
+    """Extract lowercase alpha-numeric tokens for word-boundary matching."""
+    return set(re.findall(r"[a-zA-Z0-9]+", text.lower()))
+
+
 def _classify_category(doc_id: str, section_title: str) -> str:
-    """Classify knowledge chunk into domain categories."""
-    d_lower = doc_id.lower()
-    t_lower = section_title.lower()
+    """Classify knowledge chunk into domain categories using token boundaries."""
+    doc_tokens = _tokenize_text(doc_id)
+    title_tokens = _tokenize_text(section_title)
     for category, doc_keys, title_keys in _CATEGORY_RULES:
-        if any(k in d_lower for k in doc_keys) or any(k in t_lower for k in title_keys):
+        if any(k in doc_tokens for k in doc_keys) or any(k in title_tokens for k in title_keys):
             return category
     return "general_knowledge"
+
+
+def _authority_tier(doc_id: str) -> str:
+    """Classify the document into an authoritative provenance tier."""
+    lower = doc_id.lower()
+    if any(k in lower for k in ("manifest", "canonical", "unified_data", "unified_models")):
+        return "tier_1_manifest"
+    if any(k in lower for k in ("manual", "cli", "api", "operations")):
+        return "tier_2_operational_manual"
+    if any(k in lower for k in ("paper", "architecture", "whitepaper", "specification")):
+        return "tier_3_whitepaper"
+    return "tier_4_educational"
 
 
 def _clean_content(text: str) -> str:
@@ -119,19 +133,23 @@ def synthesize_instruction_from_section(
     if len(clean_text) < 100:
         return None
 
-    category = _classify_category(doc_id, header)
+    path_ctx = header
+    leaf_header = header.rsplit(" > ", maxsplit=1)[-1] if " > " in header else header
+    category = _classify_category(doc_id, path_ctx)
     doc_base = Path(doc_id).stem
-    user_prompt, assistant_reply = _render_turns(category, doc_id, header, clean_text)
+    user_prompt, assistant_reply = _render_turns(category, doc_id, path_ctx, clean_text)
 
     # Deterministic SHA hash for record ID
-    record_hash = hashlib.sha256(f"{doc_id}:{header}:{index}".encode()).hexdigest()[:8]
+    record_hash = hashlib.sha256(f"{doc_id}:{path_ctx}:{index}".encode()).hexdigest()[:8]
     record_id = f"gen_{doc_base.lower()}_{record_hash}"
 
     return {
         "id": record_id,
         "category": category,
         "source_doc": doc_id,
-        "section_title": header,
+        "section_title": leaf_header,
+        "heading_path": path_ctx,
+        "authority_tier": _authority_tier(doc_id),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -140,14 +158,13 @@ def synthesize_instruction_from_section(
     }
 
 
-def _ingest_sources(
-    knowledge_sources: list[dict[str, Any]], root: Path
-) -> list[KnowledgeDocument]:
-    """Ingest every local source declared in ``knowledge_sources`` (relative to ``root``)."""
+def _ingest_sources(knowledge_sources: list[dict[str, Any]], root: Path) -> list[KnowledgeDocument]:
+    """Ingest every local or remote source declared in knowledge_sources."""
     ingestor = KnowledgeIngestor()
     all_docs: list[KnowledgeDocument] = []
     for src in knowledge_sources:
-        if src.get("type") in ("markdown_dir", "text_dir", "file", "dir"):
+        src_type = src.get("type", "")
+        if src_type in ("markdown_dir", "text_dir", "file", "dir"):
             all_docs.extend(
                 ingestor.ingest_path(
                     root / src.get("path", ""),
@@ -155,33 +172,79 @@ def _ingest_sources(
                     url_prefix=src.get("url_prefix"),
                 )
             )
+        elif src_type in ("markdown_file", "yaml_file", "json_file", "text_file", "csv_file"):
+            all_docs.extend(
+                ingestor.ingest_path(
+                    root / src.get("path", ""),
+                    url_prefix=src.get("url_prefix"),
+                )
+            )
+        elif src_type == "remote_url":
+            url = src.get("url")
+            if url:
+                doc = ingestor.ingest_url(
+                    url,
+                    tag=src.get("tag"),
+                    ttl_hours=int(src.get("cache_ttl_hours", 168)),
+                )
+                if doc:
+                    all_docs.append(doc)
     return all_docs
 
 
-def _iter_sections(content: str) -> Iterator[tuple[str, str]]:
-    """Yield ``(header, body)`` for each non-empty ``#``/``##``/``###`` section."""
-    current_header: str | None = None
+def _iter_sections(content: str) -> Iterator[tuple[str, str, str]]:
+    """Yield ``(leaf_header, full_heading_path, body)`` respecting code fences."""
+    in_code_fence = False
+    heading_stack: list[str] = []
+    current_leaf: str | None = None
+    current_path: str | None = None
     current_lines: list[str] = []
+
     for line in content.splitlines():
-        m = _HEADER_PATTERN.match(line.strip())
+        trimmed = line.strip()
+        if trimmed.startswith("```"):
+            in_code_fence = not in_code_fence
+            current_lines.append(line)
+            continue
+
+        if in_code_fence:
+            current_lines.append(line)
+            continue
+
+        m = _HEADER_PATTERN.match(trimmed)
         if not m:
             current_lines.append(line)
             continue
-        if current_header and current_lines:
-            yield current_header, "\n".join(current_lines).strip()
-        current_header = m.group(2).strip()
+
+        level = len(m.group(1))
+        title = m.group(2).strip()
+
+        if current_leaf and current_lines:
+            body = "\n".join(current_lines).strip()
+            if body:
+                yield current_leaf, current_path or current_leaf, body
+
+        while len(heading_stack) >= level:
+            heading_stack.pop()
+        heading_stack.append(title)
+
+        current_leaf = title
+        current_path = " > ".join(heading_stack)
         current_lines = []
-    if current_header and current_lines:
-        yield current_header, "\n".join(current_lines).strip()
+
+    if current_leaf and current_lines:
+        body = "\n".join(current_lines).strip()
+        if body:
+            yield current_leaf, current_path or current_leaf, body
 
 
 def _synthesize_records(docs: list[KnowledgeDocument], system_prompt: str) -> list[dict[str, Any]]:
     """Turn every usable document section into a record, numbering only the kept ones."""
     raw_records: list[dict[str, Any]] = []
     for doc in docs:
-        for header, text in _iter_sections(doc.content):
+        for _leaf, heading_path, text in _iter_sections(doc.content):
             rec = synthesize_instruction_from_section(
-                doc.doc_id, header, text, system_prompt, len(raw_records)
+                doc.doc_id, heading_path, text, system_prompt, len(raw_records)
             )
             if rec:
                 raw_records.append(rec)

@@ -48,12 +48,15 @@ def _write_dataset_info(
     target_dir: Path,
     dataset_name: str,
     descriptor: LLMManifoldDescriptor,
-    split_counts: tuple[int, int],
+    split_counts: tuple[int, int] | tuple[int, int, int],
 ) -> None:
-    train_count, val_count = split_counts
+    train_count = split_counts[0]
+    val_count = split_counts[1]
+    test_count = split_counts[2] if len(split_counts) > 2 else 0
+    total_count = train_count + val_count + test_count
     info_data = {
         "name": dataset_name,
-        "count": train_count + val_count,
+        "count": total_count,
         "task": descriptor.task,
         "category": descriptor.category,
         "canonical_format": descriptor.canonical_format,
@@ -64,6 +67,8 @@ def _write_dataset_info(
         "train_samples": train_count,
         "val_samples": val_count,
     }
+    if test_count > 0:
+        info_data["test_samples"] = test_count
     with open(target_dir / "dataset_info.yaml", "w", encoding="utf-8") as f:
         yaml.safe_dump(info_data, f, sort_keys=False)
 
@@ -98,25 +103,30 @@ def generate_llm_metadata(
     train_records: list[dict[str, Any]],
     val_records: list[dict[str, Any]],
     descriptor: LLMManifoldDescriptor | None = None,
-    **descriptor_fields: Any,
+    **extra: Any,
 ) -> None:
     """Synchronizes all standard root metadata files for an LLM dataset manifold.
 
     Pass either ``descriptor`` or its fields as keywords (``category``,
     ``classes``, ``original_sources`` and optionally ``canonical_format``).
+    Accepts ``test_records`` as an optional keyword argument.
     """
+    test_records: list[dict[str, Any]] | None = extra.pop("test_records", None)
     if descriptor is None:
-        descriptor = LLMManifoldDescriptor(**descriptor_fields)
-    elif descriptor_fields:
+        descriptor = LLMManifoldDescriptor(**extra)
+    elif extra:
         raise TypeError("Pass either descriptor or its fields, not both")
 
     target_dir = Path(manifold_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "data").mkdir(parents=True, exist_ok=True)
     train_count = len(train_records)
+    val_count = len(val_records)
+    test_count = len(test_records) if test_records else 0
 
     # 1. dataset_info.yaml
-    _write_dataset_info(target_dir, dataset_name, descriptor, (train_count, len(val_records)))
+    counts = (train_count, val_count, test_count) if test_count > 0 else (train_count, val_count)
+    _write_dataset_info(target_dir, dataset_name, descriptor, counts)
 
     # 2. category.txt & classes.txt
     (target_dir / "category.txt").write_text(descriptor.category + "\n", encoding="utf-8")
@@ -127,8 +137,12 @@ def generate_llm_metadata(
     index_entries += _split_index_entries(
         dataset_name, "val", val_records, train_count, descriptor.task
     )
+    if test_records:
+        index_entries += _split_index_entries(
+            dataset_name, "test", test_records, train_count + val_count, descriptor.task
+        )
     with open(target_dir / "index.json", "w", encoding="utf-8") as f:
         json.dump(index_entries, f, indent=2)
 
-    total_count = train_count + len(val_records)
+    total_count = train_count + val_count + test_count
     logger.info("Generated metadata files for %s (%d records).", dataset_name, total_count)

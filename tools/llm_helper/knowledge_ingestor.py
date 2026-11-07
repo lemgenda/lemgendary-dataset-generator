@@ -53,37 +53,44 @@ class KnowledgeDocument:
         }
 
 
-def _read_text(file_path: Path) -> str:
-    return file_path.read_text(encoding="utf-8", errors="replace")
+def _read_text(file_path: Path) -> tuple[str, Any | None]:
+    return file_path.read_text(encoding="utf-8"), None
 
 
-def _read_json(file_path: Path) -> str:
-    with open(file_path, "r", encoding="utf-8") as f:
+def _read_json(file_path: Path) -> tuple[str, Any | None]:
+    with open(file_path, encoding="utf-8") as f:
         data = json.load(f)
-    return json.dumps(data, indent=2)
+    return json.dumps(data, indent=2), data
 
 
-def _read_jsonl(file_path: Path) -> str:
+def _read_jsonl(file_path: Path) -> tuple[str, Any | None]:
     lines = [
         line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
-    return "\n".join(lines)
+    parsed_records = []
+    for line in lines:
+        try:
+            parsed_records.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return "\n".join(lines), parsed_records
 
 
-def _read_yaml(file_path: Path) -> str:
-    with open(file_path, "r", encoding="utf-8") as f:
+def _read_yaml(file_path: Path) -> tuple[str, Any | None]:
+    with open(file_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return yaml.safe_dump(data, sort_keys=False)
+    return yaml.safe_dump(data, sort_keys=False), data
 
 
-def _read_csv(file_path: Path) -> str:
-    with open(file_path, "r", encoding="utf-8", newline="") as f:
-        rows = [", ".join(row) for row in csv.reader(f)]
-    return "\n".join(rows)
+def _read_csv(file_path: Path) -> tuple[str, Any | None]:
+    with open(file_path, encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f))
+    formatted = "\n".join(", ".join(row) for row in rows)
+    return formatted, rows
 
 
-# Extension -> (reader returning normalised text, source_type label).
-_FILE_READERS: dict[str, tuple[Callable[[Path], str], str]] = {
+# Extension -> (reader returning (normalised text, structured_data), source_type label).
+_FILE_READERS: dict[str, tuple[Callable[[Path], tuple[str, Any | None]], str]] = {
     ".md": (_read_text, "markdown"),
     ".txt": (_read_text, "text"),
     ".json": (_read_json, "json"),
@@ -150,16 +157,20 @@ class KnowledgeIngestor:
             return None
         read, source_type = reader
         try:
-            content = read(file_path)
+            content, structured = read(file_path)
         except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError, csv.Error) as exc:
             logger.error("Failed reading file %s: %s", file_path, exc)
             return None
+        meta: dict[str, Any] = {}
+        if structured is not None:
+            meta["structured_data"] = structured
         return KnowledgeDocument(
             doc_id=file_path.name,
             content=content,
             source_type=source_type,
             source_path=str(file_path),
             canonical_url=f"{url_prefix.rstrip('/')}/{file_path.name}" if url_prefix else None,
+            metadata=meta,
         )
 
     def ingest_url(

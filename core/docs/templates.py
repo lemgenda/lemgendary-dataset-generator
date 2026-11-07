@@ -295,8 +295,7 @@ def build_structure_text(
         "forex": "Shards containing serialized manifold data.",
         "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
         "dataset-metadata.json": (
-            "Kaggle Frictionless metadata manifest, licensing, and schema column definitions for"
-            " Parquet feature tensors."
+            "Kaggle Frictionless metadata manifest, licensing, and schema column definitions."
         ),
         "category.txt": "Top-level categorization tag.",
         "classes.txt": "Class labels mapping.",

@@ -1010,8 +1010,10 @@ datasets:
       primary: jsonl
     train_file: data/ai_helper_train.jsonl
     val_file: data/ai_helper_val.jsonl
+    test_file: data/ai_helper_test.jsonl
     split_strategy: stratified
-    val_split: 0.2
+    val_split: 0.15
+    test_split: 0.15
     collection_methodology: 'Curated supervised instruction examples derived from reviewed
       documentation and general AI/ML engineering principles. Each example is designed
       around a user task, diagnostic decision, terminology distinction, or documentation

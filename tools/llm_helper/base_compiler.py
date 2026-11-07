@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from core.config_schema import load_unified_data
 
 from .chunker import RecursiveChunker
 from .knowledge_ingestor import KnowledgeIngestor
@@ -37,17 +38,25 @@ class BaseLLMCompiler:
         workspace_root: str | Path | None = None,
     ) -> None:
         self.workspace_root = Path(workspace_root or Path(__file__).resolve().parents[3])
-        self.config_path = Path(
-            config_path or (self.workspace_root / "lemgendary-datasets" / "unified_data.yaml")
-        )
+        default_cfg = self.workspace_root / "lemgendary-datasets" / "unified_data.yaml"
+        self.config_path = Path(config_path or default_cfg)
         self.ingestor = KnowledgeIngestor()
         self.chunker = RecursiveChunker()
         self.validator = QualityValidator()
 
     def load_manifest(self) -> dict[str, Any]:
-        """Return the parsed unified_data.yaml manifest."""
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        """Return the parsed unified_data.yaml manifest validated via Pydantic."""
+        try:
+            validated_manifest = load_unified_data(self.config_path)
+            return validated_manifest.to_legacy_dict()
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            logger.warning(
+                "Pydantic manifest validation fallback for %s: %s",
+                self.config_path,
+                exc,
+            )
+            with open(self.config_path, encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
 
     def compile_manifold(
         self,
@@ -55,50 +64,73 @@ class BaseLLMCompiler:
         custom_records: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Compile a complete LLM manifold declared in unified_data.yaml."""
-        manifest = self.load_manifest()
-        datasets_cfg = manifest.get("datasets", manifest)
-        cfg = datasets_cfg.get(dataset_key)
-        if not cfg:
-            raise KeyError(f"Dataset key '{dataset_key}' not found in {self.config_path}")
-
-        modernized_folder = cfg.get("modernized_folder", dataset_key)
-        target_dir = self.workspace_root / "LemGendaryDatasets" / modernized_folder
+        cfg = self._get_dataset_config(dataset_key)
+        folder = cfg.get("modernized_folder", dataset_key)
+        target_dir = self.workspace_root / "LemGendaryDatasets" / folder
         (target_dir / "data").mkdir(parents=True, exist_ok=True)
 
-        # 1. Gather records
         if custom_records is not None:
             records = custom_records
         else:
             records = self._generate_records(dataset_key, cfg)
-
-        # 2. Quality Validation
         self._require_valid(records)
 
-        # 3. Stratified Partitioning
-        train_records, val_records = _stratified_split(
-            records, float(cfg.get("val_split", 0.20) or 0.20)
-        )
+        val_ratio = float(cfg.get("val_split", 0.20) or 0.20)
+        test_ratio = float(cfg.get("test_split") or 0.0)
+        splits = _partition_records(records, val_ratio, test_ratio)
 
-        # 4. Resolve output filenames
+        return self._write_outputs(target_dir, dataset_key, cfg, splits, len(records))
+
+    def _get_dataset_config(self, dataset_key: str) -> dict[str, Any]:
+        """Retrieve and validate dataset configuration."""
+        manifest = self.load_manifest()
+        cfg = manifest.get("datasets", manifest).get(dataset_key)
+        if not cfg:
+            raise KeyError(f"Dataset key '{dataset_key}' not found in {self.config_path}")
+        return cfg
+
+    def _write_outputs(
+        self,
+        target_dir: Path,
+        dataset_key: str,
+        cfg: dict[str, Any],
+        splits: tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
+        total: int,
+    ) -> dict[str, Any]:
+        """Write jsonl shards and trigger metadata generation."""
+        train_recs, val_recs, test_recs = splits
         train_path = target_dir / Path(cfg.get("train_file", f"data/{dataset_key}_train.jsonl"))
         val_path = target_dir / Path(cfg.get("val_file", f"data/{dataset_key}_val.jsonl"))
-        _write_jsonl(train_path, train_records)
-        _write_jsonl(val_path, val_records)
+        _write_jsonl(train_path, train_recs)
+        _write_jsonl(val_path, val_recs)
 
-        # 5. Metadata compilation
+        test_path: Path | None = None
+        if test_recs:
+            test_path = target_dir / Path(cfg.get("test_file", f"data/{dataset_key}_test.jsonl"))
+            _write_jsonl(test_path, test_recs)
+
         generate_llm_metadata(
-            target_dir, modernized_folder, train_records, val_records, _descriptor_for(cfg)
+            target_dir,
+            cfg.get("modernized_folder", dataset_key),
+            train_recs,
+            val_recs,
+            descriptor=_descriptor_for(cfg),
+            test_records=test_recs if test_recs else None,
         )
 
-        return {
+        res: dict[str, Any] = {
             "dataset_key": dataset_key,
             "target_dir": str(target_dir),
-            "total_records": len(records),
-            "train_count": len(train_records),
-            "val_count": len(val_records),
+            "total_records": total,
+            "train_count": len(train_recs),
+            "val_count": len(val_recs),
             "train_path": str(train_path),
             "val_path": str(val_path),
         }
+        if test_recs and test_path:
+            res["test_count"] = len(test_recs)
+            res["test_path"] = str(test_path)
+        return res
 
     def _generate_records(self, dataset_key: str, cfg: dict[str, Any]) -> list[dict[str, Any]]:
         """Run the generator declared in the manifold's ``llm_pipeline`` block."""
@@ -121,33 +153,51 @@ class BaseLLMCompiler:
         is_valid, issues = self.validator.validate_corpus(records)
         critical_errors = [iss for iss in issues if iss.severity == "ERROR"]
         if not is_valid:
-            raise ValueError(
-                f"Corpus validation failed with {len(critical_errors)} critical errors:"
-                f" {critical_errors[:5]}"
+            err_msg = (
+                f"Corpus validation failed with {len(critical_errors)} critical errors: "
+                f"{critical_errors[:5]}"
             )
+            raise ValueError(err_msg)
 
 
-def _stratified_split(
-    records: list[dict[str, Any]], val_split: float
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Deterministic per-category train/val split (seed 42), each side sorted by id."""
+def _partition_records(
+    records: list[dict[str, Any]], val_split: float, test_split: float = 0.0
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Deterministic category-stratified 3-way split (seed 42) avoiding prompt overlap."""
     rng = random.Random(42)
     by_category: dict[str, list[dict[str, Any]]] = {}
     for r in records:
         by_category.setdefault(r.get("category", "default"), []).append(r)
 
-    train_records: list[dict[str, Any]] = []
-    val_records: list[dict[str, Any]] = []
+    train_recs: list[dict[str, Any]] = []
+    val_recs: list[dict[str, Any]] = []
+    test_recs: list[dict[str, Any]] = []
+
     for _category, items in sorted(by_category.items()):
         shuffled = list(items)
         rng.shuffle(shuffled)
         val_count = max(1, int(len(shuffled) * val_split)) if len(shuffled) > 1 else 0
-        val_records.extend(shuffled[:val_count])
-        train_records.extend(shuffled[val_count:])
+        test_count = (
+            max(1, int(len(shuffled) * test_split))
+            if (len(shuffled) > 2 and test_split > 0)
+            else 0
+        )
+        val_recs.extend(shuffled[:val_count])
+        test_recs.extend(shuffled[val_count : val_count + test_count])
+        train_recs.extend(shuffled[val_count + test_count :])
 
-    train_records.sort(key=lambda x: str(x.get("id", "")))
-    val_records.sort(key=lambda x: str(x.get("id", "")))
-    return train_records, val_records
+    train_recs.sort(key=lambda x: str(x.get("id", "")))
+    val_recs.sort(key=lambda x: str(x.get("id", "")))
+    test_recs.sort(key=lambda x: str(x.get("id", "")))
+    return train_recs, val_recs, test_recs
+
+
+def _stratified_split(
+    records: list[dict[str, Any]], val_split: float
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Backward compatible 2-way split wrapper."""
+    train_recs, val_recs, _ = _partition_records(records, val_split, 0.0)
+    return train_recs, val_recs
 
 
 def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
@@ -161,9 +211,12 @@ def _descriptor_for(cfg: dict[str, Any]) -> LLMManifoldDescriptor:
     return LLMManifoldDescriptor(
         category=cfg.get("category", "Technical Documentation & AI Assistant Training"),
         classes=[cfg.get("task", "ai_helper")],
-        original_sources=cfg.get("provenance_sources", [
-            "LemGendary AI Documentation Hub",
-            "Master Operations Manuals (GUI, CLI, API)",
-            "Architectural Whitepapers",
-        ]),
+        original_sources=cfg.get(
+            "provenance_sources",
+            [
+                "LemGendary AI Documentation Hub",
+                "Master Operations Manuals (GUI, CLI, API)",
+                "Architectural Whitepapers",
+            ],
+        ),
     )

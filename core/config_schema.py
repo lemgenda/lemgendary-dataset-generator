@@ -230,6 +230,8 @@ class DatasetEntry(BaseModel):
     # AI Helper / NLP instruction fine-tuning fields
     train_file: str | None = None
     val_file: str | None = None
+    test_file: str | None = None
+    test_split: float | None = Field(default=None, ge=0.0, lt=1.0)
     split_strategy: str | None = None
     stratify_by: str | None = None
     validation_requirements: list[str] = Field(default_factory=list)

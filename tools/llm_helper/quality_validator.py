@@ -100,7 +100,8 @@ class QualityValidator:
                     )
                 )
 
-        if str(record.get("category", "")) == "troubleshooting_diagnostics":
+        category = str(record.get("category", "")).strip().lower()
+        if category in ("troubleshooting_diagnostic", "troubleshooting_diagnostics"):
             issues.extend(self._diagnostic_issues(rec_id, assistant_text))
 
         return issues
@@ -137,12 +138,39 @@ class QualityValidator:
         """Validate an entire collection of records, checking uniqueness and compliance."""
         all_issues: list[ValidationIssue] = []
         seen_ids: set[str] = set()
+        seen_prompts: dict[str, str] = {}
 
         for rec in records:
             r_id = str(rec.get("id", ""))
             if r_id in seen_ids:
                 all_issues.append(ValidationIssue(r_id, "id", f"Duplicate record ID found: {r_id}"))
             seen_ids.add(r_id)
+
+            # Check for duplicate normalized prompt across corpus
+            messages = rec.get("messages") or []
+            user_text = next(
+                (
+                    m.get("content", "").strip()
+                    for m in messages
+                    if isinstance(m, dict) and m.get("role") == "user"
+                ),
+                "",
+            )
+            if user_text:
+                norm_prompt = re.sub(r"\s+", " ", user_text).lower()
+                if norm_prompt in seen_prompts:
+                    matched = seen_prompts[norm_prompt]
+                    all_issues.append(
+                        ValidationIssue(
+                            r_id,
+                            "prompt",
+                            f"Duplicate prompt content found (matches {matched})",
+                            severity="WARNING",
+                        )
+                    )
+                else:
+                    seen_prompts[norm_prompt] = r_id
+
             all_issues.extend(self.validate_record(rec))
 
         critical_errors = [iss for iss in all_issues if iss.severity == "ERROR"]

@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.70-STABLE` |
+| **Version** | `v16.9.71-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,24 @@
 ---
 
 ## Changelog
+
+### v16.9.71 - AIHelper LLM Pipeline Pydantic Validation & Knowledge Ingestor Enhancement
+
+- `tools/llm_helper/base_compiler.py`: integrated canonical `load_unified_data()`
+  Pydantic manifest validation into `BaseLLMCompiler`, replacing raw YAML
+  parsing; added 3-way document-grouped partitioner (`train`/`val`/`test`).
+- `tools/llm_helper/metadata_compiler.py`: updated metadata generation to record
+  `test_samples` in `dataset_info.yaml` and index test rows in `index.json`.
+- `core/docs/context_resolvers.py`: updated `_tally_ai_helper` to count held-out
+  `ai_helper_test.jsonl` lines towards manifold total sample counts.
+- `core/docs/generators/dataset_info_yaml.py`: added `test_samples` reflection
+  in `_instruction_fields`.
+- `tools/llm_helper/knowledge_ingestor.py`: added full support for YAML, JSON,
+  CSV, and text file adapters and remote URL ingestion.
+- `tools/llm_helper/knowledge_synthesizer.py`: expanded source dispatch to
+  ingest declared `yaml_file`, `json_file`, and `remote_url` configurations.
+- `tools/llm_helper/quality_validator.py`: fixed category matching for
+  `troubleshooting_diagnostic` and added duplicate prompt collision detection.
 
 ### v16.9.70 - Authoritative .secrets.yaml SSOT & Credential Hardening
 

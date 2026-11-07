@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 
 import yaml
-
 from core.config_schema import UnifiedData
 from tools.llm_helper.chunker import KnowledgeChunk, RecursiveChunker
 from tools.llm_helper.knowledge_ingestor import KnowledgeIngestor
@@ -17,7 +16,7 @@ class TestLLMCompilerPipeline(unittest.TestCase):
     """Verifies all deliverables of , , and ."""
 
     def test_knowledge_ingestion_and_chunking(self):
-        """ Ingestion of markdown, json, yaml, and recursive chunking."""
+        """Ingestion of markdown, json, yaml, and recursive chunking."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             (tmp / "test.md").write_text("# Heading 1\n\nContent paragraph.", encoding="utf-8")
@@ -36,7 +35,7 @@ class TestLLMCompilerPipeline(unittest.TestCase):
                 self.assertTrue(len(c.text) > 0)
 
     def test_quality_validator_invariants(self):
-        """ Quality gate rules (zero-emoji, epistemic tags)."""
+        """Quality gate rules (zero-emoji, epistemic tags)."""
         validator = QualityValidator(zero_emojis=True, enforce_epistemic_tags=True)
 
         valid = {
@@ -60,14 +59,14 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         emoji_rec = dict(valid)
         emoji_rec["messages"] = [
             {"role": "system", "content": "System."},
-            {"role": "user", "content": "Emoji here \U0001F600"},
+            {"role": "user", "content": "Emoji here \U0001f600"},
             {"role": "assistant", "content": "Ok"},
         ]
         issues = validator.validate_record(emoji_rec)
         self.assertTrue(any("emoji" in i.issue.lower() for i in issues))
 
     def test_core_doc_generators_metadata(self):
-        """ Verifies core doc generators and metadata compiler produce canonical files."""
+        """Verifies core doc generators and metadata compiler produce canonical files."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             train_recs = [
@@ -105,7 +104,7 @@ class TestLLMCompilerPipeline(unittest.TestCase):
             self.assertTrue((tmp / "category.txt").exists())
             self.assertTrue((tmp / "classes.txt").exists())
 
-            with open(tmp / "dataset_info.yaml", "r", encoding="utf-8") as f:
+            with open(tmp / "dataset_info.yaml", encoding="utf-8") as f:
                 info = yaml.safe_load(f)
             self.assertEqual(info["count"], 2)
             self.assertEqual(info["train_samples"], 1)
@@ -113,9 +112,9 @@ class TestLLMCompilerPipeline(unittest.TestCase):
             self.assertEqual(info["canonical_format"], "jsonl")
 
     def test_pydantic_schema_and_unified_data(self):
-        """ Schema validation of unified_data.yaml SSOT entries."""
+        """Schema validation of unified_data.yaml SSOT entries."""
         manifest_path = Path(__file__).resolve().parents[1] / "unified_data.yaml"
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         u = UnifiedData.model_validate(data)
@@ -124,13 +123,14 @@ class TestLLMCompilerPipeline(unittest.TestCase):
         ai = u.datasets["ai_helper_lemgend"]
         self.assertEqual(ai.dataset_type, "llm")
         self.assertEqual(ai.split_strategy, "stratified")
-        self.assertEqual(ai.val_split, 0.20)
+        self.assertEqual(ai.val_split, 0.15)
+        self.assertEqual(ai.test_split, 0.15)
+        self.assertEqual(ai.test_file, "data/ai_helper_test.jsonl")
         pipeline = ai.llm_pipeline
         if pipeline is None:
             self.fail("ai_helper_lemgend declares no llm_pipeline")
         self.assertEqual(pipeline.schema_format, "chatml_turn3")
         self.assertTrue(len(pipeline.knowledge_sources) >= 3)
-
 
 
 if __name__ == "__main__":
