@@ -37,11 +37,6 @@ $ghManagerModule = 'sources.gh'
 $kagManagerModule = 'sources.kaggle'
 $gdManagerModule = 'sources.gd'
 
-$TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
-if (Test-Path $TokenPath) {
-    $env:KAGGLE_API_TOKEN = (Get-Content $TokenPath -Raw).Trim()
-}
-
 $DownloadSB = {
     param($ds, $sharedPath, $vpy, $kagManager)
     $isC = $ds -match 'competition'
@@ -472,11 +467,6 @@ function Start-Acquisition {
         else { Join-Path $HOME '.kaggle' }
     if (-not (Test-Path (Join-Path $kaggleDir 'kaggle.json'))) {
         throw "kaggle.json not found in $kaggleDir. Create a key on kaggle.com."
-    }
-
-    $TokenPath = Join-Path $PSScriptRoot '.kaggle_token'
-    if (Test-Path $TokenPath) {
-        Copy-Item -Path $TokenPath -Destination (Join-Path $kaggleDir 'access_token') -Force
     }
 
     $RegData = Get-RegData

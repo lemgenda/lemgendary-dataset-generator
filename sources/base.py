@@ -23,6 +23,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from core.kaggle_identity import default_owner
+from core.secrets import get_kaggle_vault_credentials, get_secret_value
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +45,34 @@ def read_token_file(filename: str) -> str | None:
 def load_kaggle_credentials(default_username: str | None = None) -> bool:
     """
     Populate KAGGLE_USERNAME / KAGGLE_KEY / KAGGLE_API_TOKEN from env or
-    .kaggle_token. Returns True only when a secret (API token or key) is
-    available; a username alone (including the default owner) is not a
-    credential. ``default_username`` defaults to the ecosystem Kaggle owner.
+    .secrets.yaml (falling back to legacy .kaggle_token). Returns True only when a secret
+    (API token or key) is available; a username alone is not a credential.
+    ``default_username`` defaults to the ecosystem Kaggle owner.
     """
-    token = read_token_file(".kaggle_token")
-    if token and "KAGGLE_API_TOKEN" not in os.environ:
-        os.environ["KAGGLE_API_TOKEN"] = token
+    # If environment already has credentials or specifies username, respect ambient env
+    ambient_token = os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY")
+    if not ambient_token and "KAGGLE_USERNAME" not in os.environ:
+        token, user = get_kaggle_vault_credentials()
+        if token and "KAGGLE_API_TOKEN" not in os.environ:
+            os.environ["KAGGLE_API_TOKEN"] = token
+        if "KAGGLE_USERNAME" not in os.environ:
+            os.environ["KAGGLE_USERNAME"] = default_username or user or default_owner()
+
+    if "KAGGLE_API_TOKEN" not in os.environ and "KAGGLE_KEY" not in os.environ:
+        token = read_token_file(".kaggle_token")
+        if token:
+            os.environ["KAGGLE_API_TOKEN"] = token
     if "KAGGLE_USERNAME" not in os.environ:
         os.environ["KAGGLE_USERNAME"] = default_username or default_owner()
     return bool(os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY"))
 
 
 def load_hf_credentials() -> bool:
-    """Populate HF_TOKEN from env or .huggingface_token."""
+    """Populate HF_TOKEN from env, .secrets.yaml or .huggingface_token."""
     if "HF_TOKEN" in os.environ or "HUGGING_FACE_HUB_TOKEN" in os.environ:
         return True
-    token = read_token_file(".huggingface_token")
+
+    token = get_secret_value("huggingface") or read_token_file(".huggingface_token")
     if token:
         os.environ["HF_TOKEN"] = token
         return True
@@ -105,12 +117,13 @@ def emit_notification(message: str) -> None:
 # ─── Common argparse helpers ────────────────────────────────────────────────
 def add_common_args(parser) -> None:
     """Attach the args shared by every fetcher's CLI."""
-    parser.add_argument("--repo_id", type=str, required=True,
-                        help="Repository identifier (backend-specific).")
-    parser.add_argument("--output_dir", type=str, required=True,
-                        help="Local destination directory.")
-    parser.add_argument("--token", type=str, default=None,
-                        help="Optional auth token override.")
+    parser.add_argument(
+        "--repo_id", type=str, required=True, help="Repository identifier (backend-specific)."
+    )
+    parser.add_argument(
+        "--output_dir", type=str, required=True, help="Local destination directory."
+    )
+    parser.add_argument("--token", type=str, default=None, help="Optional auth token override.")
 
 
 def summarize_output(output_dir: str | Path) -> tuple[int, int]:

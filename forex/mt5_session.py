@@ -12,6 +12,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from core.secrets import get_secret_record
+
 from . import bridge as mt5_bridge
 from .pipeline_config import ALTERNATIVE_KEYWORDS
 
@@ -69,22 +71,43 @@ def _attach_running_terminal() -> bool:
     return False
 
 
-def _env_login() -> int | None:
-    if "MT5_LOGIN" not in os.environ:
-        return None
+def _vault_mt5() -> dict[str, Any]:
+    """Retrieve default MetaTrader 5 settings from .secrets.yaml if present."""
     try:
-        return int(os.environ["MT5_LOGIN"])
-    except ValueError as err:
-        print(f" [MT5] Warning: Invalid MT5_LOGIN integer format: {err}")
-        return None
+        rec = get_secret_record("metatrader5")
+        if rec:
+            return rec
+    except (OSError, ImportError, ValueError, AttributeError):
+        pass
+    return {}
+
+
+def _env_login() -> int | None:
+    if "MT5_LOGIN" in os.environ:
+        try:
+            return int(os.environ["MT5_LOGIN"])
+        except ValueError as err:
+            print(f" [MT5] Warning: Invalid MT5_LOGIN integer format: {err}")
+            return None
+    vault = _vault_mt5()
+    u = str(vault.get("username") or "").strip()
+    if u and u.isdigit():
+        return int(u)
+    return None
 
 
 def _with_env_defaults(creds: MT5Credentials) -> MT5Credentials:
-    """Fill the missing credential fields from the ``MT5_*`` environment variables."""
+    """Fill missing credential fields from MT5_* env variables or .secrets.yaml."""
+    vault = _vault_mt5()
+    v_pass = str(vault.get("secret_value") or "").strip() or None
+    v_server = str(vault.get("server") or "").strip() or None
+
     return MT5Credentials(
         login=creds.login if creds.login is not None else _env_login(),
-        password=creds.password if creds.password is not None else os.environ.get("MT5_PASSWORD"),
-        server=creds.server if creds.server is not None else os.environ.get("MT5_SERVER"),
+        password=creds.password
+        if creds.password is not None
+        else os.environ.get("MT5_PASSWORD", v_pass),
+        server=creds.server if creds.server is not None else os.environ.get("MT5_SERVER", v_server),
         api_key=creds.api_key if creds.api_key is not None else os.environ.get("MT5_API_KEY"),
     )
 
@@ -140,7 +163,7 @@ def _usable_alternatives(candidates):
 def _is_prefixed_name(name_upper: str, alt: str) -> bool:
     """True when ``name_upper`` is ``alt`` or ``alt`` followed by a ``.``, ``_`` or ``-`` suffix."""
     return name_upper.startswith(alt) and (
-        len(name_upper) == len(alt) or name_upper[len(alt)] in ('.', '_', '-')
+        len(name_upper) == len(alt) or name_upper[len(alt)] in (".", "_", "-")
     )
 
 

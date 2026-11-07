@@ -24,6 +24,7 @@ from api.routes.datasets import _resolve_output_root
 from core import paths
 from core.common_sync import is_kaggle_large_manifold
 from core.kaggle_identity import default_owner
+from core.secrets import get_secret_record
 from services.invocation import ServiceInvocation
 from services.sync_service import kaggle_invocation, manifold_sync_invocation
 
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/kaggle", tags=["Kaggle"])
 
 class KaggleSyncRequest(BaseModel):
     """Request body for a Kaggle push or pull of one manifold."""
+
     manifold: str | None = Field(default=None, description="Specific manifold ID or folder name")
     push: bool = Field(default=False, description="Push local manifold to Kaggle")
     pull: bool = Field(default=False, description="Pull remote dataset from Kaggle")
@@ -59,7 +61,7 @@ def _unified_datasets() -> dict[str, Any]:
     unified_yaml = _unified_yaml_path()
     if not unified_yaml.exists():
         return {}
-    with open(unified_yaml, "r", encoding="utf-8") as f:
+    with open(unified_yaml, encoding="utf-8") as f:
         ydata = yaml.safe_load(f) or {}
     return ydata.get("datasets", {})
 
@@ -131,17 +133,20 @@ async def get_kaggle_status() -> dict[str, Any]:
         os.environ.get("KAGGLE_API_TOKEN")
         or (os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"))
     )
+    rec = get_secret_record("kaggle")
+    has_vault = bool(rec and str(rec.get("secret_value") or "").strip())
     token_file = Path(".kaggle_token")
     has_token_file = token_file.exists() and len(token_file.read_text(encoding="utf-8").strip()) > 0
     kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
     has_kaggle_json = kaggle_json.exists()
 
-    authenticated = has_env or has_token_file or has_kaggle_json
+    authenticated = has_env or has_vault or has_token_file or has_kaggle_json
 
     return {
         "authenticated": authenticated,
         "auth_methods": {
             "environment_variables": has_env,
+            "secrets_vault": has_vault,
             "dot_kaggle_token": has_token_file,
             "user_kaggle_json": has_kaggle_json,
         },
@@ -159,7 +164,7 @@ def list_registry_kaggle_datasets() -> list[KaggleDatasetRegistryItem]:
         return items
 
     try:
-        with open(unified_yaml, "r", encoding="utf-8") as f:
+        with open(unified_yaml, encoding="utf-8") as f:
             ydata = yaml.safe_load(f) or {}
             datasets_meta = ydata.get("datasets", {})
             meta = ydata.get("_registry_metadata", {})
@@ -183,8 +188,8 @@ async def download_kaggle_dataset(req: KaggleDownloadRequest) -> JobResponse:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"Invalid Kaggle dataset reference: '{req.kaggle_ref}'."
-                " Must be 'owner/dataset' or URL."
+                f"Invalid Kaggle dataset reference: '{req.kaggle_ref}'. "
+                "Must be 'owner/dataset' or URL."
             ),
         )
 
@@ -249,6 +254,7 @@ async def trigger_kaggle_sync(req: KaggleSyncRequest) -> JobResponse:
 
 class KaggleMetadataRequest(BaseModel):
     """Request body for a Kaggle metadata update."""
+
     manifold: str | None = None
     """Specific manifold folder/key to update. If omitted, all_datasets must be True."""
     kaggle_ref: str | None = None

@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.69-STABLE` |
+| **Version** | `v16.9.70-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,19 @@
 ---
 
 ## Changelog
+
+### v16.9.70 - Authoritative .secrets.yaml SSOT & Credential Hardening
+
+- `core/secrets.py`: Added centralized secrets loader resolving credentials
+  from the workspace root `.secrets.yaml` as Single Source of Truth.
+- `sources/base.py`: Resolved Kaggle and Hugging Face credentials directly
+  from `.secrets.yaml` with environment variable precedence.
+- `core/sync_auth.py` & `api/routes/kaggle.py`: Removed legacy `.kaggle_token`
+  dependency and synced authentication status reporting.
+- `forex/mt5_session.py`: Added automatic fallback to `.secrets.yaml`
+  MetaTrader 5 broker credentials when environment variables are unset.
+- Cleaned up obsolete local `.kaggle_token`, `.huggingface_token`, and
+  `.mt5_credentials` files.
 
 ### v16.9.69 - 80-Column Markdown, Yamllint Compliance, and D-12 Task Confirmation
 

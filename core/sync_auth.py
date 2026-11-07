@@ -19,9 +19,9 @@ from kagglehub import clients as kagglehub_clients
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS
 from core.kaggle_identity import default_owner
 from core.lazy_imports import load_kaggle_api
+from core.secrets import get_kaggle_vault_credentials
 
 logger = logging.getLogger(__name__)
-
 
 
 def normalize_kaggle_handle(repo_id: str) -> str:
@@ -75,15 +75,19 @@ def _token_file() -> Path:
 
 
 def _apply_token_file(default_user: str | None) -> None:
-    """Export the ``.kaggle_token`` contents (and default username) into the environment."""
-    token_file = _token_file()
-    if not token_file.exists():
-        return
-    token = token_file.read_text().strip()
-    if token:
+    """Export Kaggle credentials from .secrets.yaml or legacy .kaggle_token into env."""
+    token, user = get_kaggle_vault_credentials()
+    if not token:
+        token_file = _token_file()
+        if token_file.exists():
+            token = token_file.read_text().strip() or None
+
+    if token and "KAGGLE_API_TOKEN" not in os.environ:
         os.environ["KAGGLE_API_TOKEN"] = token
-        if "KAGGLE_USERNAME" not in os.environ and default_user:
-            os.environ["KAGGLE_USERNAME"] = default_user
+    if "KAGGLE_USERNAME" not in os.environ:
+        chosen_user = default_user or user
+        if chosen_user:
+            os.environ["KAGGLE_USERNAME"] = chosen_user
 
 
 def _apply_pip_certifi_fallback() -> None:
@@ -144,7 +148,5 @@ def setup_kaggle_auth(
 
     kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
     return bool(
-        os.environ.get("KAGGLE_API_TOKEN")
-        or os.environ.get("KAGGLE_KEY")
-        or kaggle_json.exists()
+        os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY") or kaggle_json.exists()
     )
