@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.71-STABLE` |
+| **Version** | `v16.9.72-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,14 @@
 ---
 
 ## Changelog
+
+### v16.9.72 - PyTorch 2.15.0+cu134 Toolchain Upgrade & Ecosystem Alignment
+
+- Upgraded deep learning toolchain to PyTorch 2.15.0+cu134 and TorchVision
+  0.29.2+cu134 with CUDA 13.4 hardware acceleration.
+- Synchronized `requirements.txt` with centralized Environment Manager SSOT
+  manifest (`requirements-datasets.txt`).
+- Synchronized `core.cli_args.__version__`, `openapi.json`, and API contracts.
 
 ### v16.9.71 - AIHelper LLM Pipeline Pydantic Validation & Knowledge Ingestor Enhancement
 
