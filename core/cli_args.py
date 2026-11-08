@@ -24,12 +24,13 @@ import shutil
 import sys
 from pathlib import Path
 
-from core import ecosystem
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
+
+from core import ecosystem
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.72"
+__version__ = "16.9.73"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────
@@ -45,81 +46,126 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ── Dataset identity ────────────────────────────────────────────────────
-    parser.add_argument("--name", type=str, default=None,
-                        help="Output folder name override (default: from registry metadata)")
-    parser.add_argument("--model", type=str, default=None,
-                        help="Specific dataset model key to compile")
-    parser.add_argument("--suffix", type=str, default=None,
-                        help="Override the manifold name suffix (default: from registry metadata)")
+    parser.add_argument(
+        "--name", type=str, default=None, help="Output folder name override (default: from registry metadata)"
+    )
+    parser.add_argument("--model", type=str, default=None, help="Specific dataset model key to compile")
+    parser.add_argument(
+        "--suffix", type=str, default=None, help="Override the manifold name suffix (default: from registry metadata)"
+    )
 
     # ── Size and parallelism ────────────────────────────────────────────────
-    parser.add_argument("--max_gb", type=float, default=None,
-                        help="Override max_size_gb for this run")
-    parser.add_argument("--workers", type=int,
-                        default=max(1, multiprocessing.cpu_count() - 2),
-                        help="Number of parallel workers (default: cpu_count - 2)")
+    parser.add_argument("--max_gb", type=float, default=None, help="Override max_size_gb for this run")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=max(1, multiprocessing.cpu_count() - 2),
+        help="Number of parallel workers (default: cpu_count - 2)",
+    )
 
     # ── Mode selectors ──────────────────────────────────────────────────────
-    parser.add_argument("--reduce", action="store_true",
-                        help="Start in Reduce mode")
+    parser.add_argument("--reduce", action="store_true", help="Start in Reduce mode")
     parser.add_argument(
         "--cleanup",
         action="store_true",
         help="After a successful compile, purge the loose directory layout "
         "(images/labels/targets/masks) of manifolds that were packed into a container",
     )
-    parser.add_argument("--finalize", action="store_true",
-                        help="Sharding + README only — skip re-processing")
+    parser.add_argument("--finalize", action="store_true", help="Sharding + README only — skip re-processing")
 
     # ── Quality gate toggles ────────────────────────────────────────────────
-    parser.add_argument("--no-vetting", dest="no_vetting", action="store_true",
-                        help="Disable NIMA quality gate (Pass-Through mode)")
-    parser.add_argument("--no-labeling", dest="no_labeling", action="store_true",
-                        help="Disable YOLO auto-labeling (High-Speed mode)")
-    parser.add_argument("--no-hash", dest="no_hash", action="store_true",
-                        help="Disable deduplication hash for maximum I/O speed")
+    parser.add_argument(
+        "--no-vetting", dest="no_vetting", action="store_true", help="Disable NIMA quality gate (Pass-Through mode)"
+    )
+    parser.add_argument(
+        "--no-labeling", dest="no_labeling", action="store_true", help="Disable YOLO auto-labeling (High-Speed mode)"
+    )
+    parser.add_argument(
+        "--no-hash", dest="no_hash", action="store_true", help="Disable deduplication hash for maximum I/O speed"
+    )
 
     # ── Transcode controls (Phase 3) ────────────────────────────────────────
-    parser.add_argument("--image-format", dest="image_format", type=str,
-                        choices=["webp", "jpeg", "png", "keep"], default=None,
-                        help="Image output format (default: webp)")
-    parser.add_argument("--image-quality", dest="image_quality", type=int, default=None,
-                        help="Quality for images 1-100 (default: 92)")
-    parser.add_argument("--target-quality", dest="target_quality", type=int, default=None,
-                        help="Quality for restoration targets (default: 95)")
-    parser.add_argument("--mask-format", dest="mask_format", type=str,
-                        choices=["webp-lossless", "png"], default=None,
-                        help="Format for segmentation masks (default: webp-lossless)")
+    parser.add_argument(
+        "--image-format",
+        dest="image_format",
+        type=str,
+        choices=["webp", "jpeg", "png", "keep"],
+        default=None,
+        help="Image output format (default: webp)",
+    )
+    parser.add_argument(
+        "--image-quality", dest="image_quality", type=int, default=None, help="Quality for images 1-100 (default: 92)"
+    )
+    parser.add_argument(
+        "--target-quality",
+        dest="target_quality",
+        type=int,
+        default=None,
+        help="Quality for restoration targets (default: 95)",
+    )
+    parser.add_argument(
+        "--mask-format",
+        dest="mask_format",
+        type=str,
+        choices=["webp-lossless", "png"],
+        default=None,
+        help="Format for segmentation masks (default: webp-lossless)",
+    )
 
     # ── Container-format controls (Phase 4) ─────────────────────────────────
-    parser.add_argument("--also-format", dest="also_format", type=str, default=None,
-                        help="Comma-separated container formats to write in addition "
-                             "to the canonical directory layout (e.g. 'mds' or 'mds,litdata')")
+    parser.add_argument(
+        "--also-format",
+        dest="also_format",
+        type=str,
+        default=None,
+        help="Comma-separated container formats to write in addition "
+        "to the canonical directory layout (e.g. 'mds' or 'mds,litdata')",
+    )
     parser.add_argument(
         "--shard-ext",
         dest="shard_ext",
         type=str,
         default="data",
-        help=(
-            "WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle"
-            " backend ingestion)"
-        ),
+        help=("WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle backend ingestion)"),
     )
-    parser.add_argument("--force-duplicate", dest="force_duplicate", action="store_true",
-                        help="Proceed with container write despite WARN-tier hardlink fraction")
-    parser.add_argument("--accept-space-loss", dest="accept_space_loss", action="store_true",
-                        help="Proceed with container write despite BLOCK-tier hardlink fraction")
+    parser.add_argument(
+        "--force-duplicate",
+        dest="force_duplicate",
+        action="store_true",
+        help="Proceed with container write despite WARN-tier hardlink fraction",
+    )
+    parser.add_argument(
+        "--accept-space-loss",
+        dest="accept_space_loss",
+        action="store_true",
+        help="Proceed with container write despite BLOCK-tier hardlink fraction",
+    )
 
     # ── Smart-generation strategy overrides (Phase 5) ───────────────────────
-    parser.add_argument("--label-strategy", dest="label_strategy", type=str, default=None,
-                        choices=LabelGenerator.strategies(),
-                        help="Label generation strategy (default: inferred from task)")
-    parser.add_argument("--prompt-strategy", dest="prompt_strategy", type=str, default=None,
-                        choices=PromptGenerator.strategies(),
-                        help="Prompt template name (default: diffusers-v1)")
-    parser.add_argument("--mask-strategy", dest="mask_strategy", type=str, default=None,
-                        choices=MaskGenerator.strategies(),
-                        help="Mask generation strategy (default: parsenet for segmentation)")
+    parser.add_argument(
+        "--label-strategy",
+        dest="label_strategy",
+        type=str,
+        default=None,
+        choices=LabelGenerator.strategies(),
+        help="Label generation strategy (default: inferred from task)",
+    )
+    parser.add_argument(
+        "--prompt-strategy",
+        dest="prompt_strategy",
+        type=str,
+        default=None,
+        choices=PromptGenerator.strategies(),
+        help="Prompt template name (default: diffusers-v1)",
+    )
+    parser.add_argument(
+        "--mask-strategy",
+        dest="mask_strategy",
+        type=str,
+        default=None,
+        choices=MaskGenerator.strategies(),
+        help="Mask generation strategy (default: parsenet for segmentation)",
+    )
 
     # ── Compiler Preset Profiles (Phase 8) ─────────────────────────────────
     parser.add_argument(
@@ -127,10 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="preset",
         type=str,
         default=None,
-        help=(
-            "Compiler preset profile name from presets.yaml (e.g. quality-vision,"
-            " restoration-hardlinked)"
-        ),
+        help=("Compiler preset profile name from presets.yaml (e.g. quality-vision, restoration-hardlinked)"),
     )
 
     return parser

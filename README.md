@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.72-STABLE` |
+| **Version** | `v16.9.73-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,12 @@
 ---
 
 ## Changelog
+
+### v16.9.73 - Kaggle Reference Specification for AIHelperLemGend
+
+- `unified_data.yaml`: Registered `kaggle_ref: kaggle://lemtreursi/lemgendizedaihelperlemgend`
+  for the `ai_helper_lemgend` instruction tuning manifold, surfacing the "Audit
+  Notebooks" button in the Desktop GUI.
 
 ### v16.9.72 - PyTorch 2.15.0+cu134 Toolchain Upgrade & Ecosystem Alignment
 

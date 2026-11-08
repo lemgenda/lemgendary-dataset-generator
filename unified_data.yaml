@@ -965,6 +965,7 @@ datasets:
     category: Technical Documentation & AI Assistant Training
     modernized_folder: LemGendizedAIHelperLemGend
     canonical_format: jsonl
+    kaggle_ref: kaggle://lemtreursi/lemgendizedaihelperlemgend
     title: LemGendized AI Helper Assistant
     subtitle: AI Assistant for Dataset Engineering, Training, and Safe Troubleshooting
     description: 'Supervised instruction corpus for AI LemGend, the user-facing assistant
