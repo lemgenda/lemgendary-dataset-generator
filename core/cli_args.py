@@ -30,7 +30,7 @@ from core import ecosystem
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.73"
+__version__ = "16.9.74"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────
@@ -47,15 +47,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── Dataset identity ────────────────────────────────────────────────────
     parser.add_argument(
-        "--name", type=str, default=None, help="Output folder name override (default: from registry metadata)"
+        "--name",
+        type=str,
+        default=None,
+        help="Output folder name override (default: from registry metadata)",
     )
-    parser.add_argument("--model", type=str, default=None, help="Specific dataset model key to compile")
     parser.add_argument(
-        "--suffix", type=str, default=None, help="Override the manifold name suffix (default: from registry metadata)"
+        "--model",
+        type=str,
+        default=None,
+        help="Specific dataset model key to compile",
+    )
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        default=None,
+        help="Override the manifold name suffix (default: from registry metadata)",
     )
 
     # ── Size and parallelism ────────────────────────────────────────────────
-    parser.add_argument("--max_gb", type=float, default=None, help="Override max_size_gb for this run")
+    parser.add_argument(
+        "--max_gb",
+        type=float,
+        default=None,
+        help="Override max_size_gb for this run",
+    )
     parser.add_argument(
         "--workers",
         type=int,
@@ -71,17 +87,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="After a successful compile, purge the loose directory layout "
         "(images/labels/targets/masks) of manifolds that were packed into a container",
     )
-    parser.add_argument("--finalize", action="store_true", help="Sharding + README only — skip re-processing")
+    parser.add_argument(
+        "--finalize",
+        action="store_true",
+        help="Sharding + README only — skip re-processing",
+    )
 
     # ── Quality gate toggles ────────────────────────────────────────────────
     parser.add_argument(
-        "--no-vetting", dest="no_vetting", action="store_true", help="Disable NIMA quality gate (Pass-Through mode)"
+        "--no-vetting",
+        dest="no_vetting",
+        action="store_true",
+        help="Disable NIMA quality gate (Pass-Through mode)",
     )
     parser.add_argument(
-        "--no-labeling", dest="no_labeling", action="store_true", help="Disable YOLO auto-labeling (High-Speed mode)"
+        "--no-labeling",
+        dest="no_labeling",
+        action="store_true",
+        help="Disable YOLO auto-labeling (High-Speed mode)",
     )
     parser.add_argument(
-        "--no-hash", dest="no_hash", action="store_true", help="Disable deduplication hash for maximum I/O speed"
+        "--no-hash",
+        dest="no_hash",
+        action="store_true",
+        help="Disable deduplication hash for maximum I/O speed",
     )
 
     # ── Transcode controls (Phase 3) ────────────────────────────────────────
@@ -94,7 +123,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Image output format (default: webp)",
     )
     parser.add_argument(
-        "--image-quality", dest="image_quality", type=int, default=None, help="Quality for images 1-100 (default: 92)"
+        "--image-quality",
+        dest="image_quality",
+        type=int,
+        default=None,
+        help="Quality for images 1-100 (default: 92)",
     )
     parser.add_argument(
         "--target-quality",
@@ -126,7 +159,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="shard_ext",
         type=str,
         default="data",
-        help=("WebDataset shard file extension without dot (default: 'data', obfuscated for Kaggle backend ingestion)"),
+        help=(
+            "WebDataset shard file extension without dot "
+            "(default: 'data', obfuscated for Kaggle backend ingestion)"
+        ),
     )
     parser.add_argument(
         "--force-duplicate",
@@ -173,7 +209,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="preset",
         type=str,
         default=None,
-        help=("Compiler preset profile name from presets.yaml (e.g. quality-vision, restoration-hardlinked)"),
+        help=(
+            "Compiler preset profile name from presets.yaml "
+            "(e.g. quality-vision, restoration-hardlinked)"
+        ),
     )
 
     return parser

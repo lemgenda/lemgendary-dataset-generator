@@ -82,12 +82,12 @@ def _apply_token_file(default_user: str | None) -> None:
         if token_file.exists():
             token = token_file.read_text().strip() or None
 
-    if token and "KAGGLE_API_TOKEN" not in os.environ:
+    if token:
         os.environ["KAGGLE_API_TOKEN"] = token
-    if "KAGGLE_USERNAME" not in os.environ:
-        chosen_user = default_user or user
-        if chosen_user:
-            os.environ["KAGGLE_USERNAME"] = chosen_user
+        os.environ["KAGGLE_KEY"] = token
+    chosen_user = default_user or user
+    if chosen_user:
+        os.environ["KAGGLE_USERNAME"] = chosen_user
 
 
 def _apply_pip_certifi_fallback() -> None:

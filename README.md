@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.73-STABLE` |
+| **Version** | `v16.9.74-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,14 @@
 ---
 
 ## Changelog
+
+### v16.9.74 - Authoritative SSOT Credential Precedence in Sync Auth
+
+- `core/sync_auth.py`: Updated `_apply_token_file()` to authoritatively
+  overwrite environment variables (`KAGGLE_API_TOKEN`, `KAGGLE_KEY`,
+  `KAGGLE_USERNAME`) with the active secret resolved from `.secrets.yaml`,
+  preventing stale system or process environment tokens from blocking KaggleHub
+  uploads.
 
 ### v16.9.73 - Kaggle Reference Specification for AIHelperLemGend
 
