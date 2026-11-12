@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.89-STABLE` |
+| **Version** | `v16.9.90-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,17 @@
 ---
 
 ## Changelog
+
+### v16.9.90 - Quick Compile Takes a Shard Extension
+
+- `QuickCompileRequest` (`POST /api/gui/quick-compile`) gains `shard_ext`
+  (WebDataset shard file extension without dot), forwarded to the compile
+  job through the same option table as `CompileJobRequest.shard_ext`;
+  unset, the compiler default (`data`) applies (R2-G4).
+- `api/models.py`, `api/gui_compile.py`, `api/routes/gui.py` (job
+  parameters), `openapi.json` (regenerated with `tools/export_openapi.py`).
+- `tests/test_service_invocations.py`: the extension reaches the compile
+  parser.
 
 ### v16.9.89 - Config Validation Open to the GUI
 

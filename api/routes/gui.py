@@ -203,6 +203,7 @@ async def quick_compile(
             "preset": req.preset,
             "max_gb": req.max_gb,
             "workers": req.workers,
+            "shard_ext": req.shard_ext,
             "preset_details": preset_cfg.to_dict(),
         },
     )

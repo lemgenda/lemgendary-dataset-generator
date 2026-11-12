@@ -45,10 +45,15 @@ _REPO_URL_RULES: tuple[tuple[str, str, bool], ...] = (
 
 
 def quick_compile_command(req: QuickCompileRequest) -> ServiceInvocation:
-    """``services.compiler_service`` invocation for a preset-driven quick compile."""
-    return compile_invocation(
-        {"model": req.model, "preset": req.preset, "max_gb": req.max_gb, "workers": req.workers}
-    )
+    """``services.compiler_service`` invocation for a preset-driven quick compile.
+
+    ``shard_ext`` is forwarded like ``CompileJobRequest.shard_ext``; unset, the
+    compiler's own default applies.
+    """
+    return compile_invocation({
+        "model": req.model, "preset": req.preset, "max_gb": req.max_gb,
+        "workers": req.workers, "shard_ext": req.shard_ext,
+    })
 
 
 def resolve_custom_preset(requested: str | None) -> str:

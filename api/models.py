@@ -267,6 +267,9 @@ class QuickCompileRequest(BaseModel):
     preset: str = Field(default="quality-vision", description="Preset name from presets.yaml")
     max_gb: float | None = Field(default=None, description="Max size override in gigabytes")
     workers: int | None = Field(default=None, description="Parallel worker process count")
+    shard_ext: str | None = Field(
+        default=None, description="WebDataset shard file extension without dot"
+    )
 
 
 class GuiStateResponse(BaseModel):

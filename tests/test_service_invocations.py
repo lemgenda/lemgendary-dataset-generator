@@ -14,7 +14,9 @@ import unittest
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+from api.gui_compile import quick_compile_command
 from api.jobs import job_command
+from api.models import QuickCompileRequest
 from core.cli_args import build_parser, venv_python
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
 from services import degrade_service, llm_service, sync_service
@@ -89,6 +91,13 @@ class TestCompileContract(unittest.TestCase):
         """An option outside the table raises TypeError."""
         with self.assertRaises(TypeError):
             compile_invocation(cast(CompileOptions, {"bogus": 1}))
+
+    def test_quick_compile_forwards_shard_ext(self) -> None:
+        """QuickCompileRequest.shard_ext reaches the compile parser; unset keeps its default."""
+        with_ext = quick_compile_command(QuickCompileRequest(model="m", shard_ext="tar"))
+        default = quick_compile_command(QuickCompileRequest(model="m"))
+        self.assertEqual(build_parser().parse_args(list(with_ext.args)).shard_ext, "tar")
+        self.assertEqual(build_parser().parse_args(list(default.args)).shard_ext, "data")
 
 
 class TestEntryPointsRoundTrip(unittest.TestCase):
