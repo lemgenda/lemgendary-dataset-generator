@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.75-STABLE` |
+| **Version** | `v16.9.76-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,31 @@
 ---
 
 ## Changelog
+
+### v16.9.76 - Converters Keep Masks and Labels, Reject Corrupt Images, Write Contiguous Groups
+
+- New `utils/image_payload.py`: the single place that turns raw bytes into
+  shard payloads. Zero-byte or undecodable images raise `CorruptImageError`
+  instead of being packed; masks are stored as lossless `.mask.webp` that keep
+  their class indices (audit 2.1.3).
+- New `utils/sample_group.py`: one sample (image, `.target`, `.mask`, `.txt` or
+  `.json` label) is encoded together and written as one contiguous tar member
+  group (audit 2.1.4).
+- New `utils/reject_tally.py`: rejected samples are logged and counted, with an
+  optional `RejectLog.record` sink.
+- `tools/modernize/loose_convert.py`, `common.py`: loose `masks/` and `labels/`
+  are packed with their image. New `tools/modernize/loose_verify.py` re-reads
+  the written shards and blocks `purge_loose` when any loose file (orphan
+  masks or labels included) is missing; `labels/` joins the purged folders and
+  purge errors are logged instead of ignored (audit 2.1.1).
+- `tools/zip_stream_common.py`, `zip_stream_webdataset.py`, `zip_stream_mds.py`:
+  zip `masks/` and `labels/` are partitioned and packed; the WebDataset streamer
+  writes each shard in one pass instead of an append pass for targets; MDS rows
+  carry the mask and label (audits 2.1.1, 2.1.4).
+- `tools/stream_zip_to_container.py`: unused `_worker_*` aliases removed.
+- Ruff import order fixed in `core/cli_args.py`, `tools/llm_helper/` and a test.
+- `tests/test_sample_members.py`: covers masks, labels, contiguity, corrupt
+  rejection and the purge barrier.
 
 ### v16.9.75 - No Swallowed Errors in Hub Script, MT5 Vault and JSONL Ingest
 

@@ -1,38 +1,38 @@
 """
 LemGendary Dataset Compiler — Zip-to-WebDataset streamer.
 
-Streams paired (images/ + targets/) or target-only legacy zip archives into
-WebDataset tar shards with optional multi-threaded WebP transcoding, without
-extracting loose files to disk.
+Streams paired (images/ + targets/, with optional masks/ and labels/) or
+target-only legacy zip archives into WebDataset tar shards with optional
+multi-threaded WebP transcoding, without extracting loose files to disk. Each
+sample's members are written contiguously in a single pass and corrupt images
+are rejected instead of packed.
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import tarfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from tools.zip_stream_common import (
     STREAM_ERRORS,
     MemberEntry,
+    SplitCompanions,
     StreamContext,
-    Worker,
     ZipLayout,
     ZipStreamOptions,
     chunked,
-    iter_payloads,
+    encode_samples,
     post_process_zip,
+    raw_zip_samples,
     resolve_options,
+    sample_entries,
     scan_zip,
     split_output_dir,
-    worker_img,
-    worker_sample,
-    worker_tgt,
 )
 from utils.container_stream import (
     prepare_shards_dir,
@@ -40,6 +40,8 @@ from utils.container_stream import (
     update_dataset_info_format,
 )
 from utils.progress import create_progress_bar
+from utils.reject_tally import RejectTally
+from utils.sample_group import write_sample
 
 logger = logging.getLogger(__name__)
 
@@ -54,122 +56,69 @@ class _SplitShards:
     split_dir: Path
     ext: str
     shard_size: int
+    rejects: RejectTally
 
     def shard_file(self, shard_idx: int) -> Path:
         """Return the tar path of shard `shard_idx`."""
         return self.split_dir / f"shard-{shard_idx:05d}.{self.ext}"
 
 
-@dataclass(frozen=True)
-class _TarPass:
-    """One pass over a split's shards: open mode, member suffix and worker."""
-
-    mode: Literal["w", "a"]
-    suffix: str
-    worker: Worker
-
-
-_IMAGE_PASS = _TarPass("w", "", worker_img)
-_TARGET_PASS = _TarPass("a", ".target", worker_tgt)
-_SAMPLE_PASS = _TarPass("w", "", worker_sample)
-
-
 def _write_tar_shard(
-    shards: _SplitShards, shard_idx: int, entries: list[MemberEntry], tar_pass: _TarPass, pbar: Any
+    shards: _SplitShards,
+    shard_idx: int,
+    entries: list[MemberEntry],
+    companions: SplitCompanions,
+    pbar: Any,
 ) -> None:
-    """Write (or append) `entries` into shard `shard_idx`, one tar member each."""
-    with tarfile.open(shards.shard_file(shard_idx), tar_pass.mode) as tf:
-        for stem, data, out_ext in iter_payloads(shards.ctx, entries, tar_pass.worker):
-            ti = tarfile.TarInfo(name=f"{stem}{tar_pass.suffix}{out_ext}")
-            ti.size = len(data)
-            tf.addfile(ti, io.BytesIO(data))
+    """Write shard `shard_idx` in one pass, each sample's members back to back."""
+    raws = raw_zip_samples(shards.ctx.zf, entries, companions)
+    with tarfile.open(shards.shard_file(shard_idx), "w") as tf:
+        for outcome in encode_samples(shards.ctx, raws):
+            if outcome.sample is None:
+                shards.rejects.record(outcome.key, outcome.reason)
+            else:
+                write_sample(tf, outcome.sample)
             pbar.update(1)
 
 
-def _shard_total(total_samples: int, shard_size: int) -> int:
-    return (total_samples + shard_size - 1) // shard_size
-
-
-def _stream_paired_split(
-    shards: _SplitShards,
-    split: str,
-    img_list: list[MemberEntry],
-    target_map: dict[str, tuple[str, zipfile.ZipInfo]],
+def _stream_split(
+    shards: _SplitShards, split: str, entries: list[MemberEntry], companions: SplitCompanions
 ) -> None:
-    """Pass 1 writes image shards; pass 2 appends matching targets to each shard."""
-    total_samples = len(img_list)
-    total_shards = _shard_total(total_samples, shards.shard_size)
+    """Write every sample of one split (with its target/mask/label) into tar shards."""
+    total_samples = len(entries)
+    total_shards = (total_samples + shards.shard_size - 1) // shards.shard_size
     print(
-        f"[STREAM] Split '{split}': {total_samples} images, {len(target_map)}"
-        f" targets -> {total_shards} shards."
-    )
-
-    with create_progress_bar(
-        total=total_samples, desc=f"IMAGES -> WEBP [{split}]", unit="img"
-    ) as pbar:
-        for shard_idx, chunk in chunked(img_list, shards.shard_size):
-            _write_tar_shard(shards, shard_idx, chunk, _IMAGE_PASS, pbar)
-
-    if not target_map:
-        return
-    with create_progress_bar(
-        total=total_samples, desc=f"TARGETS -> WEBP [{split}]", unit="img"
-    ) as pbar:
-        for shard_idx, chunk in chunked(img_list, shards.shard_size):
-            matched = [
-                (stem, *target_map[stem]) for stem, _, _ in chunk if stem in target_map
-            ]
-            if matched:
-                _write_tar_shard(shards, shard_idx, matched, _TARGET_PASS, pbar)
-
-
-def _stream_target_only_split(
-    shards: _SplitShards, split: str, target_map: dict[str, tuple[str, zipfile.ZipInfo]]
-) -> None:
-    """Write a target-only split (e.g. UpnV2 targets/train) as plain sample shards."""
-    tgt_items: list[MemberEntry] = [
-        (stem, ext, zinfo) for stem, (ext, zinfo) in target_map.items()
-    ]
-    total_samples = len(tgt_items)
-    total_shards = _shard_total(total_samples, shards.shard_size)
-    print(
-        f"[STREAM] Split '{split}': {total_samples} target samples ->"
+        f"[STREAM] Split '{split}': {total_samples} samples, {len(companions.targets)}"
+        f" targets, {len(companions.masks)} masks, {len(companions.labels)} labels ->"
         f" {total_shards} shards."
     )
     with create_progress_bar(
-        total=total_samples, desc=f"SAMPLES -> WEBP [{split}]", unit="img"
+        total=total_samples, desc=f"SAMPLES -> SHARDS [{split}]", unit="img"
     ) as pbar:
-        for shard_idx, chunk in chunked(tgt_items, shards.shard_size):
-            _write_tar_shard(shards, shard_idx, chunk, _SAMPLE_PASS, pbar)
+        for shard_idx, chunk in chunked(entries, shards.shard_size):
+            _write_tar_shard(shards, shard_idx, chunk, companions, pbar)
 
 
 def _open_split_shards(
-    ctx: StreamContext, shards_dir: Path, split: str, opts: ZipStreamOptions
+    ctx: StreamContext, shards_dir: Path, split: str, opts: ZipStreamOptions,
+    rejects: RejectTally,
 ) -> _SplitShards:
     """Create the split's shard folder and return its shard writer settings."""
     split_dir = split_output_dir(shards_dir, split)
     split_dir.mkdir(parents=True, exist_ok=True)
-    return _SplitShards(ctx, split_dir, opts.shard_ext.lstrip("."), opts.shard_size_samples)
+    return _SplitShards(
+        ctx, split_dir, opts.shard_ext.lstrip("."), opts.shard_size_samples, rejects
+    )
 
 
 def _stream_layout(
-    ctx: StreamContext, layout: ZipLayout, shards_dir: Path, opts: ZipStreamOptions
+    ctx: StreamContext, layout: ZipLayout, shards_dir: Path, opts: ZipStreamOptions,
+    rejects: RejectTally,
 ) -> None:
     """Stream every split of the partitioned archive into tar shards."""
-    # Case A: Paired dataset (images/ and targets/)
-    if layout.has_images_dir:
-        for split, img_list in layout.images_by_split.items():
-            _stream_paired_split(
-                _open_split_shards(ctx, shards_dir, split, opts),
-                split,
-                img_list,
-                layout.targets_by_split.get(split, {}),
-            )
-        return
-    # Case B: Target-only dataset (targets/train, targets/val, e.g. UpnV2)
-    for split, target_map in layout.targets_by_split.items():
-        _stream_target_only_split(
-            _open_split_shards(ctx, shards_dir, split, opts), split, target_map
+    for split, entries, companions in sample_entries(layout):
+        _stream_split(
+            _open_split_shards(ctx, shards_dir, split, opts, rejects), split, entries, companions
         )
 
 
@@ -177,6 +126,7 @@ def _stream_archive(
     zip_path: Path, target_dir: Path, shards_dir: Path, opts: ZipStreamOptions, workers: int
 ) -> None:
     """Open the zip, extract root metadata and stream every split into shards."""
+    rejects = RejectTally(zip_path.name)
     with zipfile.ZipFile(zip_path, "r") as zf:
         layout = scan_zip(zf, target_dir, "[STREAM]")
         print(
@@ -185,7 +135,8 @@ def _stream_archive(
         )
         with ThreadPoolExecutor(max_workers=workers) as pool:
             ctx = StreamContext(zf=zf, pool=pool, transcode_webp=opts.transcode_webp)
-            _stream_layout(ctx, layout, shards_dir, opts)
+            _stream_layout(ctx, layout, shards_dir, opts, rejects)
+    rejects.report()
 
 
 def _verify_shards(shards_dir: Path, ext: str) -> bool:

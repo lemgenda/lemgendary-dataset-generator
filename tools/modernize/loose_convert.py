@@ -1,9 +1,16 @@
-"""Pack a loose images/targets directory into WebDataset tar or MDS shards."""
+"""Pack a loose images/targets/masks/labels directory into WebDataset tar or MDS shards.
+
+Every sample is assembled from all of its loose files (image, ``.target``
+image, ``.mask`` image, ``.txt``/``.json`` label) and written as one
+contiguous member group. Corrupt images are rejected rather than packed, and
+the loose folders are only purged after :mod:`tools.modernize.loose_verify`
+has found every loose file inside the shards on disk.
+"""
 
 from __future__ import annotations
 
-import io
 import tarfile
+from collections.abc import Iterable
 from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -13,24 +20,35 @@ from tqdm import tqdm
 
 from core.lazy_imports import load_streaming
 from tools.modernize.common import (
+    COMPANION_SUBDIRS,
+    LOOSE_SUBDIRS,
     LooseSplit,
-    encode_image,
     loose_split_names,
     purge_loose_dirs,
     scan_loose_split,
 )
+from tools.modernize.loose_verify import missing_loose_members
 from utils.container_stream import (
-    loose_mds_record,
+    IMAGE_WEBP_QUALITY,
+    TARGET_WEBP_QUALITY,
     open_loose_mds_writer,
     prepare_mds_split_dir,
     prepare_shards_dir,
     resolve_worker_count,
     update_dataset_info_format,
 )
+from utils.reject_tally import RejectTally
+from utils.sample_group import (
+    RawMember,
+    RawSample,
+    SampleOutcome,
+    encode_sample_or_reject,
+    to_mds_record,
+    write_sample,
+)
 
-# WebP quality of primary images and of restoration targets.
-IMAGE_QUALITY = 92
-TARGET_QUALITY = 95
+# Missing loose files listed before a blocked purge gives up printing.
+_MISSING_PREVIEW = 10
 
 
 @dataclass(frozen=True)
@@ -58,58 +76,84 @@ def _stamp_format(target_dir: Path, fmt: str, transcode_webp: bool) -> None:
         print(f"[METADATA] Updated {info_path.name} format to {fmt}.")
 
 
-def _add_member(tf: tarfile.TarFile, name: str, payload: bytes) -> None:
-    ti = tarfile.TarInfo(name=name)
-    ti.size = len(payload)
-    tf.addfile(ti, io.BytesIO(payload))
+def _read_member(path: Path | None) -> RawMember | None:
+    return None if path is None else RawMember(path.read_bytes(), path.suffix.lower())
+
+
+def raw_loose_sample(split: LooseSplit, primary: Path) -> RawSample:
+    """Read every loose file of the sample started by ``primary`` into a RawSample."""
+    key = primary.stem
+    return RawSample(
+        key=key,
+        primary=RawMember(primary.read_bytes(), primary.suffix.lower()),
+        target=None if split.target_only else _read_member(split.targets.get(key)),
+        mask=_read_member(split.masks.get(key)),
+        label=_read_member(split.labels.get(key)),
+        primary_quality=TARGET_WEBP_QUALITY if split.target_only else IMAGE_WEBP_QUALITY,
+    )
+
+
+def _encode_all(
+    split: LooseSplit, files: list[Path], pool: Executor, transcode_webp: bool
+) -> Iterable[SampleOutcome]:
+    def _encode(path: Path) -> SampleOutcome:
+        return encode_sample_or_reject(raw_loose_sample(split, path), transcode_webp)
+
+    return pool.map(_encode, files)
 
 
 def _write_tar_shard(
-    shard_path: Path,
-    encoded: list[tuple[str, bytes, str]],
-    companions: dict[str, Path],
-    transcode_webp: bool,
-) -> None:
-    """Write one tar shard: each encoded sample plus its ``.target`` companion, if any."""
+    shard_path: Path, outcomes: Iterable[SampleOutcome], rejects: RejectTally
+) -> int:
+    """Write each encoded sample contiguously into one tar shard; return files consumed."""
+    consumed = 0
     with tarfile.open(shard_path, "w") as tf:
-        for stem, data, member_ext in encoded:
-            _add_member(tf, f"{stem}{member_ext}", data)
-            if stem in companions:
-                _, t_bytes, t_ext = encode_image(companions[stem], TARGET_QUALITY, transcode_webp)
-                _add_member(tf, f"{stem}.target{t_ext}", t_bytes)
+        for outcome in outcomes:
+            consumed += 1
+            if outcome.sample is None:
+                rejects.record(outcome.key, outcome.reason)
+                continue
+            write_sample(tf, outcome.sample)
+    return consumed
 
 
 def _write_tar_split(
-    split: LooseSplit, out_dir: Path, pool: Executor, opts: LooseConvertOptions
+    split: LooseSplit, out_dir: Path, pool: Executor, opts: LooseConvertOptions,
+    rejects: RejectTally,
 ) -> None:
-    """Write one split as WebDataset tar shards (images + targets, or targets only)."""
-    if split.images:
-        primary, quality, companions = split.images, IMAGE_QUALITY, split.targets
-        desc = f"SHARDS [{split.name}]"
-    else:
-        # Target-only split: the targets are the primary members.
-        primary, quality, companions = list(split.targets.values()), TARGET_QUALITY, {}
-        desc = f"TARGET SHARDS [{split.name}]"
+    """Write one split as WebDataset tar shards, one member group per sample."""
+    primary = split.primary_files()
     size = opts.shard_size_samples
     total_shards = (split.total_samples + size - 1) // size
     print(
         f"[CONVERT] Split '{split.name}': {split.total_samples} samples -> {total_shards} shards."
     )
-
-    def _encode(p: Path) -> tuple[str, bytes, str]:
-        return encode_image(p, quality, opts.transcode_webp)
-
+    desc = f"{'TARGET ' if split.target_only else ''}SHARDS [{split.name}]"
     ext = opts.shard_ext.lstrip(".")
     with tqdm(total=split.total_samples, desc=desc, unit="img", dynamic_ncols=True) as pbar:
         for s_idx in range(total_shards):
             chunk = primary[s_idx * size:(s_idx + 1) * size]
-            _write_tar_shard(
-                out_dir / f"shard-{s_idx:05d}.{ext}",
-                list(pool.map(_encode, chunk)),
-                companions,
-                opts.transcode_webp,
-            )
-            pbar.update(len(chunk))
+            outcomes = _encode_all(split, chunk, pool, opts.transcode_webp)
+            pbar.update(_write_tar_shard(out_dir / f"shard-{s_idx:05d}.{ext}", outcomes, rejects))
+
+
+def _purge_after_verification(
+    source_dir: Path, verified: list[tuple[LooseSplit, Path]], opts: LooseConvertOptions,
+    rejects: RejectTally,
+) -> None:
+    """Purge the loose folders only when every loose file is inside the shards."""
+    missing: list[Path] = []
+    for split, shard_dir in verified:
+        missing.extend(missing_loose_members(split, shard_dir, opts.transcode_webp, rejects.keys))
+    if missing:
+        print(
+            f"[ERROR] Purge blocked: {len(missing)} loose files are not inside the written"
+            " shards (orphan masks/labels/targets or failed writes). Loose folders kept."
+        )
+        for path in missing[:_MISSING_PREVIEW]:
+            print(f"  missing: {path.relative_to(source_dir)}")
+        return
+    purge_loose_dirs(source_dir, "Purging loose directories (all members verified in shards)...")
 
 
 def convert_loose_directory_to_webdataset(
@@ -118,7 +162,7 @@ def convert_loose_directory_to_webdataset(
     options: LooseConvertOptions | None = None,
     **overrides: Any,
 ) -> bool:
-    """Convert a directory containing loose images/targets into WebDataset shards.
+    """Convert a directory containing loose images/targets/masks/labels into WebDataset shards.
 
     ``options`` (or keyword ``overrides`` of its fields: shard_size_samples,
     transcode_webp, max_workers, purge_loose, shard_ext) configure the run.
@@ -126,58 +170,77 @@ def convert_loose_directory_to_webdataset(
     opts = _resolve_options(options, overrides)
     shards_dir = prepare_shards_dir(target_dir)
     workers = resolve_worker_count(opts.max_workers)
+    rejects = RejectTally(source_dir.name)
 
     print(
         f"[CONVERT] Packaging loose directory {source_dir.name} into WebDataset shards ({workers}"
         " workers)..."
     )
+    written: list[tuple[LooseSplit, Path]] = []
     for split_name in loose_split_names(source_dir):
         split = scan_loose_split(source_dir, split_name)
         out_dir = split.out_dir(shards_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
+        written.append((split, out_dir))
         if split.total_samples == 0:
             continue
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            _write_tar_split(split, out_dir, pool, opts)
+            _write_tar_split(split, out_dir, pool, opts, rejects)
 
     _stamp_format(target_dir, "webdataset", opts.transcode_webp)
+    rejects.report()
 
     if opts.purge_loose:
-        purge_loose_dirs(source_dir, "Purging loose image directories to reclaim storage...")
+        _purge_after_verification(source_dir, written, opts, rejects)
     return True
 
 
-def _write_mds_split(
-    split: LooseSplit,
-    split_mds_dir: Path,
-    pool: Executor,
-    opts: LooseConvertOptions,
-    mds_writer_cls: Any,
-) -> None:
+@dataclass(frozen=True)
+class _MdsRun:
+    """Shared state of one loose-to-MDS conversion."""
+
+    pool: Executor
+    opts: LooseConvertOptions
+    writer_cls: Any
+    rejects: RejectTally
+
+
+def _write_mds_split(split: LooseSplit, split_mds_dir: Path, run: _MdsRun) -> None:
     """Write one split of a loose directory as zstd-compressed MDS shards."""
+    pool, opts, rejects = run.pool, run.opts, run.rejects
     print(f"[CONVERT-MDS] Split '{split.name}': {split.total_samples} samples -> MDS.")
     writer = open_loose_mds_writer(
-        mds_writer_cls, prepare_mds_split_dir(split_mds_dir), opts.mds_shard_size_bytes
+        run.writer_cls, prepare_mds_split_dir(split_mds_dir), opts.mds_shard_size_bytes
     )
-
-    def _encode(p: Path) -> tuple[str, bytes, str]:
-        return encode_image(p, IMAGE_QUALITY, opts.transcode_webp)
-
-    samples = split.images if split.images else list(split.targets.values())
     with tqdm(
         total=split.total_samples, desc=f"MDS [{split.name}]", unit="img", dynamic_ncols=True
     ) as pbar:
-        for stem, img_data, _ in pool.map(_encode, samples):
-            tgt_bytes = b""
-            if stem in split.targets:
-                tgt_path = split.targets[stem]
-                if opts.transcode_webp:
-                    _, tgt_bytes, _ = encode_image(tgt_path, TARGET_QUALITY, True)
-                else:
-                    tgt_bytes = tgt_path.read_bytes()
-            writer.write(loose_mds_record(split.name, stem, img_data, tgt_bytes))
+        for outcome in _encode_all(split, split.primary_files(), pool, opts.transcode_webp):
+            if outcome.sample is None:
+                rejects.record(outcome.key, outcome.reason)
+            else:
+                writer.write(to_mds_record(split.name, outcome.sample))
             pbar.update(1)
     writer.finish()
+
+
+def _has_companion_files(source_dir: Path) -> bool:
+    return any(
+        p.is_file() for sub in COMPANION_SUBDIRS for p in (source_dir / sub).rglob("*")
+    )
+
+
+def _purge_mds_sources(source_dir: Path) -> None:
+    """Purge after an MDS run; masks/labels are kept because MDS is not re-read here."""
+    if _has_companion_files(source_dir):
+        print(
+            "[WARN] masks/ or labels/ present: the purge barrier only verifies tar shards,"
+            " so only images/ and targets/ are purged after an MDS conversion."
+        )
+        subdirs = tuple(sub for sub in LOOSE_SUBDIRS if sub not in COMPANION_SUBDIRS)
+        purge_loose_dirs(source_dir, "Purging loose image directories...", subdirs)
+        return
+    purge_loose_dirs(source_dir, "Purging loose image directories...")
 
 
 def convert_loose_directory_to_mds(
@@ -186,7 +249,7 @@ def convert_loose_directory_to_mds(
     options: LooseConvertOptions | None = None,
     **overrides: Any,
 ) -> bool:
-    """Convert a loose images/targets directory into MDS shards.
+    """Convert a loose images/targets/masks/labels directory into MDS shards.
 
     ``options`` (or keyword ``overrides`` of its fields: mds_shard_size_bytes,
     transcode_webp, max_workers, purge_loose) configure the run. Without
@@ -210,22 +273,25 @@ def convert_loose_directory_to_mds(
     target_dir.mkdir(parents=True, exist_ok=True)
     mds_dir = target_dir / "mds"
     mds_dir.mkdir(parents=True, exist_ok=True)
+    rejects = RejectTally(source_dir.name)
     print(
         f"[CONVERT-MDS] Packaging loose directory {source_dir.name} into MDS shards ({workers}"
         " workers)..."
     )
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
+        run = _MdsRun(pool, opts, streaming.MDSWriter, rejects)
         for split_name in loose_split_names(source_dir):
             split = scan_loose_split(source_dir, split_name)
             split_mds_dir = split.out_dir(mds_dir)
             split_mds_dir.mkdir(parents=True, exist_ok=True)
             if split.total_samples == 0:
                 continue
-            _write_mds_split(split, split_mds_dir, pool, opts, streaming.MDSWriter)
+            _write_mds_split(split, split_mds_dir, run)
 
     _stamp_format(target_dir, "mds", opts.transcode_webp)
+    rejects.report()
 
     if opts.purge_loose:
-        purge_loose_dirs(source_dir, "Purging loose image directories...")
+        _purge_mds_sources(source_dir)
     return True

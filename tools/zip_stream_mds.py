@@ -1,9 +1,10 @@
 """
 LemGendary Dataset Compiler — Zip-to-MDS streamer.
 
-Streams paired (images/ + targets/) or target-only legacy zip archives into
-MosaicML MDS shards with optional multi-threaded WebP transcoding. Falls back
-to WebDataset streaming when mosaicml-streaming is not installed.
+Streams paired (images/ + targets/, with optional masks/ and labels/) or
+target-only legacy zip archives into MosaicML MDS shards with optional
+multi-threaded WebP transcoding. Falls back to WebDataset streaming when
+mosaicml-streaming is not installed.
 """
 
 from __future__ import annotations
@@ -19,29 +20,27 @@ from core.lazy_imports import load_streaming
 from tools.zip_stream_common import (
     STREAM_ERRORS,
     MemberEntry,
+    SplitCompanions,
     StreamContext,
-    Worker,
-    ZipLayout,
     ZipStreamOptions,
-    iter_payloads,
+    encode_samples,
     post_process_zip,
+    raw_zip_samples,
     resolve_options,
+    sample_entries,
     scan_zip,
     split_output_dir,
-    worker_img,
-    worker_sample,
 )
 from tools.zip_stream_webdataset import stream_zip_to_webdataset
 from utils.container_stream import (
-    TARGET_WEBP_QUALITY,
-    loose_mds_record,
     open_loose_mds_writer,
     prepare_mds_split_dir,
     resolve_worker_count,
-    transcode_to_webp,
     update_dataset_info_format,
 )
 from utils.progress import create_progress_bar
+from utils.reject_tally import RejectTally
+from utils.sample_group import to_mds_record
 
 logger = logging.getLogger(__name__)
 
@@ -61,80 +60,49 @@ class _MdsTarget:
 
 
 @dataclass(frozen=True)
-class _SplitJob:
-    """One split to write: its samples, matching targets and transcode worker."""
+class _MdsRun:
+    """Shared state of one zip-to-MDS conversion."""
 
-    split: str
-    entries: list[MemberEntry]
-    target_map: dict[str, tuple[str, zipfile.ZipInfo]]
-    worker: Worker
-    noun: str
+    ctx: StreamContext
+    mds: _MdsTarget
+    rejects: RejectTally
 
 
-def _read_target(
-    ctx: StreamContext, target_map: dict[str, tuple[str, zipfile.ZipInfo]], stem: str
-) -> bytes:
-    """Return the (optionally WebP-transcoded) target bytes for `stem`, or b''."""
-    if stem not in target_map:
-        return b""
-    tgt_ext, tgt_zinfo = target_map[stem]
-    raw_tgt = ctx.zf.read(tgt_zinfo)
-    if not ctx.transcode_webp:
-        return raw_tgt
-    tgt_bytes, _ = transcode_to_webp(raw_tgt, tgt_ext, quality=TARGET_WEBP_QUALITY)
-    return tgt_bytes
-
-
-def _stream_mds_split(ctx: StreamContext, mds: _MdsTarget, job: _SplitJob) -> None:
-    """Wipe the split folder and write every sample of `job` into fresh MDS shards."""
-    total_samples = len(job.entries)
-    mds_out_str = prepare_mds_split_dir(split_output_dir(mds.mds_dir, job.split))
-    print(f"[STREAM-MDS] Split '{job.split}': {total_samples} {job.noun} -> MDS shards.")
+def _stream_mds_split(
+    run: _MdsRun, split: str, entries: list[MemberEntry], companions: SplitCompanions
+) -> None:
+    """Wipe the split folder and write every sample of the split into fresh MDS shards."""
+    ctx, mds, rejects = run.ctx, run.mds, run.rejects
+    total_samples = len(entries)
+    mds_out_str = prepare_mds_split_dir(split_output_dir(mds.mds_dir, split))
+    print(f"[STREAM-MDS] Split '{split}': {total_samples} samples -> MDS shards.")
 
     writer = open_loose_mds_writer(mds.writer_cls, mds_out_str, mds.size_limit)
-    with create_progress_bar(
-        total=total_samples, desc=f"MDS [{job.split}]", unit="img"
-    ) as pbar:
-        for stem, data, _ext in iter_payloads(ctx, job.entries, job.worker):
-            target = _read_target(ctx, job.target_map, stem)
-            writer.write(loose_mds_record(job.split, stem, data, target))
+    with create_progress_bar(total=total_samples, desc=f"MDS [{split}]", unit="img") as pbar:
+        for outcome in encode_samples(ctx, raw_zip_samples(ctx.zf, entries, companions)):
+            if outcome.sample is None:
+                rejects.record(outcome.key, outcome.reason)
+            else:
+                writer.write(to_mds_record(split, outcome.sample))
             pbar.update(1)
     writer.finish()
-
-
-def _split_jobs(layout: ZipLayout) -> list[_SplitJob]:
-    """Paired splits when an images/ folder exists, otherwise target-only splits."""
-    if layout.has_images_dir:
-        return [
-            _SplitJob(
-                split, img_list, layout.targets_by_split.get(split, {}), worker_img, "images"
-            )
-            for split, img_list in layout.images_by_split.items()
-        ]
-    return [
-        _SplitJob(
-            split,
-            [(stem, ext, zinfo) for stem, (ext, zinfo) in target_map.items()],
-            {},
-            worker_sample,
-            "targets",
-        )
-        for split, target_map in layout.targets_by_split.items()
-    ]
 
 
 def _stream_archive(
     zip_path: Path, target_dir: Path, mds: _MdsTarget, opts: ZipStreamOptions, workers: int
 ) -> None:
     """Open the zip, extract root metadata and stream every split into MDS."""
+    rejects = RejectTally(zip_path.name)
     with zipfile.ZipFile(zip_path, "r") as zf:
         layout = scan_zip(zf, target_dir, "[STREAM-MDS]")
         print(f"[STREAM-MDS] Extracted {layout.metadata_count} metadata files.")
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
             ctx = StreamContext(zf=zf, pool=pool, transcode_webp=opts.transcode_webp)
-            for job in _split_jobs(layout):
-                _stream_mds_split(ctx, mds, job)
+            run = _MdsRun(ctx, mds, rejects)
+            for split, entries, companions in sample_entries(layout):
+                _stream_mds_split(run, split, entries, companions)
+    rejects.report()
 
 
 def _report_mds_output(mds_dir: Path) -> None:

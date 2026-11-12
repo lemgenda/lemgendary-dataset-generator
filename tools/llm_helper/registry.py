@@ -6,7 +6,8 @@ branches from generic compiler modules.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 _SOURCE_ADAPTERS: dict[str, Callable[..., Any]] = {}
 _CHUNKERS: dict[str, Callable[..., Any]] = {}

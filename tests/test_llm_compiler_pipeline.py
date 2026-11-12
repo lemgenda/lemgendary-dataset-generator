@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import yaml
+
 from core.config_schema import UnifiedData
 from tools.llm_helper.chunker import KnowledgeChunk, RecursiveChunker
 from tools.llm_helper.knowledge_ingestor import KnowledgeIngestor

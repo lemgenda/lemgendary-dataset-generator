@@ -1,4 +1,4 @@
-"""Shared helpers of the modernization tools: image files, YAML metadata, cleanup."""
+"""Shared helpers of the modernization tools: loose files, YAML metadata, cleanup."""
 
 from __future__ import annotations
 
@@ -10,12 +10,15 @@ from typing import Any
 
 import yaml
 
-from utils.container_stream import dump_yaml_file, transcode_to_webp
+from utils.container_stream import dump_yaml_file
+from utils.sample_group import LABEL_EXTS
 
 logger = logging.getLogger(__name__)
 
 IMAGE_EXTS: set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-LOOSE_SUBDIRS: tuple[str, ...] = ("images", "targets", "masks")
+LOOSE_SUBDIRS: tuple[str, ...] = ("images", "targets", "masks", "labels")
+# Loose folders whose files only survive as companions inside the shards.
+COMPANION_SUBDIRS: tuple[str, ...] = ("masks", "labels")
 SPLITS: tuple[str, ...] = ("train", "val", "test")
 
 # Errors raised while reading, mutating or writing a YAML metadata file.
@@ -52,43 +55,56 @@ def update_dataset_info(target_dir: Path, updates: dict[str, Any], summary: str)
         print(f"[WARN] Failed updating dataset_info.yaml: {exc}")
 
 
-def purge_loose_dirs(source_dir: Path, notice: str) -> None:
-    """Delete the loose images/targets/masks folders of ``source_dir``."""
+def purge_loose_dirs(
+    source_dir: Path, notice: str, subdirs: tuple[str, ...] = LOOSE_SUBDIRS
+) -> bool:
+    """Delete the loose ``subdirs`` folders of ``source_dir``; return True when all went."""
     print(f"[CLEANUP] {notice}")
-    for sub in LOOSE_SUBDIRS:
+    purged = True
+    for sub in subdirs:
         sub_p = source_dir / sub
-        if sub_p.exists():
-            shutil.rmtree(sub_p, ignore_errors=True)
-    print("[SUCCESS] Loose directories purged.")
+        if not sub_p.exists():
+            continue
+        try:
+            shutil.rmtree(sub_p)
+        except OSError as exc:
+            purged = False
+            logger.error("Could not purge loose folder %s: %s", sub_p, exc)
+            print(f"[WARN] Could not purge {sub_p.name}: {exc}")
+    if purged:
+        print("[SUCCESS] Loose directories purged.")
+    return purged
 
 
-def encode_image(path: Path, quality: int, transcode_webp: bool) -> tuple[str, bytes, str]:
-    """Read ``path``; return (stem, payload, extension), WebP-transcoded on request."""
-    raw = path.read_bytes()
-    if transcode_webp:
-        out_b, out_ext = transcode_to_webp(raw, path.suffix, quality=quality)
-        return path.stem, out_b, out_ext
-    return path.stem, raw, path.suffix.lower()
-
-
-def _image_files(directory: Path) -> list[Path]:
+def _files_with(directory: Path, exts: set[str] | tuple[str, ...]) -> list[Path]:
     if not directory.exists():
         return []
-    return [p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+    return sorted(p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in exts)
 
 
 @dataclass
 class LooseSplit:
-    """The image and target files of one split of a loose directory."""
+    """The image, target, mask and label files of one split of a loose directory."""
 
     name: str
     images: list[Path] = field(default_factory=list)
     targets: dict[str, Path] = field(default_factory=dict)
+    masks: dict[str, Path] = field(default_factory=dict)
+    labels: dict[str, Path] = field(default_factory=dict)
 
     @property
     def total_samples(self) -> int:
         """Number of samples: images, or targets for a target-only split."""
         return len(self.images) if self.images else len(self.targets)
+
+    @property
+    def target_only(self) -> bool:
+        """True when the split has targets but no images (targets are primary)."""
+        return not self.images
+
+    def primary_files(self) -> list[Path]:
+        """Return the files that each start one sample (images, else targets)."""
+        return self.images if self.images else list(self.targets.values())
 
     def out_dir(self, container_dir: Path) -> Path:
         """Return the output folder of this split under ``container_dir``."""
@@ -97,21 +113,27 @@ class LooseSplit:
 
 def loose_split_names(source_dir: Path) -> list[str]:
     """Return the split names of a loose directory (``["all"]`` when unsplit)."""
-    images_dir = source_dir / "images"
-    targets_dir = source_dir / "targets"
-    has_splits = any((images_dir / s).exists() or (targets_dir / s).exists() for s in SPLITS)
+    has_splits = any((source_dir / sub / s).exists() for sub in LOOSE_SUBDIRS for s in SPLITS)
     return list(SPLITS) if has_splits else ["all"]
 
 
+def _split_dir(source_dir: Path, sub: str, split: str) -> Path:
+    base = source_dir / sub
+    return base if split == "all" else base / split
+
+
+def _stem_map(
+    source_dir: Path, sub: str, split: str, exts: set[str] | tuple[str, ...]
+) -> dict[str, Path]:
+    return {p.stem: p for p in _files_with(_split_dir(source_dir, sub, split), exts)}
+
+
 def scan_loose_split(source_dir: Path, split: str) -> LooseSplit:
-    """Collect the image files and stem->target map of one split."""
-    images_dir = source_dir / "images"
-    targets_dir = source_dir / "targets"
-    if split != "all":
-        images_dir = images_dir / split
-        targets_dir = targets_dir / split
+    """Collect the images and the stem maps of targets, masks and labels of one split."""
     return LooseSplit(
         name=split,
-        images=_image_files(images_dir),
-        targets={p.stem: p for p in _image_files(targets_dir)},
+        images=_files_with(_split_dir(source_dir, "images", split), IMAGE_EXTS),
+        targets=_stem_map(source_dir, "targets", split, IMAGE_EXTS),
+        masks=_stem_map(source_dir, "masks", split, IMAGE_EXTS),
+        labels=_stem_map(source_dir, "labels", split, LABEL_EXTS),
     )

@@ -10,7 +10,7 @@ antivirus overhead.
 This module is the stable facade and CLI entry point. The implementation
 lives in:
 
-    tools.zip_stream_common      — options, zip member layout, workers, cleanup
+    tools.zip_stream_common      — options, zip member layout, samples, cleanup
     tools.zip_stream_webdataset  — zip -> WebDataset tar shards
     tools.zip_stream_mds         — zip -> MDS shards (WebDataset fallback)
     utils.container_stream       — WebP transcode and shared container helpers
@@ -35,9 +35,6 @@ _extract_metadata_files = _common.extract_metadata_files
 _partition_zip_members = _common.partition_zip_members
 _post_process_zip = _common.post_process_zip
 _transcode_to_webp = _container.transcode_to_webp
-_worker_img = _common.worker_img
-_worker_sample = _common.worker_sample
-_worker_tgt = _common.worker_tgt
 
 __all__ = [
     "LOOSE_MDS_COLUMNS",
@@ -47,9 +44,6 @@ __all__ = [
     "_partition_zip_members",
     "_post_process_zip",
     "_transcode_to_webp",
-    "_worker_img",
-    "_worker_sample",
-    "_worker_tgt",
     "build_parser",
     "main",
     "stream_zip_to_mds",
