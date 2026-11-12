@@ -13,6 +13,7 @@ from core.compile_outcome import ManifoldOutcome
 from core.doc_generator import generate_dataset_docs
 from core.error_types import DOC_GENERATION_ERRORS
 from core.lazy_imports import load_forex_module
+from forex.columns import TIMESTAMP_UNIT
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,17 @@ def _run_acquisition(full_name: str, settings: dict[str, Any], output_root: Path
 
 def _write_dataset_info(model_config: dict[str, Any], pascal_name: str,
                         settings: dict[str, Any], output_root: Path) -> dict[str, Any]:
-    """Write ``dataset_info.yaml`` and return its content."""
+    """Write ``dataset_info.yaml`` and return its content.
+
+    ``timestamp_unit`` records that the ``timestamp`` column holds whole
+    seconds since the Unix epoch (UTC).
+    """
     yaml_info = {
         'name': pascal_name,
         'dataset_type': 'forex',
         'category': model_config.get('category', 'Forex & Financial Time-Series'),
         **settings,
+        'timestamp_unit': TIMESTAMP_UNIT,
         'last_processed': datetime.now().isoformat()
     }
     with open(output_root / "dataset_info.yaml", "w", encoding="utf-8") as f:

@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.86-STABLE` |
+| **Version** | `v16.9.87-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,26 @@
 ---
 
 ## Changelog
+
+### v16.9.87 - Forex Timestamps Are Seconds
+
+- The forex `timestamp` column is whole Unix epoch seconds (UTC), as the
+  owner confirmed and as the MT5 pipeline already wrote. The column
+  description said milliseconds; it now says seconds (R2-D4).
+- `forex/columns.py` (new): single source of the forex column names,
+  documented types, descriptions and `TIMESTAMP_UNIT = "seconds"`, free of
+  pyarrow. `forex/schema.py` and `core/docs/metadata.py`
+  (`FOREX_COLUMN_FIELDS`, used for Kaggle metadata) read it instead of
+  keeping two copies of the descriptions.
+- `forex/schema.py`: the Parquet schema metadata carries
+  `timestamp_unit: seconds` (the metadata injector stamps it on existing
+  files too).
+- `core/compile_forex.py`: `dataset_info.yaml` records
+  `timestamp_unit: seconds`.
+- `forex/shard_table.py`: `to_epoch_seconds` scales legacy
+  millisecond, microsecond or nanosecond `timestamps.npy` values to
+  seconds before they are written.
+- `tests/test_forex_timestamps.py` (new).
 
 ### v16.9.86 - Repair Converts Leftover PNG/JPEG Members to WebP
 

@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from core.task_taxonomy import taxonomy
+from forex.columns import column_fields
 
 logger = logging.getLogger(__name__)
 
@@ -63,73 +64,8 @@ MODELS_META: dict[str, Any] = _meta_data.get("models_metadata", {})
 # Documentation profile key per manifold folder name (task_taxonomy.json).
 MANIFOLD_TASK_MAP: Mapping[str, str] = taxonomy().documentation_tasks
 
-FOREX_COLUMN_FIELDS: list[dict[str, str]] = [
-    {
-        "name": "pair",
-        "type": "string",
-        "description": (
-            "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY,"
-            " XAUUSD, NAS100, DE40, USOIL, US500)."
-        ),
-    },
-    {
-        "name": "timeframe",
-        "type": "integer",
-        "description": (
-            "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min),"
-            " 60=H1 (60min), 240=H4 (240min), 1440=D1 (1440min)."
-        ),
-    },
-    {
-        "name": "timestamp",
-        "type": "integer",
-        "description": (
-            "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
-        ),
-    },
-    {
-        "name": "y_dir",
-        "type": "integer",
-        "description": (
-            "Causal directional classification target label over forward horizon: 0=SELL (Down),"
-            " 1=HOLD (Sideways/Neutral), 2=BUY (Up)."
-        ),
-    },
-    {
-        "name": "tp_pips",
-        "type": "number",
-        "description": "Optimal forward Take-Profit target excursion magnitude in pips.",
-    },
-    {
-        "name": "sl_pips",
-        "type": "number",
-        "description": "Maximum adverse excursion Stop-Loss safety threshold in pips.",
-    },
-    {
-        "name": "seq_len",
-        "type": "integer",
-        "description": (
-            "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1"
-            " microstructure)."
-        ),
-    },
-    {
-        "name": "n_features",
-        "type": "integer",
-        "description": (
-            "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD"
-            " Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
-        ),
-    },
-    {
-        "name": "features",
-        "type": "bytes",
-        "description": (
-            "Serialized float32 binary tensor representing the normalized [seq_len, n_features]"
-            " temporal feature matrix."
-        ),
-    },
-]
+# Forex column specification (names, types, descriptions) from its single source.
+FOREX_COLUMN_FIELDS: list[dict[str, str]] = column_fields()
 
 MANIFEST_CACHE_PATH = ROOT / ".cache" / "manifest_cache.json"
 if not MANIFEST_CACHE_PATH.exists():

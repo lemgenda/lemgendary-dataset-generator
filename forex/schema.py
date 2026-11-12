@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pyarrow as pa
 
+from .columns import COLUMN_DESCRIPTIONS, TIMESTAMP_UNIT
+
 TIMEFRAME_LOOKBACK = {
     1: 512,
     5: 288,
@@ -26,38 +28,6 @@ EXTENDED_PAIRS = [
     "XAGUSD", "USOIL",
     "US500", "NAS100", "DE40"
 ]
-
-COLUMN_DESCRIPTIONS = {
-    "pair": (
-        "Asset / currency pair / commodity symbol identifier (e.g., EURUSD, GBPUSD, USDJPY, XAUUSD,"
-        " NAS100, DE40, USOIL, US500)."
-    ),
-    "timeframe": (
-        "Bar aggregation timeframe rung in minutes: 1=M1 (1min), 5=M5 (5min), 15=M15 (15min), 60=H1"
-        " (60min), 240=H4 (240min), 1440=D1 (1440min)."
-    ),
-    "timestamp": (
-        "Millisecond Unix epoch timestamp of the sequence prediction anchor / candle close."
-    ),
-    "y_dir": (
-        "Causal directional classification target label over forward horizon: 0=SELL (Down), 1=HOLD"
-        " (Sideways/Neutral), 2=BUY (Up)."
-    ),
-    "tp_pips": "Optimal forward Take-Profit target excursion magnitude in pips.",
-    "sl_pips": "Maximum adverse excursion Stop-Loss safety threshold in pips.",
-    "seq_len": (
-        "Historical lookback sequence length in bars (e.g., 168 for H1 macro, 512 for M1"
-        " microstructure)."
-    ),
-    "n_features": (
-        "Number of input feature dimensions per timestep (14 channels: OHLCV, RSI, MACD, MACD"
-        " Signal, ATR, Bollinger Band Width, Session Sin/Cos, ATR Percentile, Bar Range Ratio)."
-    ),
-    "features": (
-        "Serialized float32 binary tensor representing the normalized [seq_len, n_features]"
-        " temporal feature matrix."
-    ),
-}
 
 PARQUET_SCHEMA = pa.schema(
     [
@@ -83,6 +53,7 @@ PARQUET_SCHEMA = pa.schema(
         b"description": b"LemGendary Forex Universe High-Fidelity OHLCV Temporal Manifold",
         b"columns": json.dumps(COLUMN_DESCRIPTIONS).encode("utf-8"),
         b"domain": b"Financial & Time-Series",
+        b"timestamp_unit": TIMESTAMP_UNIT.encode("utf-8"),
         b"task": b"forex_prediction",
         b"timeframe_rungs": b"[1, 5, 15, 60, 240, 1440]",
         b"features_list": (

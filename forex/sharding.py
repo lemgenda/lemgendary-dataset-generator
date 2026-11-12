@@ -120,6 +120,7 @@ def _window_source(df, seq_len):
     if 'time' not in df.columns:
         raise ValueError("DataFrame missing explicit chronological 'time' axis.")
     df_time = pd.Series(pd.to_datetime(df['time'], utc=True))
+    # Unix epoch seconds (UTC): datetime64[ns] integers divided by 10**9.
     timestamps = np.asarray(df_time.astype(np.int64) // 10**9, dtype=np.int64)
     return _WindowSource(timestamps=timestamps, seq_len=seq_len, **arrays), df_time
 

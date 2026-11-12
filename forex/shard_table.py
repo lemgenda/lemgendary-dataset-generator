@@ -16,14 +16,42 @@ import pyarrow.parquet as pq
 
 from .schema import PARQUET_SCHEMA
 
-__all__ = ["DEFAULT_N_FEATURES", "ShardLabels", "build_shard_table", "open_shard_writer"]
+__all__ = [
+    "DEFAULT_N_FEATURES",
+    "ShardLabels",
+    "build_shard_table",
+    "open_shard_writer",
+    "to_epoch_seconds",
+]
 
 DEFAULT_N_FEATURES = 14
+# Largest plausible epoch value in seconds (year 5138); larger values are in a finer unit.
+_SECONDS_CEILING = 10**11
+_UNIT_STEP = 1000
+
+
+def to_epoch_seconds(timestamps: Any) -> np.ndarray:
+    """Whole Unix epoch seconds from timestamps in s, ms, us or ns (int64 array).
+
+    The ``timestamp`` column is always seconds (``forex.columns.TIMESTAMP_UNIT``);
+    legacy ``timestamps.npy`` files in a finer unit are scaled down.
+    """
+    values = np.asarray(timestamps, dtype=np.int64)
+    if values.size == 0:
+        return values
+    peak = int(np.abs(values).max())
+    divisor = 1
+    while peak // divisor >= _SECONDS_CEILING:
+        divisor *= _UNIT_STEP
+    return values // divisor if divisor > 1 else values
 
 
 @dataclass(frozen=True)
 class ShardLabels:
-    """Per-sample targets of a shard: direction, (tp, sl) magnitudes and epoch timestamps."""
+    """Per-sample targets of a shard: direction, (tp, sl) magnitudes and epoch timestamps.
+
+    ``timestamps`` may be in any epoch unit; the table stores seconds.
+    """
 
     y_dir: Any
     y_mag: Any
@@ -33,14 +61,15 @@ class ShardLabels:
 def build_shard_table(pair, timeframe, features, labels: ShardLabels, default_seq_len=168):
     """Build a ``PARQUET_SCHEMA`` table from ``(samples, seq_len, n_features)`` windows.
 
-    Missing timestamps are stored as zeros.
+    Timestamps are stored as Unix epoch seconds; missing ones as zeros.
     """
     num_samples = len(features)
     seq_len = features.shape[1] if len(features.shape) > 1 else default_seq_len
     n_features = features.shape[2] if len(features.shape) > 2 else DEFAULT_N_FEATURES
-    timestamps = labels.timestamps
-    if timestamps is None:
+    if labels.timestamps is None:
         timestamps = np.zeros(num_samples, dtype=np.int64)
+    else:
+        timestamps = to_epoch_seconds(labels.timestamps)
 
     x_bytes = [sample.tobytes() for sample in features]
     return pa.Table.from_arrays(
