@@ -28,6 +28,7 @@ from commands.generate import degrade, label, mask, prompt
 from commands.llm import llm_app
 from commands.modernize import modernize_app, modernize_reduce
 from commands.presets import presets_app
+from commands.repair import repair_app
 from commands.server import server_app
 from commands.sync import sync_app
 
@@ -61,6 +62,7 @@ app.add_typer(server_app, name="server")
 app.add_typer(forex_app, name="forex")
 app.add_typer(modernize_app, name="modernize")
 app.add_typer(llm_app, name="llm")
+app.add_typer(repair_app, name="repair")
 
 
 if __name__ == "__main__":

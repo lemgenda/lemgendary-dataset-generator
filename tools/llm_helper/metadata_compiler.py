@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+from core.docs.generators.dataset_info_yaml import write_dataset_info
+from utils.naming import manifold_info_path
 
 logger = logging.getLogger("lemdata.llm.metadata")
 
@@ -64,7 +65,7 @@ def _write_dataset_info(
         "category": descriptor.category,
         "canonical_format": descriptor.canonical_format,
         "original_sources": descriptor.original_sources,
-        "path": str(target_dir),
+        "path": manifold_info_path(dataset_name),
         "source": f"{dataset_name}-manifold",
         "last_processed": datetime.datetime.now(datetime.UTC).isoformat(),
         "train_samples": train_count,
@@ -72,8 +73,7 @@ def _write_dataset_info(
     }
     if test_count > 0:
         info_data["test_samples"] = test_count
-    with open(target_dir / "dataset_info.yaml", "w", encoding="utf-8") as f:
-        yaml.safe_dump(info_data, f, sort_keys=False)
+    write_dataset_info(target_dir / "dataset_info.yaml", info_data)
 
 
 def _split_index_entries(
@@ -91,6 +91,7 @@ def _split_index_entries(
             "id": first_id + idx,
             "name": f"{dataset_name}_{split}_{idx:06d}",
             "record_id": rec.get("id", f"{split}_{idx}"),
+            "source": rec.get("source") or dataset_name,
             "category": rec.get("category", "default"),
             "task": task,
             "split": split,

@@ -24,6 +24,7 @@ from core.docs.generators.common import (
     run_manifold_cli,
 )
 from core.docs.scanner import scan_forex_manifold
+from utils.naming import manifold_info_path
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,21 @@ class _IndentedDumper(yaml.SafeDumper):
 
     def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
         return super().increase_indent(flow=flow, indentless=False)
+
+
+def write_dataset_info(target_file: Path, payload: dict[str, Any]) -> None:
+    """Serialize ``payload`` as dataset_info.yaml (the one writer of this file's layout)."""
+    with open(target_file, "w", encoding="utf-8", newline="\n") as f:
+        yaml.dump(
+            payload,
+            f,
+            Dumper=_IndentedDumper,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            explicit_start=True,
+            width=100,
+        )
 
 
 def _canonical_format(ctx: ManifoldContext) -> str:
@@ -153,7 +169,7 @@ def generate_dataset_info_yaml(
         "category": ctx.profile.category,
         "canonical_format": _canonical_format(ctx),
         "original_sources": src_keys,
-        "path": str(Path("..") / "LemGendaryDatasets" / manifold_name),
+        "path": manifold_info_path(manifold_name),
         "source": f"{manifold_name}-manifold",
         "last_processed": datetime.now(UTC).isoformat(),
     }
@@ -171,18 +187,7 @@ def generate_dataset_info_yaml(
                 info_payload[k] = v
 
     target_file = ctx.manifold_path / "dataset_info.yaml"
-    with open(target_file, "w", encoding="utf-8", newline="\n") as f:
-        yaml.dump(
-            info_payload,
-            f,
-            Dumper=_IndentedDumper,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-            explicit_start=True,
-            width=100,
-        )
-
+    write_dataset_info(target_file, info_payload)
     return target_file
 
 

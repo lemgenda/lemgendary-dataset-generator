@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.80-STABLE` |
+| **Version** | `v16.9.81-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,32 @@
 ---
 
 ## Changelog
+
+### v16.9.81 - Manifold Repair CLI, LLM Metadata Path
+
+- `python cli.py repair manifold --manifold PATH | --model KEY [--apply]` and
+  `python cli.py repair all [--root DIR] [--apply]` (new, `commands/repair.py`,
+  `services/repair_service.py`, `tools/repair/`): repair compiled
+  manifolds on disk. Dry run by default (prints the plan, changes
+  nothing). With `--apply`:
+  - shards with zero-byte members lose those whole samples, and scattered
+    sample groups are made contiguous; each rewritten shard is verified
+    before it replaces the original;
+  - `dataset_info.yaml` counts (`count`, `total_samples`,
+    `<split>_samples`, `total_shards`) are resynced to the samples on disk,
+    and an absolute or staging `path` becomes the canonical relative one;
+  - `index.json` loses entries with no sample (such as `skipped` rows),
+    gets corrected splits, minimal entries for unindexed samples, and a
+    `source` where it is missing;
+  - every replaced file is moved to
+    `<datasets root>/.repair_backup/<UTC stamp>/<manifold>/`; a second run
+    finds nothing to do (audit 1.2, 2.1.2, 2.1.3).
+- `tools/llm_helper/metadata_compiler.py`: LLM manifolds record the
+  canonical `path` instead of the temporary staging folder, index entries
+  carry `source`, and `dataset_info.yaml` uses the shared writer.
+- `utils/naming.py`: `manifold_info_path` is the single definition of the
+  recorded `path`.
+- Tests: `tests/test_repair_service.py`, `tests/test_llm_metadata_paths.py`.
 
 ### v16.9.80 - Audit Gates and Shard Verification
 
