@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from core.docs.context import ManifoldContext
-from core.docs.context_resolvers import fallback_val_count
 from core.docs.generators.common import (
     ensure_context,
     manifold_parser,
     run_manifold_cli,
 )
+from core.docs.generators.readme_lineage import build_composition_text, format_count
 from core.docs.metadata import MODELS_META
 from core.docs.scanner import scan_forex_manifold
 from core.docs.templates import (
@@ -93,70 +93,33 @@ def _render_forex(ctx: ManifoldContext) -> str:
     )
 
 
-def _format_count(value: Any) -> str:
-    """Format integer counts with thousands separators; other values verbatim."""
-    return f"{value:,}" if isinstance(value, int) else str(value)
-
-
-def _lineage_table(sources: dict[str, dict[str, Any]]) -> tuple[str, int, int]:
-    """Render the Composition & Lineage rows; also return the summed train/val counts."""
-    table_rows: list[str] = []
-    total_train_all = 0
-    total_val_all = 0
-    for src, counts in sorted(
-        sources.items(),
-        key=lambda x: (x[1].get("total", 0) if isinstance(x[1].get("total"), int) else 0),
-        reverse=True,
-    ):
-        tr = counts.get("train", 0)
-        vl = counts.get("val", 0)
-        if isinstance(tr, int):
-            total_train_all += tr
-        if isinstance(vl, int):
-            total_val_all += vl
-        disp_src = src.split(" (", 1)[0] if len(src) > 36 and " (" in src else src
-        if len(disp_src) > 36:
-            disp_src = disp_src[:33].rstrip() + "..."
-        table_rows.append(
-            f"| **{disp_src}** | {_format_count(tr)} | {_format_count(vl)} |"
-            f" {_format_count(counts.get('total', 0))} samples |"
-        )
-    table_text = "\n".join(table_rows)
-    if not table_text:
-        table_text = "| **Curated Production Synthesis** | N/A | N/A | Full Contribution |"
-    return table_text, total_train_all, total_val_all
-
-
-def _manifest_text(ctx: ManifoldContext, train_total: int, val_total: int) -> str:
+def _manifest_text(ctx: ManifoldContext) -> str:
     """Render the Physical Data Manifest rows (JSONL splits or image/target/label folders)."""
+    train_total = format_count(ctx.lineage.splits.train)
+    val_total = format_count(ctx.lineage.splits.val)
     if ctx.is_llm:
         entry = ctx.spec.unified_entry
         train_file_rel = entry.get("train_file", f"data/{ctx.slug}_train.jsonl")
         val_file_rel = entry.get("val_file", f"data/{ctx.slug}_val.jsonl")
         return "\n".join([
-            f"| **{train_file_rel}** | {train_total:,} | - |",
-            f"| **{val_file_rel}** | - | {val_total:,} |",
+            f"| **{train_file_rel}** | {train_total} | - |",
+            f"| **{val_file_rel}** | - | {val_total} |",
         ])
 
     target_dir = ctx.manifold_path
     if (target_dir / "shards").is_dir():
-        return f"| **shards** | {train_total:,} | {val_total:,} |"
+        return f"| **shards** | {train_total} | {val_total} |"
     folders = ["images"]
     if (target_dir / "targets").exists() or ctx.task in ["restoration", "super-resolution"]:
         folders.append("targets")
     if (target_dir / "labels").exists() or ctx.task in ["detection", "pose", "classification"]:
         folders.append("labels")
-    return "\n".join(f"| **{folder}** | {train_total:,} | {val_total:,} |" for folder in folders)
+    return "\n".join(f"| **{folder}** | {train_total} | {val_total} |" for folder in folders)
 
 
 def _render_standard(ctx: ManifoldContext) -> str:
     """Render the README of a vision or instruction manifold."""
     total_samples = ctx.lineage.total_samples
-    table_text, train_total, val_total = _lineage_table(ctx.lineage.sources)
-    if train_total == 0 and total_samples > 0:
-        val_total = fallback_val_count(total_samples, ctx.spec.unified_entry)
-        train_total = total_samples - val_total
-
     structure_text = build_structure_text(ctx.manifold_path, is_forex=False, task_key=ctx.task)
     return render_standard_readme(
         StandardReadmeFields(
@@ -175,8 +138,8 @@ def _render_standard(ctx: ManifoldContext) -> str:
                 arch_base=ctx.profile.arch_base,
                 resolved_obj=ctx.profile.objective,
             ),
-            table_text=table_text.strip(),
-            manifest_text=_manifest_text(ctx, train_total, val_total).strip(),
+            composition_text=build_composition_text(ctx).strip(),
+            manifest_text=_manifest_text(ctx).strip(),
         )
     )
 

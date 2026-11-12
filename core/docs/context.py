@@ -10,11 +10,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
-from core.docs.context_resolvers import (
-    resolve_task,
-    resolve_task_profile,
-    tally_sources,
-)
+from core.docs.context_resolvers import resolve_task, resolve_task_profile
 from core.docs.context_types import (
     AuthorInfo,
     Inventory,
@@ -25,6 +21,7 @@ from core.docs.context_types import (
     SpecInputs,
     TaskProfile,
 )
+from core.docs.lineage_tally import TallyResult, tally_sources
 from core.docs.metadata import UNIFIED_DATA
 
 __all__ = [
@@ -174,15 +171,14 @@ def _resolve_citations(spec: SpecInputs) -> list[str]:
     return list(dict.fromkeys(head + listed))
 
 
-def _resolve_lineage(
-    sources: dict[str, dict[str, Any]], total_samples: int, spec: SpecInputs
-) -> Lineage:
+def _resolve_lineage(tally: TallyResult, spec: SpecInputs) -> Lineage:
     """Resolve provenance, methodology, citations and coverage around the sample tally."""
     return Lineage(
-        total_samples=total_samples,
-        sources=sources,
+        total_samples=tally.total_samples,
+        sources=tally.sources,
+        splits=tally.splits,
         provenance_sources=[
-            str(s) for s in spec.pick_truthy("provenance_sources", list(sources.keys()))
+            str(s) for s in spec.pick_truthy("provenance_sources", list(tally.sources.keys()))
         ],
         collection_methodology=str(spec.pick("collection_methodology", _DEFAULT_METHODOLOGY)),
         citations=_resolve_citations(spec),
@@ -206,9 +202,7 @@ def resolve_manifold_context(
     task = resolve_task(manifold_name, output_root, spec.unified_entry, spec.overrides, final_index)
     inventory = _scan_inventory(output_root, manifold_name)
     profile = resolve_task_profile(manifold_name, task, spec)
-    sources, total_samples = tally_sources(
-        output_root, task, manifold_name, spec.unified_entry, final_index
-    )
+    tally = tally_sources(output_root, task, manifold_name, spec.unified_entry, final_index)
     return ManifoldContext(
         identity=ManifoldIdentity(
             path=output_root,
@@ -218,7 +212,7 @@ def resolve_manifold_context(
         ),
         profile=profile,
         listing=_resolve_listing(manifold_name, profile.category, spec),
-        lineage=_resolve_lineage(sources, total_samples, spec),
+        lineage=_resolve_lineage(tally, spec),
         inventory=inventory,
         spec=spec,
     )

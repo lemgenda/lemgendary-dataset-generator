@@ -110,7 +110,7 @@ class ConsumerTests(unittest.TestCase):
                     resolved_desc="d", category="c", total_samples_display="1",
                     arch_base="a", resolved_obj="o",
                 ),
-                table_text="",
+                composition_text="",
                 manifest_text="",
             )
         )

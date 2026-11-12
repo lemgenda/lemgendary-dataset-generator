@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.93-STABLE` |
+| **Version** | `v16.9.94-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,35 @@
 ---
 
 ## Changelog
+
+### v16.9.94 - Dataset Card Lineage Without Estimated Counts (R4-B4)
+
+- The generated Kaggle README no longer splits the train/val totals evenly
+  between the sources (e.g. CodeFormer printed 9,895 / 1,105 for each of
+  its two sources, a number nobody counted). Following dataset-card
+  practice (Hugging Face dataset cards, Kaggle dataset documentation,
+  "Datasheets for Datasets"), the Composition & Lineage section now states
+  the real split counts once for the whole manifold (Train, Val, Total),
+  then lists the sources with their upstream links (Kaggle, Hugging Face,
+  GitHub refs of the registry entry), the license note (manifold license;
+  each upstream source keeps its own terms) and the citations.
+- Per-source counts appear only when they are exact: from each sample's
+  `source` tag, or, when that tag only names the manifold, from the sample
+  key `<Prefix>_<source>_<idx>` (a key whose middle part is `train`, `val`
+  or `test` names a split, not a source). Otherwise the sources are listed
+  without counts.
+- A count the manifold does not record prints as `not recorded`, never as
+  an estimate: no registry `val_split` share without a split record, no
+  fixed 88/12 Forex split, and the AI helper's file counts are no longer
+  repeated on every provenance source.
+- `core/docs/lineage_tally.py` (new) holds the source and split tally
+  (`TallyResult`, `SplitCounts` in `core/docs/context_types.py`; the
+  context's `Lineage` gains `splits`). `core/docs/generators/readme_lineage.py`
+  (new) renders the section. `core/docs/context_resolvers.py` keeps the
+  task and profile rules; `fallback_val_count` and
+  `_redistribute_provenance` are removed. `templates.py` exports
+  `wrap_bullet`/`wrap_paragraph`; `StandardReadmeFields.table_text` became
+  `composition_text`.
 
 ### v16.9.93 - Labels-Only Repair From a Loose labels/ Folder
 

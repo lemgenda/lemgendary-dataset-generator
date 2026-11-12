@@ -54,12 +54,26 @@ class ListingMeta:
     author: AuthorInfo
 
 
+@dataclass(frozen=True)
+class SplitCounts:
+    """Train/val sample counts of the whole manifold; ``None`` when not recorded."""
+
+    train: int | None
+    val: int | None
+
+
 @dataclass
 class Lineage:
-    """Sample tally and provenance metadata of the manifold."""
+    """Sample tally and provenance metadata of the manifold.
+
+    ``sources`` maps each source to its ``train``/``val``/``total`` counts; a
+    count is ``None`` when the manifold does not record it, so nothing is
+    estimated. ``splits`` holds the real split counts of the whole manifold.
+    """
 
     total_samples: int
-    sources: dict[str, dict[str, Any]]
+    sources: dict[str, dict[str, int | None]]
+    splits: SplitCounts
     provenance_sources: list[str]
     collection_methodology: str
     citations: list[str]

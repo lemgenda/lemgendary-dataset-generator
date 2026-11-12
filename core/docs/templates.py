@@ -66,7 +66,7 @@ _CONTAINER_RULES: tuple[tuple[Callable[[str], bool], str], ...] = (
 )
 
 
-def _wrap_bullet(text: str, width: int = 80) -> str:
+def wrap_bullet(text: str, width: int = 80) -> str:
     """Wrap a markdown bullet line (`- ...`) to ``width`` characters."""
     return textwrap.fill(
         text,
@@ -90,7 +90,7 @@ def _wrap_blockquote(text: str, width: int = 80) -> str:
     )
 
 
-def _wrap_paragraph(text: str, width: int = 80) -> str:
+def wrap_paragraph(text: str, width: int = 80) -> str:
     """Wrap a plain markdown paragraph to ``width`` characters."""
     return textwrap.fill(
         text,
@@ -149,7 +149,7 @@ class StandardReadmeFields:
 
     common: ReadmeCommon
     overview: StandardOverview
-    table_text: str
+    composition_text: str
     manifest_text: str
 
 
@@ -230,8 +230,8 @@ def _model_block(model: dict[str, Any]) -> str:
     arch_val = model.get("arch") or model.get("architecture_type") or "Standard Backbone"
     opt_val = model.get("loss", "Unknown")
 
-    arch_bullet = _wrap_bullet(f"- **Architecture**: {arch_val}")
-    opt_bullet = _wrap_bullet(f"- **Optimization**: {opt_val}")
+    arch_bullet = wrap_bullet(f"- **Architecture**: {arch_val}")
+    opt_bullet = wrap_bullet(f"- **Optimization**: {opt_val}")
     model_block = f"### Model: {model_name}\n\n{arch_bullet}\n{opt_bullet}\n"
     sota = model.get("sota_targets", {})
     if sota:
@@ -311,7 +311,7 @@ def build_structure_text(
         name = item.name
         desc = _describe_structure_entry(name, is_forex, desc_map)
         label = f"`{name}/`" if item.is_dir() else f"`{name}`"
-        structure_lines.append(_wrap_bullet(f"- **{label}**: {desc}"))
+        structure_lines.append(wrap_bullet(f"- **{label}**: {desc}"))
 
     return "\n".join(structure_lines)
 
@@ -332,35 +332,35 @@ def render_forex_readme(fields: ForexReadmeFields) -> str:
     )
     overview_bullets = "\n".join(
         [
-            _wrap_bullet(f"- **Category:** {fields.category_str}"),
-            _wrap_bullet(
+            wrap_bullet(f"- **Category:** {fields.category_str}"),
+            wrap_bullet(
                 "- **Acquisition Mode:** MetaTrader 5 Terminal API / Synthetic "
                 "Multi-Regime Generator"
             ),
-            _wrap_bullet(f"- **Pairs Included:** {coverage.pairs_display}"),
-            _wrap_bullet(f"- **Timeframe Rungs:** {coverage.tfs_display}"),
-            _wrap_bullet(f"- **Historical Horizon:** {horizon}"),
-            _wrap_bullet(f"- **Lookback Window:** {coverage.lookback_bars} bars"),
-            _wrap_bullet(f"- **Total Samples:** {fields.total_samples:,}"),
-            _wrap_bullet(
+            wrap_bullet(f"- **Pairs Included:** {coverage.pairs_display}"),
+            wrap_bullet(f"- **Timeframe Rungs:** {coverage.tfs_display}"),
+            wrap_bullet(f"- **Historical Horizon:** {horizon}"),
+            wrap_bullet(f"- **Lookback Window:** {coverage.lookback_bars} bars"),
+            wrap_bullet(f"- **Total Samples:** {fields.total_samples:,}"),
+            wrap_bullet(
                 "- **Output Classes:** `SELL` (0), `HOLD` (1), `BUY` (2) + Dual Pip "
                 "Target Heads (TP/SL)"
             ),
-            _wrap_bullet(
+            wrap_bullet(
                 "- **Architecture Base:** Causal TCN + Cross-Timeframe Multi-Head Attention"
             ),
-            _wrap_bullet(
+            wrap_bullet(
                 "- **Primary Task:** Predict directional probability (Sell/Hold/Buy) and "
                 "regress optimal Take-Profit/Stop-Loss boundaries."
             ),
         ]
     )
-    shard_intro = _wrap_paragraph(
+    shard_intro = wrap_paragraph(
         "The dataset is organised by year into unified Apache Parquet files "
         "(`ForexUniverseYYYY.parquet`), each containing all pairs and timeframes "
         "for that year with Zstandard compression."
     )
-    repo_intro = _wrap_paragraph(
+    repo_intro = wrap_paragraph(
         "Standardized directory logic for seamless integration into the "
         "**LemGendary Training Suite**."
     )
@@ -408,13 +408,13 @@ def render_standard_readme(fields: StandardReadmeFields) -> str:
     quote = _wrap_blockquote(f"> {overview.resolved_desc}")
     overview_bullets = "\n".join(
         [
-            _wrap_bullet(f"- **Category:** {overview.category}"),
-            _wrap_bullet(f"- **Total Samples:** {overview.total_samples_display}"),
-            _wrap_bullet(f"- **Architecture Base:** {overview.arch_base}"),
-            _wrap_bullet(f"- **Primary Task:** {overview.resolved_obj}"),
+            wrap_bullet(f"- **Category:** {overview.category}"),
+            wrap_bullet(f"- **Total Samples:** {overview.total_samples_display}"),
+            wrap_bullet(f"- **Architecture Base:** {overview.arch_base}"),
+            wrap_bullet(f"- **Primary Task:** {overview.resolved_obj}"),
         ]
     )
-    repo_intro = _wrap_paragraph(
+    repo_intro = wrap_paragraph(
         "Standardized directory logic for seamless integration into the "
         "**LemGendary Training Suite**."
     )
@@ -432,11 +432,7 @@ def render_standard_readme(fields: StandardReadmeFields) -> str:
 
 ## Composition & Lineage
 
-This manifold is a high-fidelity merge of the following original sources:
-
-| Source Dataset | Train | Val | Total Contribution |
-| :--- | :--- | :--- | :--- |
-{fields.table_text}
+{fields.composition_text}
 
 ## Model Training Profiles
 

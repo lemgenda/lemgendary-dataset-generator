@@ -1,13 +1,12 @@
 """Resolution rules feeding ``resolve_manifold_context``.
 
-Determines the authoritative task of a manifold, its task profile (category,
-architecture, objective, description, model profile) and the per-source sample
-tally used by the lineage tables.
+Determines the authoritative task of a manifold and its task profile (category,
+architecture, objective, description, model profile). The per-source sample
+tally lives in :mod:`core.docs.lineage_tally`.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -19,14 +18,10 @@ from core.docs.metadata import (
     MODELS_META,
     TASK_ARCH_BASE,
     TASK_META,
-    format_source,
 )
-from core.docs.scanner import scan_forex_manifold
 from core.task_taxonomy import taxonomy
 
 logger = logging.getLogger(__name__)
-
-SourceTally = dict[str, dict[str, Any]]
 
 # Ordered (name keywords, task) rules used when no explicit task is known.
 _NAME_TASK_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
@@ -106,9 +101,6 @@ _RESTORATION_COPY: tuple[tuple[tuple[str, ...], str, str], ...] = (
         ),
     ),
 )
-
-_LEGACY_SOURCE_TAGS = ["old", "unknown", "none", "legacy"]
-
 
 def _cached_yaml_task(output_root: Path) -> str | None:
     """Return the non-'quality' task recorded in an existing dataset_info.yaml."""
@@ -226,161 +218,3 @@ def read_yaml_count(output_root: Path) -> int:
     except (yaml.YAMLError, OSError, ValueError) as exc:
         logger.debug("Could not read count from dataset_info.yaml: %s", exc)
     return 0
-
-
-def _count_lines_or_zero(path: Path) -> int:
-    """Count lines of ``path``; 0 when it is missing or unreadable."""
-    if not path.exists():
-        return 0
-    try:
-        with path.open(encoding="utf-8") as fh:
-            return sum(1 for _ in fh)
-    except OSError:
-        return 0
-
-
-def _tally_index_items(items: list[dict[str, Any]], derive_legacy: bool) -> SourceTally:
-    """Count train/val/total samples per formatted source over index items."""
-    sources: SourceTally = {}
-    for item in items:
-        raw_src = item.get("source", "")
-        if derive_legacy and (not raw_src or raw_src.lower() in _LEGACY_SOURCE_TAGS):
-            parts = item.get("name", "").split("_")
-            raw_src = "_".join(parts[1:-1]) if len(parts) >= 3 else "Unknown"
-        bucket = sources.setdefault(format_source(raw_src), {"train": 0, "val": 0, "total": 0})
-        bucket["total"] += 1
-        sp = item.get("split", "train")
-        if sp in ["train", "val"]:
-            bucket[sp] += 1
-    return sources
-
-
-def _tally_forex(output_root: Path) -> tuple[SourceTally, int]:
-    """Tally Forex samples from the shard scan (falling back to dataset_info.yaml)."""
-    forex_data = scan_forex_manifold(output_root)
-    total_samples = sum(forex_data.get("samples_per_year", {}).values())
-    if total_samples == 0:
-        total_samples = read_yaml_count(output_root)
-    sources = {
-        "MetaTrader 5 Terminal Native Cache (2019-2026)": {
-            "train": int(total_samples * 0.88) if total_samples > 0 else 0,
-            "val": int(total_samples * 0.12) if total_samples > 0 else 0,
-            "total": total_samples,
-        }
-    }
-    return sources, total_samples
-
-
-def _tally_ai_helper(output_root: Path, unified_entry: dict[str, Any]) -> tuple[SourceTally, int]:
-    """Tally instruction pairs of the AI helper JSONL splits."""
-    train_file = output_root / "data" / "ai_helper_train.jsonl"
-    val_file = output_root / "data" / "ai_helper_val.jsonl"
-    test_file = output_root / "data" / "ai_helper_test.jsonl"
-    if not train_file.exists():
-        train_file = output_root / "ai_helper_train.jsonl"
-        val_file = output_root / "ai_helper_val.jsonl"
-        test_file = output_root / "ai_helper_test.jsonl"
-    tr_cnt = _count_lines_or_zero(train_file)
-    vl_cnt = _count_lines_or_zero(val_file)
-    ts_cnt = _count_lines_or_zero(test_file)
-    total_samples = tr_cnt + vl_cnt + ts_cnt
-    if total_samples == 0:
-        total_samples = read_yaml_count(output_root)
-    sources: SourceTally = {}
-    for p in unified_entry.get("provenance_sources", ["LemGendary AI Documentation Hub"]):
-        sources[format_source(p)] = {
-            "train": tr_cnt or int(total_samples * 0.85),
-            "val": vl_cnt or int(total_samples * 0.15),
-            "total": total_samples,
-        }
-    return sources, total_samples
-
-
-def _tally_index_json(output_root: Path) -> tuple[SourceTally, int]:
-    """Tally samples recorded in an existing index.json."""
-    try:
-        with open(output_root / "index.json", "r", encoding="utf-8") as f:
-            idx_data = json.load(f)
-        return _tally_index_items(idx_data, derive_legacy=False), len(idx_data)
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.debug("Could not parse index.json for sample counts: %s", exc)
-    return {}, 0
-
-
-def _redistribute_provenance(
-    sources: SourceTally, total_samples: int, manifold_name: str, unified_entry: dict[str, Any]
-) -> SourceTally:
-    """Spread samples over unified_data provenance when sources are empty or self-referential.
-
-    The train/val totals are the real ones of ``sources`` (index.json), so the
-    rows add up to the published split counts; without any split record the
-    registry ``val_split`` applies (see :func:`fallback_val_count`). The index
-    does not record which provenance source a sample came from, so each source
-    gets an equal share (the first ones take the remainder).
-    """
-    has_only_self = bool(
-        sources and all("manifold" in k.lower() or k == manifold_name for k in sources)
-    )
-    if (sources and not has_only_self) or not unified_entry.get("provenance_sources"):
-        return sources
-    prov_list = unified_entry["provenance_sources"]
-    train_all, val_all = split_totals(sources)
-    if train_all + val_all == 0 and total_samples > 0:
-        val_all = fallback_val_count(total_samples, unified_entry)
-        train_all = total_samples - val_all
-    count = len(prov_list)
-    return {
-        format_source(p): {
-            "train": _share(train_all, count, i),
-            "val": _share(val_all, count, i),
-            "total": _share(total_samples, count, i),
-        }
-        for i, p in enumerate(prov_list)
-    }
-
-
-def _share(amount: int, parts: int, position: int) -> int:
-    """Part ``position`` of ``amount`` split into ``parts`` near-equal integers."""
-    return amount // parts + (1 if position < amount % parts else 0)
-
-
-def split_totals(sources: SourceTally) -> tuple[int, int]:
-    """Summed integer ``train`` and ``val`` counts over every source row."""
-    train = sum(c.get("train", 0) for c in sources.values() if isinstance(c.get("train"), int))
-    val = sum(c.get("val", 0) for c in sources.values() if isinstance(c.get("val"), int))
-    return train, val
-
-
-def fallback_val_count(total_samples: int, unified_entry: dict[str, Any]) -> int:
-    """Validation samples when no split is recorded: the registry ``val_split`` share, else 0."""
-    ratio = unified_entry.get("val_split")
-    if isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and 0 < ratio < 1:
-        return round(total_samples * ratio)
-    return 0
-
-
-def tally_sources(
-    output_root: Path,
-    task: str,
-    manifold_name: str,
-    unified_entry: dict[str, Any],
-    final_index: list[dict[str, Any]] | None,
-) -> tuple[SourceTally, int]:
-    """Return the per-source sample tally and the total sample count of the manifold."""
-    sources: SourceTally = {}
-    total_samples = 0
-    if final_index:
-        sources = _tally_index_items(final_index, derive_legacy=True)
-        total_samples = len(final_index)
-    elif task == "forex":
-        sources, total_samples = _tally_forex(output_root)
-    elif task == "ai_helper":
-        sources, total_samples = _tally_ai_helper(output_root, unified_entry)
-    elif (output_root / "index.json").exists():
-        sources, total_samples = _tally_index_json(output_root)
-
-    if total_samples == 0:
-        total_samples = read_yaml_count(output_root)
-
-    sources = _redistribute_provenance(sources, total_samples, manifold_name, unified_entry)
-    return sources, total_samples

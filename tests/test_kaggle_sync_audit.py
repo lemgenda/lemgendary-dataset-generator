@@ -25,10 +25,12 @@ from api.routes.kaggle import get_kaggle_status
 from core import kaggle_credentials as creds
 from core.cli_args import __version__
 from core.docs.context import _resolve_citations
-from core.docs.context_resolvers import _redistribute_provenance, fallback_val_count
 from core.docs.context_types import SpecInputs
 from core.docs.generators.dataset_info_yaml import generate_dataset_info_yaml
 from core.docs.generators.kaggle_metadata import _describe_directory
+from core.docs.generators.readme_lineage import ref_url
+from core.docs.generators.readme_md import generate_readme_md
+from core.docs.lineage_tally import tally_sources
 from core.docs.metadata import UNIFIED_DATA
 from core.paths import UNIFIED_DATA as UNIFIED_DATA_FILE
 from core.sync_auth import setup_kaggle_auth
@@ -274,20 +276,90 @@ class PublishedMetadataTests(unittest.TestCase):
             info = yaml.safe_load(generate_dataset_info_yaml(root).read_text(encoding="utf-8"))
         self.assertNotIn("path", info)
 
-    def test_provenance_rows_add_up_to_index_splits(self) -> None:
-        """Provenance rows share the real train/val totals instead of a fixed 12 %."""
-        tally = {"LemGendizedCodeFormer-manifold": {"train": 19790, "val": 2210, "total": 22000}}
-        rows = _redistribute_provenance(
-            tally, 22000, "LemGendizedCodeFormer", {"provenance_sources": ["A", "B"]}
+    def test_self_tagged_index_lists_sources_without_counts(self) -> None:
+        """Real split totals once; provenance sources carry no invented counts."""
+        items = [
+            {"name": f"s{i}", "source": "LemGendizedCodeFormer-manifold",
+             "split": "val" if i < 3 else "train"}
+            for i in range(10)
+        ]
+        tally = tally_sources(
+            Path("."), "restoration", "LemGendizedCodeFormer",
+            {"provenance_sources": ["A", "B"]}, items,
         )
-        self.assertEqual(sum(r["train"] for r in rows.values()), 19790)
-        self.assertEqual(sum(r["val"] for r in rows.values()), 2210)
-        self.assertEqual(sum(r["total"] for r in rows.values()), 22000)
+        self.assertEqual((tally.splits.train, tally.splits.val), (7, 3))
+        self.assertEqual(tally.total_samples, 10)
+        for counts in tally.sources.values():
+            self.assertEqual(set(counts.values()), {None})
 
-    def test_fallback_uses_registry_val_split(self) -> None:
-        """Without any split record the registry val_split applies, else no val share."""
-        self.assertEqual(fallback_val_count(22000, {"val_split": 0.1}), 2200)
-        self.assertEqual(fallback_val_count(22000, {}), 0)
+    def test_sample_keys_give_exact_source_counts(self) -> None:
+        """``<Prefix>_<source>_<idx>`` keys yield exact per-source counts."""
+        items = [
+            {"name": "CodeFormer_ffhq_000000001", "source": "LemGendizedCodeFormer-manifold",
+             "split": "train"},
+            {"name": "CodeFormer_ffhq_000000002", "source": "LemGendizedCodeFormer-manifold",
+             "split": "val"},
+            {"name": "CodeFormer_celeba_000000003",
+             "source": "LemGendizedCodeFormer-manifold", "split": "train"},
+        ]
+        tally = tally_sources(
+            Path("."), "restoration", "LemGendizedCodeFormer",
+            {"provenance_sources": ["A", "B"]}, items,
+        )
+        rows = sorted(tally.sources.values(), key=lambda c: -(c["total"] or 0))
+        self.assertEqual(rows, [
+            {"train": 1, "val": 1, "total": 2},
+            {"train": 1, "val": 0, "total": 1},
+        ])
+
+    def test_split_named_keys_are_not_sources(self) -> None:
+        """A ``<Prefix>_train_<idx>`` key names a split, so no counts are derived."""
+        items = [{"name": "X_train_000001", "source": "LemGendizedX-manifold"}]
+        tally = tally_sources(Path("."), "quality", "LemGendizedX", {"provenance_sources": ["A"]},
+                              items)
+        self.assertEqual(tally.sources, {"A": {"train": None, "val": None, "total": None}})
+
+    def test_unrecorded_splits_render_as_not_recorded(self) -> None:
+        """Without an index the README states the splits are not recorded, never a guess."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "LemGendizedCodeFormer"
+            root.mkdir()
+            (root / "dataset_info.yaml").write_text("count: 22000\n", encoding="utf-8")
+            _, text = generate_readme_md(root)
+        self.assertIn("| Train | not recorded |", text)
+        self.assertIn("| Total | 22,000 |", text)
+        self.assertNotIn("19,800", text)
+        self.assertNotIn("9,900", text)
+
+    def test_readme_reports_real_splits_once_and_lists_sources(self) -> None:
+        """Split counts appear once; sources are listed with links and the license note."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "LemGendizedCodeFormer"
+            root.mkdir()
+            index = [
+                {"name": f"s{i}", "source": "LemGendizedCodeFormer-manifold",
+                 "split": "val" if i == 0 else "train"}
+                for i in range(4)
+            ]
+            (root / "index.json").write_text(json.dumps(index), encoding="utf-8")
+            _, text = generate_readme_md(root)
+        self.assertIn("| Train | 3 |", text)
+        self.assertIn("| Val | 1 |", text)
+        self.assertIn("- Real vs Fake Faces", text)
+        self.assertIn("no per-source counts", text)
+        self.assertIn("CC-BY-NC-4.0", text)
+        self.assertIn("<https://arxiv.org/abs/2206.11253>", text)
+        self.assertNotIn("| Source Dataset |", text)
+
+    def test_registry_refs_map_to_public_pages(self) -> None:
+        """Kaggle and Hugging Face refs become their public URLs; local refs are dropped."""
+        self.assertEqual(
+            ref_url("kaggle://owner/set"), "https://www.kaggle.com/datasets/owner/set"
+        )
+        self.assertEqual(
+            ref_url("hf://org/name:file.tgz"), "https://huggingface.co/datasets/org/name"
+        )
+        self.assertIsNone(ref_url("local://raw-sets/X/"))
 
     def test_shard_folder_description(self) -> None:
         """Shards are described by their real extension, splits and members."""
