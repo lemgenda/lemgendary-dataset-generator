@@ -90,13 +90,15 @@ class SyncService:
     def pull(
         url: str,
         output_name: str | None = None,
+        only: tuple[str, ...] = (),
     ) -> int:
-        """Pull remote manifold from registry."""
+        """Pull remote manifold from registry (``only``: just these folders or files)."""
 
         try:
             manifold_sync.action_get(
                 repo_id=url,
                 output_name=output_name,
+                only=only,
             )
             return 0
         except SystemExit as exc:

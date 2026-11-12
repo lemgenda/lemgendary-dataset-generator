@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.95-STABLE` |
+| **Version** | `v16.9.96-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,32 @@
 ---
 
 ## Changelog
+
+### v16.9.96 - `sync pull`: Missing Root, File-by-File Fallback, `--only` (R4-B7)
+
+- A missing datasets root (`LemGendaryDatasets/`) crashed `sync pull` in
+  `shutil.disk_usage`. Free space is now measured at the nearest existing
+  parent folder and the root is created before the download
+  (`tools/manifold_sync.py`).
+- Kaggle has no whole-dataset archive for very large datasets (the download
+  answers 404 "No gcs url found"). The pull now falls back to a file-by-file
+  download (`core/kaggle_file_download.py`): every page of the file listing
+  is read, each file is fetched through its own signed URL, checked against
+  the listed size (a zipped single file is unpacked), and files already
+  complete are skipped; an interrupted `.part` resumes with an HTTP range.
+- `sync pull --only labels/ --only classes.txt [--output NAME]` fetches only
+  those folders or files (relative to the dataset's top folder): from the
+  whole-dataset zip through HTTP byte ranges (`utils/zip_ranges.py`: central
+  directory, ZIP64, CRC-32 check, atomic writes, resumable), or file by file
+  when Kaggle has no zip (`core/sync_partial_download.py`).
+- Authentication uses the credential module (`core/kaggle_http.py`; vault,
+  then environment, `environment_credential`); signed storage URLs are
+  refreshed when old or rejected and never receive Kaggle credentials.
+  Wrapper-folder, selection and path-safety rules live in
+  `utils/member_paths.py` (`STRUCTURAL_DIRS` moved there from
+  `utils/archive_extract.py`).
+- Tests with fake HTTP and a fake Kaggle API
+  (`tests/test_sync_partial_download.py`).
 
 ### v16.9.95 - New Kaggle Datasets Start Private (R4-B5)
 

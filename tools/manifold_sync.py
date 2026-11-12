@@ -151,8 +151,21 @@ def action_sync(manifold_name, repo_id=None, no_wait=False):
         sys.exit(1)
 
 
-def action_get(repo_id, output_name=None):
-    """Download and extract a manifold from Kaggle with byte-level progress and full resumption."""
+def _free_gb(path: Path) -> float:
+    """Free space (GB) on the volume of ``path``, measured at its nearest existing folder."""
+    probe = path
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    return shutil.disk_usage(probe).free / (1024**3)
+
+
+def action_get(repo_id, output_name=None, only=()):
+    """Download and extract a manifold from Kaggle with byte-level progress and full resumption.
+
+    ``only`` (folders ending in ``/`` or file names, relative to the dataset's
+    wrapper folder) fetches just those members. The datasets root is created
+    when it does not exist yet.
+    """
     clean_repo_id = repo_id.replace("kaggle://", "")
     slug = clean_repo_id.split("/")[-1]
     if not output_name:
@@ -188,8 +201,7 @@ def action_get(repo_id, output_name=None):
             return
 
     # Disk space check (Require at least 20GB free as a baseline safeguard)
-    _, _, free = shutil.disk_usage(OUT_PARENT)
-    free_gb = free / (1024**3)
+    free_gb = _free_gb(OUT_PARENT)
     if free_gb < 20.0:
         print(f"[WARNING] Low disk space! Only {free_gb:.2f} GB free on {OUT_PARENT.drive}.")
         ans = input("Continue anyway? (y/N): ").strip().lower()
@@ -199,6 +211,7 @@ def action_get(repo_id, output_name=None):
     else:
         print(f"[GET] Disk check passed ({free_gb:.2f} GB free).")
 
+    OUT_PARENT.mkdir(parents=True, exist_ok=True)
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else default_owner()
     setup_auth(default_user=owner)
 
@@ -210,7 +223,8 @@ def action_get(repo_id, output_name=None):
             manifold_name=output_name,
             slug=slug,
             is_competition=False,
-        )
+        ),
+        only=tuple(only),
     )
     if not success:
         sys.exit(1)

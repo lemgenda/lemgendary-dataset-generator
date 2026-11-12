@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 import typer
 
@@ -13,6 +14,15 @@ from services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 sync_app = typer.Typer(help="Kaggle dataset sync (push / pull / metadata).")
+
+OnlyOpt = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--only",
+        help="Fetch only this folder (ending in /) or file, relative to the dataset's top"
+             " folder; repeatable (e.g. --only labels/ --only classes.txt)",
+    ),
+]
 
 
 # ─── sync sub-app ───────────────────────────────────────────────────────────
@@ -30,9 +40,13 @@ def sync_push(
 @sync_app.command("pull")
 def sync_pull(
     url: str = typer.Option(..., "--url", help="Kaggle dataset slug (user/name)"),
+    only: OnlyOpt = None,
+    output: str | None = typer.Option(
+        None, "--output", help="Local folder name under the datasets root (default: registry)"
+    ),
 ) -> None:
-    """Pull a compiled manifold from Kaggle."""
-    code = SyncService.pull(url=url)
+    """Pull a compiled manifold from Kaggle (all of it, or the --only members)."""
+    code = SyncService.pull(url=url, output_name=output, only=tuple(only or ()))
     raise typer.Exit(code=code)
 
 

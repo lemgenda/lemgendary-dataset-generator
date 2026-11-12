@@ -4,6 +4,9 @@ Kaggle manifold download pipeline for the sync core.
 Reuses a verified local archive when one exists, otherwise downloads via the
 Kaggle API, then the Kaggle CLI, then kagglehub; legacy loose-image archives
 are streamed straight into WebDataset shards, everything else is extracted.
+When Kaggle has no whole-dataset archive (a very large dataset), the files
+are downloaded one by one instead; ``only`` fetches just some folders or
+files (:mod:`core.sync_partial_download`).
 """
 
 import logging
@@ -22,6 +25,11 @@ import yaml
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS
 from core.lazy_imports import load_kaggle_api
 from core.sync_auth import kaggle_cli_creationflags
+from core.sync_partial_download import (
+    download_file_by_file,
+    download_selected,
+    is_missing_archive_error,
+)
 from core.sync_transfer import copy_tree_with_progress
 from tools.stream_zip_to_container import stream_zip_to_webdataset
 from utils.archive import smart_extract, verify_archive
@@ -45,6 +53,10 @@ class DownloadRequest:
     slug: str
     is_competition: bool = False
     label_json: str | None = None  # JSON sidecar strategy for text labels (utils.label_json)
+
+
+class NoWholeArchiveError(RuntimeError):
+    """Kaggle has no whole-dataset archive for this dataset (download answered 404)."""
 
 
 def _archive_candidates(request: DownloadRequest) -> list[Path]:
@@ -110,7 +122,10 @@ def _download_competition(request: DownloadRequest, candidates: list[Path]) -> P
 
 
 def _download_via_api_or_cli(request: DownloadRequest) -> bool:
-    """Download the dataset zip via the Kaggle API, falling back to the Kaggle CLI."""
+    """Download the dataset zip via the Kaggle API, falling back to the Kaggle CLI.
+
+    Raises :class:`NoWholeArchiveError` when Kaggle has no archive to download.
+    """
     root = request.root_datasets_dir
     try:
         socket.setdefaulttimeout(60.0)
@@ -120,6 +135,8 @@ def _download_via_api_or_cli(request: DownloadRequest) -> bool:
         api.dataset_download_files(request.clean_repo_id, path=str(root), unzip=False, quiet=False)
         return True
     except KAGGLE_CLIENT_ERRORS as ex:
+        if is_missing_archive_error(ex):
+            raise NoWholeArchiveError(str(ex)) from ex
         print(
             f"[WARN] Kaggle API direct download encountered an issue: {ex}. Falling back to Kaggle"
             " CLI..."
@@ -186,7 +203,13 @@ def _fetch_remote_archive(request: DownloadRequest, candidates: list[Path]) -> _
     """Download archive or directory payload from Kaggle."""
     if request.is_competition:
         return _Fetched(archive=_download_competition(request, candidates))
-    if not _download_via_api_or_cli(request):
+    try:
+        downloaded = _download_via_api_or_cli(request)
+    except NoWholeArchiveError:
+        return _Fetched(
+            tree_copied=download_file_by_file(request.clean_repo_id, request.target_dir)
+        )
+    if not downloaded:
         return _download_via_kagglehub(request)
     return _Fetched(archive=_locate_downloaded_archive(request, candidates))
 
@@ -313,10 +336,16 @@ def _unpack_archive(archive: Path, request: DownloadRequest) -> bool:
     return True
 
 
-def perform_dataset_download(request: DownloadRequest) -> bool:
-    """Download and extract a manifold from Kaggle with full resumption and verification."""
+def perform_dataset_download(request: DownloadRequest, only: tuple[str, ...] = ()) -> bool:
+    """Download and extract a manifold from Kaggle with full resumption and verification.
+
+    ``only`` (folders ending in ``/`` or files, relative to the dataset's
+    wrapper folder) fetches just those members, never the whole archive.
+    """
     request.root_datasets_dir.mkdir(parents=True, exist_ok=True)
     request.target_dir.mkdir(parents=True, exist_ok=True)
+    if only:
+        return download_selected(request.clean_repo_id, request.target_dir, only)
 
     candidates = _archive_candidates(request)
     local_archive = _find_verified_local_archive(candidates)

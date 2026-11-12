@@ -37,6 +37,7 @@ ENV_CONFIG_DIR = "KAGGLE_CONFIG_DIR"
 
 SOURCE_EXPLICIT = "explicit"
 SOURCE_VAULT = "secrets_vault"
+SOURCE_ENVIRONMENT = "environment_variables"
 
 
 def is_access_token(secret: str) -> bool:
@@ -119,10 +120,22 @@ def environment_has_credential() -> bool:
     )
 
 
+def environment_credential() -> KaggleCredential | None:
+    """The access token or username/key pair in the environment, else None."""
+    token = os.environ.get(ENV_API_TOKEN)
+    if token:
+        return KaggleCredential(secret=token, username=os.environ.get(ENV_USERNAME),
+                                source=SOURCE_ENVIRONMENT)
+    username, key = os.environ.get(ENV_USERNAME), os.environ.get(ENV_KEY)
+    if username and key:
+        return KaggleCredential(secret=key, username=username, source=SOURCE_ENVIRONMENT)
+    return None
+
+
 def credential_sources() -> dict[str, bool]:
     """Which credential stores hold a Kaggle secret (no secret is returned)."""
     return {
-        "environment_variables": environment_has_credential(),
+        SOURCE_ENVIRONMENT: environment_has_credential(),
         SOURCE_VAULT: bool(get_kaggle_vault_credentials()[0]),
         "user_access_token": _has_access_token_file(),
         "user_kaggle_json": legacy_config_file().is_file(),

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from utils.archive_io import byte_progress_bar, copy_stream, is_tar_path, tar_mode
+from utils.member_paths import STRUCTURAL_DIRS
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,6 @@ def _find_tar() -> str | None:
     return shutil.which("tar") or shutil.which("tar.exe")
 
 
-# Manifold layout folders: their children never belong one level up.
-_STRUCTURAL_DIRS = frozenset({"shards", "data", "images", "targets", "labels", "masks", "mds"})
 
 
 def _is_wrapper_dir(cand: Path, dest_path: Path) -> bool:
@@ -60,7 +59,7 @@ def _is_wrapper_dir(cand: Path, dest_path: Path) -> bool:
     A structural folder (``shards``, ``images``, ...) is never a wrapper, even
     when it is the only folder of a ``LemGendized*`` manifold.
     """
-    if cand.name.lower() in _STRUCTURAL_DIRS:
+    if cand.name.lower() in STRUCTURAL_DIRS:
         return False
     return (
         cand.name.lower() == dest_path.name.lower()
