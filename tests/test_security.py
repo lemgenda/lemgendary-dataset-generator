@@ -213,6 +213,23 @@ class TestServerWiring(unittest.TestCase):
         self.assertEqual(wrong.status_code, 403)
         self.assertEqual(missing.headers.get("access-control-allow-origin"), GUI_ORIGIN)
 
+    def test_real_app_config_validate_needs_gui_header_not_token(self) -> None:
+        """POST /config/validate: the GUI header is enough; a token is not required."""
+        client = TestClient(server_app)
+        env = {"LEMGENDARY_API_TOKEN": TEST_TOKEN, "LEMGENDARY_DISABLE_AUTH": ""}
+        with patch.dict(os.environ, env):
+            gui = client.post("/api/config/validate",
+                              headers={"Origin": GUI_ORIGIN, CLIENT_HEADER: CLIENT_HEADER_VALUE})
+            no_header = client.post("/api/config/validate", headers={"Origin": GUI_ORIGIN})
+            foreign = client.post("/api/config/validate", headers={
+                "Origin": FOREIGN_ORIGIN, CLIENT_HEADER: CLIENT_HEADER_VALUE})
+            full = client.get("/api/config", headers={"Origin": GUI_ORIGIN})
+        self.assertEqual(gui.status_code, 200, gui.text)
+        self.assertEqual(gui.json()["status"], "valid")
+        self.assertEqual(no_header.status_code, 403)
+        self.assertEqual(foreign.status_code, 403)
+        self.assertEqual(full.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main()

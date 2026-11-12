@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.88-STABLE` |
+| **Version** | `v16.9.89-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,20 @@
 ---
 
 ## Changelog
+
+### v16.9.89 - Config Validation Open to the GUI
+
+- `POST /api/config/validate` no longer needs the compiler API token, which
+  the AI Studio GUI does not hold (R2-G4). It is read-only and returns only
+  a summary, so it now sits with the other GUI-facing routers: the origin
+  guard (`api/security.py`) admits it from the GUI origins when the request
+  carries `X-LemGendary-Client: ai-studio-gui`, and refuses foreign origins
+  and header-less browser posts. `GET /api/config` (the full registry)
+  stays behind the token.
+- `api/routes/config.py` (`validate_router`), `api/server.py`,
+  `openapi.json` (regenerated with `tools/export_openapi.py`).
+- `tests/test_security.py`: GUI header admits, missing header or foreign
+  origin refused, full config still needs the token.
 
 ### v16.9.88 - RetinaFace Landmarks From the Kaggle Source; ParseNet Mask Guard
 

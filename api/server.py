@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.auth import verify_token
 from api.events import drain_event_queue, manager
 from api.routes.config import router as config_router
+from api.routes.config import validate_router as config_validate_router
 from api.routes.datasets import router as datasets_router
 from api.routes.env import router as env_router
 from api.routes.gates import router as gates_router
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     app_instance.include_router(kaggle_router, prefix="/api")
     app_instance.include_router(modernize_router, prefix="/api")
     app_instance.include_router(llm_router, prefix="/api")
+    app_instance.include_router(config_validate_router, prefix="/api")
 
     # Protected operational routers requiring API token authentication
     app_instance.include_router(config_router, prefix="/api", dependencies=[Depends(verify_token)])

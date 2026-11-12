@@ -1,4 +1,11 @@
-"""Configuration inspection and validation endpoints."""
+"""Configuration inspection and validation endpoints.
+
+``router`` (``GET /config``, the full registry) is mounted behind the API
+token. ``validate_router`` (``POST /config/validate``) is read-only and
+returns only a summary, so it is mounted with the other GUI-facing routers:
+the origin guard (:mod:`api.security`) admits it from the AI Studio GUI,
+which sends ``X-LemGendary-Client: ai-studio-gui`` but holds no API token.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +19,7 @@ from core import paths
 from core.config_schema import load_unified_data
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
+validate_router = APIRouter(prefix="/config", tags=["Configuration"])
 
 
 def _resolve_config_path() -> Path:
@@ -38,7 +46,7 @@ def get_config() -> dict[str, Any]:
         ) from exc
 
 
-@router.post("/validate")
+@validate_router.post("/validate")
 async def validate_config() -> dict[str, Any]:
     """Validate unified_data.yaml against Pydantic config schema."""
     config_path = _resolve_config_path()

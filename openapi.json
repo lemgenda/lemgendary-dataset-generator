@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.88"
+    "version": "16.9.89"
   },
   "paths": {
     "/api/health": {
@@ -864,38 +864,6 @@
         }
       }
     },
-    "/api/config": {
-      "get": {
-        "tags": [
-          "Configuration"
-        ],
-        "summary": "Get Config",
-        "description": "Retrieve the parsed contents of unified_data.yaml.",
-        "operationId": "get_config_api_config_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Get Config Api Config Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/config/validate": {
       "post": {
         "tags": [
@@ -913,6 +881,30 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Validate Config Api Config Validate Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "Configuration"
+        ],
+        "summary": "Get Config",
+        "description": "Retrieve the parsed contents of unified_data.yaml.",
+        "operationId": "get_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Config Api Config Get"
                 }
               }
             }
