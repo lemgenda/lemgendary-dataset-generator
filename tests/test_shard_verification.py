@@ -54,6 +54,14 @@ class ShardVerificationTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("zero-byte", out)
 
+    def test_unpaired_sample_in_paired_set_fails(self) -> None:
+        """Once one sample has a target, every sample needs one."""
+        write_tar(self.shards / "train" / "s.data",
+                  [("a.webp", b"x"), ("a.target.webp", b"y"), ("b.webp", b"z")])
+        ok, out = self._quiet(_verify_shards, self.shards, "data")
+        self.assertFalse(ok)
+        self.assertIn("1 samples without a target (first: b)", out)
+
     def test_scattered_group_fails_mds_verify(self) -> None:
         """Scattered group fails mds verify."""
         write_tar(self.shards / "s.data",

@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.82-STABLE` |
+| **Version** | `v16.9.83-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,14 @@
 ---
 
 ## Changelog
+
+### v16.9.83 - Shard Pair Completeness
+
+- `utils/shard_audit.py`: post-write shard verification also checks pair
+  completeness. When any sample in a shard set has a `.target.*` member,
+  the set is paired and every sample must have one; samples without a
+  target fail the converters' verification (audit 2.2.1).
+- `tests/test_shard_verification.py`: unpaired-sample test.
 
 ### v16.9.82 - Download and Extraction Safety
 

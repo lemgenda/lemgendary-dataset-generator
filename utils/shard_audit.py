@@ -53,6 +53,10 @@ def split_member_name(name: str) -> tuple[str, str]:
     return key, f"{dot}{rest}"
 
 
+def _is_target(suffix: str) -> bool:
+    return suffix.startswith(".target.")
+
+
 def is_empty_defect(name: str, size: int) -> bool:
     """True when a member of ``size`` bytes named ``name`` is an unusable empty file."""
     return size == 0 and not name.lower().endswith(MAY_BE_EMPTY_SUFFIXES)
@@ -89,6 +93,10 @@ class ShardAudit:
     def needs_rewrite(self) -> bool:
         """True when a repair would change this shard."""
         return bool(self.zero_byte or self.scattered)
+
+    def unpaired(self) -> list[str]:
+        """Keys without a ``.target.*`` member."""
+        return [k for k, have in self.suffixes.items() if not any(map(_is_target, have))]
 
     def incomplete(self, required: tuple[str, ...]) -> list[str]:
         """Keys missing any of the ``required`` member suffixes."""
@@ -209,11 +217,21 @@ def shard_set_problems(
     expected_total: int | None = None,
 ) -> list[str]:
     """Human-readable defects: unreadable shards, empty members, scattered or
-    incomplete groups, and a total that differs from ``expected_total``."""
+    incomplete groups, and a total that differs from ``expected_total``.
+
+    A set where any sample has a ``.target.*`` member is a paired set: every
+    sample must have one.
+    """
     problems: list[str] = []
     if not audit.shards:
         problems.append(f"no shards under {audit.shards_dir}")
+    paired = any(_is_target(suffix) for shard in audit.shards
+                 for have in shard.suffixes.values() for suffix in have)
     for shard in audit.shards:
+        unpaired = shard.unpaired() if paired else []
+        if unpaired:
+            problems.append(f"{shard.path.name}: {len(unpaired)} samples without a target"
+                            f" (first: {unpaired[0]})")
         name = shard.path.name
         if shard.error:
             problems.append(f"{name}: unreadable tar ({shard.error})")
