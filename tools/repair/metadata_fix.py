@@ -30,6 +30,7 @@ from typing import Any
 import yaml
 
 from core.docs.generators.dataset_info_yaml import write_dataset_info
+from tools.repair.shard_fix import REPAIR_TMP_SUFFIX
 
 __all__ = [
     "IndexChanges",
@@ -37,6 +38,7 @@ __all__ = [
     "PhysicalSamples",
     "apply_metadata_fix",
     "plan_metadata_fix",
+    "replace_file",
 ]
 
 INFO_FILE = "dataset_info.yaml"
@@ -213,9 +215,9 @@ def plan_metadata_fix(manifold_dir: Path, physical: PhysicalSamples) -> Metadata
     return fix
 
 
-def _replace_file(path: Path, write: Any) -> None:
+def replace_file(path: Path, write: Any) -> None:
     """Write ``path`` anew via ``write(tmp)`` and swap it in atomically (no copy kept)."""
-    tmp = path.with_name(path.name + ".repair-tmp")
+    tmp = path.with_name(path.name + REPAIR_TMP_SUFFIX)
     try:
         write(tmp)
     except OSError:
@@ -228,7 +230,7 @@ def apply_metadata_fix(fix: MetadataFix) -> None:
     """Write the planned files; each replaces its original atomically."""
     if fix.new_info is not None and fix.info_changes:
         info = fix.new_info
-        _replace_file(fix.manifold_dir / INFO_FILE,
+        replace_file(fix.manifold_dir / INFO_FILE,
                       lambda tmp: write_dataset_info(tmp, info))
     if fix.new_index is not None and fix.index:
         index = fix.new_index
@@ -237,4 +239,4 @@ def apply_metadata_fix(fix: MetadataFix) -> None:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(index, f, indent=2)
 
-        _replace_file(fix.manifold_dir / INDEX_FILE, _write_index)
+        replace_file(fix.manifold_dir / INDEX_FILE, _write_index)

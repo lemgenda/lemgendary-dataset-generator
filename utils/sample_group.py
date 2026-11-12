@@ -29,6 +29,7 @@ from utils.image_payload import (
     encode_mask_payload,
 )
 from utils.label_json import build_label_json
+from utils.shard_audit import is_empty_defect
 
 __all__ = [
     "LABEL_EXTS",
@@ -135,8 +136,12 @@ def encode_sample(raw: RawSample, transcode_webp: bool) -> EncodedSample:
 
 
 def _label_members(raw: RawSample, label: RawMember) -> list[tuple[str, bytes]]:
-    """The label sidecar, plus the JSON sidecar ``raw.label_json`` derives from a text label."""
-    if not label.payload:
+    """The label sidecar, plus the JSON sidecar ``raw.label_json`` derives from a text label.
+
+    An empty ``.txt`` label is kept (an image with no objects, the rule of
+    :func:`utils.shard_audit.is_empty_defect`); any other empty label is a defect.
+    """
+    if is_empty_defect(f"{raw.key}{label.ext}", len(label.payload)):
         raise CorruptImageError(f"{raw.key}{label.ext}: zero-byte label sidecar")
     try:
         text = label.payload.decode("utf-8")

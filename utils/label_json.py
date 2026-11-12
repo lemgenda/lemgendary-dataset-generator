@@ -16,7 +16,10 @@ the layout the training suite's container decoder reads
                   "landmarks_normalized": [lx0, ly0, ..., lx4, ly4]}]}
 
 ``landmarks_normalized`` (left eye, right eye, nose, left and right mouth
-corner) is present only when the line carries all ten coordinates.
+corner) is present only when the line carries all ten coordinates and they
+are not all zero: the Kaggle RetinaFace source writes ten zeros for a face
+whose landmarks were not detected, and the training suite masks absent
+landmarks out instead of training towards the image corner.
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ def _face_object(values: list[float]) -> dict[str, Any]:
         "bbox_cxcywh_normalized": values[1:_BOX_END],
     }
     landmarks = values[_BOX_END:_BOX_END + FACE_LANDMARK_VALUES]
-    if len(landmarks) == FACE_LANDMARK_VALUES:
+    if len(landmarks) == FACE_LANDMARK_VALUES and any(landmarks):
         obj["landmarks_normalized"] = landmarks
     return obj
 

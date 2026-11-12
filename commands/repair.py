@@ -3,22 +3,40 @@
 Every command is a dry run unless ``--apply`` is given: it prints what would
 change and exits 0. With ``--apply`` each repaired file is verified and then
 replaces its original atomically; no copy of the original is kept (see
-:mod:`services.repair_service`).
+:mod:`services.repair_service` and, for ``repair labels``,
+:mod:`services.label_repair_service`).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import tarfile
 from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from commands.common import console
-from commands.options import ManifoldOpt, ModelOpt, TargetOptions, require_target
+from commands.options import (
+    ManifoldOpt,
+    ModelOpt,
+    TargetOptions,
+    options_command,
+    require_target,
+)
 from core.paths import DEFAULT_OUTPUT_FOLDER, from_root
+from core.source_manifolds import label_strategy_for_folder
+from services.label_repair_service import (
+    LabelRepairPlan,
+    LabelRepairService,
+    LabelSource,
+    read_classes,
+)
 from services.repair_service import ManifoldRepairPlan, RepairService
+from tools.repair.label_restore import LabelRestoreError
 from tools.repair.shard_fix import ShardFixError
+from utils.label_json import LABEL_JSON_BUILDERS
 
 repair_app = typer.Typer(help="Repair compiled manifolds (dry run unless --apply).")
 
@@ -29,10 +47,34 @@ RootOpt = Annotated[
     str | None,
     typer.Option("--root", help=f"Datasets root (default: {DEFAULT_OUTPUT_FOLDER})"),
 ]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class LabelRepairOptions:
+    """Options of ``repair labels``."""
+
+    target: TargetOptions
+    labels: Annotated[
+        Path,
+        typer.Option("--labels", help="Local copy of the source's labels/ folder (train/, val/)"),
+    ]
+    strategy: Annotated[
+        str | None,
+        typer.Option("--strategy", help="label_json strategy (default: the registry entry's)"),
+    ] = None
+    classes: Annotated[
+        Path | None,
+        typer.Option("--classes", help="classes.txt to record (default: next to --labels)"),
+    ] = None
+    apply: ApplyOpt = False
+
+
 _REPAIR_ERRORS = (OSError, tarfile.TarError, ShardFixError, ValueError)
+_LABEL_ERRORS = (OSError, tarfile.TarError, LabelRestoreError, ValueError, UnicodeDecodeError)
+_CLASSES_FILE = "classes.txt"
 
 
-def _print(plan: ManifoldRepairPlan) -> None:
+def _print(plan: ManifoldRepairPlan | LabelRepairPlan) -> None:
     for line in plan.report():
         console.print(line, markup=False, highlight=False)
 
@@ -83,3 +125,51 @@ def repair_all(root: RootOpt = None, apply: ApplyOpt = False) -> None:
     if failed:
         console.print(f"[red]Repairs failed for: {', '.join(failed)}[/red]")
     raise typer.Exit(code=1 if failed else 0)
+
+
+def _label_strategy(manifold_dir: Path, strategy: str | None) -> str:
+    """``strategy``, else the registry entry's ``label_json``; exit 1 when neither is known."""
+    try:
+        chosen = strategy or label_strategy_for_folder(manifold_dir.name)
+    except (OSError, yaml.YAMLError) as exc:
+        console.print(f"[red]Cannot read the registry: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if chosen not in LABEL_JSON_BUILDERS:
+        console.print(f"[red]No usable label strategy for {manifold_dir.name} ({chosen});"
+                      f" pass --strategy, one of {sorted(LABEL_JSON_BUILDERS)}[/red]")
+        raise typer.Exit(code=1)
+    return chosen
+
+
+def _label_source(manifold_dir: Path, opts: LabelRepairOptions) -> LabelSource:
+    if not opts.labels.is_dir():
+        console.print(f"[red]Labels folder not found: {opts.labels}[/red]")
+        raise typer.Exit(code=1)
+    return LabelSource(labels_dir=opts.labels,
+                       strategy=_label_strategy(manifold_dir, opts.strategy),
+                       classes=read_classes(opts.classes or opts.labels.parent / _CLASSES_FILE))
+
+
+@repair_app.command("labels")
+@options_command(LabelRepairOptions)
+def repair_labels(opts: LabelRepairOptions) -> None:
+    """Write labels from a loose labels/ folder into the shards' JSON sidecars (no recompile)."""
+    manifold_dir = require_target(opts.target)
+    service = LabelRepairService(_label_source(manifold_dir, opts))
+    apply = opts.apply
+    try:
+        plan = service.plan(manifold_dir)
+        _print(plan)
+        if apply and plan.changed:
+            remaining = service.apply(plan)
+            console.print("  applied", markup=False, highlight=False)
+            if remaining.changed:
+                console.print("[yellow]  still not clean after the repair:[/yellow]")
+                _print(remaining)
+                raise typer.Exit(code=1)
+    except _LABEL_ERRORS as exc:
+        console.print(f"[red]Label repair of {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=1 if plan.mismatched else 0)

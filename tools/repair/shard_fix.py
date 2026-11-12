@@ -25,9 +25,17 @@ from tools.repair.member_webp import convertible_members, to_webp
 from utils.image_payload import CorruptImageError
 from utils.shard_audit import ShardAudit, audit_shard, split_member_name
 
-__all__ = ["ShardFix", "ShardFixError", "apply_shard_fix", "plan_shard_fix", "rewrite_shard"]
+__all__ = [
+    "REPAIR_TMP_SUFFIX",
+    "ShardFix",
+    "ShardFixError",
+    "apply_shard_fix",
+    "plan_shard_fix",
+    "rewrite_shard",
+]
 
-_TMP_SUFFIX = ".repair-tmp"
+# Suffix of the temporary file every repair writes before its atomic swap.
+REPAIR_TMP_SUFFIX = ".repair-tmp"
 
 
 class ShardFixError(RuntimeError):
@@ -124,7 +132,7 @@ def _verify(fix: ShardFix, out_path: Path) -> None:
 
 def apply_shard_fix(fix: ShardFix) -> None:
     """Rewrite to a temporary file, verify it, then atomically replace the original."""
-    tmp = fix.shard.with_name(fix.shard.name + _TMP_SUFFIX)
+    tmp = fix.shard.with_name(fix.shard.name + REPAIR_TMP_SUFFIX)
     try:
         rewrite_shard(fix, tmp)
         _verify(fix, tmp)

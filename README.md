@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.92-STABLE` |
+| **Version** | `v16.9.93-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,43 @@
 ---
 
 ## Changelog
+
+### v16.9.93 - Labels-Only Repair From a Loose labels/ Folder
+
+- `python cli.py repair labels --manifold PATH | --model KEY --labels DIR
+  [--strategy NAME] [--classes FILE] [--apply]` (new,
+  `services/label_repair_service.py`, `tools/repair/label_restore.py`):
+  writes each sample's label from `DIR/<split>/<key>.txt` into its `.json`
+  sidecar through the registry entry's `label_json` strategy, without
+  recompiling an image. The strategy's keys replace the old ones; `split`,
+  `filename` and other keys stay. No `.txt` or `.cls` member is added (the
+  training suite reads the JSON sidecar). Dry run unless `--apply`; every
+  shard is rewritten to a temporary file, re-audited and swapped in
+  atomically, no copy kept. A label whose boxes differ from the boxes a
+  sidecar already records means the key maps to another image: the run
+  reports MISMATCH and `--apply` changes nothing. dataset_info.yaml records
+  `label_json` and, from the `classes.txt` next to `DIR`, `classes`.
+- RetinaFace: the compiled `LemGendizedRetinaFace` keys are the stems of
+  the Kaggle `lemgendizedretinafacemobilenetlarge` files (same 751,153 /
+  102,393 split; 13 sampled val labels match the recorded boxes exactly),
+  so its 5-point landmarks can be restored from that source's `labels/`
+  folder alone (about 0.1 GB instead of the full pull).
+- `face_landmarks` (`utils/label_json.py`): ten zero landmark values (the
+  source's "not detected") count as absent, so training masks them out
+  instead of learning the image corner.
+- `utils/sample_group.py`: an empty `.txt` label (an image with no objects)
+  is packed instead of dropping the sample, the rule `utils/shard_audit.py`
+  already applies.
+- ClassificationMaster: the `labels/` folder of
+  `lemgendizedclassificationmastermanifoldlarge` holds YOLO object boxes
+  with COCO class ids (person, fork, pizza, ...; often empty for
+  anime_dbrating), not class labels, so neither this repair nor a recompile
+  from that source restores classes. The registry entry is unchanged; the
+  class scheme is an owner decision.
+- `core/source_manifolds.py`: `label_strategy_for_folder`.
+  `tools/repair/shard_fix.py` exports `REPAIR_TMP_SUFFIX` and
+  `tools/repair/metadata_fix.py` exports `replace_file`, shared by both
+  repairs.
 
 ### v16.9.92 - Kaggle Dataset Pull and Push Fixes (Kaggle Audit)
 
