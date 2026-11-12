@@ -4,9 +4,11 @@ A shard needs a fix when it holds zero-byte members (the whole sample they
 belong to is dropped, so no image is left without its pair) or when a
 sample's members are scattered (they are regrouped in first-seen order).
 
-The fixed shard is written next to the original, re-audited, and only then
-swapped in; the original is moved (not copied) into the run's backup folder,
-so the swap needs no extra disk space when the backup is on the same volume.
+The fixed shard is written to a temporary file next to the original,
+re-audited, and only then swapped in with ``os.replace``, which removes the
+original in the same atomic step. No copy of the original is kept; a crash
+before the swap leaves the original untouched and at most a stray
+``.repair-tmp`` file, which the next run overwrites.
 """
 
 from __future__ import annotations
@@ -86,8 +88,8 @@ def _verify(fix: ShardFix, out_path: Path) -> None:
         )
 
 
-def apply_shard_fix(fix: ShardFix, backup_path: Path) -> None:
-    """Rewrite, verify, move the original to ``backup_path`` and swap the fix in."""
+def apply_shard_fix(fix: ShardFix) -> None:
+    """Rewrite to a temporary file, verify it, then atomically replace the original."""
     tmp = fix.shard.with_name(fix.shard.name + _TMP_SUFFIX)
     try:
         rewrite_shard(fix, tmp)
@@ -95,6 +97,4 @@ def apply_shard_fix(fix: ShardFix, backup_path: Path) -> None:
     except (OSError, tarfile.TarError, ShardFixError):
         tmp.unlink(missing_ok=True)
         raise
-    backup_path.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(fix.shard, backup_path)
     os.replace(tmp, fix.shard)

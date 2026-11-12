@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.84-STABLE` |
+| **Version** | `v16.9.85-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,20 @@
 ---
 
 ## Changelog
+
+### v16.9.85 - Repair Keeps No Originals
+
+- `repair ... --apply` no longer keeps copies of the originals (owner
+  decision): there is no `.repair_backup` folder any more. Each rewritten
+  shard is written to a temporary file next to the original, re-audited,
+  and swapped in with an atomic `os.replace`, which deletes the old file;
+  `dataset_info.yaml` and `index.json` are replaced the same way. A crash
+  before the swap leaves the original untouched (R2-D1).
+- `services/repair_service.py`, `commands/repair.py`,
+  `tools/repair/shard_fix.py`, `tools/repair/metadata_fix.py`: backup
+  folder, run stamp and `BACKUP_DIR_NAME` removed.
+- `tests/test_repair_service.py`: repairs leave no backup folder and no
+  temporary file.
 
 ### v16.9.84 - Validator Compliance
 

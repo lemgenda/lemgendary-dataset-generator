@@ -202,20 +202,22 @@ def plan_metadata_fix(manifold_dir: Path, physical: PhysicalSamples) -> Metadata
     return fix
 
 
-def _replace_file(path: Path, backup_dir: Path, write: Any) -> None:
-    """Back ``path`` up into ``backup_dir`` and replace it atomically via ``write(tmp)``."""
-    backup_dir.mkdir(parents=True, exist_ok=True)
+def _replace_file(path: Path, write: Any) -> None:
+    """Write ``path`` anew via ``write(tmp)`` and swap it in atomically (no copy kept)."""
     tmp = path.with_name(path.name + ".repair-tmp")
-    write(tmp)
-    os.replace(path, backup_dir / path.name)
+    try:
+        write(tmp)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
     os.replace(tmp, path)
 
 
-def apply_metadata_fix(fix: MetadataFix, backup_dir: Path) -> None:
-    """Write the planned files; each original is moved into ``backup_dir`` first."""
+def apply_metadata_fix(fix: MetadataFix) -> None:
+    """Write the planned files; each replaces its original atomically."""
     if fix.new_info is not None and fix.info_changes:
         info = fix.new_info
-        _replace_file(fix.manifold_dir / INFO_FILE, backup_dir,
+        _replace_file(fix.manifold_dir / INFO_FILE,
                       lambda tmp: write_dataset_info(tmp, info))
     if fix.new_index is not None and fix.index:
         index = fix.new_index
@@ -224,4 +226,4 @@ def apply_metadata_fix(fix: MetadataFix, backup_dir: Path) -> None:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(index, f, indent=2)
 
-        _replace_file(fix.manifold_dir / INDEX_FILE, backup_dir, _write_index)
+        _replace_file(fix.manifold_dir / INDEX_FILE, _write_index)

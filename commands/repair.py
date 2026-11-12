@@ -1,9 +1,9 @@
 """`repair` sub-commands: fix damaged shards and stale metadata of compiled manifolds.
 
 Every command is a dry run unless ``--apply`` is given: it prints what would
-change and exits 0. With ``--apply`` the originals are moved into
-``<datasets root>/.repair_backup/<UTC timestamp>/`` before anything is
-replaced (see :mod:`services.repair_service`).
+change and exits 0. With ``--apply`` each repaired file is verified and then
+replaces its original atomically; no copy of the original is kept (see
+:mod:`services.repair_service`).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import typer
 from commands.common import console
 from commands.options import ManifoldOpt, ModelOpt, TargetOptions, require_target
 from core.paths import DEFAULT_OUTPUT_FOLDER, from_root
-from services.repair_service import BACKUP_DIR_NAME, ManifoldRepairPlan, RepairService
+from services.repair_service import ManifoldRepairPlan, RepairService
 from tools.repair.shard_fix import ShardFixError
 
 repair_app = typer.Typer(help="Repair compiled manifolds (dry run unless --apply).")
@@ -48,8 +48,7 @@ def _run(service: RepairService, manifold_dir: Path, apply: bool) -> bool:
     except _REPAIR_ERRORS as exc:
         console.print(f"[red]Repair of {manifold_dir.name} failed: {exc}[/red]")
         return False
-    console.print(f"  applied; originals in {service.backup_dir(manifold_dir)}",
-                  markup=False, highlight=False)
+    console.print("  applied", markup=False, highlight=False)
     if remaining.changed:
         console.print("[yellow]  still not clean after the repair:[/yellow]")
         _print(remaining)
@@ -77,7 +76,7 @@ def repair_all(root: RootOpt = None, apply: ApplyOpt = False) -> None:
         raise typer.Exit(code=1)
     service = RepairService()
     manifolds = sorted(p for p in datasets_root.iterdir()
-                       if p.is_dir() and not p.name.startswith(".") and p.name != BACKUP_DIR_NAME)
+                       if p.is_dir() and not p.name.startswith("."))
     failed = [m.name for m in manifolds if not _run(service, m, apply)]
     if not apply:
         console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")

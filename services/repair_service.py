@@ -4,18 +4,17 @@ Single Responsibility: decide what a manifold needs (shard rewrites, then a
 metadata resync against the repaired shards) and carry it out safely.
 
 - ``plan`` only reads; it is what the CLI prints in its default dry run.
-- ``apply`` rewrites damaged shards (verified before the swap), then
-  re-reads the shards and resyncs dataset_info.yaml and index.json.
-  Every replaced file is moved into
-  ``<datasets root>/.repair_backup/<UTC timestamp>/<manifold>/`` (same
-  volume, outside the manifold so it is never uploaded with it).
+- ``apply`` rewrites damaged shards, then re-reads the shards and resyncs
+  dataset_info.yaml and index.json. Every new file is written to a
+  temporary file, verified (shards are re-audited), and swapped in with an
+  atomic ``os.replace``; the original is deleted by that swap and no copy
+  is kept, so a crash never leaves a half-written file in place.
 - Running it again on a repaired manifold finds nothing to do.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 
 from tools.repair.metadata_fix import (
@@ -27,9 +26,8 @@ from tools.repair.metadata_fix import (
 from tools.repair.shard_fix import ShardFix, apply_shard_fix, plan_shard_fix
 from utils.shard_audit import ShardSetAudit, audit_shard_set, find_shards
 
-__all__ = ["BACKUP_DIR_NAME", "ManifoldRepairPlan", "RepairService", "physical_samples"]
+__all__ = ["ManifoldRepairPlan", "RepairService", "physical_samples"]
 
-BACKUP_DIR_NAME = ".repair_backup"
 _SPLITS = ("train", "val", "test")
 
 
@@ -113,13 +111,6 @@ def physical_samples(manifold_dir: Path, fixes: list[ShardFix] | None = None,
 class RepairService:
     """Plan and apply manifold repairs; see the module docstring for the safety rules."""
 
-    def __init__(self, stamp: str | None = None) -> None:
-        self.stamp = stamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-
-    def backup_dir(self, manifold_dir: Path) -> Path:
-        """Where this run moves the originals of ``manifold_dir``."""
-        return manifold_dir.parent / BACKUP_DIR_NAME / self.stamp / manifold_dir.name
-
     def plan(self, manifold_dir: Path) -> ManifoldRepairPlan:
         """Read-only: the shard fixes and metadata resync ``manifold_dir`` needs."""
         plan = ManifoldRepairPlan(manifold_dir=manifold_dir)
@@ -141,12 +132,11 @@ class RepairService:
     def apply(self, plan: ManifoldRepairPlan) -> ManifoldRepairPlan:
         """Carry ``plan`` out and return a fresh plan of what is left (normally nothing)."""
         manifold_dir = plan.manifold_dir
-        backup = self.backup_dir(manifold_dir)
         for fix in plan.shard_fixes:
-            apply_shard_fix(fix, backup / fix.shard.relative_to(manifold_dir))
+            apply_shard_fix(fix)
         physical = physical_samples(manifold_dir)
         if physical is not None:
             metadata = plan_metadata_fix(manifold_dir, physical)
             if metadata.changed:
-                apply_metadata_fix(metadata, backup)
+                apply_metadata_fix(metadata)
         return self.plan(manifold_dir)
