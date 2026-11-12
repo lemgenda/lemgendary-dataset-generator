@@ -5,10 +5,11 @@ from __future__ import annotations
 import io
 import itertools
 import json
+import logging
 import shutil
 import struct
 import tarfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,8 @@ from tqdm import tqdm
 
 from tools.modernize.common import SPLITS, update_dataset_info
 from tools.modernize.queue_items import _fast_has_tar_shards
+
+logger = logging.getLogger(__name__)
 
 TarMembers = list[tuple[str, bytes]]
 
@@ -33,19 +36,65 @@ def _detect_img_ext(b: bytes) -> str:
     return "webp"
 
 
-def _mds_sample_to_tar_members(fields: dict[str, bytes | None], key: str) -> TarMembers:
-    """Map one decoded MDS sample to its WebDataset tar members (name, payload)."""
+# Image columns written as their own tar members (column -> member suffix).
+_IMAGE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("image", ""),
+    ("target", ".target"),
+    ("mask", ".mask"),
+)
+# Columns that only name the sample.
+_KEY_COLUMNS = frozenset({"name"})
+# struct formats of the MDS fixed-width numeric encodings.
+_NUMERIC_FORMATS: dict[str, str] = {
+    "int": "<q", "int8": "<b", "int16": "<h", "int32": "<i", "int64": "<q",
+    "uint8": "<B", "uint16": "<H", "uint32": "<I", "uint64": "<Q",
+    "float16": "<e", "float32": "<f", "float64": "<d",
+}
+_TEXT_ENCODINGS = frozenset({"str", ""})
+
+
+def _decode_meta_value(encoding: str, raw: bytes) -> Any:
+    """Decode one MDS metadata column payload by its column encoding.
+
+    Raises ValueError for binary encodings (bytes, pil, pkl, ndarray, ...) that
+    cannot be represented safely in a JSON sidecar.
+    """
+    if encoding in _TEXT_ENCODINGS:
+        return raw.decode("utf-8")
+    if encoding == "json":
+        return json.loads(raw.decode("utf-8"))
+    fmt = _NUMERIC_FORMATS.get(encoding)
+    if fmt is None:
+        raise ValueError(f"binary MDS encoding {encoding!r} is not JSON-representable")
+    return struct.unpack(fmt, raw)[0]
+
+
+def _mds_sample_to_tar_members(
+    fields: Mapping[str, bytes | None], key: str, encodings: dict[str, str] | None = None
+) -> TarMembers:
+    """Map one decoded MDS sample to its WebDataset tar members (name, payload).
+
+    Image columns become ``<key>[.target|.mask].<ext>`` members. Every other
+    non-empty column (label, class, class_id, category, nima_scores, bbox,
+    keypoints, source, split, task, ...) is decoded by its MDS encoding and
+    stored in the ``<key>.json`` sidecar, so no metadata column is dropped.
+    """
+    encodings = encodings or {}
     members: TarMembers = []
-    for field_name, suffix in (("image", ""), ("target", ".target"), ("mask", ".mask")):
+    image_cols = {col for col, _ in _IMAGE_COLUMNS}
+    for field_name, suffix in _IMAGE_COLUMNS:
         payload = fields.get(field_name)
         if payload:
             members.append((f"{key}{suffix}.{_detect_img_ext(payload)}", payload))
 
     meta_dict: dict[str, Any] = {}
-    for meta_key in ("label", "split", "task"):
-        raw = fields.get(meta_key)
-        if raw:
-            meta_dict[meta_key] = raw.decode("utf-8", errors="replace")
+    for col, raw in fields.items():
+        if not raw or col in image_cols or col in _KEY_COLUMNS:
+            continue
+        try:
+            meta_dict[col] = _decode_meta_value(encodings.get(col, "str"), raw)
+        except (ValueError, UnicodeDecodeError, struct.error) as exc:
+            logger.warning("Sample %s: column %s not copied to JSON: %s", key, col, exc)
     if meta_dict:
         members.append((f"{key}.json", json.dumps(meta_dict, ensure_ascii=False).encode("utf-8")))
     return members
@@ -82,6 +131,7 @@ def _iter_mds_tar_members(
     sample_counter = 0
     for s_info in shards_meta:
         columns = s_info["column_names"]
+        encodings = dict(zip(columns, s_info.get("column_encodings", []), strict=False))
         mds_file = split_mds_dir / s_info["zip_data"]["basename"]
         if not mds_file.exists():
             raise FileNotFoundError(f"MDS shard file not found: {mds_file}")
@@ -91,7 +141,7 @@ def _iter_mds_tar_members(
             raw_name = fields.get("name")
             key = raw_name.decode("utf-8") if raw_name else f"sample_{sample_counter:08d}"
             sample_counter += 1
-            yield _mds_sample_to_tar_members(fields, key)
+            yield _mds_sample_to_tar_members(fields, key, encodings)
 
 
 def _add_tar_members(tf: tarfile.TarFile, members: TarMembers) -> None:
@@ -148,8 +198,8 @@ def _write_shards(
 
 def _transcode_split(
     split: str, mds_dir: Path, target: _ShardTarget, dctx: zstd.ZstdDecompressor
-) -> tuple[int, int]:
-    """Transcode one MDS split; return (samples, shards) written."""
+) -> tuple[int, int, int]:
+    """Transcode one MDS split; return (samples written, shards, samples expected)."""
     split_mds_dir = mds_dir / split if split != "all" else mds_dir
     with open(split_mds_dir / "index.json", "r", encoding="utf-8") as f:
         meta = json.load(f)
@@ -169,7 +219,7 @@ def _transcode_split(
         f"[MDS-TRANSCODE] Split '{split}' complete: {written:,} samples ->"
         f" {shards} shards."
     )
-    return written, shards
+    return written, shards, expected
 
 
 def _verify_shards(shards_dir: Path, total_shards: int) -> bool:
@@ -186,6 +236,22 @@ def _verify_shards(shards_dir: Path, total_shards: int) -> bool:
         f" ({total_shard_bytes / (1024**3):.1f} GB total)."
     )
     return True
+
+
+def _transcode_splits(
+    splits: list[str], mds_dir: Path, shards_dir: Path, base: _ShardTarget
+) -> tuple[int, int, int]:
+    """Transcode every split; return (samples written, shards, samples expected)."""
+    totals = [0, 0, 0]
+    dctx = zstd.ZstdDecompressor()
+    for split in splits:
+        split_out_dir = shards_dir / split if split != "all" else shards_dir
+        split_out_dir.mkdir(parents=True, exist_ok=True)
+        result = _transcode_split(
+            split, mds_dir, _ShardTarget(split_out_dir, base.ext, base.shard_size_samples), dctx
+        )
+        totals = [t + r for t, r in zip(totals, result, strict=True)]
+    return totals[0], totals[1], totals[2]
 
 
 def transcode_mds_to_webdataset(
@@ -209,17 +275,9 @@ def transcode_mds_to_webdataset(
         print(f"[ERROR] No valid MDS index.json discovered in {mds_dir}")
         return False
 
-    total_samples = 0
-    total_shards = 0
-    dctx = zstd.ZstdDecompressor()
-    for split in found_splits:
-        split_out_dir = shards_dir / split if split != "all" else shards_dir
-        split_out_dir.mkdir(parents=True, exist_ok=True)
-        written, shards = _transcode_split(
-            split, mds_dir, _ShardTarget(split_out_dir, ext, shard_size_samples), dctx
-        )
-        total_samples += written
-        total_shards += shards
+    total_samples, total_shards, total_expected = _transcode_splits(
+        found_splits, mds_dir, shards_dir, _ShardTarget(shards_dir, ext, shard_size_samples)
+    )
 
     update_dataset_info(
         target_dir,
@@ -235,9 +293,25 @@ def transcode_mds_to_webdataset(
 
     if not _verify_shards(shards_dir, total_shards):
         return False
+    if total_samples != total_expected:
+        print(
+            f"[ERROR] Sample count mismatch: wrote {total_samples:,} of {total_expected:,}"
+            " MDS samples. Legacy MDS directory kept."
+        )
+        return False
 
     if purge_mds:
-        print(f"[CLEANUP] Safely purging legacy MDS directory {mds_dir.name} to reclaim storage...")
-        shutil.rmtree(mds_dir, ignore_errors=True)
-        print("[SUCCESS] Legacy MDS directory purged.")
+        _purge_mds_dir(mds_dir)
     return True
+
+
+def _purge_mds_dir(mds_dir: Path) -> None:
+    """Delete the legacy MDS folder, logging (not ignoring) any failure."""
+    print(f"[CLEANUP] Safely purging legacy MDS directory {mds_dir.name} to reclaim storage...")
+    try:
+        shutil.rmtree(mds_dir)
+    except OSError as exc:
+        logger.error("Could not purge legacy MDS directory %s: %s", mds_dir, exc)
+        print(f"[WARN] Could not purge {mds_dir.name}: {exc}")
+        return
+    print("[SUCCESS] Legacy MDS directory purged.")

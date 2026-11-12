@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.76-STABLE` |
+| **Version** | `v16.9.77-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,19 @@
 ---
 
 ## Changelog
+
+### v16.9.77 - MDS Transcode Keeps Every Metadata Column
+
+- `tools/modernize/mds_transcode.py`: every non-image MDS column (class,
+  class_id, category, nima_scores, bbox, keypoints, source and so on) is
+  decoded by its `column_encodings` entry (str, json, int and float types)
+  and copied into the `<key>.json` sidecar. Binary columns such as pickles
+  are logged, not dumped as text. Before, only label, split and task were
+  kept (audit 2.1.2).
+- The legacy `mds/` folder is now purged only when the written sample count
+  equals the count in the MDS index, and purge errors are logged instead of
+  ignored (audit 2.2.1).
+- `tests/test_mds_transcode.py`: synthetic zstd MDS shard fixture.
 
 ### v16.9.76 - Converters Keep Masks and Labels, Reject Corrupt Images, Write Contiguous Groups
 
