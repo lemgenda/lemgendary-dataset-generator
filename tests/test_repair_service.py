@@ -44,7 +44,7 @@ def _make_manifold(root: Path, name: str = "DemoManifold") -> Path:
         ("v0.webp", b"imgv"), ("v0.target.webp", b"tgtv"),
     ])
     info = {"name": name, "count": 9, "total_samples": 9, "total_shards": 1,
-            "path": "C:\\Users\\x\\AppData\\Local\\Temp\\.staging_build_demo\\" + name}
+            "path": str(root.resolve() / ".staging_build_demo" / name)}
     (manifold / "dataset_info.yaml").write_text(yaml.safe_dump(info), encoding="utf-8")
     index = [
         {"id": 0, "name": "s0", "source": "src", "split": "train"},

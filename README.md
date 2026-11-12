@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.83-STABLE` |
+| **Version** | `v16.9.84-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,12 @@
 ---
 
 ## Changelog
+
+### v16.9.84 - Validator Compliance
+
+- `tests/test_repair_service.py`: the staging-path fixture is built from
+  the test's temp folder rather than a literal absolute path.
+- README: the v16.9.76 changelog heading fits 80 columns.
 
 ### v16.9.83 - Shard Pair Completeness
 
@@ -148,7 +154,7 @@
   ignored (audit 2.2.1).
 - `tests/test_mds_transcode.py`: synthetic zstd MDS shard fixture.
 
-### v16.9.76 - Converters Keep Masks and Labels, Reject Corrupt Images, Write Contiguous Groups
+### v16.9.76 - Masks, Labels, Corrupt Images, Contiguous Groups
 
 - New `utils/image_payload.py`: the single place that turns raw bytes into
   shard payloads. Zero-byte or undecodable images raise `CorruptImageError`
