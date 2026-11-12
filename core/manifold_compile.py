@@ -117,12 +117,13 @@ def _plan_tasks(ctx: ManifoldContext, affixes: tuple[str, str]) -> list[TaskItem
     """Plan the worker tasks of every source ref; NSFW sources are ratio-balanced."""
     sfw_tasks: list[TaskItem] = []
     nsfw_tasks: list[TaskItem] = []
+    exclude_dirs = tuple(ctx.model_config.get("scan_exclude_dirs") or ())
     for ref_entry in cast("list[dict[str, Any]]", ctx.model_config.get("refs", [])):
         src = resolve_ref(ref_entry, affixes)
         if src is None:
             continue
         ann = load_annotations(src.dataset)
-        images, is_virtual = scan_images(src, ann)
+        images, is_virtual = scan_images(src, ann, exclude_dirs)
         if is_virtual:
             tasks = shard_tasks(ctx, src, ann)
         else:

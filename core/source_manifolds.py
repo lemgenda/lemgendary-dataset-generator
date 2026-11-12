@@ -18,7 +18,12 @@ import yaml
 
 from core.paths import UNIFIED_DATA
 
-__all__ = ["SourceManifold", "find_source_manifold", "label_strategy_for_folder"]
+__all__ = [
+    "SourceManifold",
+    "find_source_manifold",
+    "label_strategy_for_folder",
+    "registry_entry_for_folder",
+]
 
 _REF_PREFIX = "kaggle://"
 
@@ -60,12 +65,21 @@ def find_source_manifold(slug: str, registry: Path = UNIFIED_DATA) -> SourceMani
     return None
 
 
-def label_strategy_for_folder(folder: str, registry: Path = UNIFIED_DATA) -> str | None:
-    """The ``label_json`` strategy of the entry compiled into ``folder``, else None.
+def registry_entry_for_folder(folder: str, registry: Path = UNIFIED_DATA) -> dict[str, Any] | None:
+    """The registry entry compiled into ``folder``, else None.
 
     Raises ``OSError`` or ``yaml.YAMLError`` when the registry cannot be read.
     """
     for key, entry in _entries(registry).items():
         if _folder(key, entry) == folder:
-            return entry.get("label_json")
+            return entry
     return None
+
+
+def label_strategy_for_folder(folder: str, registry: Path = UNIFIED_DATA) -> str | None:
+    """The ``label_json`` strategy of the entry compiled into ``folder``, else None.
+
+    Raises ``OSError`` or ``yaml.YAMLError`` when the registry cannot be read.
+    """
+    entry = registry_entry_for_folder(folder, registry)
+    return entry.get("label_json") if entry else None

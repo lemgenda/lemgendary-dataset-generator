@@ -34,7 +34,9 @@ from services.label_repair_service import (
     read_classes,
 )
 from services.repair_service import ManifoldRepairPlan, RepairService
+from services.sample_policy_service import SamplePolicyService
 from tools.repair.label_restore import LabelRestoreError
+from tools.repair.sample_policy_fix import SamplePolicyError, SamplePolicyPlan
 from tools.repair.shard_fix import ShardFixError
 from utils.label_json import LABEL_JSON_BUILDERS
 
@@ -72,9 +74,10 @@ class LabelRepairOptions:
 _REPAIR_ERRORS = (OSError, tarfile.TarError, ShardFixError, ValueError)
 _LABEL_ERRORS = (OSError, tarfile.TarError, LabelRestoreError, ValueError, UnicodeDecodeError)
 _CLASSES_FILE = "classes.txt"
+_POLICY_ERRORS = (OSError, tarfile.TarError, SamplePolicyError, ValueError, yaml.YAMLError)
 
 
-def _print(plan: ManifoldRepairPlan | LabelRepairPlan) -> None:
+def _print(plan: ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan) -> None:
     for line in plan.report():
         console.print(line, markup=False, highlight=False)
 
@@ -173,3 +176,41 @@ def repair_labels(opts: LabelRepairOptions) -> None:
     if not apply:
         console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
     raise typer.Exit(code=1 if plan.mismatched else 0)
+
+
+def _policy_service(manifold_dir: Path) -> SamplePolicyService:
+    try:
+        service = SamplePolicyService.for_manifold(manifold_dir)
+    except (OSError, yaml.YAMLError) as exc:
+        console.print(f"[red]Cannot read the registry: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if service is None:
+        console.print(f"[red]{manifold_dir.name}: the registry entry has no sample policy"
+                      " (label_json or task)[/red]")
+        raise typer.Exit(code=1)
+    return service
+
+
+@repair_app.command("sample-policy")
+def repair_sample_policy(model: ModelOpt = None, manifold: ManifoldOpt = None,
+                         apply: ApplyOpt = False) -> None:
+    """Apply the registry's sample policy: drop copies, auxiliary images and no-face
+    samples, and re-split so val holds landmark-bearing photos."""
+    manifold_dir = require_target(TargetOptions(model=model, manifold=manifold))
+    service = _policy_service(manifold_dir)
+    try:
+        plan = service.plan(manifold_dir)
+        _print(plan)
+        if apply and plan.changed:
+            remaining = service.apply(plan)
+            console.print("  applied", markup=False, highlight=False)
+            if remaining.changed:
+                console.print("[yellow]  still not clean after the repair:[/yellow]")
+                _print(remaining)
+                raise typer.Exit(code=1)
+    except _POLICY_ERRORS as exc:
+        console.print(f"[red]Sample policy repair of {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=0)

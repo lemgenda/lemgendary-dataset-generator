@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tools.repair.sample_policy_fix import enforce_sample_policy
 from tools.zip_stream_common import (
     STREAM_ERRORS,
     MemberEntry,
@@ -196,6 +197,8 @@ def stream_zip_to_webdataset(
             )
 
         if not _verify_shards(shards_dir, opts.shard_ext.lstrip(".")):
+            return False
+        if not enforce_sample_policy(target_dir):
             return False
 
         post_process_zip(zip_path, opts.legacy_dir, opts.delete_zip)

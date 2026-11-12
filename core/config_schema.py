@@ -55,6 +55,16 @@ class SourceRef(BaseModel):
     tag: str = "sfw"
 
 
+class KeyLayoutSpec(BaseModel):
+    """Key index layout of one source in an older compile (core.sample_policy.KeyLayout)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    copies: int = Field(ge=0)
+    photos: int = Field(gt=0)
+
+
 # ─── Registry-level ─────────────────────────────────────────────────────────
 class GlobalConstraints(BaseModel):
     """Global size bounds applied to every non-forex manifold."""
@@ -209,6 +219,14 @@ class DatasetEntry(BaseModel):
                 f"label_json '{value}' is not one of {sorted(LABEL_JSON_BUILDERS)}"
             )
         return value
+
+    # Folder-name globs (case-insensitive) the source image scan never enters:
+    # auxiliary folders (SFHQ segmentations/) and duplicate sample folders.
+    scan_exclude_dirs: list[str] = Field(default_factory=list)
+    # Key index layout per source of a manifold compiled before scan_exclude_dirs
+    # existed (sample copies, then photos, then auxiliary images); the sample
+    # policy repair drops the copies and auxiliary images by key.
+    key_layouts: list[KeyLayoutSpec] = Field(default_factory=list)
 
     # Policies (Phase 3 / Phase 4 consumers — optional; defaults apply)
     image_format: ImageFormatPolicy = Field(default_factory=ImageFormatPolicy)

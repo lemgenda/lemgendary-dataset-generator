@@ -41,6 +41,7 @@ __all__ = [
     "apply_label_restore",
     "index_label_files",
     "plan_label_restore",
+    "read_sidecars",
 ]
 
 _LABEL_EXT = ".txt"
@@ -101,7 +102,7 @@ def _base(key: str) -> str:
     return key.rpartition("/")[2]
 
 
-def _sidecars(path: Path) -> dict[str, dict[str, Any] | None]:
+def read_sidecars(path: Path) -> dict[str, dict[str, Any] | None]:
     """Parsed JSON sidecar of every sample key in shard order (None: missing or unreadable)."""
     sidecars: dict[str, dict[str, Any] | None] = {}
     with tarfile.open(path, "r:") as tf:
@@ -184,7 +185,7 @@ def plan_label_restore(shard: Path, labels: dict[str, Path], strategy: str) -> L
     """Read-only: which samples of ``shard`` the labels would change, and what does not fit."""
     tally = _Tally()
     samples = 0
-    for key, meta in _sidecars(shard).items():
+    for key, meta in read_sidecars(shard).items():
         samples += 1
         _tally_sample(tally, key, meta, labels.get(_base(key)), strategy)
     return LabelShardPlan(

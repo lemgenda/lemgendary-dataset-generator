@@ -335,6 +335,24 @@ datasets:
     label_json: face_landmarks
     val_split: 0.12
     labeling: true
+    scan_exclude_dirs:
+      - segmentations
+      - landmarks
+      - a small sample*
+      - a tiny sample*
+    key_layouts:
+      - source: synthetic-faces-high-quality-sfhq-part-1
+        copies: 580
+        photos: 89785
+      - source: synthetic-faces-high-quality-sfhq-part-2
+        copies: 790
+        photos: 91361
+      - source: synthetic-faces-high-quality-sfhq-part-3
+        copies: 880
+        photos: 118358
+      - source: synthetic-faces-high-quality-sfhq-part-4
+        copies: 780
+        photos: 125754
     refs:
       - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
       - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2

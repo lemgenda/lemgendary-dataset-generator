@@ -5,9 +5,11 @@ or a ``manifold://<Name>`` sibling manifold that is recirculated. URL-based
 Parquet manifests are downloaded here before the images are scanned.
 """
 
+import fnmatch
 import hashlib
 import logging
 import os
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,11 +63,23 @@ RECIRCULATION_TAGS = {
 _DOWNLOAD_WORKERS = 16
 
 
-def fast_scan(path, valid_exts):
-    """Yield every file under ``path`` whose extension is in ``valid_exts``."""
+def is_excluded_dir(name: str, exclude_dirs: Iterable[str]) -> bool:
+    """True when folder ``name`` matches one of the registry's ``scan_exclude_dirs`` globs."""
+    lowered = name.lower()
+    return any(fnmatch.fnmatchcase(lowered, pattern.lower()) for pattern in exclude_dirs)
+
+
+def fast_scan(path, valid_exts, exclude_dirs: tuple[str, ...] = ()):
+    """Yield every file under ``path`` whose extension is in ``valid_exts``.
+
+    Folders matching ``exclude_dirs`` (the registry entry's
+    ``scan_exclude_dirs``) are never entered: auxiliary images such as face
+    parsing maps and duplicate sample folders are not source images.
+    """
     for entry in os.scandir(path):
         if entry.is_dir():
-            yield from fast_scan(entry.path, valid_exts)
+            if not is_excluded_dir(entry.name, exclude_dirs):
+                yield from fast_scan(entry.path, valid_exts, exclude_dirs)
         elif entry.is_file():
             ext = entry.name[entry.name.rfind('.'):].lower()
             if ext in valid_exts:
@@ -273,13 +287,15 @@ def _download_all(to_download: list[tuple[str, str]], slug: str) -> None:
             pass
 
 
-def scan_images(src: ResolvedRef, ann: SourceAnnotations) -> tuple[list[str], bool]:
+def scan_images(src: ResolvedRef, ann: SourceAnnotations,
+                exclude_dirs: tuple[str, ...] = ()) -> tuple[list[str], bool]:
     """Return the source's image paths and whether it is a virtual (sharded Parquet) source.
 
-    URL-based Parquet manifests are downloaded to ``<dataset>/downloads``
-    first and their downloaded images returned.
+    Folders matching ``exclude_dirs`` are skipped. URL-based Parquet
+    manifests are downloaded to ``<dataset>/downloads`` first and their
+    downloaded images returned.
     """
-    images = list(fast_scan(str(src.dataset), VALID_EXTS))
+    images = list(fast_scan(str(src.dataset), VALID_EXTS, exclude_dirs))
     if images or ann.fmt != "parquet" or not ann.shards:
         return images, False
 

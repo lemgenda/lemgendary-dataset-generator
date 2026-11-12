@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.96-STABLE` |
+| **Version** | `v16.9.97-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,37 @@
 ---
 
 ## Changelog
+
+### v16.9.97 - Face Detection Sample Policy and Landmark Val (R4-B6)
+
+- RetinaFace was compiled by scanning every image folder of SFHQ parts 1-4,
+  so half its samples were face-parsing maps from `segmentations/` and 3,030
+  were copies from the "small sample" / "tiny sample" folders. New registry
+  field `scan_exclude_dirs` (folder-name globs): the source scan
+  (`core/compile_sources.py` `fast_scan`, `is_excluded_dir`) never enters
+  those folders. RetinaFace excludes `segmentations`, `landmarks`,
+  `a small sample*` and `a tiny sample*`.
+- New registry field `key_layouts` records the key index layout of the
+  older compile per source (sample copies, then photos, then auxiliary
+  images); RetinaFace lists all four SFHQ parts.
+- Sample policies (`core/sample_policy.py`), chosen by the registry entry
+  (`label_json: face_landmarks` or task `detection-face`): the face
+  detection policy drops samples without a face, and val is a seeded,
+  per-source share (`val_split`) of the landmark-bearing photos, drawn by
+  source file id; box-only photos stay in train.
+- `repair sample-policy` (dry run unless `--apply`;
+  `tools/repair/sample_policy_fix.py`, `services/sample_policy_service.py`)
+  drops copies and auxiliary images by key, then no-face samples and
+  duplicate copies, and re-splits. Moved samples go to new shards, each
+  changed shard is rewritten to a temporary file, verified and swapped in
+  atomically (an emptied shard is deleted, no copies kept), shard numbers
+  are made contiguous, and index.json and dataset_info.yaml `count` follow.
+  A re-run finds nothing to do.
+- The compiler applies the same policy after packing shards
+  (`stream_zip_to_webdataset`, `convert_loose_directory_to_webdataset`).
+- `SHARD_SAMPLES` (`utils/container_stream.py`) is the shared shard size;
+  `read_sidecars` (`tools/repair/label_restore.py`) is public.
+- Tests: `tests/test_sample_policy.py`.
 
 ### v16.9.96 - `sync pull`: Missing Root, File-by-File Fallback, `--only` (R4-B7)
 

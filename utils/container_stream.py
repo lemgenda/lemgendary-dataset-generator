@@ -37,6 +37,8 @@ __all__ = [
     "update_dataset_info_format",
 ]
 
+# Samples per WebDataset shard written by the converters and repairs.
+SHARD_SAMPLES = 5000
 IMAGE_WEBP_QUALITY = 92
 TARGET_WEBP_QUALITY = 95
 

@@ -28,8 +28,10 @@ from tools.modernize.common import (
     scan_loose_split,
 )
 from tools.modernize.loose_verify import missing_loose_members
+from tools.repair.sample_policy_fix import enforce_sample_policy
 from utils.container_stream import (
     IMAGE_WEBP_QUALITY,
+    SHARD_SAMPLES,
     TARGET_WEBP_QUALITY,
     open_loose_mds_writer,
     prepare_mds_split_dir,
@@ -55,7 +57,7 @@ _MISSING_PREVIEW = 10
 class LooseConvertOptions:
     """Options shared by the loose-directory converters."""
 
-    shard_size_samples: int = 5000
+    shard_size_samples: int = SHARD_SAMPLES
     mds_shard_size_bytes: int = 512 * 1024 * 1024
     transcode_webp: bool = True
     max_workers: int | None = None
@@ -199,7 +201,7 @@ def convert_loose_directory_to_webdataset(
 
     if opts.purge_loose:
         _purge_after_verification(source_dir, written, opts, rejects)
-    return True
+    return enforce_sample_policy(target_dir)
 
 
 @dataclass(frozen=True)
