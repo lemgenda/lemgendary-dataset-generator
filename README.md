@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.90-STABLE` |
+| **Version** | `v16.9.91-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,13 @@
 ---
 
 ## Changelog
+
+### v16.9.91 - Validator Compliance for the Source-Manifold Lookup
+
+- `core/source_manifolds.py`, `tests/test_label_json.py`: no literal Kaggle
+  owner; the test builds the source handle from `default_owner()`
+  (ecosystem file).
+- `unified_data.yaml`: LF line endings in the working copy again.
 
 ### v16.9.90 - Quick Compile Takes a Shard Extension
 

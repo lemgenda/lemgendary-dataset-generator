@@ -14,6 +14,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from core.config_schema import DatasetEntry
+from core.kaggle_identity import default_owner
 from core.paths import UNIFIED_DATA
 from core.source_manifolds import find_source_manifold
 from tools.modernize.loose_convert import convert_loose_directory_to_webdataset
@@ -113,12 +114,12 @@ class RegistryTests(unittest.TestCase):
 
     def test_retinaface_source_manifold(self) -> None:
         """The Kaggle loose manifold maps to LemGendizedRetinaFace with face_landmarks."""
-        found = find_source_manifold("lemtreursi/lemgendizedretinafacemobilenetlarge",
+        found = find_source_manifold(f"{default_owner()}/lemgendizedretinafacemobilenetlarge",
                                      UNIFIED_DATA)
         assert found is not None
         self.assertEqual((found.key, found.modernized_folder, found.label_json),
                          ("retinaface_mobilenet", "LemGendizedRetinaFace", "face_landmarks"))
-        self.assertIsNone(find_source_manifold("lemtreursi/unknown", UNIFIED_DATA))
+        self.assertIsNone(find_source_manifold(f"{default_owner()}/unknown", UNIFIED_DATA))
 
     def test_unknown_strategy_rejected(self) -> None:
         """label_json must name a registered builder."""

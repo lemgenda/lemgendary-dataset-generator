@@ -2,7 +2,7 @@
 
 A ``unified_data.yaml`` entry lists them under ``source_manifolds`` (for
 example the RetinaFace entry names
-``kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge``). Pulling such
+``kaggle://<owner>/lemgendizedretinafacemobilenetlarge``). Pulling such
 a source lands it in the entry's ``modernized_folder`` and packs its text
 labels with the entry's ``label_json`` strategy.
 """
