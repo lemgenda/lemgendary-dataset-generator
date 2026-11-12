@@ -1,8 +1,10 @@
 """One WebDataset sample: its raw members, their encoding and contiguous writing.
 
 A sample groups every member that shares a key: the primary image, an
-optional restoration target, an optional segmentation mask and an optional
-label sidecar. Converters build a :class:`RawSample`, encode it with
+optional restoration target, an optional segmentation mask, an optional
+label sidecar and, when the manifold names a ``label_json`` strategy
+(:mod:`utils.label_json`), a JSON sidecar derived from a text label.
+Converters build a :class:`RawSample`, encode it with
 :func:`encode_sample` (which rejects corrupt images) and write the result
 with :func:`write_sample`, which always places the whole group contiguously
 inside the tar shard so sequential WebDataset readers never seek.
@@ -11,6 +13,7 @@ inside the tar shard so sequential WebDataset readers never seek.
 from __future__ import annotations
 
 import io
+import json
 import tarfile
 from dataclasses import dataclass
 from typing import Any
@@ -25,6 +28,7 @@ from utils.image_payload import (
     encode_image_payload,
     encode_mask_payload,
 )
+from utils.label_json import build_label_json
 
 __all__ = [
     "LABEL_EXTS",
@@ -46,6 +50,8 @@ __all__ = [
 LABEL_EXTS: tuple[str, ...] = (".txt", ".json")
 TARGET_SUFFIX = ".target"
 MASK_SUFFIX = ".mask"
+_TEXT_LABEL_EXT = ".txt"
+_JSON_LABEL_EXT = ".json"
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,7 @@ class RawSample:
     mask: RawMember | None = None
     label: RawMember | None = None
     primary_quality: int = IMAGE_WEBP_QUALITY
+    label_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,17 +123,36 @@ def encode_sample(raw: RawSample, transcode_webp: bool) -> EncodedSample:
         )
         members.append((f"{raw.key}{TARGET_SUFFIX}{t_ext}", t_data))
     if raw.mask is not None:
+        if raw.mask.payload == raw.primary.payload:
+            raise CorruptImageError(
+                f"{raw.key}{MASK_SUFFIX}: mask is a byte copy of the image, not a class mask"
+            )
         m_data, m_ext = encode_mask_payload(raw.mask.payload, f"{raw.key}{MASK_SUFFIX}")
         members.append((f"{raw.key}{MASK_SUFFIX}{m_ext}", m_data))
     if raw.label is not None:
-        if not raw.label.payload:
-            raise CorruptImageError(f"{raw.key}{raw.label.ext}: zero-byte label sidecar")
-        try:
-            raw.label.payload.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise CorruptImageError(f"{raw.key}{raw.label.ext}: label is not UTF-8") from exc
-        members.append((f"{raw.key}{raw.label.ext}", raw.label.payload))
+        members.extend(_label_members(raw, raw.label))
     return EncodedSample(key=raw.key, members=tuple(members))
+
+
+def _label_members(raw: RawSample, label: RawMember) -> list[tuple[str, bytes]]:
+    """The label sidecar, plus the JSON sidecar ``raw.label_json`` derives from a text label."""
+    if not label.payload:
+        raise CorruptImageError(f"{raw.key}{label.ext}: zero-byte label sidecar")
+    try:
+        text = label.payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise CorruptImageError(f"{raw.key}{label.ext}: label is not UTF-8") from exc
+    members = [(f"{raw.key}{label.ext}", label.payload)]
+    if raw.label_json is None or label.ext != _TEXT_LABEL_EXT:
+        return members
+    try:
+        derived = build_label_json(raw.label_json, text)
+    except ValueError as exc:
+        raise CorruptImageError(f"{raw.key}{label.ext}: unreadable label ({exc})") from exc
+    if derived is not None:
+        payload = json.dumps(derived, separators=(",", ":")).encode("utf-8")
+        members.append((f"{raw.key}{_JSON_LABEL_EXT}", payload))
+    return members
 
 
 def encode_sample_or_reject(raw: RawSample, transcode_webp: bool) -> SampleOutcome:

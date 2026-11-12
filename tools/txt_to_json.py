@@ -4,6 +4,8 @@ import json
 import logging
 from pathlib import Path
 
+from utils.label_json import face_landmarks_json
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,20 +24,9 @@ def parse_nima_line(line: str):
 
 
 def parse_retinaface_lines(lines: list):
-    """Parses standard YOLO/RetinaFace bounding boxes (can have multiple faces)."""
-    faces = []
-    for line in lines:
-        parts = line.strip().split()
-        if not parts:
-            continue
-        if len(parts) < 5:
-            continue
-
-        class_id = int(parts[0])
-        coords = [float(x) for x in parts[1:5]]
-
-        faces.append({"category_id": class_id, "bbox_cxcywh_normalized": coords})
-    return {"face_count": len(faces), "objects": faces}
+    """Face objects (box and, when present, the five landmarks) of RetinaFace YOLO lines."""
+    faces = face_landmarks_json("\n".join(line.rstrip() for line in lines))
+    return faces if faces is not None else {"face_count": 0, "objects": []}
 
 
 def _label_payload(file_path: Path, model_type: str, lines: list[str]) -> dict:

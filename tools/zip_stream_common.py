@@ -32,6 +32,7 @@ __all__ = [
     "IMAGE_EXTS",
     "STREAM_ERRORS",
     "MemberEntry",
+    "SampleEncoding",
     "SplitCompanions",
     "StreamContext",
     "ZipLayout",
@@ -72,6 +73,17 @@ StemMapsBySplit = dict[str, StemMap]
 
 
 @dataclass(frozen=True)
+class SampleEncoding:
+    """How members are encoded: WebP transcoding and the label JSON strategy."""
+
+    transcode_webp: bool = True
+    label_json: str | None = None  # utils.label_json strategy for text labels
+
+
+_ENCODING_KEYS = ("transcode_webp", "label_json")
+
+
+@dataclass(frozen=True)
 class ZipStreamOptions:
     """Tunables shared by the WebDataset and MDS zip streamers."""
 
@@ -80,16 +92,33 @@ class ZipStreamOptions:
     mds_shard_size_bytes: int = 512 * 1024 * 1024
     delete_zip: bool = False
     legacy_dir: Path | None = None
-    transcode_webp: bool = True
     max_workers: int | None = None
+    encoding: SampleEncoding = field(default_factory=SampleEncoding)
+
+    @property
+    def transcode_webp(self) -> bool:
+        """True when images are transcoded to WebP."""
+        return self.encoding.transcode_webp
+
+    @property
+    def label_json(self) -> str | None:
+        """The JSON sidecar strategy for text labels, if any."""
+        return self.encoding.label_json
 
 
 def resolve_options(
     options: ZipStreamOptions | None, overrides: dict[str, Any]
 ) -> ZipStreamOptions:
-    """Merge legacy keyword arguments over `options` (unknown keys raise TypeError)."""
+    """Merge legacy keyword arguments over `options` (unknown keys raise TypeError).
+
+    ``transcode_webp`` and ``label_json`` go into ``options.encoding``.
+    """
     base = options if options is not None else ZipStreamOptions()
-    return replace(base, **overrides) if overrides else base
+    rest = dict(overrides)
+    encoding = {key: rest.pop(key) for key in _ENCODING_KEYS if key in rest}
+    if encoding:
+        base = replace(base, encoding=replace(base.encoding, **encoding))
+    return replace(base, **rest) if rest else base
 
 
 @dataclass(frozen=True)
@@ -99,6 +128,7 @@ class StreamContext:
     zf: zipfile.ZipFile
     pool: ThreadPoolExecutor
     transcode_webp: bool
+    label_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,11 +176,14 @@ def raw_zip_samples(
 
 
 def encode_samples(ctx: StreamContext, raws: Iterator[RawSample]) -> Iterator[SampleOutcome]:
-    """Validate and encode every sample in the pool; corrupt ones come back rejected."""
-    transcode = ctx.transcode_webp
+    """Validate and encode every sample in the pool; corrupt ones come back rejected.
+
+    ``ctx.label_json`` names the JSON sidecar strategy applied to text labels.
+    """
+    transcode, label_json = ctx.transcode_webp, ctx.label_json
 
     def _encode(raw: RawSample) -> SampleOutcome:
-        return encode_sample_or_reject(raw, transcode)
+        return encode_sample_or_reject(replace(raw, label_json=label_json), transcode)
 
     return iter(ctx.pool.map(_encode, raws, chunksize=8))
 

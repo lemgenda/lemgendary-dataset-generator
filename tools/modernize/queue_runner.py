@@ -40,6 +40,7 @@ def _convert_from_zip(it: ManifoldQueueItem, fmt: str, options: ConvertOptions) 
             legacy_dir=legacy_dir,
             transcode_webp=True,
             max_workers=options.workers,
+            label_json=it.label_json,
         )
     # Default: webdataset (and fallback for other formats via zip)
     if fmt not in ("webdataset",):
@@ -56,6 +57,7 @@ def _convert_from_zip(it: ManifoldQueueItem, fmt: str, options: ConvertOptions) 
         legacy_dir=legacy_dir,
         transcode_webp=True,
         max_workers=options.workers,
+        label_json=it.label_json,
     )
 
 
@@ -81,6 +83,7 @@ def _convert_from_loose(it: ManifoldQueueItem, fmt: str, options: ConvertOptions
         "transcode_webp": True,
         "max_workers": options.workers,
         "purge_loose": options.cleanup.purge_loose if it.has_loose_files else False,
+        "label_json": it.label_json,
     }
     if fmt == "mds":
         ok = convert_loose_directory_to_mds(

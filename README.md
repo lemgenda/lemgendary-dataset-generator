@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.87-STABLE` |
+| **Version** | `v16.9.88-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,44 @@
 ---
 
 ## Changelog
+
+### v16.9.88 - RetinaFace Landmarks From the Kaggle Source; ParseNet Mask Guard
+
+- Owner-named sources inspected (R2-D3): both Kaggle datasets are loose
+  (pre-WebDataset) manifolds of SFHQ parts 1-4, 853,546 samples each.
+  - `lemtreursi/lemgendizedretinafacemobilenetlarge` (about 93 GB):
+    `images/{train,val}/*.jpg` and `labels/{train,val}/*.txt`, one YOLO line
+    per face `0 cx cy w h` plus five landmarks (left eye, right eye, nose,
+    left and right mouth corner) as ten normalised values.
+  - `lemtreursi/lemgendizedparsenetlarge` (about 139 GB):
+    `images/{train,val}/*.jpg` and `masks/{train,val}/*.jpg`, but every
+    sampled "mask" is a byte copy of its RGB face photo. It holds no
+    segmentation masks, so ParseNet cannot be rebuilt from it.
+- `unified_data.yaml` / `core/config_schema.py`: new entry fields
+  `source_manifolds` (loose Kaggle manifolds a recompile is packed from)
+  and `label_json` (JSON sidecar strategy, validated against
+  `utils.label_json.LABEL_JSON_BUILDERS`). `retinaface_mobilenet` lists the
+  Kaggle source and uses `face_landmarks`.
+- `utils/label_json.py` (new): `face_landmarks` turns each YOLO face line
+  into `{"face_count", "objects": [{"category_id",
+  "bbox_cxcywh_normalized", "landmarks_normalized"}]}`, the layout the
+  training suite's container decoder reads. `tools/txt_to_json.py` uses it,
+  so the legacy converter no longer drops the landmarks (the cause of the
+  landmark-free `.json` members in the current RetinaFace shards).
+- `utils/sample_group.py`: with a `label_json` strategy every `.txt` label
+  also gets a `<key>.json` member; a `.mask` member that is a byte copy of
+  its image is rejected as not a class mask.
+- `core/source_manifolds.py` (new), `sources/kaggle.py`,
+  `core/sync_download.py`: `sync pull` of a registered source manifold lands
+  in the entry's `modernized_folder` and streams it with its `label_json`
+  strategy. `tools/zip_stream_*.py` (`SampleEncoding` groups
+  `transcode_webp` and `label_json`), `tools/modernize/loose_convert.py`
+  and the modernization queue pass the strategy through.
+- `tests/test_label_json.py` (new). Checked end to end on a Kaggle sample
+  (6 RetinaFace samples, 3 ParseNet samples): the RetinaFace shard holds
+  `.webp`, `.txt` and `.json` per sample and the training suite's decoder
+  reads the same 15-value target from both; every ParseNet sample is
+  rejected.
 
 ### v16.9.87 - Forex Timestamps Are Seconds
 

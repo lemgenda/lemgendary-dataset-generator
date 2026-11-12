@@ -43,6 +43,8 @@ class ManifoldSources(ManifoldRegistryEntry):
     target_dir: Path | None = None
     legacy_dir: Path | None = None
     zip_path: Path | None = None
+    # JSON sidecar strategy for text labels (registry ``label_json``).
+    label_json: str | None = None
 
 
 @dataclass
@@ -219,6 +221,7 @@ def _queue_item(datasets_root: Path, key: str, ds: dict[str, Any]) -> ManifoldQu
         target_dir=target_dir,
         legacy_dir=legacy_dir if legacy_dir.exists() else None,
         zip_path=_find_zip(datasets_root, mod_folder_name, name),
+        label_json=ds.get("label_json"),
         **_scan_target(target_dir, can_fmt),
     )
 

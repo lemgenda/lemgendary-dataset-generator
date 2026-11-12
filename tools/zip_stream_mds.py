@@ -98,7 +98,8 @@ def _stream_archive(
         print(f"[STREAM-MDS] Extracted {layout.metadata_count} metadata files.")
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            ctx = StreamContext(zf=zf, pool=pool, transcode_webp=opts.transcode_webp)
+            ctx = StreamContext(zf=zf, pool=pool, transcode_webp=opts.transcode_webp,
+                                label_json=opts.label_json)
             run = _MdsRun(ctx, mds, rejects)
             for split, entries, companions in sample_entries(layout):
                 _stream_mds_split(run, split, entries, companions)

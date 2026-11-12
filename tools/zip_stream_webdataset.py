@@ -135,7 +135,8 @@ def _stream_archive(
             f" {target_dir.name}."
         )
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            ctx = StreamContext(zf=zf, pool=pool, transcode_webp=opts.transcode_webp)
+            ctx = StreamContext(zf=zf, pool=pool, transcode_webp=opts.transcode_webp,
+                                label_json=opts.label_json)
             _stream_layout(ctx, layout, shards_dir, opts, rejects)
     rejects.report()
 

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from formats.mds import LOOSE_MDS_COLUMNS
 from tools import zip_stream_common as _common
-from tools.zip_stream_common import ZipStreamOptions
+from tools.zip_stream_common import SampleEncoding, ZipStreamOptions
 from tools.zip_stream_mds import stream_zip_to_mds
 from tools.zip_stream_webdataset import stream_zip_to_webdataset
 from utils import container_stream as _container
@@ -91,8 +91,8 @@ def main() -> int:
         mds_shard_size_bytes=args.mds_shard_mb * 1024 * 1024,
         delete_zip=args.delete_zip,
         legacy_dir=args.delete_legacy_dir,
-        transcode_webp=not args.no_webp,
         max_workers=args.workers,
+        encoding=SampleEncoding(transcode_webp=not args.no_webp),
     )
 
     if args.format == "webdataset":

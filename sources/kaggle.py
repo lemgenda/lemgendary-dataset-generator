@@ -24,42 +24,59 @@ from core.common_sync import (
     track_kaggle_dataset_status,
 )
 from core.kaggle_identity import default_owner
+from core.source_manifolds import SourceManifold, find_source_manifold
 from tools.sync_kaggle_metadata import sync_metadata
 
 logger = logging.getLogger(__name__)
 logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 
-def _resolve_manifold_paths(clean_repo_id: str, output_dir: str) -> tuple[Path, Path, str, str]:
-    """Resolve target manifold directory and root datasets directory."""
+def _source_manifold(clean_repo_id: str) -> SourceManifold | None:
+    """The registry entry that packs ``clean_repo_id`` as its source, else None."""
+    try:
+        return find_source_manifold(clean_repo_id)
+    except (OSError, yaml.YAMLError) as exc:
+        logger.warning("Source manifold lookup for %s failed: %s", clean_repo_id, exc)
+        return None
+
+
+def _registry_manifold_name(slug: str) -> str | None:
+    """Modernized folder of the registry entry whose ``kaggle_ref`` contains ``slug``."""
+    try:
+        yd_path = Path(__file__).parent.parent / "unified_data.yaml"
+        if not yd_path.exists():
+            yd_path = Path(__file__).parent / "unified_data.yaml"
+        if not yd_path.exists():
+            return None
+        with open(yd_path, "r", encoding="utf-8") as yf:
+            ydata = yaml.safe_load(yf) or {}
+        prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
+        suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
+        for entry in ydata.get("datasets", {}).values():
+            if slug.lower() in entry.get("kaggle_ref", "").lower():
+                return entry.get("modernized_folder") or f"{prefix}{entry.get('name', '')}{suffix}"
+    except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
+        logger.debug("Kaggle manifold name lookup fallback: %s", exc)
+        print(f"[DEBUG] Kaggle manifold name lookup fallback: {exc}")
+    return None
+
+
+def _resolve_manifold_paths(
+    clean_repo_id: str, output_dir: str, source: SourceManifold | None = None
+) -> tuple[Path, Path, str, str]:
+    """Resolve target manifold directory and root datasets directory.
+
+    A registered source manifold (``source``) lands in its entry's modernized folder.
+    """
     target_dir = Path(output_dir).resolve()
     slug = clean_repo_id.split("/")[-1]
     if target_dir.name.startswith("LemGendized"):
-        root_datasets_dir = target_dir.parent
-        manifold_name = target_dir.name
+        return target_dir, target_dir.parent, target_dir.name, slug
+    if source is not None:
+        manifold_name = source.modernized_folder
     else:
-        root_datasets_dir = target_dir
-        manifold_name = slug
-        try:
-            yd_path = Path(__file__).parent.parent / "unified_data.yaml"
-            if not yd_path.exists():
-                yd_path = Path(__file__).parent / "unified_data.yaml"
-            if yd_path.exists():
-                with open(yd_path, "r", encoding="utf-8") as yf:
-                    ydata = yaml.safe_load(yf) or {}
-                prefix = ydata.get("_registry_metadata", {}).get("name_prefix", "LemGendized")
-                suffix = ydata.get("_registry_metadata", {}).get("name_suffix", "")
-                for entry in ydata.get("datasets", {}).values():
-                    ref = entry.get("kaggle_ref", "")
-                    if slug.lower() in ref.lower():
-                        mod_folder = entry.get("modernized_folder")
-                        manifold_name = mod_folder or f"{prefix}{entry.get('name', '')}{suffix}"
-                        break
-        except (OSError, UnicodeDecodeError, yaml.YAMLError, AttributeError) as exc:
-            logger.debug("Kaggle manifold name lookup fallback: %s", exc)
-            print(f"[DEBUG] Kaggle manifold name lookup fallback: {exc}")
-        target_dir = root_datasets_dir / manifold_name
-    return target_dir, root_datasets_dir, manifold_name, slug
+        manifold_name = _registry_manifold_name(slug) or slug
+    return target_dir / manifold_name, target_dir, manifold_name, slug
 
 
 @dataclass(frozen=True)
@@ -76,8 +93,9 @@ class KaggleRequest:
 
 def _download(req: KaggleRequest, clean_repo_id: str) -> bool:
     print(f"PULLING: {clean_repo_id}")
+    source = _source_manifold(clean_repo_id)
     target_dir, root_datasets_dir, manifold_name, slug = _resolve_manifold_paths(
-        clean_repo_id, req.output_dir
+        clean_repo_id, req.output_dir, source
     )
     return perform_dataset_download(
         DownloadRequest(
@@ -87,6 +105,7 @@ def _download(req: KaggleRequest, clean_repo_id: str) -> bool:
             manifold_name=manifold_name,
             slug=slug,
             is_competition=req.is_competition,
+            label_json=source.label_json if source else None,
         )
     )
 

@@ -33,10 +33,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core import paths
 from core.task_taxonomy import taxonomy
+from utils.label_json import LABEL_JSON_BUILDERS
 
 
 # ─── Ref-level ──────────────────────────────────────────────────────────────
@@ -191,6 +192,21 @@ class DatasetEntry(BaseModel):
 
     # Sources
     refs: list[SourceRef] = Field(default_factory=list)
+    # Loose (images/ + labels/ or masks/) manifolds on Kaggle that a recompile
+    # is packed from (``sync pull`` lands them in ``modernized_folder``).
+    source_manifolds: list[str] = Field(default_factory=list)
+    # JSON sidecar strategy applied to each text label when shards are packed
+    # (a key of utils.label_json.LABEL_JSON_BUILDERS).
+    label_json: str | None = None
+
+    @field_validator("label_json")
+    @classmethod
+    def _known_label_json(cls, value: str | None) -> str | None:
+        if value is not None and value not in LABEL_JSON_BUILDERS:
+            raise ValueError(
+                f"label_json '{value}' is not one of {sorted(LABEL_JSON_BUILDERS)}"
+            )
+        return value
 
     # Policies (Phase 3 / Phase 4 consumers — optional; defaults apply)
     image_format: ImageFormatPolicy = Field(default_factory=ImageFormatPolicy)

@@ -336,6 +336,9 @@ datasets:
     task: pose
     task_confirmed: true
     kaggle_ref: kaggle://lemtreursi/lemgendizedretinaface
+    source_manifolds:
+      - kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
+    label_json: face_landmarks
     val_split: 0.12
     labeling: true
     refs:

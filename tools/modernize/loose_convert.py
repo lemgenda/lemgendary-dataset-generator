@@ -61,6 +61,7 @@ class LooseConvertOptions:
     max_workers: int | None = None
     purge_loose: bool = False
     shard_ext: str = "data"
+    label_json: str | None = None
 
 
 def _resolve_options(
@@ -80,8 +81,12 @@ def _read_member(path: Path | None) -> RawMember | None:
     return None if path is None else RawMember(path.read_bytes(), path.suffix.lower())
 
 
-def raw_loose_sample(split: LooseSplit, primary: Path) -> RawSample:
-    """Read every loose file of the sample started by ``primary`` into a RawSample."""
+def raw_loose_sample(split: LooseSplit, primary: Path, label_json: str | None = None) -> RawSample:
+    """Read every loose file of the sample started by ``primary`` into a RawSample.
+
+    ``label_json`` names the JSON sidecar strategy for a text label
+    (:mod:`utils.label_json`).
+    """
     key = primary.stem
     return RawSample(
         key=key,
@@ -90,14 +95,16 @@ def raw_loose_sample(split: LooseSplit, primary: Path) -> RawSample:
         mask=_read_member(split.masks.get(key)),
         label=_read_member(split.labels.get(key)),
         primary_quality=TARGET_WEBP_QUALITY if split.target_only else IMAGE_WEBP_QUALITY,
+        label_json=label_json,
     )
 
 
 def _encode_all(
-    split: LooseSplit, files: list[Path], pool: Executor, transcode_webp: bool
+    split: LooseSplit, files: list[Path], pool: Executor, opts: LooseConvertOptions
 ) -> Iterable[SampleOutcome]:
     def _encode(path: Path) -> SampleOutcome:
-        return encode_sample_or_reject(raw_loose_sample(split, path), transcode_webp)
+        raw = raw_loose_sample(split, path, opts.label_json)
+        return encode_sample_or_reject(raw, opts.transcode_webp)
 
     return pool.map(_encode, files)
 
@@ -133,7 +140,7 @@ def _write_tar_split(
     with tqdm(total=split.total_samples, desc=desc, unit="img", dynamic_ncols=True) as pbar:
         for s_idx in range(total_shards):
             chunk = primary[s_idx * size:(s_idx + 1) * size]
-            outcomes = _encode_all(split, chunk, pool, opts.transcode_webp)
+            outcomes = _encode_all(split, chunk, pool, opts)
             pbar.update(_write_tar_shard(out_dir / f"shard-{s_idx:05d}.{ext}", outcomes, rejects))
 
 
@@ -215,7 +222,7 @@ def _write_mds_split(split: LooseSplit, split_mds_dir: Path, run: _MdsRun) -> No
     with tqdm(
         total=split.total_samples, desc=f"MDS [{split.name}]", unit="img", dynamic_ncols=True
     ) as pbar:
-        for outcome in _encode_all(split, split.primary_files(), pool, opts.transcode_webp):
+        for outcome in _encode_all(split, split.primary_files(), pool, opts):
             if outcome.sample is None:
                 rejects.record(outcome.key, outcome.reason)
             else:

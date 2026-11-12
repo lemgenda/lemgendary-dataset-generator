@@ -44,6 +44,7 @@ class DownloadRequest:
     manifold_name: str
     slug: str
     is_competition: bool = False
+    label_json: str | None = None  # JSON sidecar strategy for text labels (utils.label_json)
 
 
 def _archive_candidates(request: DownloadRequest) -> list[Path]:
@@ -242,7 +243,9 @@ def _should_stream_to_webdataset(archive: Path, target_dir: Path, slug: str) -> 
         return False
 
 
-def _stream_to_webdataset(archive: Path, target_dir: Path) -> bool | None:
+def _stream_to_webdataset(
+    archive: Path, target_dir: Path, label_json: str | None = None
+) -> bool | None:
     """Convert the zip into WebDataset shards; None means fall back to plain extraction."""
     print(f"[STREAM] Discovered legacy image matrix in {archive.name}.")
     print(
@@ -256,6 +259,7 @@ def _stream_to_webdataset(archive: Path, target_dir: Path) -> bool | None:
             shard_size_samples=5000,
             delete_zip=True,
             transcode_webp=True,
+            label_json=label_json,
         )
     except _STREAM_ERRORS as stream_err:
         print(
@@ -274,7 +278,7 @@ def _unpack_archive(archive: Path, request: DownloadRequest) -> bool:
     """Stream or extract ``archive`` into the request's target directory."""
     target_dir = request.target_dir
     if _should_stream_to_webdataset(archive, target_dir, request.slug):
-        outcome = _stream_to_webdataset(archive, target_dir)
+        outcome = _stream_to_webdataset(archive, target_dir, request.label_json)
         if outcome is not None:
             return outcome
 
