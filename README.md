@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.94-STABLE` |
+| **Version** | `v16.9.95-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,24 @@
 ---
 
 ## Changelog
+
+### v16.9.95 - New Kaggle Datasets Start Private (R4-B5)
+
+- `ensure_kaggle_dataset_exists` (`core/sync_remote.py`) created a missing
+  dataset as a public CC0 placeholder, so a new slug was public under the
+  wrong license until the metadata push. The placeholder is now created
+  private (`public=False`, `isPrivate: true`) with the manifold's own
+  license (`canonical_license_name` of its `dataset-metadata.json`; CC0 only
+  when it declares none). The metadata push that follows applies the
+  registry license and the registry visibility.
+- Visibility setting: the registry field `is_private` of each
+  `unified_data.yaml` entry (written to `dataset-metadata.json` as
+  `isPrivate`). The metadata push (`core/sync_metadata_settings.py`,
+  `is_private`) applies it; a metadata file that does not state it keeps
+  the dataset private (was public).
+- Tests drive the creation against a fake Kaggle API: the create call is
+  never public, carries the registry license, an existing dataset is not
+  re-created, and the metadata settings carry the stated visibility.
 
 ### v16.9.94 - Dataset Card Lineage Without Estimated Counts (R4-B4)
 

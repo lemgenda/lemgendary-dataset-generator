@@ -20,6 +20,9 @@ from kagglesdk.datasets.types.dataset_types import (
 
 _IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
 
+# License used only when the metadata declares none.
+FALLBACK_LICENSE = "CC0-1.0"
+
 # Ordered (substring, canonical Kaggle license name) pairs; first match wins.
 _LICENSE_ALIASES = (
     ("cc-by-nc", "Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)"),
@@ -48,7 +51,7 @@ def _clip_subtitle(raw_sub: str) -> str:
 
 def canonical_license_name(meta: dict[str, Any]) -> str:
     """Kaggle requires exactly one license: map the first declared one to its canonical name."""
-    lic_name = "CC0-1.0"
+    lic_name = FALLBACK_LICENSE
     raw_lic = meta.get("licenses", [])
     if (
         raw_lic
@@ -96,6 +99,11 @@ def dedupe_keywords(raw_keywords: list[Any]) -> list[str]:
     return kws
 
 
+def is_private(meta: dict[str, Any]) -> bool:
+    """Visibility from ``isPrivate`` (the registry ``is_private``); private when not stated."""
+    return bool(meta.get("isPrivate", meta.get("is_private", True)))
+
+
 def build_dataset_settings(meta: dict[str, Any], slug: str) -> DatasetSettings:
     """Dataset-level settings: title, subtitle, description, license, frequency, sources."""
     settings = DatasetSettings()
@@ -110,7 +118,7 @@ def build_dataset_settings(meta: dict[str, Any], slug: str) -> DatasetSettings:
     settings.expected_update_frequency = meta.get(
         "expectedUpdateFrequency", meta.get("expected_update_frequency", "never")
     )
-    settings.is_private = meta.get("isPrivate", meta.get("is_private", False))
+    settings.is_private = is_private(meta)
 
     sources_val = user_specified_sources(meta)
     if sources_val:

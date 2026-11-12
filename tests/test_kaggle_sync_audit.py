@@ -16,7 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import patch
 
 import yaml
@@ -36,6 +36,8 @@ from core.paths import UNIFIED_DATA as UNIFIED_DATA_FILE
 from core.sync_auth import setup_kaggle_auth
 from core.sync_download import DownloadRequest, perform_dataset_download
 from core.sync_metadata import _list_remote_files
+from core.sync_metadata_settings import build_dataset_settings
+from core.sync_remote import ensure_kaggle_dataset_exists
 from core.sync_upload import perform_dataset_upload
 from core.sync_version_notes import build_version_notes
 from sources.kaggle import KaggleRequest, run_kaggle_action
@@ -239,6 +241,68 @@ class VersionNotesTests(unittest.TestCase):
             f"LemGendary Dataset Compiler v{__version__}; 3 samples (train 2, val 1)",
         )
         meta.assert_not_called()
+
+
+class _FakeKaggleApi:
+    """Records the dataset_create_new call and the placeholder metadata it was given."""
+
+    calls: ClassVar[list[dict[str, Any]]] = []
+
+    def authenticate(self) -> None:
+        """No credentials are needed by the fake."""
+
+    def dataset_create_new(self, **kwargs: Any) -> SimpleNamespace:
+        """Capture the arguments and the folder's dataset-metadata.json."""
+        folder = Path(kwargs["folder"])
+        meta = json.loads((folder / "dataset-metadata.json").read_text(encoding="utf-8"))
+        _FakeKaggleApi.calls.append({**kwargs, "meta": meta})
+        return SimpleNamespace(status="ok")
+
+
+class PrivatePlaceholderTests(unittest.TestCase):
+    """R4-B5: a new dataset starts private with the manifold license."""
+
+    def setUp(self) -> None:
+        _FakeKaggleApi.calls = []
+        self.enterContext(
+            patch("core.sync_remote.load_kaggle_api", return_value=_FakeKaggleApi)
+        )
+        self.enterContext(
+            patch("core.sync_remote.get_dataset_version_info",
+                  return_value={"latest_version": 0})
+        )
+
+    def test_placeholder_is_private_with_given_license(self) -> None:
+        """The create call is never public and carries the registry license."""
+        self.assertTrue(ensure_kaggle_dataset_exists(
+            "owner/demo", title="Demo Title", license_name="CC-BY-NC-4.0"
+        ))
+        self.assertEqual(len(_FakeKaggleApi.calls), 1)
+        call = _FakeKaggleApi.calls[0]
+        self.assertFalse(call["public"])
+        self.assertTrue(call["meta"]["isPrivate"])
+        self.assertEqual(call["meta"]["licenses"], [{"name": "CC-BY-NC-4.0"}])
+
+    def test_existing_dataset_is_not_recreated(self) -> None:
+        """A dataset that already has a version is left alone."""
+        with patch("core.sync_remote.get_dataset_version_info",
+                   return_value={"latest_version": 3}):
+            self.assertTrue(ensure_kaggle_dataset_exists("owner/demo", title="Demo Title"))
+        self.assertEqual(_FakeKaggleApi.calls, [])
+
+    def test_metadata_push_applies_registry_visibility(self) -> None:
+        """The metadata push sets the stated visibility; unstated stays private."""
+        self.assertFalse(build_dataset_settings({"isPrivate": False}, "demo").is_private)
+        self.assertTrue(build_dataset_settings({"isPrivate": True}, "demo").is_private)
+        self.assertTrue(build_dataset_settings({}, "demo").is_private)
+
+    def test_metadata_push_applies_registry_license(self) -> None:
+        """The metadata push replaces the placeholder license with the declared one."""
+        settings = build_dataset_settings({"licenses": [{"name": "CC-BY-NC-4.0"}]}, "demo")
+        self.assertEqual(
+            [lic.name for lic in settings.licenses or [] if lic is not None],
+            ["Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)"],
+        )
 
 
 class CitationTests(unittest.TestCase):

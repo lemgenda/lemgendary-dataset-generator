@@ -26,6 +26,7 @@ from core.sync_auth import (
 from core.sync_metadata_settings import (
     build_dataset_settings,
     build_file_settings,
+    canonical_license_name,
     dedupe_keywords,
     header_image_name,
 )
@@ -287,8 +288,10 @@ def push_kaggle_dataset_metadata(repo_id: str, metadata_path: Path) -> bool:
     meta_file, meta = loaded
 
     # The dataset must exist before its metadata is updated, or Kaggle answers 403;
-    # a missing dataset is created with a minimal README placeholder.
-    if not ensure_kaggle_dataset_exists(clean_handle, title=meta.get("title", slug)):
+    # a missing dataset is created as a private README placeholder.
+    if not ensure_kaggle_dataset_exists(
+        clean_handle, title=meta.get("title", slug), license_name=canonical_license_name(meta)
+    ):
         print(
             f"[WARN] Could not ensure Kaggle dataset placeholder exists for '{clean_handle}'."
             " Attempting metadata update anyway..."

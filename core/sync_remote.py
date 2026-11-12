@@ -2,8 +2,11 @@
 Remote Kaggle dataset queries and placeholder creation for the sync core.
 
 Reads a dataset's version list and server-side status (Kaggle SDK first,
-Kaggle CLI as fallback) and creates the README-only public placeholder that
-must exist before metadata updates or uploads can address a new slug.
+Kaggle CLI as fallback) and creates the README-only placeholder that must
+exist before metadata updates or uploads can address a new slug. The
+placeholder is always private and carries the manifold's own license; the
+metadata push that follows applies the registry's license and visibility
+(``is_private``), so nothing is ever public before its metadata says so.
 """
 
 import json
@@ -24,6 +27,7 @@ from core.sync_auth import (
     setup_kaggle_auth,
     split_owner_slug,
 )
+from core.sync_metadata_settings import FALLBACK_LICENSE
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +120,7 @@ def get_dataset_status(repo_id: str) -> str | None:
 
 
 def _write_placeholder_payload(
-    tmp_dir: Path, clean_repo_id: str, title: str, readme_text: str
+    tmp_dir: Path, clean_repo_id: str, title: str, readme_text: str, license_name: str
 ) -> None:
     """Write the README.md and dataset-metadata.json that dataset_create_new requires."""
     owner, slug = split_owner_slug(clean_repo_id)
@@ -133,19 +137,20 @@ def _write_placeholder_payload(
     meta = {
         "id": f"{owner}/{slug}",
         "title": safe_title,
-        "licenses": [{"name": "CC0-1.0"}],
+        "licenses": [{"name": license_name}],
+        "isPrivate": True,
     }
     (tmp_dir / "dataset-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 def _create_placeholder_dataset(clean_repo_id: str, tmp_dir: Path) -> bool:
-    """Push the placeholder folder as a new public dataset; "already in use" counts as success."""
+    """Push the placeholder folder as a new private dataset; "already in use" counts as success."""
     try:
         api = load_kaggle_api()()
         api.authenticate()
         resp = api.dataset_create_new(
             folder=str(tmp_dir),
-            public=True,
+            public=False,
             quiet=False,
             convert_to_csv=False,
             dir_mode="skip",
@@ -175,12 +180,18 @@ def _create_placeholder_dataset(clean_repo_id: str, tmp_dir: Path) -> bool:
     return True
 
 
-def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: str = "") -> bool:
+def ensure_kaggle_dataset_exists(
+    clean_repo_id: str,
+    title: str,
+    readme_text: str = "",
+    license_name: str = FALLBACK_LICENSE,
+) -> bool:
     """Create the Kaggle dataset with a README placeholder if it does not yet exist.
 
     This prevents the 403 Forbidden error when calling UpdateDatasetMetadata on a
-    dataset that has never been created. A minimal public dataset containing only
-    README.md is pushed first, making the slug addressable before the actual upload.
+    dataset that has never been created. A minimal private dataset containing only
+    README.md is pushed first, making the slug addressable before the actual upload;
+    the metadata push then sets the registry license and visibility.
     """
     if is_kaggle_large_manifold(clean_repo_id):
         print(
@@ -194,11 +205,11 @@ def ensure_kaggle_dataset_exists(clean_repo_id: str, title: str, readme_text: st
         return True  # Dataset already exists
 
     print(
-        f"[INIT] Dataset '{clean_repo_id}' not found on Kaggle. Creating empty public"
+        f"[INIT] Dataset '{clean_repo_id}' not found on Kaggle. Creating empty private"
         " placeholder..."
     )
 
     with tempfile.TemporaryDirectory() as td:
         tmp_dir = Path(td)
-        _write_placeholder_payload(tmp_dir, clean_repo_id, title, readme_text)
+        _write_placeholder_payload(tmp_dir, clean_repo_id, title, readme_text, license_name)
         return _create_placeholder_dataset(clean_repo_id, tmp_dir)

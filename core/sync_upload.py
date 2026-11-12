@@ -18,6 +18,7 @@ import kagglehub
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS, KAGGLE_REMOTE_ERRORS
 from core.sync_auth import is_kaggle_large_manifold
 from core.sync_metadata import push_kaggle_dataset_metadata
+from core.sync_metadata_settings import canonical_license_name
 from core.sync_remote import ensure_kaggle_dataset_exists, get_dataset_version_info
 from core.sync_tracking import track_kaggle_dataset_status
 from core.sync_transfer import robust_staging_cleanup
@@ -66,16 +67,17 @@ def _verify_or_create_staging_zip(
             raise RuntimeError(f"Archive creation failed for {src_path}")
 
 
-def _read_dataset_title(src_path: Path) -> str:
-    """Title from dataset-metadata.json, falling back to the folder name."""
+def _read_dataset_metadata(src_path: Path) -> dict[str, Any]:
+    """The manifold's dataset-metadata.json, or an empty mapping when unreadable."""
     meta_src = src_path / "dataset-metadata.json"
     if meta_src.exists():
         try:
             meta_content = json.loads(meta_src.read_text(encoding="utf-8"))
-            return meta_content.get("title", src_path.name)
+            if isinstance(meta_content, dict):
+                return meta_content
         except (OSError, json.JSONDecodeError) as exc:
-            logger.debug("Could not read dataset title from %s: %s", meta_src, exc)
-    return src_path.name
+            logger.debug("Could not read dataset metadata from %s: %s", meta_src, exc)
+    return {}
 
 
 def _scan_source_tree(src_path: Path) -> tuple[int, float]:
@@ -186,7 +188,12 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
         return False
 
     # Ensure the Kaggle dataset exists before uploading (prevents 403 on metadata update)
-    if not ensure_kaggle_dataset_exists(clean_repo_id, title=_read_dataset_title(src_path)):
+    meta = _read_dataset_metadata(src_path)
+    if not ensure_kaggle_dataset_exists(
+        clean_repo_id,
+        title=meta.get("title", src_path.name),
+        license_name=canonical_license_name(meta),
+    ):
         print(
             f"[WARN] Could not pre-create Kaggle dataset '{clean_repo_id}'. Upload may still"
             " succeed if dataset exists."
