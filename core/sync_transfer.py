@@ -16,6 +16,8 @@ from typing import Any, BinaryIO
 
 from tqdm import tqdm
 
+from utils.naming import MANIFOLD_PREFIX
+
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1024 * 1024  # 1MB chunks
@@ -162,12 +164,27 @@ def _purge_staging_dirs(d: Path, manifold_name, now: float, force: bool) -> tupl
     return cleaned_count, cleaned_bytes
 
 
+def _is_manifold_zip(path: Path, manifold_name: str | None) -> bool:
+    """True for ``<manifold_name>.zip``, or any ``LemGendized*.zip`` when no name is given.
+
+    The system Temp folder holds other programs' zips; only manifold archives
+    are ours to delete.
+    """
+    name = path.name.lower()
+    if not name.endswith(".zip"):
+        return False
+    if manifold_name:
+        return name == f"{manifold_name}.zip".lower()
+    return name.startswith(MANIFOLD_PREFIX.lower())
+
+
 def _purge_temp_zips(d: Path, manifold_name, now: float, force: bool) -> tuple[int, int]:
     """Remove stale manifold zips from a Temp directory; returns (count, bytes) removed."""
     cleaned_count = 0
     cleaned_bytes = 0
-    zip_pattern = f"{manifold_name}.zip" if manifold_name else "*.zip"
-    for zf in d.glob(zip_pattern):
+    for zf in d.glob("*.zip"):
+        if not _is_manifold_zip(zf, manifold_name):
+            continue
         try:
             if not force and (now - zf.stat().st_mtime) < _MAX_ARCHIVE_AGE_SECONDS:
                 continue

@@ -25,10 +25,13 @@ from core.sync_auth import kaggle_cli_creationflags
 from core.sync_transfer import copy_tree_with_progress
 from tools.stream_zip_to_container import stream_zip_to_webdataset
 from utils.archive import smart_extract, verify_archive
+from utils.shard_audit import find_shards
 
 logger = logging.getLogger(__name__)
 
 _LOOSE_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif")
+# Members that mean the archive already holds a modern container: extract it as is.
+_CONTAINER_SUFFIXES = (".tar", ".data", ".parquet", ".mds", ".mds.zstd")
 _STREAM_ERRORS = (ImportError, OSError, ValueError, zipfile.BadZipFile, tarfile.TarError)
 
 
@@ -199,18 +202,37 @@ def _has_loose_images(members: list[str]) -> bool:
     )
 
 
+def _is_container_member(name: str) -> bool:
+    """True for shard, Parquet or MDS members, and JSONL splits under ``data/`` (LLM layout).
+
+    A root-level ``.jsonl`` (``rejected_records.jsonl``) is metadata, not data.
+    """
+    if name.endswith(_CONTAINER_SUFFIXES):
+        return True
+    return name.endswith(".jsonl") and (name.startswith("data/") or "/data/" in name)
+
+
 def _should_stream_to_webdataset(archive: Path, target_dir: Path, slug: str) -> bool:
-    """Legacy vision zips without .tar shards are streamed straight into WebDataset shards."""
+    """Legacy vision zips are streamed straight into WebDataset shards.
+
+    Not when the zip already holds a container (WebDataset ``.tar``/``.data``
+    shards, Parquet, JSONL or MDS): re-streaming would convert those again.
+    Not when ``target_dir`` already has shards either: the new shards would
+    be mixed with (and partly overwrite) the existing set. Both cases fall
+    back to plain extraction.
+    """
     if not archive.name.endswith(".zip"):
+        return False
+    if find_shards(target_dir / "shards"):
+        print(f"[STREAM] {target_dir.name} already has shards; extracting without streaming.")
         return False
     try:
         with zipfile.ZipFile(archive, "r") as zf:
-            sample_members = [m.filename.replace("\\", "/") for m in zf.infolist()[:1000]]
-            has_tar_shards = any(m.endswith(".tar") for m in sample_members)
-            loose = _has_loose_images(sample_members)
-            # Also cross-reference registry canonical format
-            is_webdataset_target = _registry_marks_webdataset(target_dir, slug)
-            return (loose or is_webdataset_target) and not has_tar_shards
+            members = [m.filename.replace("\\", "/").lower() for m in zf.infolist()]
+        if any(_is_container_member(m) for m in members):
+            return False
+        # Also cross-reference registry canonical format
+        return _has_loose_images(members) or _registry_marks_webdataset(target_dir, slug)
     except (OSError, zipfile.BadZipFile, tarfile.TarError) as check_exc:
         logger.warning(
             "Archive inspection of %s failed; using standard extraction: %s",

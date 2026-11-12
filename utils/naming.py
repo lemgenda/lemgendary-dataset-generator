@@ -36,6 +36,9 @@ def map_category(cat_name_or_id, _source_name, category_map: dict | None = None)
     return int(cat_name_or_id)
 
 
+MANIFOLD_PREFIX = "LemGendized"
+
+
 def manifold_info_path(manifold_name: str) -> str:
     """The ``path`` recorded in dataset_info.yaml: relative to the compiler repo.
 

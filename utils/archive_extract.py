@@ -50,8 +50,18 @@ def _find_tar() -> str | None:
     return shutil.which("tar") or shutil.which("tar.exe")
 
 
+# Manifold layout folders: their children never belong one level up.
+_STRUCTURAL_DIRS = frozenset({"shards", "data", "images", "targets", "labels", "masks", "mds"})
+
+
 def _is_wrapper_dir(cand: Path, dest_path: Path) -> bool:
-    """True when `cand` is a wrapper folder whose children belong in `dest_path`."""
+    """True when `cand` is a wrapper folder whose children belong in `dest_path`.
+
+    A structural folder (``shards``, ``images``, ...) is never a wrapper, even
+    when it is the only folder of a ``LemGendized*`` manifold.
+    """
+    if cand.name.lower() in _STRUCTURAL_DIRS:
+        return False
     return (
         cand.name.lower() == dest_path.name.lower()
         or cand.name.startswith("LemGendized")

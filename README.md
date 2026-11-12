@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.81-STABLE` |
+| **Version** | `v16.9.82-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,24 @@
 ---
 
 ## Changelog
+
+### v16.9.82 - Download and Extraction Safety
+
+- `core/sync_download.py`: a downloaded zip is streamed into new
+  WebDataset shards only when it is a legacy loose-image archive. A zip
+  that already holds `.data`/`.tar` shards, Parquet, MDS or `data/` JSONL
+  splits is extracted as is (only `.tar` was recognised, so modern
+  manifolds could be converted a second time), and a target that already
+  has shards is never streamed into, so old and new shard sets cannot mix
+  (audit 2.2.2).
+- `core/sync_transfer.py`: the Temp sweep deletes only `LemGendized*.zip`
+  (or the named manifold's zip); before, every zip older than a day in the
+  system Temp folder was deleted (audit 2.2.3).
+- `utils/archive_extract.py`: `shards`, `data`, `images`, `targets`,
+  `labels`, `masks` and `mds` are never treated as wrapper folders, so a
+  manifold whose only folder is `shards/` keeps its layout (audit 2.2.3).
+- `utils/naming.py`: `MANIFOLD_PREFIX`.
+- `tests/test_sync_safety.py`.
 
 ### v16.9.81 - Manifold Repair CLI, LLM Metadata Path
 
