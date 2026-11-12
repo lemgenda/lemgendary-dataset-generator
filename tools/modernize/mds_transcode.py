@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from tools.modernize.common import SPLITS, update_dataset_info
 from tools.modernize.queue_items import _fast_has_tar_shards
+from utils.shard_audit import verify_shard_set
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,9 @@ def _verify_shards(shards_dir: Path, total_shards: int) -> bool:
             "[ERROR] Shard verification failed: output shards directory is empty. Aborting MDS"
             " cleanup."
         )
+        return False
+    if not verify_shard_set(shards_dir, "MDS-TRANSCODE"):
+        print("[ERROR] Shard verification failed: unsound shards. Aborting MDS cleanup.")
         return False
     print(
         f"[VERIFIED] Created {total_shards} WebDataset shards"

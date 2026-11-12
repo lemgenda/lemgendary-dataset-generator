@@ -35,6 +35,7 @@ ERR_NIMA_BELOW_THRESHOLD = "ERR_NIMA_BELOW_THRESHOLD"
 ERR_HEADER_INVALID = "ERR_HEADER_INVALID"
 ERR_TRUNCATED = "ERR_TRUNCATED"
 ERR_ZERO_BYTES = "ERR_ZERO_BYTES"
+ERR_TARGET_MISSING = "ERR_TARGET_MISSING"
 
 
 # ─── Magic number signatures ────────────────────────────────────────────────
@@ -42,6 +43,8 @@ _MAGIC = {
     b"\x89PNG\r\n\x1a\n": "png",
     b"\xff\xd8\xff": "jpeg",
     b"RIFF": "webp",       # RIFF....WEBP (checked below)
+    b"BM": "bmp",
+    b"GIF8": "gif",
     b"II*\x00": "tiff_le",
     b"MM\x00*": "tiff_be",
     b"\x89HDF\r\n\x1a\n": "hdf5",
@@ -220,8 +223,8 @@ class VisionAuditor:
     def audit_bbox(
         self,
         bbox: tuple[float, float, float, float],
-        img_w: int,
-        img_h: int,
+        img_w: float,
+        img_h: float,
     ) -> AuditResult:
         """Reject degenerate or out-of-bounds boxes.
 

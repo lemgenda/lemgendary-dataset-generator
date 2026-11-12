@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.79-STABLE` |
+| **Version** | `v16.9.80-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,28 @@
 ---
 
 ## Changelog
+
+### v16.9.80 - Audit Gates and Shard Verification
+
+- `core/sample_audit.py` (new): the compile path runs every audit gate
+  that existed but was never called. File headers (magic bytes) are
+  checked before decoding; target pairs must match the input size (mode
+  and mask checks under `strict_ground_truth`); boxes are checked in
+  pixels and keypoints/polygons normalized. A missing paired target is
+  recorded as `ERR_TARGET_MISSING`. Every reject goes to the registry's
+  `reject_log` table (audit 2.2.1).
+- `utils/shard_audit.py` (new): one header-only shard auditor (sample keys,
+  zero-byte members, scattered groups, unreadable tars). An empty `.txt`
+  is allowed (a detection image with no objects).
+- `tools/zip_stream_webdataset.py`, `tools/modernize/mds_transcode.py`:
+  post-write verification audits every shard and fails on zero-byte
+  members or scattered groups, so the source is kept.
+- `utils/archive.py`: `verify_archive` fails on zero-byte image or shard
+  members in tars and zips; other empty files (logs) stay valid.
+- `audit/vision_audit.py`: BMP and GIF magic bytes; `audit_bbox` accepts
+  float image sizes.
+- Tests: `tests/test_sample_audit.py`, `tests/test_shard_verification.py`,
+  shared `tests/tar_fixtures.py`.
 
 ### v16.9.79 - Paired Targets, Label Geometry, Split Shards
 

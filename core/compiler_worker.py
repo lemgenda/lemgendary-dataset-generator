@@ -22,6 +22,7 @@ from PIL import Image, ImageFile
 
 from audit.dedup import ExactHasher, PerceptualHasher
 from audit.ground_truth import GroundTruthCaches
+from audit.reject_log import RejectLog
 from audit.vision_audit import VisionAuditor
 from core.compiler_config import CONFIG, DATASETS_META, INPUT_ROOT, get_args, set_args
 from core.config_schema import ImageFormatPolicy
@@ -63,6 +64,8 @@ class AuditTools:
     exact_hasher: ExactHasher | None = None
     perceptual_hasher: PerceptualHasher | None = None
     transcoder: ImageTranscoder | None = None
+    # Bound by the manifold compile to its registry; None outside a compile.
+    reject_log: RejectLog | None = None
 
 
 @dataclass

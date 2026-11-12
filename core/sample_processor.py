@@ -16,7 +16,7 @@ from typing import Any, cast
 import numpy as np
 from PIL import Image
 
-from audit.vision_audit import NimaCheck
+from audit.vision_audit import ERR_TARGET_MISSING, AuditResult, NimaCheck
 from core.compiler_config import CONFIG, get_args
 from core.compiler_worker import WORKER, get_labeler, link_or_copy, torch, write_image
 from core.error_types import SAMPLE_PROCESSING_ERRORS
@@ -27,6 +27,13 @@ from core.sample_annotations import (
     label_lines,
     parse_annotations,
     write_label_file,
+)
+from core.sample_audit import (
+    header_ok,
+    image_ok,
+    record_reject,
+    target_ok,
+    valid_annotations,
 )
 from core.sample_jobs import ImageJob
 from core.sample_scoring import (
@@ -157,6 +164,12 @@ def _score_sample(sample: _ImageSample) -> NimaScore:
     return nima
 
 
+def _gated_score(sample: _ImageSample) -> NimaScore | None:
+    """The sample's NIMA score, or None when it fails the NIMA gate."""
+    nima = _score_sample(sample)
+    return nima if _passes_nima_gate(sample, nima) else None
+
+
 @dataclass
 class _Target:
     """The resolved target for a sample: an in-memory image and/or a path on disk."""
@@ -229,7 +242,13 @@ def _write_outputs(sample: _ImageSample, target: _Target) -> Path | None:
         target.mask = _generated_mask(sample)
         if not target.has_source():
             logger.warning("Rejected %s (%s): no target found", sample.name, sample.task)
+            record_reject(sample.slug, sample.name, AuditResult(
+                valid=False, code=ERR_TARGET_MISSING, reason=f"no {sample.task} target found"))
             return None
+    if not target.clean_only and not target_ok(
+            sample.slug, sample.name, sample.task, sample.img,
+            target.image or target.path or target.mask):
+        return None
     out_img = sample.image_out_path()
     on_disk = WORKER.physical_index and sample.name.lower() in WORKER.physical_index
     if not on_disk and not target.clean_only:
@@ -288,14 +307,19 @@ def _prepare_sample(job: ImageJob) -> _ImageSample | None:
                         img_data=img_data, img=img)
 
 
-def _vet_pixels(sample: _ImageSample) -> bool:
-    """Decode the pixels when vetting or labeling needs them; False when the audit rejects."""
+def _vet_sample(sample: _ImageSample) -> bool:
+    """Check the file header, then decode the pixels when vetting or labeling needs them.
+
+    False when either audit rejects the sample (the reject is recorded).
+    """
+    if not header_ok(sample.slug, sample.name,
+                     sample.img_data if sample.is_virtual else sample.img_path):
+        return False
     skip_labeling = sample.job.context.skip_labeling
     if (sample.task in ["quality", "diffusion"] and not get_args().no_vetting) or not skip_labeling:
         sample.img = _load_pixels(sample)
         sample.dims = sample.img.size
-        if WORKER.audit.auditor is not None and not WORKER.audit.auditor.audit_image(
-                sample.img, sample.task, sample.slug).valid:
+        if not image_ok(sample.slug, sample.name, sample.img, sample.task):
             return False
     return True
 
@@ -321,6 +345,7 @@ def _label_and_record(sample: _ImageSample, nima: NimaScore, hashes: tuple[Any, 
         AnnotationSource(job.context.fmt, job.ann_data, job.key.prefix, task, *sample.dims),
         skip_labeling,
     )
+    annotations = valid_annotations(sample.slug, sample.name, annotations, sample.dims)
 
     label_file_path = sample.output_root / "labels" / sample.split / f"{sample.name}.txt"
     if not skip_labeling or annotations or task in ["quality", "classification"]:
@@ -348,14 +373,13 @@ def _process_image(job: ImageJob) -> dict[str, Any] | None:
 
     if WORKER.physical_index and sample.name.lower() in WORKER.physical_index:
         return sample.skip_record()
-
+    if not _vet_sample(sample):
+        return None
     target_img, target_path = resolve_target(sample.task, job.ann_data, sample.img_path,
                                              sample.is_virtual)
-    if not _vet_pixels(sample):
-        return None
 
-    nima = _score_sample(sample)
-    if not _passes_nima_gate(sample, nima):
+    nima = _gated_score(sample)
+    if nima is None:
         return None
 
     hashes = dedup_hashes(sample.img_data if sample.is_virtual else sample.img_path, sample.img)

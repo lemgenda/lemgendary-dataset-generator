@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
+from audit.reject_log import RejectLog
 from core.compile_forex import compile_forex_manifold, is_forex
 from core.compile_notebooks import (
     get_training_suite_notebook_generators,
@@ -64,6 +65,7 @@ from core.compiler_core import (
     detect_task,
     remove_empty_dirs,
 )
+from core.compiler_worker import WORKER
 from core.doc_generator import generate_dataset_docs
 from core.task_taxonomy import taxonomy
 from runtime.environment import load_torch
@@ -163,6 +165,7 @@ def _compile_samples(args: argparse.Namespace, settings: CompileSettings,
     ctx.existing.names.update(load_existing_names(conn, db_path, pascal_name))
     ctx.existing.on_disk.update(scan_physical_index(output_root, pascal_name))
     executor = make_executor(args, settings, ctx.existing.on_disk)
+    WORKER.audit.reject_log = RejectLog(db_path)
     try:
         adopt_orphans(conn, ctx.existing.names, ctx.existing.on_disk, ctx.task)
 
@@ -196,6 +199,8 @@ def _compile_samples(args: argparse.Namespace, settings: CompileSettings,
     finally:
         # Runs on success, error and Ctrl+C alike: no SQLite WAL or pool is left open.
         executor.shutdown(wait=True, cancel_futures=True)
+        WORKER.audit.reject_log.close()
+        WORKER.audit.reject_log = None
         conn.close()
 
 

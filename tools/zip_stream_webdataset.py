@@ -42,6 +42,7 @@ from utils.container_stream import (
 from utils.progress import create_progress_bar
 from utils.reject_tally import RejectTally
 from utils.sample_group import write_sample
+from utils.shard_audit import verify_shard_set
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,8 @@ def _stream_archive(
 
 
 def _verify_shards(shards_dir: Path, ext: str) -> bool:
-    """Print the shard count/size and return False when nothing was written."""
+    """Print the shard count/size; False when nothing was written or a shard is unsound
+    (zero-byte members, scattered sample groups, unreadable tar)."""
     shards_created = (
         list(shards_dir.glob(f"**/*.{ext}"))
         or list(shards_dir.glob("**/*.tar"))
@@ -153,6 +155,9 @@ def _verify_shards(shards_dir: Path, ext: str) -> bool:
     )
     if not shards_created or total_shard_bytes == 0:
         print("[ERROR] Shard verification failed: 0 shards or 0 bytes created.")
+        return False
+    if not verify_shard_set(shards_dir, "VERIFY"):
+        print("[ERROR] Shard verification failed: the shards above are unsound.")
         return False
     return True
 

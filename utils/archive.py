@@ -30,6 +30,7 @@ from utils.archive_extract import (
     smart_extract,
 )
 from utils.archive_io import CHUNK_SIZE, LARGE_FILE_THRESHOLD, is_tar_path, tar_mode
+from utils.shard_audit import SHARD_SUFFIXES, is_empty_defect
 
 logger = logging.getLogger(__name__)
 
@@ -47,21 +48,43 @@ __all__ = [
 ]
 
 
+_PAYLOAD_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".npy",
+                     *SHARD_SUFFIXES)
+
+
+def _empty_payloads(members: list[tuple[str, int]]) -> list[str]:
+    """Image and shard members (name, size) that are zero bytes (other files may be empty)."""
+    return [
+        name for name, size in members
+        if Path(name).suffix.lower() in _PAYLOAD_SUFFIXES and is_empty_defect(name, size)
+    ]
+
+
+def _report_empty(archive_path: str | Path, empty: list[str]) -> bool:
+    if empty:
+        print(f"[ERROR] {len(empty)} zero-byte image/shard members in"
+              f" {archive_path} (first: {empty[0]})")
+    return not empty
+
+
 def verify_archive(archive_path: str | Path) -> bool:
-    """Check if archive is fully readable and uncorrupted."""
+    """Check if archive is fully readable and uncorrupted.
+
+    It also fails when an image or shard member is zero bytes.
+    """
     path_str = str(archive_path)
     try:
         if is_tar_path(path_str):
             with tarfile.open(path_str, tar_mode(path_str, "r")) as tf:
-                for member in tf.getmembers():
-                    _ = member
-            return True
+                members = [(m.name, m.size) for m in tf.getmembers() if m.isfile()]
+            return _report_empty(archive_path, _empty_payloads(members))
         with zipfile.ZipFile(path_str, "r") as zf:
             bad_file = zf.testzip()
             if bad_file:
                 print(f"[ERROR] Corrupted file in zip: {bad_file}")
                 return False
-        return True
+            members = [(i.filename, i.file_size) for i in zf.infolist() if not i.is_dir()]
+        return _report_empty(archive_path, _empty_payloads(members))
     except (OSError, zipfile.BadZipFile, tarfile.TarError) as e:
         print(f"[ERROR] Invalid archive file {archive_path}: {e}")
         return False
