@@ -68,11 +68,11 @@ def _read_jsonl(file_path: Path) -> tuple[str, Any | None]:
         line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     parsed_records = []
-    for line in lines:
+    for line_no, line in enumerate(lines, start=1):
         try:
             parsed_records.append(json.loads(line))
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as err:
+            logger.warning("Skipping malformed JSONL line %d in %s: %s", line_no, file_path, err)
     return "\n".join(lines), parsed_records
 
 

@@ -80,7 +80,7 @@ $HuggingFaceSB = {
     Write-Output "STATUS:HF-PULLING"
     & $vpy -m $hfManager --repo_id $repoId --output_dir $outFold --repo_type dataset 2>&1
 
-    if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+    if ((Test-Path -LiteralPath $outFold -PathType Container) -and (Get-ChildItem -LiteralPath $outFold -Recurse -File).Count -gt 0) {
          Write-Output "RESULT:COMPLETED"
     } else {
          Write-Output "RESULT:FAILED"
@@ -96,7 +96,7 @@ $GHSourceSB = {
     Write-Output "STATUS:GH-CLONING"
     & $vpy -m $ghManager --repo_url $repoId --output_dir $outFold 2>&1
 
-    if ((Get-ChildItem $outFold -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0) {
+    if ((Test-Path -LiteralPath $outFold -PathType Container) -and (Get-ChildItem -LiteralPath $outFold -Recurse -File).Count -gt 0) {
          Write-Output "RESULT:COMPLETED"
     } else {
          Write-Output "RESULT:FAILED"
@@ -394,7 +394,7 @@ function Get-RefStatus {
         # 2026: SOTA Fast-Check - Don't count millions of files, just check folder existence + sentinel
         $fCount = 1
         # Check if the download was interrupted (HuggingFace incomplete blobs)
-        if (Get-ChildItem -Path $foundFold -Recurse -Force -Filter "*incomplete*" -ErrorAction SilentlyContinue | Select-Object -First 1) {
+        if (Get-ChildItem -LiteralPath $foundFold -Recurse -Force -Filter "*incomplete*" | Select-Object -First 1) {
             $fCount = 0
         }
         # Secondary HuggingFace check removed: sources/hf.py writes directly to local_dir without snapshots

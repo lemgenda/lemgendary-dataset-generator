@@ -77,8 +77,8 @@ def _vault_mt5() -> dict[str, Any]:
         rec = get_secret_record("metatrader5")
         if rec:
             return rec
-    except (OSError, ImportError, ValueError, AttributeError):
-        pass
+    except (OSError, ImportError, ValueError, AttributeError) as err:
+        logger.warning("MT5 vault record unavailable, using environment only: %s", err)
     return {}
 
 

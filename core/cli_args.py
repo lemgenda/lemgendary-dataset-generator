@@ -30,7 +30,7 @@ from core import ecosystem
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.74"
+__version__ = "16.9.75"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────

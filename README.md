@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.74-STABLE` |
+| **Version** | `v16.9.75-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,17 @@
 ---
 
 ## Changelog
+
+### v16.9.75 - No Swallowed Errors in Hub Script, MT5 Vault and JSONL Ingest
+
+- `lemgendary_datasets_hub.ps1`: the three `Get-ChildItem` probes no longer
+  pass `-ErrorAction SilentlyContinue`; a `Test-Path` guard handles a missing
+  folder and any other error now surfaces (audit Phase 2).
+- `forex/mt5_session.py`: an unreadable MT5 vault record is logged as a
+  warning instead of being swallowed.
+- `tools/llm_helper/knowledge_ingestor.py`: malformed JSONL lines are logged
+  with their line number before being skipped.
+- `tests/test_error_reporting.py`: covers both logged recovery paths.
 
 ### v16.9.74 - Authoritative SSOT Credential Precedence in Sync Auth
 
