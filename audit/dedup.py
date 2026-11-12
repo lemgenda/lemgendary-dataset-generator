@@ -19,6 +19,7 @@ external imagehash dependency is required.
 from __future__ import annotations
 
 import hashlib
+import itertools
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -121,3 +122,50 @@ class PerceptualHasher:
         diff = pixels[:, 1:] > pixels[:, :-1]
         packed = np.packbits(diff.flatten())
         return packed.tobytes().hex()
+
+
+class NearDupIndex:
+    """Sub-linear near-duplicate lookup over (pHash, dHash) pairs.
+
+    Each 64-bit hash is cut into ``radius + 1`` bit ranges. Two hashes within
+    Hamming distance ``radius`` must agree exactly on at least one range
+    (pigeonhole), so only hashes sharing a range bucket are compared with
+    :meth:`PerceptualHasher.is_near_dup`.
+    """
+
+    def __init__(self, hasher: PerceptualHasher) -> None:
+        self._hasher = hasher
+        bits = hasher.hash_size * hasher.hash_size
+        pieces = hasher.near_dup_radius + 1
+        bounds = [round(i * bits / pieces) for i in range(pieces + 1)]
+        self._ranges = list(itertools.pairwise(bounds))
+        self._buckets: dict[tuple[int, int, int], list[tuple[str, str]]] = {}
+
+    @staticmethod
+    def parse(value: str) -> tuple[str, str] | None:
+        """Split a registry ``"phash:dhash"`` string; None when it is malformed."""
+        parts = value.split(":")
+        if len(parts) != 2 or not all(parts):
+            return None
+        return parts[0], parts[1]
+
+    def _keys(self, pair: tuple[str, str]) -> list[tuple[int, int, int]]:
+        keys: list[tuple[int, int, int]] = []
+        for which, hex_value in enumerate(pair):
+            number = int(hex_value, 16)
+            for idx, (lo, hi) in enumerate(self._ranges):
+                keys.append((which, idx, (number >> lo) & ((1 << (hi - lo)) - 1)))
+        return keys
+
+    def add(self, pair: tuple[str, str]) -> None:
+        """Remember ``pair``."""
+        for key in self._keys(pair):
+            self._buckets.setdefault(key, []).append(pair)
+
+    def has_near_dup(self, pair: tuple[str, str]) -> bool:
+        """True when a remembered pair is within the hasher's radius of ``pair``."""
+        for key in self._keys(pair):
+            for other in self._buckets.get(key, ()):
+                if self._hasher.is_near_dup(pair, other):
+                    return True
+        return False

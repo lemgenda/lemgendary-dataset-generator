@@ -10,7 +10,6 @@
 import argparse
 import json
 import logging
-import os
 import pickle
 import random
 import sqlite3
@@ -31,7 +30,8 @@ from sklearn.cluster import MiniBatchKMeans
 from tqdm import tqdm
 from webdataset.writer import TarWriter as WdsTarWriter
 
-from core.compile_registry import insert_rows, registry_row
+from audit.dedup import NearDupIndex, PerceptualHasher
+from core.compile_registry import insert_rows, load_registry_hashes, registry_row
 from core.compile_tasks import TaskItem, count_one
 from core.compiler_core import CONFIG, batch_worker
 from formats.base import parse_also_format
@@ -59,15 +59,46 @@ class ExtractionRun:
 
 @dataclass
 class _PoolState:
-    """Mutable bookkeeping of the parallel phase."""
+    """Mutable bookkeeping of PASS 1 (warm-up and parallel phase)."""
 
     pending: set[Future] = field(default_factory=set)
     seen_hashes: set[Any] = field(default_factory=set)
+    near_dups: NearDupIndex | None = None
     compiled_bytes: int = 0
 
 
-def _warmup(run: ExtractionRun, all_tasks: list[TaskItem], pbar: Any) -> int:
-    """2026 Resilience: SAFE-START WARMUP (SOTA v6.3) - run the first tasks serially."""
+def _seed_state(run: ExtractionRun) -> _PoolState:
+    """Start PASS 1 with the exact and perceptual hashes already in the registry."""
+    state = _PoolState()
+    if CONFIG.get("enable_perceptual_dedup") and not run.no_hash:
+        state.near_dups = NearDupIndex(PerceptualHasher())
+    if run.no_hash or not (CONFIG["enable_dedup"] or state.near_dups):
+        return state
+    exact, perceptual = load_registry_hashes(run.conn)
+    if CONFIG["enable_dedup"]:
+        state.seen_hashes.update(exact)
+    if state.near_dups is not None:
+        for value in perceptual:
+            pair = NearDupIndex.parse(value)
+            if pair is not None:
+                state.near_dups.add(pair)
+    if exact or perceptual:
+        print(f"[RESUMPTION] Dedup seeded with {len(exact)} registered sample hashes.")
+    return state
+
+
+def _as_list(res: Any) -> list[Any]:
+    if not res:
+        return []
+    return res if isinstance(res, list) else [res]
+
+
+def _warmup(run: ExtractionRun, state: _PoolState, all_tasks: list[TaskItem], pbar: Any) -> int:
+    """2026 Resilience: SAFE-START WARMUP (SOTA v6.3) - run the first tasks serially.
+
+    Results go through :func:`_absorb` exactly like pool results, so they are
+    deduplicated and counted toward ``compiled_bytes`` and ``max_gb``.
+    """
     warmup_limit = min(_WARMUP_SAMPLES, len(all_tasks))
     if warmup_limit <= 0:
         return warmup_limit
@@ -78,16 +109,29 @@ def _warmup(run: ExtractionRun, all_tasks: list[TaskItem], pbar: Any) -> int:
         task_args = all_tasks[i]
         res = task_args[0](*task_args[1:])
         pbar.update(1)
-        if res:
-            if not isinstance(res, list):
-                res = [res]
-            batch_entries = [registry_row(r) for r in res if r]
-            if batch_entries:
-                insert_rows(run.conn, batch_entries)
+        batch_entries: list[tuple[Any, ...]] = []
+        _absorb(run, state, _as_list(res), batch_entries)
+        if batch_entries:
+            insert_rows(run.conn, batch_entries)
         if i % _WARMUP_COMMIT_EVERY == _WARMUP_COMMIT_EVERY - 1:
             run.conn.commit()
     print("[SAFE-START] Warmup complete. Engaging Parallel Matrix.")
     return warmup_limit
+
+
+def _is_duplicate(run: ExtractionRun, state: _PoolState, res: dict[str, Any]) -> bool:
+    """True when ``res`` repeats an exact or (with perceptual dedup) a near-duplicate hash."""
+    if run.no_hash:
+        return False
+    if CONFIG["enable_dedup"] and res["hash"] and res["hash"] in state.seen_hashes:
+        return True
+    pair = NearDupIndex.parse(res.get("perceptual_hash") or "")
+    if state.near_dups is None or pair is None:
+        return False
+    if state.near_dups.has_near_dup(pair):
+        return True
+    state.near_dups.add(pair)
+    return False
 
 
 def _absorb(run: ExtractionRun, state: _PoolState, batch_results: list[Any],
@@ -96,7 +140,7 @@ def _absorb(run: ExtractionRun, state: _PoolState, batch_results: list[Any],
     for res in batch_results:
         if not res:
             continue
-        if CONFIG["enable_dedup"] and not run.no_hash and res["hash"] in state.seen_hashes:
+        if _is_duplicate(run, state, res):
             continue
         if res["hash"]:
             state.seen_hashes.add(res["hash"])
@@ -147,10 +191,26 @@ def _run_pool(run: ExtractionRun, state: _PoolState, remaining_tasks: list[TaskI
         _submit_next(run, state, batch_iter, len(done))
 
 
+def _stop_gracefully(run: ExtractionRun, state: _PoolState) -> None:
+    """On Ctrl+C: cancel queued batches and commit what is registered (no hard exit)."""
+    for future in state.pending:
+        future.cancel()
+    state.pending.clear()
+    run.executor.shutdown(wait=False, cancel_futures=True)
+    run.conn.commit()
+    print()
+    print("[INTERRUPT] Queued work cancelled; registered samples committed.")
+
+
 def run_extraction(run: ExtractionRun, all_tasks: list[TaskItem], existing_count: int,
                    desc_label: str) -> int:
-    """PASS 1: process every task and register the records; return the compiled bytes."""
-    state = _PoolState()
+    """PASS 1: process every task and register the records; return the compiled bytes.
+
+    A KeyboardInterrupt cancels the queued batches, commits the registry and
+    is re-raised so callers unwind normally (closing SQLite and shard files)
+    instead of the process being killed with ``os._exit``.
+    """
+    state = _seed_state(run)
     total_items_to_process = sum(count_one(t) for t in all_tasks)
     with tqdm(
         total=total_items_to_process + existing_count,
@@ -158,11 +218,12 @@ def run_extraction(run: ExtractionRun, all_tasks: list[TaskItem], existing_count
         desc=desc_label,
         smoothing=0.1,
     ) as pbar:
-        warmup_limit = _warmup(run, all_tasks, pbar)
         try:
+            warmup_limit = _warmup(run, state, all_tasks, pbar)
             _run_pool(run, state, all_tasks[warmup_limit:], pbar)
         except KeyboardInterrupt:
-            os._exit(1)
+            _stop_gracefully(run, state)
+            raise
     return state.compiled_bytes
 
 

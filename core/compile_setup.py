@@ -9,6 +9,7 @@ import argparse
 import os
 import signal
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -75,12 +76,14 @@ def parse_compile_args(cmd_args: list[str] | None = None) -> argparse.Namespace:
 # ────────────────────────────────────────────────────────────────────────────
 
 def install_interrupt_handler() -> None:
-    """2026 Resilience: Force-Kill Handler for Windows (SIGINT v1.1)."""
-    if os.name == 'nt':
-        def signal_handler(_sig, _frame):
-            print("\n[INTERRUPT] Emergency termination requested. Mission aborted.")
-            os._exit(1)
-        signal.signal(signal.SIGINT, signal_handler)
+    """Make Ctrl+C raise KeyboardInterrupt on the main thread on every OS.
+
+    The compile passes catch it, cancel queued work, commit the registry and
+    unwind normally, so SQLite WAL files and open shards are closed cleanly
+    (the old Windows handler killed the process with ``os._exit``).
+    """
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGINT, signal.default_int_handler)
 
 
 @dataclass
@@ -212,12 +215,11 @@ def prepare_compile(args: argparse.Namespace) -> CompileSettings:
 
 def make_executor(args: argparse.Namespace, settings: CompileSettings,
                   existing_on_disk: set[str]) -> ThreadPoolExecutor:
-    """Build the manifold's worker pool (workers initialise in-process for I/O-only runs)."""
-    if args.no_vetting and args.no_labeling:
-        init_worker(CONFIG, settings.dped_canon_paths, existing_on_disk, args)
-        return ThreadPoolExecutor(max_workers=settings.max_workers)
-    return ThreadPoolExecutor(
-        max_workers=settings.max_workers,
-        initializer=init_worker,
-        initargs=(CONFIG, settings.dped_canon_paths, existing_on_disk, args),
-    )
+    """Initialise the shared worker state once, then build the manifold's thread pool.
+
+    The pool runs threads, which share one ``WORKER`` state: initialising it
+    per thread (the old ``initializer=``) raced on that state and loaded every
+    model once per thread.
+    """
+    init_worker(CONFIG, settings.dped_canon_paths, existing_on_disk, args)
+    return ThreadPoolExecutor(max_workers=settings.max_workers)

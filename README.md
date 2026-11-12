@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.77-STABLE` |
+| **Version** | `v16.9.78-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,25 @@
 ---
 
 ## Changelog
+
+### v16.9.78 - Safe Worker Init, Graceful Interrupt, Full Dedup
+
+- `core/compiler_worker.py`, `core/compile_setup.py`: the shared worker
+  state is initialised once per process under a lock; the thread pool no
+  longer runs `init_worker` per thread (which raced and reloaded every
+  model per thread). SIGINT is only installed from the main thread
+  (audit 2.1.5).
+- Ctrl+C no longer calls `os._exit`: PASS 1 cancels queued batches, shuts
+  the pool down, commits the registry and re-raises, and the manifold
+  compile closes its pool and SQLite connection in a `finally` block.
+- Warm-up results now pass through the same dedup and `max_gb` accounting
+  as pool results; resumed runs seed exact and perceptual hashes from the
+  registry; perceptual dedup (`enable_perceptual_dedup`) is applied via a
+  bucketed `audit.dedup.NearDupIndex` and the hash is persisted
+  (audit 2.1.6).
+- `tests/test_compile_resilience.py`: worker init, interrupt, warm-up,
+  resume and near-duplicate tests; the first-dot sample key rule of
+  `_stem_lower` is pinned by a regression test.
 
 ### v16.9.77 - MDS Transcode Keeps Every Metadata Column
 

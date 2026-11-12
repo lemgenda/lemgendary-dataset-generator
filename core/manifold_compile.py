@@ -163,37 +163,40 @@ def _compile_samples(args: argparse.Namespace, settings: CompileSettings,
     ctx.existing.names.update(load_existing_names(conn, db_path, pascal_name))
     ctx.existing.on_disk.update(scan_physical_index(output_root, pascal_name))
     executor = make_executor(args, settings, ctx.existing.on_disk)
-    adopt_orphans(conn, ctx.existing.names, ctx.existing.on_disk, ctx.task)
+    try:
+        adopt_orphans(conn, ctx.existing.names, ctx.existing.on_disk, ctx.task)
 
-    affixes = (settings.prefix_str, settings.suffix_str)
-    all_tasks = _plan_tasks(ctx, affixes)
-    existing_count = len(ctx.existing.names)
-    if not all_tasks:
-        print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
-        return ManifoldOutcome(ctx.model_key, output_root, samples=existing_count)
+        affixes = (settings.prefix_str, settings.suffix_str)
+        all_tasks = _plan_tasks(ctx, affixes)
+        existing_count = len(ctx.existing.names)
+        if not all_tasks:
+            print(f"[NOTICE] No tasks found for {pascal_name}. Manifold is fully processed.")
+            return ManifoldOutcome(ctx.model_key, output_root, samples=existing_count)
 
-    print(f"[MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
+        print(f"[MANIFOLD] Found {len(all_tasks)} items needing processing (after disk-skip).")
 
-    compiled_bytes = 0
-    _apply_cpu_guard(args, len(all_tasks))
-    if not args.finalize:
-        run = ExtractionRun(conn, executor, settings.max_workers, settings.max_gb,
-                            args.no_hash, batch_size=100 if args.no_vetting else 50)
-        compiled_bytes = run_extraction(run, all_tasks, existing_count,
-                                        _pass_one_label(args, ctx.task))
+        compiled_bytes = 0
+        _apply_cpu_guard(args, len(all_tasks))
+        if not args.finalize:
+            run = ExtractionRun(conn, executor, settings.max_workers, settings.max_gb,
+                                args.no_hash, batch_size=100 if args.no_vetting else 50)
+            compiled_bytes = run_extraction(run, all_tasks, existing_count,
+                                            _pass_one_label(args, ctx.task))
 
-    conn.commit()
+        conn.commit()
 
-    compiled_gb = compiled_bytes / (1024**3)
-    if compiled_gb < settings.min_gb:
-        print(
-            f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold"
-            f" constraint ({settings.min_gb:.2f}GB)."
-        )
+        compiled_gb = compiled_bytes / (1024**3)
+        if compiled_gb < settings.min_gb:
+            print(
+                f"[WARNING] Compiled set size ({compiled_gb:.2f}GB) is below the minimum manifold"
+                f" constraint ({settings.min_gb:.2f}GB)."
+            )
 
-    outcome = finish_manifold(args, ctx, conn, affixes)
-    executor.shutdown(wait=True)
-    return outcome
+        return finish_manifold(args, ctx, conn, affixes)
+    finally:
+        # Runs on success, error and Ctrl+C alike: no SQLite WAL or pool is left open.
+        executor.shutdown(wait=True, cancel_futures=True)
+        conn.close()
 
 
 def finish_manifold(args: argparse.Namespace, ctx: ManifoldContext, conn: Any,

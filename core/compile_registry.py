@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 REGISTRY_INSERT_SQL = """
     INSERT OR IGNORE INTO registry (
         name, source, task, split, hash,
-        nima_score, caption, style_tag, clip_latent, img_bytes
+        nima_score, caption, style_tag, clip_latent, img_bytes, perceptual_hash
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
+# Placeholder hash of orphan rows adopted from disk (never a real digest).
+ADOPTED_HASH = "adopted"
 _ORPHAN_CHUNK_SIZE = 100000
 _SCAN_REPORT_EVERY = 5000
 
@@ -32,7 +34,7 @@ def registry_row(res: dict[str, Any]) -> tuple[Any, ...]:
     return (
         res["name"], res["source"], res["task"], res["split"], res["hash"],
         res["nima_score"], res.get("caption"), res.get("style_tag"),
-        res.get("clip_latent"), res.get("img_bytes"),
+        res.get("clip_latent"), res.get("img_bytes"), res.get("perceptual_hash"),
     )
 
 
@@ -70,8 +72,32 @@ def load_existing_names(conn: sqlite3.Connection, db_path: Path, pascal_name: st
     return existing_names
 
 
+def load_registry_hashes(conn: sqlite3.Connection) -> tuple[set[str], list[str]]:
+    """Return the exact hashes and ``phash:dhash`` strings already in the registry.
+
+    A resumed compile seeds its dedup state from these so samples registered
+    by an earlier run are not compiled a second time.
+    """
+    exact = {
+        row[0]
+        for row in conn.execute("SELECT hash FROM registry WHERE hash IS NOT NULL AND hash != ?",
+                                (ADOPTED_HASH,))
+    }
+    perceptual = [
+        row[0]
+        for row in conn.execute(
+            "SELECT perceptual_hash FROM registry WHERE perceptual_hash IS NOT NULL"
+        )
+    ]
+    return exact, perceptual
+
+
 def _stem_lower(fname: str) -> str:
-    """The file name up to its first dot, lower-cased."""
+    """The sample key of a file name (up to its first dot), lower-cased.
+
+    The first dot is deliberate: ``x.target.webp`` and ``x.mask.webp`` are
+    companions of sample ``x`` (WebDataset key rule), not samples of their own.
+    """
     dot_idx = fname.find('.')
     return fname[:dot_idx].lower() if dot_idx != -1 else fname.lower()
 
@@ -122,7 +148,7 @@ def _orphan_row(o_key: str, task: str) -> tuple[Any, ...]:
     """Registry row for an image found on disk without a registry entry."""
     parts = o_key.split("_")
     o_source = "_".join(parts[1:-1]) if len(parts) >= 3 else "unknown"
-    return (o_key, o_source, task, "train", "adopted", 1.0, None, None, None, None)
+    return (o_key, o_source, task, "train", ADOPTED_HASH, 1.0, None, None, None, None, None)
 
 
 def adopt_orphans(conn: sqlite3.Connection, existing_names: set[str],

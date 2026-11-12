@@ -1,8 +1,9 @@
 """Per-process worker state for the compiler: model loading, audit gates and image writes.
 
-``init_worker`` runs once in every pool process (and in the parent for
-in-process runs). It fills the module-level ``WORKER`` state that the
-per-sample processors in ``core.sample_processor`` read.
+``init_worker`` fills the module-level ``WORKER`` state that the per-sample
+processors in ``core.sample_processor`` read. It runs once per process: the
+compiler's thread pool shares that state, and a lock makes repeated calls
+from several threads a no-op after the first.
 """
 
 import argparse
@@ -12,6 +13,7 @@ import multiprocessing
 import os
 import shutil
 import signal
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -83,6 +85,8 @@ class WorkerState:
 
 
 WORKER = WorkerState()
+_INIT_LOCK = threading.Lock()
+_INIT_DONE: set[int] = set()
 
 
 # ─── Task routing ───────────────────────────────────────────────────────────
@@ -105,8 +109,10 @@ def _infer_mask_strategy(task: str) -> str | None:
 def _configure_process() -> str:
     """Silence SIGINT in children, pin torch threads and return the worker's device."""
     is_main = multiprocessing.current_process().name == "MainProcess"
-    # Workers ignore SIGINT to prevent traceback noise (subprocesses only).
-    if os.name == "nt" and not is_main:
+    on_main_thread = threading.current_thread() is threading.main_thread()
+    # Worker processes ignore SIGINT to prevent traceback noise; signal.signal
+    # may only be called from a process's main thread.
+    if os.name == "nt" and not is_main and on_main_thread:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -224,6 +230,20 @@ def init_worker(
     `initargs`. If `args` is None, the parent's module state is used — this
     only works in the parent process itself, not in spawned children.
     """
+    with _INIT_LOCK:
+        if os.getpid() in _INIT_DONE:
+            return
+        _init_worker_locked(config, dped_cache, physical_index, args)
+        _INIT_DONE.add(os.getpid())
+
+
+def _init_worker_locked(
+    config: dict[str, Any],
+    dped_cache: set[str] | None,
+    physical_index: set[str] | None,
+    args: argparse.Namespace | None,
+) -> None:
+    """Body of :func:`init_worker`; the caller holds ``_INIT_LOCK``."""
     if args is not None:
         set_args(args)
     a = get_args()
