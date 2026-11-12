@@ -59,7 +59,7 @@ def _run(service: RepairService, manifold_dir: Path, apply: bool) -> bool:
 @repair_app.command("manifold")
 def repair_manifold(model: ModelOpt = None, manifold: ManifoldOpt = None,
                     apply: ApplyOpt = False) -> None:
-    """Repair one manifold: zero-byte samples, scattered groups, counts, paths."""
+    """Repair one manifold: zero-byte samples, scattered groups, png/jpg members, counts, paths."""
     manifold_dir = require_target(TargetOptions(model=model, manifold=manifold))
     ok = _run(RepairService(), manifold_dir, apply)
     if not apply:

@@ -7,6 +7,9 @@ manifolds). The fix
 - sets ``count`` (and ``total_samples``, ``<split>_samples`` and
   ``total_shards`` when recorded) to the physical numbers;
 - replaces an absolute or staging ``path`` with the canonical relative one;
+- sets a recorded ``image_format`` to ``webp`` once the shards hold no
+  PNG/JPEG member any more (index entries record sample keys only, never
+  member extensions, so they need no change for a WebP conversion);
 - drops index.json entries with no physical sample (including ``skipped``
   rows), corrects entries filed under the wrong split, adds a minimal entry
   for every physical sample the index lacks, and fills a missing ``source``.
@@ -42,11 +45,16 @@ INDEX_FILE = "index.json"
 
 @dataclass
 class PhysicalSamples:
-    """What is on disk: counts per split, the keys when they can be named, shard count."""
+    """What is on disk: counts per split, the keys when they can be named, shard count.
+
+    ``webp_only`` is True for shard sets left with no convertible PNG/JPEG
+    member once the planned conversions are done.
+    """
 
     split_counts: dict[str, int]
     keys_by_split: dict[str, set[str]] | None = None
     shards: int | None = None
+    webp_only: bool = False
 
     @property
     def total(self) -> int:
@@ -111,6 +119,8 @@ def _info_updates(info: dict[str, Any], physical: PhysicalSamples,
             wanted[f"{split}_samples"] = count
     if "total_shards" in info and physical.shards is not None:
         wanted["total_shards"] = physical.shards
+    if "image_format" in info and physical.webp_only:
+        wanted["image_format"] = "webp"
     path = info.get("path")
     if isinstance(path, str) and (_is_absolute(path) or ".staging" in path):
         wanted["path"] = manifold_info_path(name)
@@ -194,7 +204,8 @@ def plan_metadata_fix(manifold_dir: Path, physical: PhysicalSamples) -> Metadata
             if not _names_match(index, physical):
                 fix.notes.append(f"{INDEX_FILE}: fewer than half of its names match the samples"
                                  " on disk; entries kept, only missing sources are filled")
-                physical = PhysicalSamples(physical.split_counts, None, physical.shards)
+                physical = PhysicalSamples(physical.split_counts, None, physical.shards,
+                                           physical.webp_only)
             fix.new_index = _sync_index(fix, index, physical, info, name)
             if physical.keys_by_split is None:
                 note = _index_note(fix.new_index, physical)

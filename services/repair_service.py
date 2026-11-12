@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tools.repair.member_webp import convertible_members
 from tools.repair.metadata_fix import (
     MetadataFix,
     PhysicalSamples,
@@ -55,6 +56,9 @@ class ManifoldRepairPlan:
                             f" ({', '.join(sorted(fix.drop_keys)[:5])})")
             if fix.regroup:
                 what.append("regroup scattered members contiguously")
+            if fix.convert:
+                what.append(f"convert {len(fix.convert)} png/jpg members to webp"
+                            f" ({', '.join(sorted(fix.convert)[:5])})")
             lines.append(f"  shard {fix.shard.parent.name}/{fix.shard.name}: {'; '.join(what)}")
         if self.metadata is not None:
             lines.extend(f"  {line}" for line in self.metadata.summary())
@@ -65,10 +69,18 @@ class ManifoldRepairPlan:
 
 
 def _shard_physical(audit: ShardSetAudit, fixes: list[ShardFix]) -> PhysicalSamples:
-    """Shard keys per split, minus the samples the planned fixes drop."""
+    """Shard keys per split, minus the samples the planned fixes drop.
+
+    The set counts as WebP only when every convertible PNG/JPEG member is
+    planned for conversion.
+    """
     dropped = {key for fix in fixes for key in fix.drop_keys}
     keys = {split: ks - dropped for split, ks in audit.keys_by_split.items()}
-    return PhysicalSamples({s: len(k) for s, k in keys.items()}, keys, len(audit.shards))
+    converted = {name for fix in fixes for name in fix.convert}
+    webp_only = all(convertible_members(shard) <= converted
+                    for shard in audit.shards if not shard.error)
+    return PhysicalSamples({s: len(k) for s, k in keys.items()}, keys, len(audit.shards),
+                           webp_only)
 
 
 def _directory_physical(images_dir: Path) -> PhysicalSamples:

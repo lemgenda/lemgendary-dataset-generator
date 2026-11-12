@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.85-STABLE` |
+| **Version** | `v16.9.86-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,25 @@
 ---
 
 ## Changelog
+
+### v16.9.86 - Repair Converts Leftover PNG/JPEG Members to WebP
+
+- `repair` also re-encodes PNG/JPEG members left in WebDataset shards
+  (known: MultitaskRestorationPro `shard-00045` with one `.png` /
+  `.target.png` sample, UpnV2 `shard-00262` with a raw `.jpg`) to WebP
+  with the compiler's own encoders and settings: masks lossless with their
+  class values kept, targets at `TARGET_WEBP_QUALITY`, other images at
+  `IMAGE_WEBP_QUALITY` (`utils/image_payload.py`,
+  `utils/container_stream.py`). Member order is kept; a member whose WebP
+  name already exists in its sample is left alone. The rewritten shard
+  must hold no convertible member before it replaces the original (R2-D2).
+- A recorded `image_format` in `dataset_info.yaml` becomes `webp` once the
+  shards hold no convertible member. `index.json` records sample keys
+  only, so it needs no change.
+- `tools/repair/member_webp.py` (new), `tools/repair/shard_fix.py`,
+  `tools/repair/metadata_fix.py`, `services/repair_service.py`.
+- `tests/test_repair_webp.py` (new): synthetic shards; a second run finds
+  nothing to do.
 
 ### v16.9.85 - Repair Keeps No Originals
 
