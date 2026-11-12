@@ -23,7 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 class Annotation(TypedDict):
-    """Shape of every annotation record a parser returns."""
+    """Shape of every annotation record a parser returns.
+
+    bbox data (and the first four values of pose data) are pixel
+    ``[xmin, ymin, width, height]``; segmentation points and pose keypoints
+    are already normalized to 0..1.
+    """
     type: str        # 'bbox' | 'segmentation' | 'pose'
     cls: int
     data: list[Any]
@@ -64,6 +69,29 @@ def _parse_coco(src: AnnotationSource) -> list[Annotation]:
     return out
 
 
+def _keypoint_bbox(points: list[Any], stride: int) -> list[float]:
+    """Pixel ``[xmin, ymin, w, h]`` around the labelled keypoints (visibility > 0)."""
+    xs: list[float] = []
+    ys: list[float] = []
+    for i in range(0, len(points) - 1, stride):
+        if stride == 3 and points[i + 2] <= 0:
+            continue
+        xs.append(float(points[i]))
+        ys.append(float(points[i + 1]))
+    if not xs:
+        return [0.0, 0.0, 0.0, 0.0]
+    return [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)]
+
+
+def _row_bbox(row: Any, mapping: dict[str, Any]) -> list[Any] | None:
+    """The pixel bbox columns of a Parquet row, or None when any is absent."""
+    keys = [mapping.get(k, k) for k in ("xmin", "ymin", "width", "height")]
+    values = [row.get(k) for k in keys]
+    if any(v is None or pd.isna(v) for v in values):
+        return None
+    return values
+
+
 def _parse_parquet_row(src: AnnotationSource, row: Any, mapping: dict[str, Any]) -> Annotation:
     """Convert one annotation row of a Parquet source using its column mapping."""
     cls = src.category(row[mapping.get("class", "class")])
@@ -72,8 +100,10 @@ def _parse_parquet_row(src: AnnotationSource, row: Any, mapping: dict[str, Any])
         poly = normalize_points(row[seg_col], src.width, src.height, stride=2)
         return {"type": "segmentation", "cls": cls, "data": poly}
     if row.get(kpt_col):
-        kpts = normalize_points(row[kpt_col], src.width, src.height, stride=3)
-        return {"type": "pose", "cls": cls, "data": [0, 0, 0, 0] + kpts}
+        raw_kpts = list(row[kpt_col])
+        kpts = normalize_points(raw_kpts, src.width, src.height, stride=3)
+        box = _row_bbox(row, mapping) or _keypoint_bbox(raw_kpts, stride=3)
+        return {"type": "pose", "cls": cls, "data": list(box) + kpts}
     bbox = [
         row[mapping.get("xmin", "xmin")],
         row[mapping.get("ymin", "ymin")],
@@ -145,11 +175,10 @@ def _face_pose_from_landmarks(src: AnnotationSource, landmarks: Any) -> Annotati
     l_eye = landmarks[36:42].mean(axis=0)
     r_eye = landmarks[42:48].mean(axis=0)
     nose, l_mouth, r_mouth = landmarks[30], landmarks[48], landmarks[54]
-    kpts = [
-        l_eye[0], l_eye[1], r_eye[0], r_eye[1],
-        nose[0], nose[1], l_mouth[0], l_mouth[1],
-        r_mouth[0], r_mouth[1],
-    ]
+    kpts = normalize_points(
+        [float(v) for point in (l_eye, r_eye, nose, l_mouth, r_mouth) for v in point[:2]],
+        src.width, src.height, stride=2,
+    )
     return {
         "type": "pose", "cls": src.category("0"),
         "data": [x_min, y_min, x_max - x_min, y_max - y_min] + kpts,
@@ -189,12 +218,13 @@ def _safetensors_tags(meta: dict[str, Any]) -> list[str]:
 
 
 def _parse_safetensors(src: AnnotationSource) -> list[Annotation]:
-    """safetensors metadata: up to 20 unique tags, each as a full-frame bbox."""
+    """safetensors metadata: up to 20 unique tags, each as a full-frame pixel bbox."""
     if not isinstance(src.ann_data, dict):
         return []
     unique_tags = list(set(_safetensors_tags(src.ann_data)))[:20]
     return [
-        {"type": "bbox", "cls": src.category(tag), "data": [0.0, 0.0, 1.0, 1.0]}
+        {"type": "bbox", "cls": src.category(tag),
+         "data": [0.0, 0.0, float(src.width), float(src.height)]}
         for tag in unique_tags
     ]
 

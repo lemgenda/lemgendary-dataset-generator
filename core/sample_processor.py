@@ -164,10 +164,33 @@ class _Target:
     image: Any
     path: str | None
     clean_only: bool
+    mask: Any = None
+
+    def has_source(self) -> bool:
+        """True when a real target exists (never the degraded input itself)."""
+        return bool(self.path or self.image or self.clean_only or self.mask is not None)
 
 
-def _write_restoration_target(sample: _ImageSample, target: _Target, out_img: Path) -> None:
-    """Write the target for restoration, super-resolution and segmentation samples."""
+# Tasks whose samples are (input, target) pairs and are rejected without a target.
+_PAIRED_TASKS = ("restoration", "super-resolution", "segmentation")
+
+
+def _generated_mask(sample: _ImageSample) -> Any:
+    """A segmentation mask from the Phase 5 generator, or None."""
+    if (sample.task != "segmentation" or WORKER.generators.mask_gen is None
+            or sample.img is None):
+        return None
+    return WORKER.generators.mask_gen.generate(
+        sample.img, context={"task": sample.task, "slug": sample.slug}
+    ).value
+
+
+def _write_restoration_target(sample: _ImageSample, target: _Target) -> None:
+    """Write the target for restoration, super-resolution and segmentation samples.
+
+    The caller has checked :meth:`_Target.has_source`; the degraded input is
+    never copied as its own target (that produced identity pairs).
+    """
     out_tgt = sample.target_out_path()
     if target.path:
         write_image(loaded_img=None, source_bytes=b"", source_path=Path(target.path),
@@ -178,16 +201,9 @@ def _write_restoration_target(sample: _ImageSample, target: _Target, out_img: Pa
     elif target.clean_only:
         write_image(loaded_img=sample.img, source_bytes=sample.img_data,
                     source_path=sample.img_path, out_path=out_tgt, kind="image")
-    elif (sample.task == "segmentation" and WORKER.generators.mask_gen is not None
-          and sample.img is not None):
-        mask_result = WORKER.generators.mask_gen.generate(
-            sample.img, context={"task": sample.task, "slug": sample.slug}
-        )
-        if mask_result.value is not None:
-            write_image(loaded_img=mask_result.value, source_bytes=b"",
-                        source_path=sample.img_path, out_path=out_tgt, kind="mask")
     else:
-        link_or_copy(out_img, out_tgt, "Target")
+        write_image(loaded_img=target.mask, source_bytes=b"",
+                    source_path=sample.img_path, out_path=out_tgt, kind="mask")
 
 
 def _write_parameter_target(sample: _ImageSample, target: _Target, out_img: Path) -> None:
@@ -203,15 +219,24 @@ def _write_parameter_target(sample: _ImageSample, target: _Target, out_img: Path
         link_or_copy(out_img, out_tgt, "Param prediction")
 
 
-def _write_outputs(sample: _ImageSample, target: _Target) -> Path:
-    """Write the image and its target; return the image's final path."""
+def _write_outputs(sample: _ImageSample, target: _Target) -> Path | None:
+    """Write the image and its target; return the image's final path.
+
+    A paired-task sample without a target is rejected (None) before anything
+    is written.
+    """
+    if sample.task in _PAIRED_TASKS and not target.has_source():
+        target.mask = _generated_mask(sample)
+        if not target.has_source():
+            logger.warning("Rejected %s (%s): no target found", sample.name, sample.task)
+            return None
     out_img = sample.image_out_path()
     on_disk = WORKER.physical_index and sample.name.lower() in WORKER.physical_index
     if not on_disk and not target.clean_only:
         out_img = write_image(loaded_img=sample.img, source_bytes=sample.img_data,
                               source_path=sample.img_path, out_path=out_img, kind="image")
-    if sample.task in ["restoration", "super-resolution", "segmentation"]:
-        _write_restoration_target(sample, target, out_img)
+    if sample.task in _PAIRED_TASKS:
+        _write_restoration_target(sample, target)
     elif sample.task == "parameter_prediction":
         _write_parameter_target(sample, target, out_img)
     return out_img
@@ -275,7 +300,8 @@ def _vet_pixels(sample: _ImageSample) -> bool:
     return True
 
 
-def _write_sample_files(sample: _ImageSample, target_img: Any, target_path: str | None) -> Path:
+def _write_sample_files(sample: _ImageSample, target_img: Any,
+                        target_path: str | None) -> Path | None:
     """Write the image and its target (clean-only restoration pairs reuse the input)."""
     slug = sample.slug.lower()
     clean_only = ("parsenet" in slug or "codeformer" in slug) and sample.task == "restoration"
@@ -334,6 +360,8 @@ def _process_image(job: ImageJob) -> dict[str, Any] | None:
 
     hashes = dedup_hashes(sample.img_data if sample.is_virtual else sample.img_path, sample.img)
     out_img_path = _write_sample_files(sample, target_img, target_path)
+    if out_img_path is None:
+        return None
     return _label_and_record(sample, nima, hashes, out_img_path)
 
 

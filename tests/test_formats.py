@@ -166,9 +166,7 @@ class TestWebDatasetWriter(unittest.TestCase):
             writer.write(sample2)
             writer.close()
 
-            shard_file = out_root / "shards" / "shard-00000.data"
-            if not shard_file.exists():
-                shard_file = out_root / "shards" / "shard-00000.tar"
+            shard_file = out_root / "shards" / "train" / "shard-00000.data"
             self.assertTrue(shard_file.exists(), "WebDataset shard was not created")
 
             with tarfile.open(shard_file, "r") as tar:
@@ -184,6 +182,21 @@ class TestWebDatasetWriter(unittest.TestCase):
                 self.assertIsNotNone(txt_member)
                 if txt_member is not None:
                     self.assertEqual(txt_member.read(), b"test label one")
+
+    def test_splits_get_their_own_shards(self) -> None:
+        """Samples of different splits never share a shard (audit 2.1.6)."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_root = Path(tmp_dir)
+            writer = WebDatasetWriter()
+            writer.open(out_root, SimpleNamespace(wds_shard_size_bytes=10_000_000))
+            for name, split in (("a", "train"), ("b", "val"), ("c", "train")):
+                writer.write(Sample(name=name, task="quality", split=split,
+                                    image_bytes=b"x", image_format="webp"))
+            writer.close()
+            with tarfile.open(out_root / "shards" / "train" / "shard-00000.data") as tar:
+                self.assertEqual(tar.getnames(), ["a.webp", "c.webp"])
+            with tarfile.open(out_root / "shards" / "val" / "shard-00000.data") as tar:
+                self.assertEqual(tar.getnames(), ["b.webp"])
 
     def test_legacy_shard_writer(self) -> None:
         """The legacy ShardWriter writes a readable shard."""

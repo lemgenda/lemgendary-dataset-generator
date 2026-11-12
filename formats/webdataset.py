@@ -22,29 +22,49 @@ from webdataset.writer import ShardWriter as WdsShardWriter
 
 from .base import Sample, Writer
 
+_DEFAULT_SPLIT = "train"
+
+
+def _wds_pattern(shard_path: Path) -> str:
+    """The webdataset ShardWriter pattern for ``shard_path`` (``file:`` on Windows)."""
+    resolved = shard_path.resolve()
+    return f"file:{resolved}" if sys.platform == "win32" else str(resolved)
+
 
 class WebDatasetWriter(Writer):
-    """WebDataset .tar shard writer, driven by the Sample stream."""
+    """WebDataset .tar shard writer, driven by the Sample stream.
+
+    Shards are partitioned by split (``shards/<split>/shard-%05d.<ext>``),
+    the same layout the loose and zip converters write, so the split of a
+    sample is never lost.
+    """
 
     def __init__(self) -> None:
-        self._sink: Any = None
+        self._sinks: dict[str, Any] = {}
         self._out_dir: Path | None = None
+        self._max_size = 1_000_000_000
+        self._shard_ext = "data"
 
     def open(self, output_root: Path, policy: Any) -> None:
         self._out_dir = Path(output_root) / "shards"
         self._out_dir.mkdir(parents=True, exist_ok=True)
-        max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
-        shard_ext = getattr(policy, "shard_extension", "data")
-        shard_ext = shard_ext.removeprefix(".")
-        shard_path = (self._out_dir / f"shard-%05d.{shard_ext}").resolve()
-        pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
-        self._sink = WdsShardWriter(
-            pattern,
-            maxsize=max_size,
-        )
+        self._max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
+        self._shard_ext = str(getattr(policy, "shard_extension", "data")).removeprefix(".")
+
+    def _sink_for(self, split: str) -> Any:
+        """The shard sink of ``split``, created on first use."""
+        sink = self._sinks.get(split)
+        if sink is None and self._out_dir is not None:
+            split_dir = self._out_dir / split
+            split_dir.mkdir(parents=True, exist_ok=True)
+            pattern = _wds_pattern(split_dir / f"shard-%05d.{self._shard_ext}")
+            sink = WdsShardWriter(pattern, maxsize=self._max_size)
+            self._sinks[split] = sink
+        return sink
 
     def write(self, sample: Sample) -> None:
-        if self._sink is None:
+        sink = self._sink_for(sample.split or _DEFAULT_SPLIT)
+        if sink is None:
             return
         img_key = sample.image_format.lower() if sample.image_format else "webp"
         row: dict[str, Any] = {
@@ -59,12 +79,12 @@ class WebDatasetWriter(Writer):
             row["txt"] = sample.label.encode("utf-8")
         if sample.metadata:
             row["json"] = json.dumps(sample.metadata).encode("utf-8")
-        self._sink.write(row)
+        sink.write(row)
 
     def close(self) -> None:
-        if self._sink is not None:
-            self._sink.close()
-            self._sink = None
+        for sink in self._sinks.values():
+            sink.close()
+        self._sinks.clear()
 
 
 class ShardWriter:
@@ -85,10 +105,8 @@ class ShardWriter:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         shard_ext = extension.removeprefix(".")
-        shard_path = (self.output_dir / f"{prefix}-%05d.{shard_ext}").resolve()
-        pattern = f"file:{shard_path}" if sys.platform == "win32" else str(shard_path)
         self.sink: Any = WdsShardWriter(
-            pattern,
+            _wds_pattern(self.output_dir / f"{prefix}-%05d.{shard_ext}"),
             maxsize=int(max_size),
         )
 

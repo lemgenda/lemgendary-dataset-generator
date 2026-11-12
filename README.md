@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.78-STABLE` |
+| **Version** | `v16.9.79-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,23 @@
 ---
 
 ## Changelog
+
+### v16.9.79 - Paired Targets, Label Geometry, Split Shards
+
+- `core/sample_processor.py`: restoration, super-resolution and
+  segmentation samples without a real target are rejected before anything
+  is written. Before, the degraded input (or for segmentation the RGB
+  image) was copied as its own target, producing identity pairs. Clean-only
+  sources (ParseNet, CodeFormer) keep their documented behaviour
+  (audit 2.1.6).
+- `core/sample_annotations.py`: safetensors full-frame boxes are pixel
+  boxes (they were normalized twice); Parquet pose rows use their bbox
+  columns or the box around the visible keypoints instead of `0 0 0 0`;
+  NPZ face keypoints are normalized like every other pose source.
+- `formats/webdataset.py`: `WebDatasetWriter` partitions shards by split
+  (`shards/<split>/`), matching the converters; the split was dropped.
+- `tests/test_sample_targets_annotations.py` and a split test in
+  `tests/test_formats.py`.
 
 ### v16.9.78 - Safe Worker Init, Graceful Interrupt, Full Dedup
 
