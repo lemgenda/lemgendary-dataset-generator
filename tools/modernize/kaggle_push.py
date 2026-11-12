@@ -16,6 +16,7 @@ from core.common_sync import (
     track_kaggle_dataset_status,
 )
 from core.kaggle_identity import default_owner
+from core.sync_version_notes import build_version_notes
 from tools.modernize.queue_items import ManifoldQueueItem
 
 logger = logging.getLogger(__name__)
@@ -44,10 +45,7 @@ def push_manifold_to_kaggle(
     v_info = get_dataset_version_info(clean_handle)
     current_ver = v_info.get("latest_version") or 0
     next_ver = current_ver + 1
-    notes = (
-        version_notes
-        or f"v{next_ver}: Modernized {item.canonical_format} format with WebP transcoding"
-    )
+    notes = version_notes or build_version_notes(target_dir)
 
     print(
         f"\n[KAGGLE-PUSH] Uploading {item.name} to {clean_handle} (target version: v{next_ver})..."

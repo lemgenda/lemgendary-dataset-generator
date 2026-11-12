@@ -1,7 +1,8 @@
 """
 Kaggle authentication and dataset-handle helpers for the sync core.
 
-Owns credential bootstrap (explicit args > environment > .kaggle_token), the
+Owns credential bootstrap (explicit args, else the vault secret, exported by
+kind through core.kaggle_credentials), the
 TLS CA bundle wiring, Kaggle handle normalization, and the legacy *large
 manifold safeguard shared by every upload/metadata path.
 """
@@ -11,15 +12,18 @@ import logging
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import certifi
-from kagglehub import clients as kagglehub_clients
 
-from core.kaggle_errors import KAGGLE_CLIENT_ERRORS
+from core.kaggle_credentials import (
+    ENV_USERNAME,
+    SOURCE_EXPLICIT,
+    KaggleCredential,
+    export_credential,
+    has_kaggle_credentials,
+    stored_credential,
+)
 from core.kaggle_identity import default_owner
-from core.lazy_imports import load_kaggle_api
-from core.secrets import get_kaggle_vault_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -61,35 +65,6 @@ def is_kaggle_large_manifold(repo_id: str) -> bool:
     )
 
 
-def _token_file() -> Path:
-    """Locate the repository ``.kaggle_token`` (repo root first, then this package)."""
-    root = (
-        Path(__file__).resolve().parent.parent
-        if Path(__file__).parent.name == "core"
-        else Path(__file__).resolve().parent
-    )
-    token_file = root / ".kaggle_token"
-    if not token_file.exists():
-        token_file = Path(__file__).parent / ".kaggle_token"
-    return token_file
-
-
-def _apply_token_file(default_user: str | None) -> None:
-    """Export Kaggle credentials from .secrets.yaml or legacy .kaggle_token into env."""
-    token, user = get_kaggle_vault_credentials()
-    if not token:
-        token_file = _token_file()
-        if token_file.exists():
-            token = token_file.read_text().strip() or None
-
-    if token:
-        os.environ["KAGGLE_API_TOKEN"] = token
-        os.environ["KAGGLE_KEY"] = token
-    chosen_user = default_user or user
-    if chosen_user:
-        os.environ["KAGGLE_USERNAME"] = chosen_user
-
-
 def _apply_pip_certifi_fallback() -> None:
     """Point TLS at pip's vendored certifi bundle when the main certifi bundle is missing."""
     try:
@@ -117,36 +92,33 @@ def _configure_ca_bundle() -> None:
         logger.debug("TLS CA certificate bundle check notice: %s", cert_exc)
 
 
-def _suppress_version_warnings() -> None:
-    """Silence the kagglehub / KaggleApi "newer version available" banners."""
-    kagglehub_clients.already_printed_version_warning = True
-    try:
-        load_kaggle_api().already_printed_version_warning = True
-    except KAGGLE_CLIENT_ERRORS as exc:
-        logger.debug("KaggleApi warning flag suppression skipped: %s", exc)
-
-
 def setup_kaggle_auth(
     default_user: str | None = None,
     custom_user: str | None = None,
     custom_token: str | None = None,
 ) -> bool:
-    """Ensure Kaggle credentials are initialized (explicit args > environment > .kaggle_token).
+    """Export Kaggle credentials (explicit args, else the vault's default Kaggle record).
 
-    ``default_user`` defaults to the Kaggle owner in the ecosystem file.
-    Returns True when an API token or username/key pair is available afterwards.
+    A ``KGAT_`` access token goes to ``KAGGLE_API_TOKEN`` unchanged, a legacy
+    key to ``KAGGLE_KEY`` (see :mod:`core.kaggle_credentials`). ``default_user``
+    (default: the Kaggle owner in the ecosystem file) names the account when
+    the stored secret does not. With no stored secret the environment and the
+    ``~/.kaggle`` files are left to the Kaggle client.
+
+    Returns True when the Kaggle client will find a token or key afterwards.
     """
     if custom_token:
-        os.environ["KAGGLE_API_TOKEN"] = custom_token
-    if custom_user:
-        os.environ["KAGGLE_USERNAME"] = custom_user
-    if not custom_token:
-        _apply_token_file(default_user or default_owner())
+        credential: KaggleCredential | None = KaggleCredential(
+            secret=custom_token, username=custom_user, source=SOURCE_EXPLICIT
+        )
+    else:
+        credential = stored_credential()
+    if credential is not None:
+        export_credential(credential, default_user or default_owner())
+    elif custom_user:
+        os.environ[ENV_USERNAME] = custom_user
+    else:
+        os.environ.setdefault(ENV_USERNAME, default_user or default_owner())
 
     _configure_ca_bundle()
-    _suppress_version_warnings()
-
-    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
-    return bool(
-        os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY") or kaggle_json.exists()
-    )
+    return has_kaggle_credentials()

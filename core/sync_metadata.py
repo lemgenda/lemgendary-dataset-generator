@@ -34,6 +34,8 @@ from core.sync_remote import ensure_kaggle_dataset_exists
 logger = logging.getLogger(__name__)
 
 _MAX_REPAIR_RETRIES = 5
+# Files per dataset_list_files request (the client default is 20).
+_REMOTE_FILES_PAGE_SIZE = 200
 
 # The KaggleApi method that uploads a dataset header image; private, so it is
 # looked up by name in exactly one place (_kaggle_upload_header_image).
@@ -71,19 +73,47 @@ def _attach_header_image(
         print(f"[WARN] Could not upload header image {img_name} for {clean_handle}: {img_err}")
 
 
+def _page_file_names(page: Any) -> set[str]:
+    """File names on one ``dataset_list_files`` page."""
+    raw_files = getattr(page, "files", None) or []
+    return {f.name for f in raw_files if f is not None and getattr(f, "name", None) is not None}
+
+
 def _list_remote_files(api: Any, clean_handle: str) -> set[str]:
-    """File paths Kaggle currently stores for the dataset (empty when unavailable)."""
+    """Every file path Kaggle stores for the dataset, read page by page.
+
+    Kaggle returns the listing in pages; the next page is requested until
+    ``next_page_token`` is empty. A failed request ends the listing with a
+    warning and returns the names read so far (empty when none).
+    """
+    names: set[str] = set()
+    token: str | None = None
+    seen_tokens: set[str] = set()
     try:
-        remote_file_list = api.dataset_list_files(clean_handle)
-        raw_files = getattr(remote_file_list, "files", None)
-        if raw_files is not None:
-            return {
-                f.name for f in raw_files
-                if f is not None and getattr(f, "name", None) is not None
-            }
+        while True:
+            page = api.dataset_list_files(
+                clean_handle, page_token=token, page_size=_REMOTE_FILES_PAGE_SIZE
+            )
+            names |= _page_file_names(page)
+            token = getattr(page, "next_page_token", None) or None
+            if token is None:
+                return names
+            if token in seen_tokens:
+                logger.warning(
+                    "Kaggle repeated page token for %s; file listing stopped at %d files",
+                    clean_handle,
+                    len(names),
+                )
+                return names
+            seen_tokens.add(token)
     except KAGGLE_REMOTE_ERRORS as exc:
-        logger.warning("Could not list remote files for %s: %s", clean_handle, exc)
-    return set()
+        logger.warning(
+            "Could not list remote files for %s (%d read before the error): %s",
+            clean_handle,
+            len(names),
+            exc,
+        )
+    return names
 
 
 def _has_errors(resp: Any) -> bool:

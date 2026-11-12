@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from core.docs.generators.dataset_info_yaml import write_dataset_info
-from utils.naming import manifold_info_path
 
 logger = logging.getLogger("lemdata.llm.metadata")
 
@@ -65,7 +64,6 @@ def _write_dataset_info(
         "category": descriptor.category,
         "canonical_format": descriptor.canonical_format,
         "original_sources": descriptor.original_sources,
-        "path": manifold_info_path(dataset_name),
         "source": f"{dataset_name}-manifold",
         "last_processed": datetime.datetime.now(datetime.UTC).isoformat(),
         "train_samples": train_count,

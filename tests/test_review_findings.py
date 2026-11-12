@@ -33,7 +33,7 @@ from api.server import create_app
 from commands import common
 from commands.common import _stream_job_logs
 from core import paths
-from sources.base import load_kaggle_credentials
+from core.kaggle_credentials import environment_has_credential
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -106,12 +106,10 @@ class TestKaggleCredentialProbe(unittest.TestCase):
     def test_username_only_is_not_enough(self) -> None:
         """Without a token or key the probe is False."""
         env = {"KAGGLE_USERNAME": "someone"}
-        with patch.dict(os.environ, env, clear=True), \
-                patch("sources.base.read_token_file", return_value=None):
-            self.assertFalse(load_kaggle_credentials())
-        with patch.dict(os.environ, {**env, "KAGGLE_KEY": "k"}, clear=True), \
-                patch("sources.base.read_token_file", return_value=None):
-            self.assertTrue(load_kaggle_credentials())
+        with patch.dict(os.environ, env, clear=True):
+            self.assertFalse(environment_has_credential())
+        with patch.dict(os.environ, {**env, "KAGGLE_KEY": "k"}, clear=True):
+            self.assertTrue(environment_has_credential())
 
 
 class TestUnknownJobStatus(unittest.TestCase):

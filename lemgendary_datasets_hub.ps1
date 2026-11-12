@@ -463,12 +463,6 @@ function Start-Acquisition {
     param([string[]]$ForcedRefs = $null)
     if (-not $PSCmdlet.ShouldProcess("dataset acquisition", "Start")) { return }
 
-    $kaggleDir = if ($env:KAGGLE_CONFIG_DIR) { $env:KAGGLE_CONFIG_DIR } `
-        else { Join-Path $HOME '.kaggle' }
-    if (-not (Test-Path (Join-Path $kaggleDir 'kaggle.json'))) {
-        throw "kaggle.json not found in $kaggleDir. Create a key on kaggle.com."
-    }
-
     $RegData = Get-RegData
     if (!$RegData) { return }
 

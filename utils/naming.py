@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from core.paths import DEFAULT_OUTPUT_FOLDER
-
 
 def clean_slug(slug: str) -> str:
     """Normalize a raw source slug to the canonical registry key."""
@@ -37,12 +33,3 @@ def map_category(cat_name_or_id, _source_name, category_map: dict | None = None)
 
 
 MANIFOLD_PREFIX = "LemGendized"
-
-
-def manifold_info_path(manifold_name: str) -> str:
-    """The ``path`` recorded in dataset_info.yaml: relative to the compiler repo.
-
-    Never the directory the manifold was built in (a staging temp folder or
-    a machine-specific absolute path).
-    """
-    return str(Path(DEFAULT_OUTPUT_FOLDER) / manifold_name)

@@ -4,7 +4,8 @@ LemGendary Dataset Compiler — Shared source-fetcher helpers.
 Small utility module consumed by sources/hf.py, sources/gh.py, sources/gd.py,
 and sources/kaggle.py. Holds the cross-cutting concerns:
 
-    - Auth token discovery (env vars, .kaggle_token, .huggingface_token)
+    - Hugging Face token discovery (env vars, vault, .huggingface_token);
+      Kaggle credentials live in core.kaggle_credentials
     - Common argparse scaffolding for `--repo_id` / `--output_dir`
     - Uniform progress-bar construction
     - Structured error reporting for the hub PS1
@@ -22,8 +23,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from core.kaggle_identity import default_owner
-from core.secrets import get_kaggle_vault_credentials, get_secret_value
+from core.secrets import get_secret_value
 
 logger = logging.getLogger(__name__)
 
@@ -40,31 +40,6 @@ def read_token_file(filename: str) -> str | None:
         return None
     content = p.read_text(encoding="utf-8").strip()
     return content or None
-
-
-def load_kaggle_credentials(default_username: str | None = None) -> bool:
-    """
-    Populate KAGGLE_USERNAME / KAGGLE_KEY / KAGGLE_API_TOKEN from env or
-    .secrets.yaml (falling back to legacy .kaggle_token). Returns True only when a secret
-    (API token or key) is available; a username alone is not a credential.
-    ``default_username`` defaults to the ecosystem Kaggle owner.
-    """
-    # If environment already has credentials or specifies username, respect ambient env
-    ambient_token = os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY")
-    if not ambient_token and "KAGGLE_USERNAME" not in os.environ:
-        token, user = get_kaggle_vault_credentials()
-        if token and "KAGGLE_API_TOKEN" not in os.environ:
-            os.environ["KAGGLE_API_TOKEN"] = token
-        if "KAGGLE_USERNAME" not in os.environ:
-            os.environ["KAGGLE_USERNAME"] = default_username or user or default_owner()
-
-    if "KAGGLE_API_TOKEN" not in os.environ and "KAGGLE_KEY" not in os.environ:
-        token = read_token_file(".kaggle_token")
-        if token:
-            os.environ["KAGGLE_API_TOKEN"] = token
-    if "KAGGLE_USERNAME" not in os.environ:
-        os.environ["KAGGLE_USERNAME"] = default_username or default_owner()
-    return bool(os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY"))
 
 
 def load_hf_credentials() -> bool:

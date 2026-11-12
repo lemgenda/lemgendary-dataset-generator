@@ -76,6 +76,8 @@ class RegistryMetadata(BaseModel):
     output_folder_name: str
     specialization: str | None = None
     global_constraints: GlobalConstraints = Field(default_factory=GlobalConstraints)
+    # Repository cited first by every published manifold (dataset-metadata.json citations).
+    citation_url: str | None = None
 
 
 # ─── Per-dataset policies ───────────────────────────────────────────────────

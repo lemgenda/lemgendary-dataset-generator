@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from core.docs.context import ManifoldContext
+from core.docs.context_resolvers import fallback_val_count
 from core.docs.generators.common import (
     ensure_context,
     manifold_parser,
@@ -138,6 +139,8 @@ def _manifest_text(ctx: ManifoldContext, train_total: int, val_total: int) -> st
         ])
 
     target_dir = ctx.manifold_path
+    if (target_dir / "shards").is_dir():
+        return f"| **shards** | {train_total:,} | {val_total:,} |"
     folders = ["images"]
     if (target_dir / "targets").exists() or ctx.task in ["restoration", "super-resolution"]:
         folders.append("targets")
@@ -151,7 +154,7 @@ def _render_standard(ctx: ManifoldContext) -> str:
     total_samples = ctx.lineage.total_samples
     table_text, train_total, val_total = _lineage_table(ctx.lineage.sources)
     if train_total == 0 and total_samples > 0:
-        val_total = int(total_samples * 0.12)
+        val_total = fallback_val_count(total_samples, ctx.spec.unified_entry)
         train_total = total_samples - val_total
 
     structure_text = build_structure_text(ctx.manifold_path, is_forex=False, task_key=ctx.task)

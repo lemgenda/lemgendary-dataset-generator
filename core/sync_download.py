@@ -135,12 +135,25 @@ def _download_via_api_or_cli(request: DownloadRequest) -> bool:
         return False
 
 
-def _download_via_kagglehub(request: DownloadRequest) -> Path | None:
+def _log_cache_cleanup_error(_func: object, failed_path: str, exc: BaseException) -> None:
+    """Report a kagglehub cache entry that could not be removed after the copy."""
+    logger.warning("Could not remove kagglehub cache entry %s: %s", failed_path, exc)
+
+
+@dataclass(frozen=True)
+class _Fetched:
+    """Outcome of a remote fetch: an archive to unpack, or a tree copied into the target."""
+
+    archive: Path | None = None
+    tree_copied: bool = False
+
+
+def _download_via_kagglehub(request: DownloadRequest) -> _Fetched:
     """Last-resort kagglehub download: return a single file, or copy the cached tree."""
     target_dir = request.target_dir
     path = kagglehub.dataset_download(request.clean_repo_id)
     if os.path.isfile(path):
-        return Path(path)
+        return _Fetched(archive=Path(path))
     print(f"[GET] Dataset cached by kagglehub at {path}. Finalizing to {target_dir}...")
     items = os.listdir(path)
     sub_src = (
@@ -149,26 +162,33 @@ def _download_via_kagglehub(request: DownloadRequest) -> Path | None:
         else path
     )
     copy_tree_with_progress(sub_src, str(target_dir))
-    shutil.rmtree(path, ignore_errors=True)
-    return None
+    shutil.rmtree(path, onexc=_log_cache_cleanup_error)
+    return _Fetched(tree_copied=True)
 
 
-def _locate_downloaded_archive(root: Path, candidates: list[Path]) -> Path | None:
-    """The expected archive, else the most recently modified zip in ``root``."""
+def _locate_downloaded_archive(request: DownloadRequest, candidates: list[Path]) -> Path | None:
+    """The archive this dataset's download wrote (one of ``candidates``), else None.
+
+    Kaggle names the download ``<slug>.zip``. Any other zip in the datasets
+    root belongs to another download and is never picked up.
+    """
     for cand in candidates:
         if _is_nonempty_file(cand):
             return cand
-    recent_zips = sorted(root.glob("*.zip"), key=lambda f: f.stat().st_mtime, reverse=True)
-    return recent_zips[0] if recent_zips else None
+    print(
+        f"[ERROR] Download of {request.clean_repo_id} finished but none of the expected"
+        f" archives exists: {', '.join(c.name for c in candidates)}"
+    )
+    return None
 
 
-def _fetch_remote_archive(request: DownloadRequest, candidates: list[Path]) -> Path | None:
+def _fetch_remote_archive(request: DownloadRequest, candidates: list[Path]) -> _Fetched:
     """Download archive or directory payload from Kaggle."""
     if request.is_competition:
-        return _download_competition(request, candidates)
+        return _Fetched(archive=_download_competition(request, candidates))
     if not _download_via_api_or_cli(request):
         return _download_via_kagglehub(request)
-    return _locate_downloaded_archive(request.root_datasets_dir, candidates)
+    return _Fetched(archive=_locate_downloaded_archive(request, candidates))
 
 
 def _registry_marks_webdataset(target_dir: Path, slug: str) -> bool:
@@ -299,14 +319,17 @@ def perform_dataset_download(request: DownloadRequest) -> bool:
     request.target_dir.mkdir(parents=True, exist_ok=True)
 
     candidates = _archive_candidates(request)
-    archive = _find_verified_local_archive(candidates) or _fetch_remote_archive(
-        request, candidates
+    local_archive = _find_verified_local_archive(candidates)
+    fetched = (
+        _Fetched(archive=local_archive)
+        if local_archive is not None
+        else _fetch_remote_archive(request, candidates)
     )
-    if archive and archive.exists():
-        return _unpack_archive(archive, request)
+    if fetched.archive is not None and fetched.archive.is_file():
+        return _unpack_archive(fetched.archive, request)
 
     target_dir = request.target_dir
-    if target_dir.exists() and any(target_dir.iterdir()):
+    if fetched.tree_copied and any(target_dir.iterdir()):
         print(f"[SUCCESS] Manifold data present in {target_dir}")
         return True
 

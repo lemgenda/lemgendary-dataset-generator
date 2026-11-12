@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import tarfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from core.docs.generators.common import (
 )
 from core.docs.metadata import FOREX_COLUMN_FIELDS
 from core.kaggle_identity import default_owner
+from utils.shard_audit import find_shards, split_member_name
 
 logger = logging.getLogger(__name__)
 
@@ -101,22 +103,57 @@ def _instruction_data_resources(data_dir: Path) -> list[Resource]:
     ]
 
 
+def _first_sample_members(shard: Path) -> list[str]:
+    """Member suffixes of the first sample in ``shard`` (``[".webp"]``); empty when unreadable."""
+    suffixes: list[str] = []
+    first_key: str | None = None
+    try:
+        with tarfile.open(shard, "r:") as tf:
+            for member in tf:
+                if not member.isfile():
+                    continue
+                key, suffix = split_member_name(member.name)
+                if first_key is None:
+                    first_key = key
+                elif key != first_key:
+                    break
+                suffixes.append(suffix)
+    except (OSError, tarfile.TarError) as exc:
+        logger.warning("Cannot read the first sample of shard %s: %s", shard, exc)
+        return []
+    return suffixes
+
+
+def _member_text(members: list[str]) -> str:
+    """``"one .webp file per sample"`` or ``"2 files per sample (.jpg, .target.webp)"``."""
+    if not members:
+        return "samples grouped by key"
+    if len(members) == 1:
+        return f"one {members[0]} file per sample"
+    return f"{len(members)} files per sample ({', '.join(members)})"
+
+
+def _describe_shards(p: Path) -> str:
+    """Describe a WebDataset shard folder from the shard files actually present."""
+    shards = find_shards(p)
+    if not shards:
+        return "WebDataset shard folder (no shard files present when this was generated)."
+    total_mb = sum(s.stat().st_size for s in shards) / (1024 * 1024)
+    extensions = "/".join(sorted({s.suffix for s in shards}))
+    splits = sorted({s.parent.name for s in shards if s.parent != p})
+    split_text = f" in the {', '.join(splits)} splits" if splits else ""
+    return (
+        f"WebDataset shards: {len(shards)} tar-format {extensions} files ({total_mb:.1f} MB)"
+        f"{split_text}, {_member_text(_first_sample_members(shards[0]))}, for streaming"
+        " training."
+    )
+
+
 def _describe_directory(p: Path) -> str:
     """Describe a root-level folder of the manifold."""
     dir_name_lower = p.name.lower()
     if dir_name_lower in ["shards", "webdataset"]:
-        tar_count = sum(1 for _ in p.glob("*.tar"))
-        total_mb = sum(f.stat().st_size for f in p.glob("*.tar")) / (1024 * 1024)
-        if tar_count > 0:
-            return (
-                f"Sharded WebDataset container directory containing {tar_count} tar"
-                f" archives ({total_mb:.1f} MB) with paired image-tensor samples for"
-                " high-throughput streaming training."
-            )
-        return (
-            "Sharded WebDataset tar archive hierarchy containing paired image-tensor"
-            " samples for high-throughput streaming."
-        )
+        return _describe_shards(p)
     return _DIR_DESCRIPTIONS.get(dir_name_lower, f"Directory partition containing {p.name} assets.")
 
 

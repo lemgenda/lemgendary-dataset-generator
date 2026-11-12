@@ -10,6 +10,7 @@ _registry_metadata:
     max_size_gb: 190.0
   author: Lem Treursic
   author_bio: Lead AI Architect & Creator of the LemGendary AI Ecosystem
+  citation_url: https://github.com/lemgenda/lemgendary-training-suite
 datasets:
   nima_aesthetic:
     name: NimaAesthetic
@@ -42,7 +43,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/1709.05424
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -91,7 +91,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/1709.05424
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -136,7 +135,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2111.08943
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -182,7 +180,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2104.09497
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -234,7 +231,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2004.09484
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -274,7 +270,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2206.11253
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -317,7 +312,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2004.02147
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -364,7 +358,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/1905.00641
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -406,7 +399,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/1911.07559
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -450,7 +442,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/1911.07559
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -498,7 +489,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2003.06792
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -541,7 +531,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2003.06792
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -588,7 +577,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2102.02808
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -634,7 +622,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2204.04660
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -683,7 +670,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2204.04660
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -730,7 +716,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2107.10833
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -776,7 +761,6 @@ datasets:
     container:
       primary: directory
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://github.com/ultralytics/ultralytics
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -828,7 +812,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2111.09881
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -875,7 +858,6 @@ datasets:
     container:
       primary: webdataset
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2104.00298
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark
       corpora, processed with deterministic degradation pipelines (noise, motion blur,
@@ -948,7 +930,6 @@ datasets:
     container:
       primary: parquet
     citations:
-      - https://github.com/lemtreursi/model-training
       - https://arxiv.org/abs/2211.14730
     collection_methodology: Institutional tick and minute OHLCV ingestion with algorithmic
       session normalization, statistical outlier winsorization, volatility feature engineering,
@@ -1076,10 +1057,10 @@ datasets:
           url_prefix: https://lemgenda.github.io/ai-training-whitepapers/
         - type: markdown_file
           path: lemgendary-training-suite/README.md
-          url_prefix: https://github.com/lemtreursi/model-training
+          url_prefix: https://github.com/lemgenda/lemgendary-training-suite/blob/main
         - type: markdown_file
           path: lemgendary-datasets/README.md
-          url_prefix: https://github.com/lemtreursi/model-training
+          url_prefix: https://github.com/lemgenda/lemgendary-dataset-generator/blob/main
         - type: yaml_file
           path: lemgendary-training-suite/unified_models_v2.yaml
           url: https://lemgenda.github.io/ai-training-whitepapers/index.html

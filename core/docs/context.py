@@ -26,7 +26,6 @@ from core.docs.context_types import (
     TaskProfile,
 )
 from core.docs.metadata import UNIFIED_DATA
-from core.ecosystem import ecosystem
 
 __all__ = [
     "AuthorInfo",
@@ -54,7 +53,6 @@ _DEFAULT_METHODOLOGY = (
     " compiled into high-velocity streaming containers (MDS / WebDataset) with pre-indexed"
     " splits."
 )
-_DEFAULT_CITATIONS = [f"https://github.com/{ecosystem().kaggle_owner}/model-training"]
 _DEFAULT_COVERAGE = {
     "temporal": {"start": "2020-01-01", "end": "2026-10-10"},
     "geospatial": "Global Web-Scale Visual Media",
@@ -167,6 +165,15 @@ def _resolve_listing(manifold_name: str, category: str, spec: SpecInputs) -> Lis
     )
 
 
+def _resolve_citations(spec: SpecInputs) -> list[str]:
+    """The registry ``citation_url`` (the training suite), then the entry's own references."""
+    registry_meta = UNIFIED_DATA.get("_registry_metadata") or {}
+    citation_url = registry_meta.get("citation_url") if isinstance(registry_meta, dict) else None
+    listed = [str(c) for c in spec.pick_truthy("citations", [])]
+    head = [str(citation_url)] if citation_url else []
+    return list(dict.fromkeys(head + listed))
+
+
 def _resolve_lineage(
     sources: dict[str, dict[str, Any]], total_samples: int, spec: SpecInputs
 ) -> Lineage:
@@ -178,7 +185,7 @@ def _resolve_lineage(
             str(s) for s in spec.pick_truthy("provenance_sources", list(sources.keys()))
         ],
         collection_methodology=str(spec.pick("collection_methodology", _DEFAULT_METHODOLOGY)),
-        citations=list(spec.pick_truthy("citations", _DEFAULT_CITATIONS)),
+        citations=_resolve_citations(spec),
         coverage=dict(spec.pick_truthy("coverage", copy.deepcopy(_DEFAULT_COVERAGE))),
     )
 

@@ -310,17 +310,53 @@ def _tally_index_json(output_root: Path) -> tuple[SourceTally, int]:
 def _redistribute_provenance(
     sources: SourceTally, total_samples: int, manifold_name: str, unified_entry: dict[str, Any]
 ) -> SourceTally:
-    """Spread samples over unified_data provenance when sources are empty or self-referential."""
+    """Spread samples over unified_data provenance when sources are empty or self-referential.
+
+    The train/val totals are the real ones of ``sources`` (index.json), so the
+    rows add up to the published split counts; without any split record the
+    registry ``val_split`` applies (see :func:`fallback_val_count`). The index
+    does not record which provenance source a sample came from, so each source
+    gets an equal share (the first ones take the remainder).
+    """
     has_only_self = bool(
         sources and all("manifold" in k.lower() or k == manifold_name for k in sources)
     )
     if (sources and not has_only_self) or not unified_entry.get("provenance_sources"):
         return sources
     prov_list = unified_entry["provenance_sources"]
-    per_src = total_samples // len(prov_list) if total_samples and prov_list else 0
-    val_c = int(per_src * 0.12)
-    train_c = per_src - val_c
-    return {format_source(p): {"train": train_c, "val": val_c, "total": per_src} for p in prov_list}
+    train_all, val_all = split_totals(sources)
+    if train_all + val_all == 0 and total_samples > 0:
+        val_all = fallback_val_count(total_samples, unified_entry)
+        train_all = total_samples - val_all
+    count = len(prov_list)
+    return {
+        format_source(p): {
+            "train": _share(train_all, count, i),
+            "val": _share(val_all, count, i),
+            "total": _share(total_samples, count, i),
+        }
+        for i, p in enumerate(prov_list)
+    }
+
+
+def _share(amount: int, parts: int, position: int) -> int:
+    """Part ``position`` of ``amount`` split into ``parts`` near-equal integers."""
+    return amount // parts + (1 if position < amount % parts else 0)
+
+
+def split_totals(sources: SourceTally) -> tuple[int, int]:
+    """Summed integer ``train`` and ``val`` counts over every source row."""
+    train = sum(c.get("train", 0) for c in sources.values() if isinstance(c.get("train"), int))
+    val = sum(c.get("val", 0) for c in sources.values() if isinstance(c.get("val"), int))
+    return train, val
+
+
+def fallback_val_count(total_samples: int, unified_entry: dict[str, Any]) -> int:
+    """Validation samples when no split is recorded: the registry ``val_split`` share, else 0."""
+    ratio = unified_entry.get("val_split")
+    if isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and 0 < ratio < 1:
+        return round(total_samples * ratio)
+    return 0
 
 
 def tally_sources(

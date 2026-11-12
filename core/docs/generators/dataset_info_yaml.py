@@ -24,7 +24,6 @@ from core.docs.generators.common import (
     run_manifold_cli,
 )
 from core.docs.scanner import scan_forex_manifold
-from utils.naming import manifold_info_path
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +168,6 @@ def generate_dataset_info_yaml(
         "category": ctx.profile.category,
         "canonical_format": _canonical_format(ctx),
         "original_sources": src_keys,
-        "path": manifold_info_path(manifold_name),
         "source": f"{manifold_name}-manifold",
         "last_processed": datetime.now(UTC).isoformat(),
     }

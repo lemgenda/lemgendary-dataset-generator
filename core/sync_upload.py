@@ -1,8 +1,9 @@
 """
 Kaggle dataset upload pipeline for the sync core.
 
-Stages a manifold into a resumable zip, uploads it through KaggleHub, pushes
-metadata, and optionally waits for Kaggle's server-side extraction.
+Stages a manifold into a reusable zip, uploads it through KaggleHub as a new
+version with version notes, pushes metadata, and optionally waits for
+Kaggle's server-side extraction.
 """
 
 import importlib
@@ -20,6 +21,7 @@ from core.sync_metadata import push_kaggle_dataset_metadata
 from core.sync_remote import ensure_kaggle_dataset_exists, get_dataset_version_info
 from core.sync_tracking import track_kaggle_dataset_status
 from core.sync_transfer import robust_staging_cleanup
+from core.sync_version_notes import build_version_notes
 from utils.archive import create_archive, verify_archive
 
 logger = logging.getLogger(__name__)
@@ -108,20 +110,28 @@ def _patch_gcs_upload_tqdm() -> None:
         logger.debug("Tqdm patch notice: %s", patch_exc)
 
 
-def _upload_staging_archive(clean_repo_id: str, staging_dir: Path, target_zip: Path) -> bool:
-    """Upload the staging folder; clean it on success, keep it for resumption on failure."""
+def _upload_staging_archive(
+    clean_repo_id: str, staging_dir: Path, target_zip: Path, version_notes: str
+) -> bool:
+    """Upload the staging folder as a new version labelled ``version_notes``.
+
+    The staging folder is cleaned on success. On failure the zip is kept so the
+    next attempt skips compression; the transfer itself restarts from byte 0
+    (kagglehub has no resumable upload).
+    """
     upload_success = False
     try:
         print("[SYNC] Uploading archive to Kaggle via KaggleHub API...")
+        print(f"[SYNC] Version notes: {version_notes}")
         _patch_gcs_upload_tqdm()
-        kagglehub.dataset_upload(clean_repo_id, str(staging_dir))
+        kagglehub.dataset_upload(clean_repo_id, str(staging_dir), version_notes=version_notes)
         upload_success = True
     except KAGGLE_REMOTE_ERRORS as e:
         logger.error("Kaggle upload of %s failed: %s", clean_repo_id, e)
         print(f"[ERROR] Upload failed: {e}")
         print(
-            f"[SYNC] Staging archive preserved at {target_zip} for instant resumption on next"
-            " attempt."
+            f"[SYNC] Staging archive kept at {target_zip}: the next attempt reuses it without"
+            " re-compressing, but the upload restarts from the beginning."
         )
         return False
     finally:
@@ -188,7 +198,8 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
     zip_size_gb = target_zip.stat().st_size / (1024**3)
     print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
 
-    if not _upload_staging_archive(clean_repo_id, staging_dir, target_zip):
+    version_notes = build_version_notes(src_path)
+    if not _upload_staging_archive(clean_repo_id, staging_dir, target_zip, version_notes):
         return False
     print("[SUCCESS] Dataset upload payload transferred to Kaggle.")
 

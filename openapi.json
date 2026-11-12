@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.91"
+    "version": "16.9.92"
   },
   "paths": {
     "/api/health": {
@@ -386,7 +386,7 @@
           "Kaggle"
         ],
         "summary": "Get Kaggle Status",
-        "description": "Inspect Kaggle authentication and local credential files.",
+        "description": "Report which Kaggle credential stores hold a secret (presence only, no network call).\n\n``authenticated`` is True when any store holds a token or key; it does not\nprove Kaggle accepts it.",
         "operationId": "get_kaggle_status_api_kaggle_status_get",
         "responses": {
           "200": {

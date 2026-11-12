@@ -291,7 +291,10 @@ def build_structure_text(
             if task_key == "restoration"
             else descs.targets_desc
         ),
-        "shards": "WebDataset `.tar` shards containing serialized manifold data.",
+        "shards": (
+            "WebDataset shards per split (tar archives named `.data` or `.tar`), one"
+            " member group per sample."
+        ),
         "forex": "Shards containing serialized manifold data.",
         "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",
         "dataset-metadata.json": (

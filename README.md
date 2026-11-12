@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.91-STABLE` |
+| **Version** | `v16.9.92-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -24,6 +24,62 @@
 ---
 
 ## Changelog
+
+### v16.9.92 - Kaggle Dataset Pull and Push Fixes (Kaggle Audit)
+
+- Credentials (`core/kaggle_credentials.py`, new): one module knows the token
+  kinds of the installed client (kaggle 2.2.5, kagglesdk). A `KGAT_` access
+  token goes to `KAGGLE_API_TOKEN` unchanged; a legacy key goes to
+  `KAGGLE_KEY` with its own account in `KAGGLE_USERNAME`. Before, every secret
+  was written to both variables, so a `KGAT_` token also became a legacy key
+  (HTTP 401 for any client that used it). `~/.kaggle/access_token` counts as
+  a credential. The stored secret is the vault's default Kaggle record; the
+  `.kaggle_token` fallback is gone (v16.9.73 already announced it).
+  `sources.base.load_kaggle_credentials` (a second, unused loader) is
+  removed.
+- `GET /api/kaggle/status`: reports `environment_variables`,
+  `secrets_vault`, `user_access_token` and `user_kaggle_json`
+  (`dot_kaggle_token` is gone). Presence only; no network check.
+- `python -m sources.kaggle`: without credentials it prints how to add them
+  and exits 1, instead of the Kaggle client ending the process.
+  `lemgendary_datasets_hub.ps1` (`Start-Acquisition`) no longer requires
+  `kaggle.json`; the Python side checks the vault, the environment and the
+  `~/.kaggle` files (K-DS-7).
+- Column descriptors: `core/sync_metadata.py` reads every page of the remote
+  file listing (200 per request, until `next_page_token` is empty). Before,
+  only the first 20 files were seen; `lemgendizedupnv2` has 294 (K-DS-1).
+- Download: only this dataset's own archive (`<slug>.zip` and the other
+  exact names) is unpacked. The "newest zip in the datasets root" fallback is
+  gone, and a download that leaves no archive now fails instead of reporting
+  success because the target folder still holds old files (K-DS-2). A
+  kagglehub cache entry that cannot be removed after the copy is logged
+  (was `ignore_errors=True`).
+- Upload: every new Kaggle version carries version notes, for example
+  `LemGendary Dataset Compiler v16.9.92; 22,000 samples (train 19,790, val
+  2,210)` (`core/sync_version_notes.py`, also the default of
+  `tools/modernize/kaggle_push.py`) (K-DS-3). A failed upload keeps the
+  staging zip, so the next attempt skips compression, but the transfer
+  restarts from the beginning: kagglehub has no resumable upload. The log
+  line now says so (K-DS-4).
+- Citations: `unified_data.yaml` `_registry_metadata.citation_url`
+  (`https://github.com/lemgenda/lemgendary-training-suite`) is the first
+  citation of every manifold; the wrong
+  `https://github.com/lemtreursi/model-training` entries are removed. The AI
+  helper knowledge sources link the two READMEs on GitHub (K-DS-5).
+- Published metadata follows the data (K-DS-6):
+  - `dataset_info.yaml` has no `path` field any more (it published the
+    build machine's folder, e.g. `..\LemGendaryDatasets\...`). The metadata
+    repair (`tools/repair/metadata_fix.py`) removes a recorded one.
+  - README lineage rows share the real index.json train/val totals; without
+    a split record the registry `val_split` applies (was a fixed 12 %).
+    The physical manifest lists `shards` instead of `images`/`targets` for
+    shard manifolds.
+  - The `shards` resource text names the shard count, extension (`.data` or
+    `.tar`), splits and the members of a sample, read from the shards.
+- Logging (K-DS-8): the `kagglehub` logger keeps its level and the Kaggle
+  "newer version available" notices are no longer silenced.
+- `tests/test_kaggle_sync_audit.py`: credentials, paging, exact archive,
+  fake push with version notes, citations and published metadata.
 
 ### v16.9.91 - Validator Compliance for the Source-Manifold Lookup
 

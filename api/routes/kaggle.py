@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +22,8 @@ from api.models import (
 from api.routes.datasets import _resolve_output_root
 from core import paths
 from core.common_sync import is_kaggle_large_manifold
+from core.kaggle_credentials import credential_sources
 from core.kaggle_identity import default_owner
-from core.secrets import get_secret_record
 from services.invocation import ServiceInvocation
 from services.sync_service import kaggle_invocation, manifold_sync_invocation
 
@@ -128,30 +127,13 @@ def _registry_item(
 
 @router.get("/status")
 async def get_kaggle_status() -> dict[str, Any]:
-    """Inspect Kaggle authentication and local credential files."""
-    has_env = bool(
-        os.environ.get("KAGGLE_API_TOKEN")
-        or (os.environ.get("KAGGLE_USERNAME") and os.environ.get("KAGGLE_KEY"))
-    )
-    rec = get_secret_record("kaggle")
-    has_vault = bool(rec and str(rec.get("secret_value") or "").strip())
-    token_file = Path(".kaggle_token")
-    has_token_file = token_file.exists() and len(token_file.read_text(encoding="utf-8").strip()) > 0
-    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
-    has_kaggle_json = kaggle_json.exists()
+    """Report which Kaggle credential stores hold a secret (presence only, no network call).
 
-    authenticated = has_env or has_vault or has_token_file or has_kaggle_json
-
-    return {
-        "authenticated": authenticated,
-        "auth_methods": {
-            "environment_variables": has_env,
-            "secrets_vault": has_vault,
-            "dot_kaggle_token": has_token_file,
-            "user_kaggle_json": has_kaggle_json,
-        },
-    }
-
+    ``authenticated`` is True when any store holds a token or key; it does not
+    prove Kaggle accepts it.
+    """
+    sources = credential_sources()
+    return {"authenticated": any(sources.values()), "auth_methods": sources}
 
 @router.get("/registry-datasets", response_model=list[KaggleDatasetRegistryItem])
 def list_registry_kaggle_datasets() -> list[KaggleDatasetRegistryItem]:

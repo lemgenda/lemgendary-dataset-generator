@@ -6,7 +6,8 @@ manifolds). The fix
 
 - sets ``count`` (and ``total_samples``, ``<split>_samples`` and
   ``total_shards`` when recorded) to the physical numbers;
-- replaces an absolute or staging ``path`` with the canonical relative one;
+- removes a recorded ``path`` (a machine-specific folder that was published
+  with the manifold);
 - sets a recorded ``image_format`` to ``webp`` once the shards hold no
   PNG/JPEG member any more (index entries record sample keys only, never
   member extensions, so they need no change for a WebP conversion);
@@ -23,13 +24,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from typing import Any
 
 import yaml
 
 from core.docs.generators.dataset_info_yaml import write_dataset_info
-from utils.naming import manifold_info_path
 
 __all__ = [
     "IndexChanges",
@@ -41,6 +41,8 @@ __all__ = [
 
 INFO_FILE = "dataset_info.yaml"
 INDEX_FILE = "index.json"
+# Keys removed from dataset_info.yaml (planned as a change to None).
+_DROPPED_INFO_KEYS = ("path",)
 
 
 @dataclass
@@ -105,12 +107,8 @@ class MetadataFix:
         return lines + self.index.lines() + self.notes
 
 
-def _is_absolute(path: str) -> bool:
-    return PureWindowsPath(path).is_absolute() or PurePosixPath(path).is_absolute()
-
-
-def _info_updates(info: dict[str, Any], physical: PhysicalSamples,
-                  name: str) -> dict[str, tuple[Any, Any]]:
+def _info_updates(info: dict[str, Any],
+                  physical: PhysicalSamples) -> dict[str, tuple[Any, Any]]:
     wanted: dict[str, Any] = {"count": physical.total}
     if "total_samples" in info:
         wanted["total_samples"] = physical.total
@@ -121,10 +119,11 @@ def _info_updates(info: dict[str, Any], physical: PhysicalSamples,
         wanted["total_shards"] = physical.shards
     if "image_format" in info and physical.webp_only:
         wanted["image_format"] = "webp"
-    path = info.get("path")
-    if isinstance(path, str) and (_is_absolute(path) or ".staging" in path):
-        wanted["path"] = manifold_info_path(name)
-    return {k: (info.get(k), v) for k, v in wanted.items() if info.get(k) != v}
+    changes = {k: (info.get(k), v) for k, v in wanted.items() if info.get(k) != v}
+    for key in _DROPPED_INFO_KEYS:
+        if key in info:
+            changes[key] = (info[key], None)
+    return changes
 
 
 def _new_entry(entry_id: int, name: str, split: str, info: dict[str, Any],
@@ -195,9 +194,10 @@ def plan_metadata_fix(manifold_dir: Path, physical: PhysicalSamples) -> Metadata
         loaded = yaml.safe_load(info_path.read_text(encoding="utf-8"))
         info = loaded if isinstance(loaded, dict) else {}
     name = str(info.get("name") or manifold_dir.name)
-    fix.info_changes = _info_updates(info, physical, name)
+    fix.info_changes = _info_updates(info, physical)
     if fix.info_changes:
-        fix.new_info = {**info, **{k: new for k, (_, new) in fix.info_changes.items()}}
+        merged = {**info, **{k: new for k, (_, new) in fix.info_changes.items()}}
+        fix.new_info = {k: v for k, v in merged.items() if k not in _DROPPED_INFO_KEYS}
     if index_path.is_file():
         index = json.loads(index_path.read_text(encoding="utf-8"))
         if isinstance(index, list):

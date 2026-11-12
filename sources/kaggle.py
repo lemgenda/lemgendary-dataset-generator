@@ -28,7 +28,6 @@ from core.source_manifolds import SourceManifold, find_source_manifold
 from tools.sync_kaggle_metadata import sync_metadata
 
 logger = logging.getLogger(__name__)
-logging.getLogger("kagglehub").setLevel(logging.ERROR)
 
 
 def _source_manifold(clean_repo_id: str) -> SourceManifold | None:
@@ -128,7 +127,12 @@ def run_kaggle_action(req: KaggleRequest) -> int:
     socket.setdefaulttimeout(60.0)
     clean_repo_id = req.repo_id.replace("kaggle://", "")
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else default_owner()
-    setup_kaggle_auth(default_user=owner)
+    if not setup_kaggle_auth(default_user=owner):
+        print(
+            "[ERROR] No Kaggle credentials: add a Kaggle secret to the vault (env-manager),"
+            " set KAGGLE_API_TOKEN, or save the token to ~/.kaggle/access_token."
+        )
+        return 1
 
     if req.action == "download":
         return 0 if _download(req, clean_repo_id) else 1

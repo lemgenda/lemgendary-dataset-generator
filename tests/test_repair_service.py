@@ -146,8 +146,9 @@ class MetadataFixTests(_TempDirCase):
         fix = plan_metadata_fix(manifold, physical)
         self.assertEqual(fix.info_changes["count"], (9, 3))
         self.assertEqual(fix.info_changes["total_shards"], (1, 2))
-        self.assertEqual(Path(fix.info_changes["path"][1]).name, "DemoManifold")
-        self.assertNotIn(".staging", fix.info_changes["path"][1])
+        self.assertIsNone(fix.info_changes["path"][1])
+        assert fix.new_info is not None
+        self.assertNotIn("path", fix.new_info)
         self.assertEqual((fix.index.removed, fix.index.added, fix.index.resplit,
                           fix.index.source_filled), (3, 1, 1, 1))
         assert fix.new_index is not None
