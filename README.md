@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.101-STABLE` |
+| **Version** | `v16.9.102-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -58,6 +58,26 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.102 - Val Draw Over All Source Files: RetinaFace Splits Like ParseNet
+
+- A source with a key layout now draws its val share over all of the
+  layout's `photos` file ids, not over the samples a manifold kept
+  (`tools/repair/sample_policy_fix.py` `_layout_draw`); a val candidate goes
+  to val when its file id is drawn. ParseNet and RetinaFace are compiled
+  from the same SFHQ files, so they now share one val set by file id even
+  though RetinaFace dropped 35 files. Before, the per-source quota counted
+  the kept samples, which pulled 2 ParseNet train files into RetinaFace val.
+  A source without a layout keeps the share-of-candidates draw.
+- Local data (not in git): `repair sample-policy` re-split
+  LemGendizedRetinaFace to train 374,199 / val 51,024 (6,131 + 2 samples
+  moved; before 380,291 / 44,932). Every RetinaFace file id is in exactly
+  one split and in the same split as in ParseNet (val 51,030 there; the 6
+  extra are files RetinaFace does not hold). `repair manifold` is clean.
+- `sample_key_source` moved from `core/docs/lineage_tally.py` to
+  `utils/naming.py` (leaf module; `core.docs` re-imports it).
+- Tests: `tests/test_sample_policy.py` (a manifold missing two files keeps
+  the same val set by file id).
 
 ### v16.9.101 - `repair face-landmarks`: RetinaFace Boxes and Points From SFHQ (R4-B3)
 

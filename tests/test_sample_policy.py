@@ -1,4 +1,8 @@
-"""R4-B6: face detection sample policy (drop no-face and auxiliary images, landmark val)."""
+"""R4-B6: face detection sample policy (drop no-face and auxiliary images, landmark val).
+
+The val draw of a source with a key layout spans all its file ids, so
+manifolds built from the same files split alike.
+"""
 
 from __future__ import annotations
 
@@ -185,6 +189,24 @@ class SamplePolicyRepairTests(unittest.TestCase):
             manifold = _manifold(Path(tmp))
             first = plan_sample_policy(manifold, self.rule).final
             self.assertEqual(plan_sample_policy(manifold, self.rule).final, first)
+
+    def test_layout_draw_ignores_dropped_files(self) -> None:
+        """Two manifolds of the same source files share one val set by file id."""
+        rule = SampleRule(FACE_DETECTION, 0.5, {_SRC: KeyLayout(_SRC, copies=0, photos=12)})
+        with tempfile.TemporaryDirectory() as tmp:
+            full = Path(tmp) / "full"
+            _write_shard(full / "shards/train/shard-00000.data",
+                         [(i, FACE_LANDMARKS) for i in range(12)])
+            full_val = {k for k, s in plan_sample_policy(full, rule).final.items() if s == "val"}
+            self.assertEqual(len(full_val), 6)
+            gone = sorted(full_val)[:2]
+            part = Path(tmp) / "part"
+            _write_shard(part / "shards/train/shard-00000.data",
+                         [(i, FACE_LANDMARKS) for i in range(12) if _key(i) not in gone])
+            plan = plan_sample_policy(part, rule)
+            part_val = {k for k, s in plan.final.items() if s == "val"}
+            self.assertEqual(part_val, full_val - set(gone))
+            self.assertEqual(plan.counts.val_by_source[_SRC], (4, 10))
 
     def test_unregistered_folder_is_left_alone(self) -> None:
         """The compiler hook does nothing for a manifold without a policy."""

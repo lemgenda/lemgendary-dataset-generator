@@ -20,6 +20,11 @@ The face parsing policy (``label_json: segmentation_mask``) drops nothing by
 kind (``repair masks`` gives every photo its mask) and draws val from all
 photos by source file id, so a file never sits in both splits.
 
+For a source with a key layout the val share is drawn over all ``photos``
+file ids of the layout, not over the samples a manifold kept: a val
+candidate goes to val when its file id is drawn. Manifolds compiled from the
+same source files (ParseNet and RetinaFace) therefore share one val set.
+
 Key layouts (``key_layouts`` in the registry) describe manifolds compiled
 before the source scan skipped auxiliary folders: per source, the sample
 keys ``<Prefix>_<source>_<idx>`` run through ``copies`` duplicate sample
@@ -35,7 +40,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from core.docs.lineage_tally import sample_key_source
+from utils.naming import sample_key_source
 
 __all__ = [
     "FACE_BOX_ONLY",

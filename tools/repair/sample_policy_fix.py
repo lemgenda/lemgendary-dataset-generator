@@ -8,7 +8,8 @@ The plan reads every shard's JSON sidecars once and decides, per sample key:
 3. otherwise give it its split: a seeded share (``val_split``) of the
    photos of each source whose kind may go to val (a face policy: those
    with landmarks) goes to val, drawn by source file id; every other photo
-   goes to train.
+   goes to train. With a key layout the share is drawn over all of the
+   source's file ids, so manifolds built from the same files split alike.
 
 A key stored twice keeps one copy (one already in its split, if any).
 
@@ -206,15 +207,35 @@ def _drop_reason(key: str, kind: str, rule: SampleRule) -> str | None:
     return None
 
 
+def _layout_draw(rule: SampleRule, source: str, layout: KeyLayout) -> set[str]:
+    """The val file ids of a source with a key layout: the ``val_split`` share of all
+    its ``photos`` file ids with the lowest seeded rank."""
+    ranked = sorted((split_rank(rule.policy, source, str(file_id)), str(file_id))
+                    for file_id in range(layout.photos))
+    return {file_id for _, file_id in ranked[:round(layout.photos * rule.val_split)]}
+
+
 def _val_keys(candidates: dict[str, list[tuple[str, str]]], plan: SamplePolicyPlan) -> set[str]:
-    """Per source, the ``val_split`` share of candidates with the lowest seeded rank."""
+    """Per source, the val candidates.
+
+    A source with a key layout draws from all of its file ids, not only from
+    the samples this manifold kept: manifolds compiled from the same source
+    files (ParseNet, RetinaFace) then share one val set, whichever samples
+    each dropped. A source without a layout takes the ``val_split`` share of
+    its candidates with the lowest seeded rank.
+    """
     chosen: set[str] = set()
     for source, items in candidates.items():
-        ranked = sorted((split_rank(plan.rule.policy, source, file_id), key)
-                        for key, file_id in items)
-        count = round(len(ranked) * plan.rule.val_split)
-        chosen.update(key for _, key in ranked[:count])
-        plan.counts.val_by_source[source] = (count, len(ranked))
+        layout = plan.rule.layouts.get(source.lower())
+        if layout is not None:
+            drawn = _layout_draw(plan.rule, source, layout)
+            picked = [key for key, file_id in items if file_id in drawn]
+        else:
+            ranked = sorted((split_rank(plan.rule.policy, source, file_id), key)
+                            for key, file_id in items)
+            picked = [key for _, key in ranked[:round(len(ranked) * plan.rule.val_split)]]
+        chosen.update(picked)
+        plan.counts.val_by_source[source] = (len(picked), len(items))
     return chosen
 
 

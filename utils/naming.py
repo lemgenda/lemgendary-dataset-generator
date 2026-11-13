@@ -1,6 +1,19 @@
-"""Slug and category naming helpers. Extracted from compiler_core.py in Phase 1.5.5."""
+"""Slug, category and sample key naming helpers. Extracted from compiler_core.py in Phase 1.5.5."""
 
 from __future__ import annotations
+
+_SPLIT_NAMES = ("train", "val", "test")
+
+
+def sample_key_source(name: str) -> str | None:
+    """The source part of a ``<Prefix>_<source>_<idx>`` sample key, else ``None``."""
+    parts = name.split("_")
+    if len(parts) < 3 or not parts[-1].isdigit():
+        return None
+    source = "_".join(parts[1:-1])
+    if not source or source.lower() in _SPLIT_NAMES:
+        return None
+    return source
 
 
 def clean_slug(slug: str) -> str:

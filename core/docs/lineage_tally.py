@@ -21,6 +21,7 @@ from core.docs.context_resolvers import read_yaml_count
 from core.docs.context_types import SplitCounts
 from core.docs.metadata import format_source
 from core.docs.scanner import scan_forex_manifold
+from utils.naming import sample_key_source
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,6 @@ SourceCounts = dict[str, int | None]
 SourceTally = dict[str, SourceCounts]
 
 _LEGACY_SOURCE_TAGS = ("old", "unknown", "none", "legacy")
-_SPLIT_NAMES = ("train", "val", "test")
 _FOREX_SOURCE = "MetaTrader 5 Terminal Native Cache (2019-2026)"
 _AI_HELPER_SOURCE = "LemGendary AI Documentation Hub"
 _NOT_RECORDED = SplitCounts(train=None, val=None)
@@ -46,17 +46,6 @@ class TallyResult:
 def uncounted_sources(names: Iterable[str]) -> SourceTally:
     """Source rows whose per-source counts are not recorded."""
     return {format_source(str(n)): {"train": None, "val": None, "total": None} for n in names}
-
-
-def sample_key_source(name: str) -> str | None:
-    """The source part of a ``<Prefix>_<source>_<idx>`` sample key, else ``None``."""
-    parts = name.split("_")
-    if len(parts) < 3 or not parts[-1].isdigit():
-        return None
-    source = "_".join(parts[1:-1])
-    if not source or source.lower() in _SPLIT_NAMES:
-        return None
-    return source
 
 
 def _tag_source(item: dict[str, Any]) -> str | None:
