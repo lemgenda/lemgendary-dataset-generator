@@ -1,4 +1,8 @@
-"""R4-B7: ``sync pull`` without a whole-dataset archive, selected members, missing root."""
+"""R4-B7: ``sync pull`` without a whole-dataset archive, selected members, missing root.
+
+The per-file API route (R4-B2 pull) is tested with a fake Kaggle API; no test
+reads credentials or talks to Kaggle.
+"""
 
 from __future__ import annotations
 
@@ -282,6 +286,111 @@ class FileByFileTests(unittest.TestCase):
                                             ("labels/",))
             self.assertEqual(list(result.failed), [f"{_WRAP}/labels/a.txt"])
             self.assertFalse((Path(tmp) / "x.bin").exists())
+
+
+def _no_file_urls() -> Any:
+    """A Kaggle session whose per-file download URL always answers 404."""
+    state = SimpleNamespace(calls=0)
+
+    def get(_url: str, **_kw: Any) -> _Response:
+        state.calls += 1
+        return _Response(404)
+
+    state.get = get
+    return state
+
+
+def _api_files(pages: list[list[tuple[str, int]]], payloads: dict[str, bytes],
+               failures: list[BaseException] | None = None) -> Any:
+    """Fake Kaggle API: listing plus ``dataset_download_file`` writing into ``path``."""
+    api = _listing(pages)
+    api.downloads = []
+    pending = list(failures or [])
+
+    def dataset_download_file(handle: str, file_name: str, path: str | None = None,
+                              quiet: bool = True) -> bool:
+        del quiet
+        api.downloads.append((handle, file_name))
+        if pending:
+            raise pending.pop(0)
+        body = payloads[file_name]
+        out = Path(str(path)).joinpath(*file_name.split("/"))
+        if body.startswith(b"PK"):
+            out = out.with_name(out.name + ".zip")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(body)
+        return True
+
+    api.dataset_download_file = dataset_download_file
+    return api
+
+
+def _rate_limited() -> OSError:
+    err: Any = OSError("429 Client Error: Too Many Requests")
+    err.response = SimpleNamespace(status_code=429)
+    return err
+
+
+class ApiRouteTests(unittest.TestCase):
+    """A per-file URL that answers 404 switches to the Kaggle API's dataset_download_file."""
+
+    def _clients(self, api: Any, session: Any, waits: list[float]) -> FileDownloadClients:
+        return FileDownloadClients(api=api, session=session, http=_storage({}),
+                                   sleep=waits.append, workers=1)
+
+    def test_404_uses_the_api_for_every_file(self) -> None:
+        """The URL is asked once; the API serves all files, a zipped one is unpacked."""
+        names = {f"{_WRAP}/shards/val/shard-00000.data": b"S" * 40,
+                 f"{_WRAP}/classes.txt": b"face\n",
+                 f"{_WRAP}/index.json": b"[]"}
+        payloads = dict(names)
+        payloads[f"{_WRAP}/classes.txt"] = _zipped("classes.txt", b"face\n")
+        api = _api_files([[(n, len(b)) for n, b in names.items()]], payloads)
+        session = _no_file_urls()
+        waits: list[float] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            result = download_dataset_files("o/s", dest, self._clients(api, session, waits))
+            self.assertTrue(result.ok, result.failed)
+            self.assertEqual(result.downloaded, 3)
+            self.assertEqual(session.calls, 1)
+            self.assertEqual(len(api.downloads), 3)
+            self.assertEqual((dest / "shards/val/shard-00000.data").read_bytes(), b"S" * 40)
+            self.assertEqual((dest / "classes.txt").read_bytes(), b"face\n")
+            self.assertEqual(sorted(p.name for p in (dest / "shards/val").iterdir()),
+                             ["shard-00000.data"])
+            again = download_dataset_files("o/s", dest, self._clients(api, session, waits))
+            self.assertEqual((again.downloaded, again.skipped), (0, 3))
+        self.assertEqual(waits, [])
+
+    def test_api_rate_limit_waits_and_only_filters(self) -> None:
+        """An API 429 backs off and retries; --only limits the files the API fetches."""
+        names = {f"{_WRAP}/labels/a.txt": b"0 1 1 1 1", f"{_WRAP}/x.bin": b"x"}
+        api = _api_files([[(n, len(b)) for n, b in names.items()]], names,
+                         [_rate_limited(), _rate_limited()])
+        waits: list[float] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp)
+            result = download_dataset_files("o/s", dest,
+                                            self._clients(api, _no_file_urls(), waits),
+                                            ("labels/",))
+            self.assertTrue(result.ok, result.failed)
+            self.assertEqual((dest / "labels/a.txt").read_bytes(), b"0 1 1 1 1")
+            self.assertFalse((dest / "x.bin").exists())
+        self.assertEqual(waits, [30.0, 60.0])
+        self.assertEqual([n for _h, n in api.downloads], [f"{_WRAP}/labels/a.txt"] * 3)
+
+    def test_signed_url_still_preferred(self) -> None:
+        """A dataset whose per-file URL works never calls the API."""
+        names = {f"{_WRAP}/a.txt": b"abc"}
+        api = _api_files([[(n, len(b)) for n, b in names.items()]], names)
+        with tempfile.TemporaryDirectory() as tmp:
+            clients = FileDownloadClients(api=api, session=_kaggle_session(),
+                                          http=_storage(dict(names)),
+                                          sleep=lambda _s: None, workers=1)
+            self.assertTrue(download_dataset_files("o/s", Path(tmp), clients).ok)
+            self.assertEqual((Path(tmp) / "a.txt").read_bytes(), b"abc")
+        self.assertEqual(api.downloads, [])
 
 
 class FallbackTests(unittest.TestCase):

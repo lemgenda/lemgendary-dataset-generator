@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.103-STABLE` |
+| **Version** | `v16.9.104-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -60,6 +60,29 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.104 - `sync pull` File by File: Kaggle API Route on a Per-File 404
+
+- Kaggle answers HTTP 404 on the per-file download URL
+  (`/datasets/download/<owner>/<slug>/<file>`) of
+  LemGendizedClassificationMaster, while the Kaggle API's
+  `dataset_download_file` (the `DownloadDataset` RPC) serves the same files.
+  The file-by-file download now fetches each file through a route chain
+  (`core/kaggle_file_routes.py`): the signed per-file URL first, the API
+  when the URL answers 404. After the first 404 the API serves every
+  remaining file, so the URL is not asked again (each request counts
+  against the rate limit).
+- The API route downloads into a staging folder beside the file's `.part`
+  (the API resumes an interrupted file itself), then the file moves to
+  `.part` and goes through the same checks as before: listed size, a
+  one-member zip unpacked, complete files skipped on a re-run. HTTP 429
+  from the API waits and retries like the URL route (Retry-After, else a
+  growing pause); `--only` limits the files either route fetches.
+- `core/kaggle_file_download.py` keeps listing, selection, retries and the
+  size check; `RemoteFile` moved to the routes module (still exported).
+- Tests: `tests/test_sync_partial_download.py` (every file through a fake
+  API after one 404, a zipped file, a re-run skips, API 429 backoff with
+  `--only`, a working URL never calls the API).
 
 ### v16.9.103 - `repair class-labels`: ClassificationMaster Classes (R4-B2)
 

@@ -2,11 +2,17 @@
 
 Kaggle builds no archive for a very large dataset (the download answers 404
 "No gcs url found"). This module lists every file (all pages of
-``dataset_list_files``), downloads each one through its own signed URL and
-checks its size against the listing:
+``dataset_list_files``), downloads each one and checks its size against the
+listing:
+
+- each file comes through its own signed URL, else, when Kaggle answers 404
+  for the per-file URL, through the Kaggle API's ``dataset_download_file``
+  (:mod:`core.kaggle_file_routes`; after the first 404 the API serves every
+  remaining file);
 
 - a file already on disk with the listed size is skipped, and an interrupted
-  ``.part`` download continues with an HTTP range (resumable);
+  download continues (an HTTP range on the ``.part``, or the API's own
+  resume in its staging folder);
 - Kaggle may serve a single file zipped: a one-member zip whose member has
   the listed size is unpacked in place of the file;
 - ``prefixes`` (``--only``) limit the download to some folders or files,
@@ -32,11 +38,17 @@ from typing import Any
 import requests
 
 from core.kaggle_errors import KAGGLE_REMOTE_ERRORS
+from core.kaggle_file_routes import (
+    ApiRoute,
+    FileRoute,
+    RemoteFile,
+    RouteChain,
+    SignedUrlRoute,
+)
 from core.kaggle_http import (
     TOO_MANY_REQUESTS,
     KaggleHttpError,
     KaggleRateLimitError,
-    signed_url,
 )
 from utils.member_paths import (
     common_wrapper,
@@ -59,9 +71,7 @@ logger = logging.getLogger(__name__)
 _PAGE_SIZE = 200
 _PART_SUFFIX = ".part"
 _RETRIES = 5
-_TIMEOUT_S = 120
 _CHUNK = 1 << 20
-_PARTIAL = 206
 _WORKERS = 4
 RATE_LIMIT_RETRIES = 12
 _RATE_LIMIT_BASE_S = 30.0
@@ -78,14 +88,6 @@ def rate_limit_wait(exc: BaseException, attempt: int) -> float | None:
         return None
     backoff = _RATE_LIMIT_BASE_S * (2 ** min(attempt, 5))
     return min(RATE_LIMIT_MAX_WAIT_S, retry_after if retry_after else backoff)
-
-
-@dataclass(frozen=True)
-class RemoteFile:
-    """One file of a Kaggle dataset as the listing reports it."""
-
-    name: str
-    size: int
 
 
 @dataclass
@@ -139,16 +141,6 @@ def list_dataset_files(api: Any, handle: str,
         seen.add(token)
 
 
-@dataclass(frozen=True)
-class _Fetcher:
-    """How one file is fetched: the Kaggle session, the storage client and the pause."""
-
-    handle: str
-    session: requests.Session
-    http: requests.Session
-    sleep: Callable[[float], None]
-
-
 def _unzip_single(part: Path, dst: Path, size: int) -> bool:
     """Unpack a one-member zip of ``size`` bytes into ``dst``; False when it is not one."""
     if not zipfile.is_zipfile(part):
@@ -165,22 +157,15 @@ def _unzip_single(part: Path, dst: Path, size: int) -> bool:
     return True
 
 
-def _download_once(fetcher: _Fetcher, item: RemoteFile, dst: Path) -> None:
-    """One attempt: resume ``.part``, then verify the size (or unzip a zipped file)."""
+def _download_once(route: FileRoute, item: RemoteFile, dst: Path) -> None:
+    """One attempt: fetch into ``.part``, then verify the size (or unzip a zipped file)."""
     part = dst.with_name(dst.name + _PART_SUFFIX)
     have = part.stat().st_size if part.is_file() else 0
     if have == item.size:
         os.replace(part, dst)
         return
-    url = signed_url(fetcher.session, fetcher.handle, item.name)
-    if url is None:
+    if not route.fetch(item, part):
         raise KaggleHttpError(f"{item.name}: Kaggle has no download for this file")
-    headers = {"Range": f"bytes={have}-"} if have else {}
-    with fetcher.http.get(url, headers=headers, stream=True, timeout=_TIMEOUT_S) as response:
-        response.raise_for_status()
-        append = bool(have) and response.status_code == _PARTIAL
-        with open(part, "ab" if append else "wb") as out:
-            out.writelines(response.iter_content(_CHUNK))
     got = part.stat().st_size
     if got == item.size:
         os.replace(part, dst)
@@ -192,15 +177,16 @@ def _download_once(fetcher: _Fetcher, item: RemoteFile, dst: Path) -> None:
     raise KaggleHttpError(f"{item.name}: {got} bytes on disk, the listing says {item.size}")
 
 
-def _download_file(fetcher: _Fetcher, item: RemoteFile, dst: Path) -> None:
+def _download_file(route: FileRoute, item: RemoteFile, dst: Path,
+                   sleep: Callable[[float], None]) -> None:
     """Download one file; failures retry ``_RETRIES`` times, rate limits more often."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     failures = limited = 0
     while True:
         try:
-            _download_once(fetcher, item, dst)
+            _download_once(route, item, dst)
             return
-        except (OSError, requests.RequestException, zipfile.BadZipFile) as exc:
+        except (*KAGGLE_REMOTE_ERRORS, zipfile.BadZipFile) as exc:
             wait = rate_limit_wait(exc, limited)
             if wait is not None:
                 limited += 1
@@ -212,7 +198,7 @@ def _download_file(fetcher: _Fetcher, item: RemoteFile, dst: Path) -> None:
                     raise KaggleHttpError(str(exc)) from exc
                 wait = float(5 * failures)
             logger.warning("Retrying %s in %.0f s: %s", item.name, wait, exc)
-            fetcher.sleep(wait)
+            sleep(wait)
 
 
 def _selected(files: list[RemoteFile], target_dir: Path,
@@ -228,7 +214,7 @@ def _selected(files: list[RemoteFile], target_dir: Path,
 
 @dataclass(frozen=True)
 class FileDownloadClients:
-    """The Kaggle API (listing), the authenticated session and the storage client."""
+    """The Kaggle API (listing, per-file API route), the session and the storage client."""
 
     api: Any
     session: requests.Session
@@ -241,7 +227,8 @@ def download_dataset_files(handle: str, target_dir: Path, clients: FileDownloadC
                            prefixes: tuple[str, ...] = ()) -> FileDownloadResult:
     """Download the dataset's files (or those under ``prefixes``) into ``target_dir``."""
     result = FileDownloadResult()
-    fetcher = _Fetcher(handle, clients.session, clients.http or requests.Session(), clients.sleep)
+    route = RouteChain((SignedUrlRoute(handle, clients.session, clients.http or requests.Session()),
+                        ApiRoute(handle, clients.api)))
     pending: list[tuple[RemoteFile, Path]] = []
     listing = list_dataset_files(clients.api, handle, clients.sleep)
     for item, dst in _selected(listing, target_dir, prefixes):
@@ -255,7 +242,7 @@ def download_dataset_files(handle: str, target_dir: Path, clients: FileDownloadC
     def _one(job: tuple[RemoteFile, Path]) -> tuple[str, str | None]:
         item, dst = job
         try:
-            _download_file(fetcher, item, dst)
+            _download_file(route, item, dst, clients.sleep)
         except KaggleHttpError as exc:
             return item.name, str(exc)
         return item.name, None
