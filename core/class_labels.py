@@ -7,10 +7,11 @@ its registry entry's ``class_labels``: a class ``scheme`` and ordered
 and gives them either a fixed class (``class_name``) or a pseudo label from an
 image classifier (``pseudo_model``, kept when its top probability reaches
 ``min_confidence``; ``check_model`` is a second classifier whose agreement is
-reported). The first matching rule wins. ``repair pseudo-labels`` runs the
-models, ``repair class-labels`` writes ``class_id``, ``class_name`` and
-``label_source`` (plus ``label_confidence`` and ``label_check_class`` for a
-pseudo label) into each sample's JSON.
+reported and, with ``require_check_agreement``, required: a sample whose
+check model's top class differs is dropped). The first matching rule wins.
+``repair pseudo-labels`` runs the models, ``repair class-labels`` writes
+``class_id``, ``class_name`` and ``label_source`` (plus ``label_confidence``
+and ``label_check_class`` for a pseudo label) into each sample's JSON.
 
 ``nsfw_5``: the five classes of the GantMan nsfw_model, in its output order
 (alphabetical): 0 drawings, 1 hentai, 2 neutral, 3 porn, 4 sexy.
@@ -36,6 +37,7 @@ __all__ = [
     "CLASS_SCHEMES",
     "NSFW_5",
     "PSEUDO_MODELS",
+    "CheckModel",
     "ClassLabelRules",
     "ClassRule",
     "ClassScheme",
@@ -96,6 +98,14 @@ def pseudo_label_source(model: str) -> str:
 
 
 @dataclass(frozen=True)
+class CheckModel:
+    """A second classifier for a pseudo label; ``required``: its top class must agree."""
+
+    name: str
+    required: bool = False
+
+
+@dataclass(frozen=True)
 class ClassRule:
     """The class of one source's samples (optionally only ``idx < below``)."""
 
@@ -103,9 +113,19 @@ class ClassRule:
     label_source: str
     class_name: str | None = None
     pseudo_model: str | None = None
-    check_model: str | None = None
+    check: CheckModel | None = None
     below: int | None = None
     min_confidence: float = _DEFAULT_MIN_CONFIDENCE
+
+    @property
+    def check_model(self) -> str | None:
+        """The check model's name, if the rule has one."""
+        return self.check.name if self.check else None
+
+    @property
+    def require_check_agreement(self) -> bool:
+        """True when a pseudo label is kept only if the check model agrees."""
+        return bool(self.check and self.check.required)
 
     def matches(self, source: str, idx: int) -> bool:
         """True when a sample of ``source`` with index ``idx`` falls under this rule."""
@@ -144,8 +164,12 @@ def _rule(raw: Mapping[str, Any], scheme: ClassScheme) -> ClassRule:
                          below=int(below) if below is not None else None)
     model = _model(pseudo, scheme)
     check = raw.get("check_model")
+    agreement = bool(raw.get("require_check_agreement", False))
+    if agreement and not check:
+        raise ValueError(f"class rule for {raw.get('source')}: require_check_agreement"
+                         " needs a check_model")
     return ClassRule(source=str(raw["source"]), pseudo_model=model,
-                     check_model=_model(check, scheme) if check else None,
+                     check=CheckModel(_model(check, scheme), agreement) if check else None,
                      label_source=str(raw.get("label_source") or pseudo_label_source(model)),
                      below=int(below) if below is not None else None,
                      min_confidence=min_confidence)

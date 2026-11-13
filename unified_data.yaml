@@ -900,6 +900,7 @@ datasets:
           pseudo_model: gantman_inception_v3
           check_model: gantman_mobilenet_v2
           min_confidence: 0.8
+          require_check_agreement: true
     refs:
       - ref: hf://deepghs/anime_dbrating
         tag: anime_nsfw

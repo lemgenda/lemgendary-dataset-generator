@@ -97,6 +97,7 @@ class ClassRuleSpec(BaseModel):
     pseudo_model: str | None = None
     check_model: str | None = None
     min_confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    require_check_agreement: bool = False
     label_source: str | None = None
 
 

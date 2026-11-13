@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.104-STABLE` |
+| **Version** | `v16.9.105-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -60,6 +60,26 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.105 - Pseudo Labels Kept Only When Both GantMan Models Agree (R4-B2)
+
+- Owner decision: an NSFW pseudo label is kept only when the Inception V3
+  model's top probability is at least 0.8 AND the MobileNet V2 check model
+  gives the same top class; otherwise the sample is dropped. The rule is
+  registry configuration: a pseudo rule's new `require_check_agreement`
+  (default false; it needs a `check_model`, `core/class_labels.py`
+  `CheckModel`), set to true on ClassificationMaster's NSFW rule in
+  `unified_data.yaml` and validated by `core/config_schema.py`.
+- `repair class-labels` (`tools/repair/class_labeler.py`) drops a sample
+  for each failed condition and tallies `drop reason confidence` and
+  `drop reason disagreement` beside `dropped <class>`; a sample that fails
+  both counts under both reasons. A table row without check probabilities
+  under `require_check_agreement` is a problem and refuses the apply. Kept
+  pseudo labels still record `label_confidence` and `label_check_class`.
+- Tests: `tests/test_class_labels.py` (the disagreeing NSFW sample is
+  dropped, drop reasons tallied, the rule without agreement keeps it, a
+  missing check row refuses, an agreement flag without a check model is
+  invalid).
 
 ### v16.9.104 - `sync pull` File by File: Kaggle API Route on a Per-File 404
 

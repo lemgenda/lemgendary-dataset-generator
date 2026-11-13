@@ -7,12 +7,15 @@ its key) gives either a fixed class or a pseudo label. The JSON label gets
 ``label_check_class`` (the check model's top class). Other JSON keys are kept.
 
 Pseudo labels come from the table ``repair pseudo-labels`` wrote
-(:func:`tools.repair.pseudo_labels.load_table`). A sample whose top
-probability is below the rule's ``min_confidence`` is dropped (``DROPPED``):
-an unconfident guess is worse than no sample. A sample without a rule, or a
-pseudo-rule sample without a table row from the rule's model, is a problem
-and the apply refuses. The plan tallies samples per class (``class <name>``),
-dropped samples per predicted class, and agreement with the check model.
+(:func:`tools.repair.pseudo_labels.load_table`). A sample is dropped
+(``DROPPED``) when its top probability is below the rule's
+``min_confidence`` or, under ``require_check_agreement``, when the check
+model's top class differs: an unsure guess is worse than no sample. A sample
+without a rule, a pseudo-rule sample without a table row from the rule's
+model, or one without check probabilities under ``require_check_agreement``
+is a problem and the apply refuses. The plan tallies samples per class
+(``class <name>``), dropped samples per predicted class (``dropped <name>``)
+and per reason (``drop reason ...``), and agreement with the check model.
 """
 
 from __future__ import annotations
@@ -32,10 +35,12 @@ from tools.repair.source_label_fix import (
     SampleUpdate,
 )
 
-__all__ = ["NO_PSEUDO_LABEL", "NO_RULE", "ClassLabeler"]
+__all__ = ["DISAGREEMENT", "LOW_CONFIDENCE", "NO_PSEUDO_LABEL", "NO_RULE", "ClassLabeler"]
 
 NO_RULE = "no class rule"
 NO_PSEUDO_LABEL = "no pseudo label"
+LOW_CONFIDENCE = "drop reason confidence"
+DISAGREEMENT = "drop reason disagreement"
 _PSEUDO_FIELDS = ("label_confidence", "label_check_class")
 _DIGITS = 4
 
@@ -95,16 +100,34 @@ class ClassLabeler:
         tally: tuple[str, ...] = ()
         fields = self._fields(names[best], rule.label_source)
         fields["label_confidence"] = round(confidence, _DIGITS)
+        check: int | None = None
         if record.check_probs is not None and len(record.check_probs) == len(names):
             check = _top(record.check_probs)[0]
             fields["label_check_class"] = names[check]
             tally = ("pseudo agree" if check == best else "pseudo disagree",)
-        if confidence < rule.min_confidence:
-            return SampleUpdate(DROPPED, tally=(*tally, f"dropped {names[best]}"),
-                                problem=f"pseudo confidence {confidence:.3f} <"
-                                        f" {rule.min_confidence}")
+        elif rule.require_check_agreement:
+            return SampleUpdate(NO_PSEUDO_LABEL,
+                                problem=f"{rule.check_model}: no check probabilities")
+        reasons = self._drop_reasons(rule, confidence, best, check)
+        if reasons:
+            return SampleUpdate(DROPPED, tally=(*tally, f"dropped {names[best]}",
+                                                *(reason for reason, _ in reasons)),
+                                problem="; ".join(text for _, text in reasons))
         return self._update(sample, fields, (*tally, f"class {names[best]}"),
                             {"pseudo_confidence": confidence})
+
+    def _drop_reasons(self, rule: ClassRule, confidence: float, best: int,
+                      check: int | None) -> list[tuple[str, str]]:
+        """Why a pseudo label is not kept: (tally, text) per failed condition."""
+        names = self.rules.scheme.class_names
+        reasons: list[tuple[str, str]] = []
+        if confidence < rule.min_confidence:
+            text = f"pseudo confidence {confidence:.3f} < {rule.min_confidence}"
+            reasons.append((LOW_CONFIDENCE, text))
+        if rule.require_check_agreement and check is not None and check != best:
+            text = f"{rule.check_model} says {names[check]}, {rule.pseudo_model} {names[best]}"
+            reasons.append((DISAGREEMENT, text))
+        return reasons
 
     def label(self, sample: SampleInput) -> SampleUpdate:
         """The JSON label of ``sample`` with its class."""

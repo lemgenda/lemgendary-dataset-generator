@@ -27,14 +27,24 @@ from core.docs.generators.dataset_info_yaml import RECORDED_LABEL_FIELDS
 from core.paths import UNIFIED_DATA
 from services.pseudo_label_service import PseudoLabelService, plan_pseudo_labels
 from services.source_label_service import SourceLabelService
-from tools.repair.class_labeler import NO_PSEUDO_LABEL, ClassLabeler
+from tools.repair.class_labeler import (
+    DISAGREEMENT,
+    LOW_CONFIDENCE,
+    NO_PSEUDO_LABEL,
+    ClassLabeler,
+)
 from tools.repair.pseudo_labels import (
     PoolDecoder,
     PseudoRecord,
     load_table,
     serial_decoder,
 )
-from tools.repair.source_label_fix import SourceLabelError, every_key_resolver
+from tools.repair.source_label_fix import (
+    DROPPED,
+    SampleInput,
+    SourceLabelError,
+    every_key_resolver,
+)
 from utils.label_audit import audit_labels, label_audit_problems
 from utils.sample_group import add_tar_member
 from utils.shard_audit import audit_shard, find_shards
@@ -97,7 +107,7 @@ def _classifiers() -> dict[str, FakeClassifier]:
         # red: confident porn; green: unconfident sexy (dropped); blue: confident neutral
         "gantman_inception_v3": FakeClassifier(299, {0: 0.95, 1: 0.55, 2: 0.9},
                                                {0: _PORN, 1: _SEXY, 2: _NEUTRAL}),
-        # the check model disagrees on blue (sexy instead of neutral)
+        # the check model disagrees on blue (sexy instead of neutral): dropped
         "gantman_mobilenet_v2": FakeClassifier(224, {0: 0.9, 1: 0.9, 2: 0.6},
                                                {0: _PORN, 1: _SEXY, 2: _SEXY}),
     }
@@ -172,8 +182,9 @@ class ClassRuleTests(unittest.TestCase):
         self.assertEqual(rule(_key("anime_dbrating", _EXPLICIT)).class_name, "drawings")
         self.assertEqual(rule(_key("food101", 0)).class_name, "neutral")
         nsfw = rule(_key("NSFW", 0))
-        self.assertEqual((nsfw.pseudo_model, nsfw.check_model, nsfw.min_confidence),
-                         ("gantman_inception_v3", "gantman_mobilenet_v2", 0.8))
+        self.assertEqual((nsfw.pseudo_model, nsfw.check_model, nsfw.min_confidence,
+                          nsfw.require_check_agreement),
+                         ("gantman_inception_v3", "gantman_mobilenet_v2", 0.8, True))
         self.assertEqual(nsfw.label_source, pseudo_label_source("gantman_inception_v3"))
         self.assertIsNone(rules.rule_for(_key("unknown", 0)))
         self.assertIsNone(rules.rule_for("no-index"))
@@ -189,6 +200,8 @@ class ClassRuleTests(unittest.TestCase):
             {"scheme": "nsfw_5", "rules": [{"source": "a", "pseudo_model": "nope"}]},
             {"scheme": "nope", "rules": [{"source": "a", "class_name": "porn"}]},
             {"scheme": "nsfw_5", "rules": []},
+            {"scheme": "nsfw_5", "rules": [{"source": "a", "require_check_agreement": True,
+                                            "pseudo_model": "gantman_inception_v3"}]},
         ]
         for spec in bad:
             with self.assertRaises(ValueError, msg=str(spec)):
@@ -249,25 +262,54 @@ class PseudoLabelTests(unittest.TestCase):
 class ClassLabelRepairTests(unittest.TestCase):
     """repair class-labels: plan, apply, re-plan."""
 
-    def _service(self, table: Path) -> SourceLabelService:
-        return SourceLabelService(ClassLabeler(_registry_rules(), table), every_key_resolver, 1,
-                                  "class_label")
+    def _service(self, table: Path, rules: ClassLabelRules | None = None) -> SourceLabelService:
+        return SourceLabelService(ClassLabeler(rules or _registry_rules(), table),
+                                  every_key_resolver, 1, "class_label")
 
     def test_plan_tallies_classes_and_agreement(self) -> None:
-        """The plan counts samples per class, drops per class and check agreement."""
+        """The plan counts samples per class, drops per class and reason, and agreement."""
         with tempfile.TemporaryDirectory() as tmp:
             manifold = _manifold(Path(tmp))
             _pseudo(manifold, Path(tmp) / "table")
             plan = self._service(Path(tmp) / "table").plan(manifold)
             self.assertEqual(plan.problems, 0, plan.report())
             tallies = plan.tallies()
-            self.assertEqual([tallies[f"class {n}"] for n in NSFW_5], [2, 2, 3, 1, 0])
-            self.assertEqual(tallies["dropped sexy"], 1)
+            self.assertEqual([tallies[f"class {n}"] for n in NSFW_5], [2, 2, 2, 1, 0])
+            self.assertEqual((tallies["dropped sexy"], tallies["dropped neutral"]), (1, 1))
+            self.assertEqual((tallies[LOW_CONFIDENCE], tallies[DISAGREEMENT]), (1, 1))
             self.assertEqual((tallies["pseudo agree"], tallies["pseudo disagree"]), (2, 1))
 
-    def test_apply_writes_classes_and_drops_unconfident(self) -> None:
+    def test_agreement_off_keeps_a_confident_disagreeing_label(self) -> None:
+        """Without require_check_agreement only the confidence decides."""
+        spec = yaml.safe_load(UNIFIED_DATA.read_text(encoding="utf-8"))["datasets"][
+            "classification_master_manifold"]["class_labels"]
+        for rule in spec["rules"]:
+            rule.pop("require_check_agreement", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            manifold = _manifold(Path(tmp))
+            _pseudo(manifold, Path(tmp) / "table")
+            plan = self._service(Path(tmp) / "table",
+                                 ClassLabelRules.from_spec(spec)).plan(manifold)
+            tallies = plan.tallies()
+            self.assertEqual(tallies["class neutral"], 3)
+            self.assertNotIn(DISAGREEMENT, tallies)
+
+    def test_missing_check_probabilities_are_a_problem(self) -> None:
+        """Under require_check_agreement a row without check probabilities refuses."""
+        with tempfile.TemporaryDirectory() as tmp:
+            table = Path(tmp) / "table"
+            table.mkdir()
+            key = _key("NSFW", 9)
+            row = PseudoRecord(key, "gantman_inception_v3", tuple(_onehot(_PORN, 0.99)))
+            (table / "t.jsonl").write_text(row.to_json() + "\n", encoding="utf-8")
+            sample = SampleInput(key, (12, 10), b"", {}, frozenset({"webp", "json"}), None)
+            update = ClassLabeler(_registry_rules(), table).label(sample)
+            self.assertEqual(update.status, NO_PSEUDO_LABEL)
+            self.assertNotEqual(update.status, DROPPED)
+
+    def test_apply_writes_classes_and_drops_unsure(self) -> None:
         """Rule classes, pseudo classes with confidence and check class; the unconfident
-        NSFW sample leaves the shards, index.json and the count."""
+        and the disagreeing NSFW samples leave the shards, index.json and the count."""
         with tempfile.TemporaryDirectory() as tmp:
             manifold = _manifold(Path(tmp))
             _pseudo(manifold, Path(tmp) / "table")
@@ -276,6 +318,7 @@ class ClassLabelRepairTests(unittest.TestCase):
             self.assertFalse(remaining.changed, remaining.report())
             labels = _labels(manifold)
             self.assertNotIn(_key("NSFW", 2), labels)
+            self.assertNotIn(_key("NSFW", 3), labels)
 
             def fields(source: str, idx: int, *names: str) -> tuple[Any, ...]:
                 return tuple(labels[_key(source, idx)].get(n) for n in names)
@@ -289,17 +332,15 @@ class ClassLabelRepairTests(unittest.TestCase):
             self.assertEqual(fields("NSFW", 1, "class_id", "label_confidence",
                                     "label_check_class", "label_source"),
                              (3, 0.95, "porn", "pseudo:gantman_inception_v3"))
-            self.assertEqual(fields("NSFW", 3, "class_name", "label_check_class"),
-                             ("neutral", "sexy"))
             self.assertEqual(label_audit_problems(audit_labels(manifold / "shards",
                                                                "class_label")), [])
             info = yaml.safe_load((manifold / "dataset_info.yaml").read_text(encoding="utf-8"))
             self.assertEqual((info["classes"], info["label_json"], info["count"]),
-                             (list(NSFW_5), "class_label", len(_SAMPLES) - 1))
+                             (list(NSFW_5), "class_label", len(_SAMPLES) - 2))
             self.assertEqual((manifold / "classes.txt").read_text(encoding="utf-8").split(),
                              list(NSFW_5))
             index = json.loads((manifold / "index.json").read_text(encoding="utf-8"))
-            self.assertNotIn(_key("NSFW", 2), {e["name"] for e in index})
+            self.assertFalse({_key("NSFW", 2), _key("NSFW", 3)} & {e["name"] for e in index})
 
     def test_missing_pseudo_label_refuses_the_apply(self) -> None:
         """Without the table the NSFW samples are problems and nothing is written."""
