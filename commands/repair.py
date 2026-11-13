@@ -35,6 +35,7 @@ from services.label_repair_service import (
     LabelSource,
     read_classes,
 )
+from services.loose_pack_service import LoosePackError, LoosePackPlan, LoosePackService
 from services.repair_service import ManifoldRepairPlan, RepairService
 from services.sample_policy_service import SamplePolicyService
 from services.txt_label_service import TxtLabelPlan, TxtLabelService
@@ -80,9 +81,13 @@ _LABEL_ERRORS = (OSError, tarfile.TarError, LabelRestoreError, ValueError, Unico
 _CLASSES_FILE = "classes.txt"
 _POLICY_ERRORS = (OSError, tarfile.TarError, SamplePolicyError, ValueError, yaml.YAMLError)
 _TXT_ERRORS = (OSError, tarfile.TarError, TxtLabelError)
+_PACK_ERRORS = (OSError, tarfile.TarError, LoosePackError, ValueError, yaml.YAMLError)
+
+RepairPlan = (ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan | TxtLabelPlan
+              | LoosePackPlan)
 
 
-def _print(plan: ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan | TxtLabelPlan) -> None:
+def _print(plan: RepairPlan) -> None:
     for line in plan.report():
         console.print(line, markup=False, highlight=False)
 
@@ -211,6 +216,27 @@ def repair_txt_labels(model: ModelOpt = None, manifold: ManifoldOpt = None,
     if not apply:
         console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
     raise typer.Exit(code=1 if plan.mismatched or plan.unreadable else 0)
+
+
+@repair_app.command("pack-loose")
+def repair_pack_loose(model: ModelOpt = None, manifold: ManifoldOpt = None,
+                      strategy: StrategyOpt = None, apply: ApplyOpt = False) -> None:
+    """Pack a loose images/labels manifold into JSON-labelled shards, then drop the loose files."""
+    manifold_dir = require_target(TargetOptions(model=model, manifold=manifold))
+    service = LoosePackService(_label_strategy(manifold_dir, strategy))
+    try:
+        plan = service.plan(manifold_dir)
+        _print(plan)
+        if apply and plan.changed:
+            for line in service.apply(plan):
+                console.print(line, markup=False, highlight=False)
+            console.print("  applied", markup=False, highlight=False)
+    except _PACK_ERRORS as exc:
+        console.print(f"[red]Packing {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=1 if plan.blockers else 0)
 
 
 def _policy_service(manifold_dir: Path) -> SamplePolicyService:

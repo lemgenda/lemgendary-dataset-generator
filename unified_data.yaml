@@ -759,7 +759,7 @@ datasets:
       - ref: kaggle://harshpatel66/mpii-human-pose
       - ref: kaggle://elmahy/crowdpose
     modernized_folder: LemGendizedYoloV8n
-    canonical_format: directory
+    canonical_format: webdataset
     title: LemGendized YOLOv8n Multi-Task
     subtitle: Multi-Task Object Detection, Person & Face Localization Manifold in YOLO
       Format
@@ -777,7 +777,7 @@ datasets:
       - Pascal VOC 2012
       - KITTI Benchmark
     container:
-      primary: directory
+      primary: webdataset
     citations:
       - https://github.com/ultralytics/ultralytics
     collection_methodology: Curated multi-source ingestion synthesized from public benchmark

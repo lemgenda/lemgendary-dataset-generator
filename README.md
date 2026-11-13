@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.98-STABLE` |
+| **Version** | `v16.9.99-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -53,6 +53,24 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.99 - `repair pack-loose`: YOLOv8n Moves to WebDataset (R4-J1)
+
+- `repair pack-loose` (dry run unless `--apply`;
+  `services/loose_pack_service.py`) packs a loose `images/<split>` +
+  `labels/<split>` manifold in place into `shards/<split>/shard-*.data`
+  with `<key>.webp` + `<key>.json` (the registry's label strategy, YOLO
+  boxes for detection). The plan counts images, labels and empty labels
+  (images without objects, kept as valid detection negatives) and refuses
+  while an image has no label file, a label has no image or shards exist.
+  After packing it checks that each split's shard keys are exactly its image
+  stems, that every labelled sample has its JSON label and that the labels
+  pass the shard verifier; only then dataset_info.yaml records `classes`
+  (`classes.txt`, else a YOLO `data.yaml` `names`) and `label_json`,
+  index.json and the counts are resynced, and the loose folders are removed.
+- Registry: `yolov8n` is `canonical_format: webdataset` (container primary
+  webdataset), so the compiler and the modernize queue pack it as shards.
+- Tests: `tests/test_loose_pack.py`.
 
 ### v16.9.98 - JSON Is the Only Shard Label Format (R4-J1)
 
