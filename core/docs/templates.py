@@ -26,7 +26,7 @@ __all__ = [
     "render_standard_readme",
 ]
 
-_LOWER_IS_BETTER = ["loss", "lpips", "fid", "drawdown", "mae", "mse", "rank_margin"]
+_LOWER_IS_BETTER = ["loss", "lpips", "fid", "drawdown", "mae", "mse", "rank_margin", "nme"]
 _METRIC_ACRONYMS = (
     ("Psnr", "PSNR"),
     ("Ssim", "SSIM"),
@@ -34,6 +34,10 @@ _METRIC_ACRONYMS = (
     ("Fid", "FID"),
     ("Map", "mAP"),
     ("Miou", "mIoU"),
+    ("Iou", "IoU"),
+    ("Ap50 95", "AP50-95"),
+    ("Ap50", "AP50"),
+    ("Nme", "NME"),
 )
 
 _NOTEBOOK_RULES: tuple[tuple[Callable[[str], bool], str], ...] = (
@@ -241,6 +245,9 @@ def _model_block(model: dict[str, Any]) -> str:
         ]
         table_lines += [_sota_row(met, val) for met, val in sota.items()]
         model_block += "\n".join(table_lines) + "\n"
+        if model.get("sota_targets_provisional"):
+            note = model.get("sota_targets_note") or "no cited source backs these values yet."
+            model_block += "\n" + wrap_bullet(f"- **Provisional targets**: {note}") + "\n"
     return model_block
 
 

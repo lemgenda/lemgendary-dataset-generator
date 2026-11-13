@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.106-STABLE` |
+| **Version** | `v16.9.107-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -60,6 +60,21 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.107 - RetinaFace Targets Synced With the Training Suite (Provisional)
+
+- `models/models_metadata.yaml` RetinaFace no longer lists the WIDER FACE
+  `map_easy` / `map_medium` / `map_hard` targets. It now lists the metrics
+  the training suite measures since v16.9.208: `box_iou` 0.80, `ap50` 0.95,
+  `ap50_95` 0.60 and `landmark_nme` 0.10, with
+  `sota_targets_provisional: true` and a `sota_targets_note` (the same
+  marker as the training suite's `unified_models_v2.yaml`; no cited source
+  backs the values yet, the owner is to confirm them).
+- Generated manifold READMEs (`core/docs/templates.py`) print a
+  "Provisional targets" bullet under a provisional target table, treat NME
+  as lower-is-better, and label `IoU`, `AP50`, `AP50-95` and `NME`.
+- Tests: `tests/test_docs.py` (`TestModelTargets`: RetinaFace rows, NME
+  direction, no mAP, provisional bullet).
 
 ### v16.9.106 - `repair class-labels` Corrects the Stale JSON Task (R4-B2)
 

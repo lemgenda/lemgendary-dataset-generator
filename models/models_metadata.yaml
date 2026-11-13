@@ -306,6 +306,12 @@ models_metadata:
     datasets:
       - LemGendizedRetinaFace
     sota_targets:
-      map_easy: 0.915
-      map_medium: 0.89
-      map_hard: 0.75
+      box_iou: 0.8
+      ap50: 0.95
+      ap50_95: 0.6
+      landmark_nme: 0.1
+    sota_targets_provisional: true
+    sota_targets_note: Provisional targets of the training suite (v16.9.208), not
+      published SOTA. The model regresses one box per image and is validated on
+      LemGendizedRetinaFace (one face per image), so WIDER FACE easy/medium/hard AP
+      does not apply; no cited source backs these values yet.

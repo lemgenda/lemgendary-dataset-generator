@@ -30,6 +30,8 @@ from core.docs import (
     generate_readme_md,
     resolve_manifold_context,
 )
+from core.docs.metadata import MODELS_META
+from core.docs.templates import build_models_markdown
 
 
 def _read_text(case: unittest.TestCase, path: Path) -> str:
@@ -229,6 +231,19 @@ class TestDocumentationGenerator(unittest.TestCase):
         self.assertIs(doc_generator.generate_dataset_docs, generate_dataset_docs)
         self.assertIs(doc_generator.format_source, format_source)
         self.assertEqual(doc_generator.FOREX_COLUMN_FIELDS, FOREX_COLUMN_FIELDS)
+
+
+class TestModelTargets(unittest.TestCase):
+    """SOTA target tables of the models bound to a manifold."""
+
+    def test_retinaface_targets_are_measured_metrics_marked_provisional(self) -> None:
+        """RetinaFace lists box IoU, AP50, AP50-95 and NME (lower is better), provisional."""
+        block = build_models_markdown("LemGendizedRetinaFace", MODELS_META)
+        for row in ("| **Box IoU** |", "| **AP50** |", "| **AP50-95** |",
+                    "| **Landmark NME** | < 0.15 | < 0.12 | **< 0.1** |"):
+            self.assertIn(row, block)
+        self.assertNotIn("mAP", block)
+        self.assertIn("**Provisional targets**", block)
 
 
 if __name__ == "__main__":
