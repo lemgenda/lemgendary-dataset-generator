@@ -102,3 +102,13 @@ def load_training_notebooks() -> ModuleType:
     The caller puts the training-suite checkout on ``sys.path`` first.
     """
     return importlib.import_module("training.notebooks")
+
+
+def load_onnxruntime() -> ModuleType:
+    """Return the ``onnxruntime`` module (pseudo-label models only)."""
+    return importlib.import_module("onnxruntime")
+
+
+def load_hf_hub_download() -> Any:
+    """Return ``huggingface_hub.hf_hub_download``."""
+    return importlib.import_module("huggingface_hub").hf_hub_download

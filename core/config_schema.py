@@ -36,6 +36,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core import paths
+from core.class_labels import ClassLabelRules
 from core.source_labels import SOURCE_LABEL_SCHEMES
 from core.task_taxonomy import taxonomy
 from utils.label_json import LABEL_JSON_BUILDERS
@@ -83,6 +84,34 @@ class SourceLabelSpec(BaseModel):
             raise ValueError(f"source_labels scheme '{value}' is not one of"
                              f" {sorted(SOURCE_LABEL_SCHEMES)}")
         return value
+
+
+class ClassRuleSpec(BaseModel):
+    """One class label rule (core.class_labels.ClassRule)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(min_length=1)
+    below: int | None = Field(default=None, gt=0)
+    class_name: str | None = None
+    pseudo_model: str | None = None
+    check_model: str | None = None
+    min_confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    label_source: str | None = None
+
+
+class ClassLabelSpec(BaseModel):
+    """Class labels of a classification manifold: a scheme and ordered key rules."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scheme: str
+    rules: list[ClassRuleSpec] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _valid_rules(self) -> ClassLabelSpec:
+        ClassLabelRules.from_spec(self.model_dump(exclude_none=True))
+        return self
 
 
 # ─── Registry-level ─────────────────────────────────────────────────────────
@@ -249,6 +278,8 @@ class DatasetEntry(BaseModel):
     key_layouts: list[KeyLayoutSpec] = Field(default_factory=list)
     # Per-file labels the source ships next to its images (masks, landmarks).
     source_labels: SourceLabelSpec | None = None
+    # Class labels derived from the sample keys or pseudo-labelled (repair class-labels).
+    class_labels: ClassLabelSpec | None = None
 
     # Policies (Phase 3 / Phase 4 consumers — optional; defaults apply)
     image_format: ImageFormatPolicy = Field(default_factory=ImageFormatPolicy)

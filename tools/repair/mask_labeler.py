@@ -73,7 +73,7 @@ class MaskLabeler:
 
     def _checked_ids(self, sample: SampleInput) -> tuple[bytes, np.ndarray]:
         """The source mask bytes and class ids; ``CorruptImageError`` when unusable."""
-        raw = sample.label_file.read_bytes()
+        raw = sample.require_label_file().read_bytes()
         ids = _source_ids(raw)
         if (ids.shape[1], ids.shape[0]) != sample.size:
             raise CorruptImageError(f"mask {ids.shape[1]}x{ids.shape[0]},"
@@ -98,7 +98,7 @@ class MaskLabeler:
             return SampleUpdate(UNCHANGED)
         try:
             raw, ids = self._checked_ids(sample)
-            members = ({MASK_MEMBER: self._encoded(raw, ids, sample.label_file.name)}
+            members = ({MASK_MEMBER: self._encoded(raw, ids, sample.require_label_file().name)}
                        if sample.encode else {})
         except (OSError, CorruptImageError) as exc:
             return SampleUpdate(INVALID_MASK, problem=str(exc))

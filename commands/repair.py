@@ -6,7 +6,9 @@ replaces its original atomically; no copy of the original is kept (see
 :mod:`services.repair_service`, :mod:`services.label_repair_service` for
 ``repair labels`` and :mod:`services.txt_label_service` for
 ``repair txt-labels``, :mod:`services.source_label_service` for ``repair
-masks`` and ``repair face-landmarks``). ``repair manifold`` also verifies the
+masks``, ``repair face-landmarks`` and ``repair class-labels``,
+:mod:`services.pseudo_label_service` for ``repair pseudo-labels``, which only
+writes a label table outside the manifold). ``repair manifold`` also verifies the
 labels inside the shards and exits 1 while any is a text label or an invalid
 JSON label.
 """
@@ -41,11 +43,13 @@ from services.label_repair_service import (
     read_classes,
 )
 from services.loose_pack_service import LoosePackError, LoosePackPlan, LoosePackService
+from services.pseudo_label_service import PseudoLabelService, PseudoPlan
 from services.repair_service import ManifoldRepairPlan, RepairService
 from services.sample_policy_service import SamplePolicyService
 from services.source_label_service import SourceLabelPlan, SourceLabelService
 from services.txt_label_service import TxtLabelPlan, TxtLabelService
 from tools.repair.label_restore import LabelRestoreError
+from tools.repair.pseudo_labels import ShardPseudoResult
 from tools.repair.sample_policy_fix import SamplePolicyError, SamplePolicyPlan
 from tools.repair.shard_fix import ShardFixError
 from tools.repair.source_label_fix import ShardLabelResult, SourceLabelError
@@ -91,10 +95,13 @@ _TXT_ERRORS = (OSError, tarfile.TarError, TxtLabelError)
 _PACK_ERRORS = (OSError, tarfile.TarError, LoosePackError, ValueError, yaml.YAMLError)
 _SOURCE_LABEL_ERRORS = (OSError, tarfile.TarError, SourceLabelError, ValueError,
                         yaml.YAMLError)
+_PSEUDO_ERRORS = (OSError, tarfile.TarError, SourceLabelError, ValueError, yaml.YAMLError,
+                  RuntimeError)
 _PROGRESS_EVERY = 10
+_SECONDS_PER_HOUR = 3600.0
 
 RepairPlan = (ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan | TxtLabelPlan
-              | LoosePackPlan | SourceLabelPlan)
+              | LoosePackPlan | SourceLabelPlan | PseudoPlan)
 
 
 def _print(plan: RepairPlan) -> None:
@@ -305,16 +312,14 @@ def _progress(total: list[int]) -> Callable[[ShardLabelResult], None]:
     return _report
 
 
-def _source_labels(target: TargetOptions, root: Path, scheme_type: type, workers: int,
-                   apply: bool) -> None:
-    """Plan (and with ``apply`` write) the registry's per-file source labels of one manifold."""
+ServiceBuilder = Callable[[Path], SourceLabelService]
+
+
+def _source_labels(target: TargetOptions, build: ServiceBuilder, apply: bool) -> None:
+    """Plan (and with ``apply`` write) the labels ``build``'s service gives one manifold."""
     manifold_dir = require_target(target)
-    if not root.is_dir():
-        console.print(f"[red]Label folder not found: {root}[/red]")
-        raise typer.Exit(code=1)
     try:
-        service = SourceLabelService.for_manifold(manifold_dir, root, scheme_type,
-                                                  workers or _default_workers())
+        service = build(manifold_dir)
         service.on_shard = _progress([0])
         plan = service.plan(manifold_dir)
         _print(plan)
@@ -340,8 +345,11 @@ def repair_masks(
     apply: ApplyOpt = False,
 ) -> None:
     """Write each photo's source class mask as <key>.mask.webp (lossless) plus its JSON label."""
-    _source_labels(TargetOptions(model=model, manifold=manifold), masks_root, MaskScheme,
-                   workers, apply)
+    _require_dir(masks_root)
+    _source_labels(TargetOptions(model=model, manifold=manifold),
+                   lambda d: SourceLabelService.for_manifold(d, masks_root, MaskScheme,
+                                                             workers or _default_workers()),
+                   apply)
 
 
 @repair_app.command("face-landmarks")
@@ -353,5 +361,79 @@ def repair_face_landmarks(
     apply: ApplyOpt = False,
 ) -> None:
     """Rebuild each photo's face box and 5 landmarks from its source landmark file."""
-    _source_labels(TargetOptions(model=model, manifold=manifold), landmarks_root,
-                   LandmarkScheme, workers, apply)
+    _require_dir(landmarks_root)
+    _source_labels(TargetOptions(model=model, manifold=manifold),
+                   lambda d: SourceLabelService.for_manifold(d, landmarks_root, LandmarkScheme,
+                                                             workers or _default_workers()),
+                   apply)
+
+
+def _require_dir(root: Path) -> None:
+    if not root.is_dir():
+        console.print(f"[red]Label folder not found: {root}[/red]")
+        raise typer.Exit(code=1)
+
+
+TableRootOpt = Annotated[Path, typer.Option(
+    "--table-root", help="Folder of the pseudo-label table (repair pseudo-labels writes it)")]
+
+
+@repair_app.command("class-labels")
+def repair_class_labels(table_root: TableRootOpt, model: ModelOpt = None,
+                        manifold: ManifoldOpt = None, workers: WorkersOpt = 0,
+                        apply: ApplyOpt = False) -> None:
+    """Write each sample's class (registry class_labels: key rules, pseudo labels) into its JSON."""
+    _source_labels(TargetOptions(model=model, manifold=manifold),
+                   lambda d: SourceLabelService.for_class_labels(d, table_root,
+                                                                 workers or _default_workers()),
+                   apply)
+
+
+def _eta_line(results: list[ShardPseudoResult], remaining: int) -> str:
+    samples = sum(r.samples for r in results)
+    seconds = sum(r.seconds for r in results)
+    rate = samples / seconds if seconds > 0 else 0.0
+    eta = remaining / rate / _SECONDS_PER_HOUR if rate > 0 else 0.0
+    return (f"  throughput {rate:.1f} samples/s over {samples} samples;"
+            f" {remaining} samples left, ETA {eta:.2f} h")
+
+
+def _shard_line(result: ShardPseudoResult) -> None:
+    console.print(f"  {result.shard.parent.name}/{result.shard.name}: {result.samples} samples"
+                  f" in {result.seconds:.0f} s", markup=False, highlight=False)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PseudoLabelOptions:
+    """Options of ``repair pseudo-labels``."""
+
+    target: TargetOptions
+    table_root: TableRootOpt
+    workers: WorkersOpt = 0
+    max_shards: Annotated[int | None, typer.Option(
+        "--max-shards", help="Label at most this many shards (measure throughput first)")] = None
+    apply: ApplyOpt = False
+
+
+@repair_app.command("pseudo-labels")
+@options_command(PseudoLabelOptions)
+def repair_pseudo_labels(opts: PseudoLabelOptions) -> None:
+    """Pseudo-label the samples of the registry's pseudo rules into a table (shards untouched)."""
+    manifold_dir = require_target(opts.target)
+    table_root, apply = opts.table_root, opts.apply
+    try:
+        plan = PseudoLabelService.plan_only(manifold_dir, table_root)
+        _print(plan)
+        if apply and plan.remaining:
+            results = PseudoLabelService.run_onnx(manifold_dir, table_root,
+                                                  opts.workers or _default_workers(),
+                                                  opts.max_shards, _shard_line)
+            left = PseudoLabelService.plan_only(manifold_dir, table_root).remaining
+            console.print(_eta_line(results, sum(s.samples for s in left)), markup=False,
+                          highlight=False)
+    except _PSEUDO_ERRORS as exc:
+        console.print(f"[red]Pseudo labels of {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=0)

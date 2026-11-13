@@ -39,7 +39,12 @@ from tools.repair.sample_policy_fix import (
     apply_sample_policy,
     plan_sample_policy,
 )
-from tools.repair.source_label_fix import LABELLED, SourceFiles, SourceLabelError
+from tools.repair.source_label_fix import (
+    LABELLED,
+    LayoutFilesFactory,
+    SourceFiles,
+    SourceLabelError,
+)
 from utils.label_audit import audit_labels, label_audit_problems
 from utils.label_json import label_document, label_problems
 from utils.sample_group import add_tar_member
@@ -91,7 +96,8 @@ _LAYOUTS = {_SRC: KeyLayout(_SRC, copies=1, photos=3, files_dir="part1")}
 
 
 def _service(root: Path, workers: int = 1) -> SourceLabelService:
-    return SourceLabelService(MaskLabeler(_SCHEME, "sfhq-bisenet"), _LAYOUTS, root, workers,
+    return SourceLabelService(MaskLabeler(_SCHEME, "sfhq-bisenet"),
+                              LayoutFilesFactory(root, _LAYOUTS, _SCHEME.file_suffix), workers,
                               "segmentation_mask")
 
 

@@ -106,7 +106,7 @@ class LandmarkLabeler:
         return {"landmark_source": self.source}
 
     def _face(self, sample: SampleInput) -> FaceGeometry:
-        with np.load(sample.label_file, allow_pickle=False) as data:
+        with np.load(sample.require_label_file(), allow_pickle=False) as data:
             points = np.asarray(data[self.scheme.array_key], dtype=np.float64)
         return face_geometry(points, self.scheme, *sample.size)
 

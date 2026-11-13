@@ -209,6 +209,21 @@ class TestDocumentationGenerator(unittest.TestCase):
             self.assertEqual(meta_data["headerImage"], img_file.name)
             self.assertTrue(len(meta_data["resources"]) >= 6)
 
+    def test_regeneration_keeps_recorded_label_fields(self) -> None:
+        """label_json, classes and landmark_source written by a repair survive a
+        dataset_info.yaml regeneration; classes.txt follows the recorded classes."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifold_dir = Path(tmp_dir) / "LemGendizedCodeFormer"
+            manifold_dir.mkdir(parents=True, exist_ok=True)
+            recorded = {"label_json": "face_landmarks", "classes": ["face"],
+                        "landmark_source": "sfhq-110pt"}
+            (manifold_dir / "dataset_info.yaml").write_text(
+                yaml.safe_dump({"count": 1, **recorded}), encoding="utf-8")
+            ctx = resolve_manifold_context(manifold_dir, pascal_name="LemGendizedCodeFormer")
+            info = _read_yaml(self, generate_dataset_info_yaml(ctx))
+            self.assertEqual({k: info[k] for k in recorded}, recorded)
+            self.assertEqual(_read_text(self, generate_classes_txt(ctx)).split(), ["face"])
+
     def test_facade_parity(self) -> None:
         """Verify core.doc_generator facade re-exports match core.docs."""
         self.assertIs(doc_generator.generate_dataset_docs, generate_dataset_docs)

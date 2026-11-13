@@ -21,7 +21,12 @@ from core.sample_policy import KeyLayout
 from core.source_labels import landmark_scheme
 from services.source_label_service import SourceLabelService
 from tools.repair.landmark_labeler import LandmarkLabeler
-from tools.repair.source_label_fix import DROPPED, LABELLED, SourceLabelError
+from tools.repair.source_label_fix import (
+    DROPPED,
+    LABELLED,
+    LayoutFilesFactory,
+    SourceLabelError,
+)
 from utils.label_audit import audit_labels, label_audit_problems
 from utils.sample_group import add_tar_member
 from utils.shard_audit import find_shards
@@ -82,7 +87,8 @@ def _manifold(root: Path, points: list[np.ndarray]) -> tuple[Path, Path]:
 
 
 def _service(root: Path) -> SourceLabelService:
-    return SourceLabelService(LandmarkLabeler(_SCHEME, "sfhq-110pt"), _LAYOUTS, root, 1,
+    return SourceLabelService(LandmarkLabeler(_SCHEME, "sfhq-110pt"),
+                              LayoutFilesFactory(root, _LAYOUTS, _SCHEME.file_suffix), 1,
                               "face_landmarks")
 
 

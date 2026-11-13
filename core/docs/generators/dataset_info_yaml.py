@@ -3,6 +3,11 @@
 
 Serializes machine-readable dataset specification, sample counts, lineage sources,
 and container topology to dataset_info.yaml for automated PyTorch loaders.
+
+The label fields a repair records from the data (:data:`RECORDED_LABEL_FIELDS`:
+the label strategy, the class names, the label source tags) are not derivable
+from the registry or the folder scan; a regeneration carries them over from the
+existing dataset_info.yaml.
 """
 
 from __future__ import annotations
@@ -30,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_FOREX_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "NAS100", "DE40", "USOIL", "US500"]
 _DEFAULT_TIMEFRAMES = [1, 5, 15, 60, 240, 1440]
+
+# Fields the label repairs write (repair masks, face-landmarks, class-labels,
+# pack-loose); a regeneration keeps them.
+RECORDED_LABEL_FIELDS: tuple[str, ...] = ("label_json", "classes", "landmark_source")
 
 
 class _IndentedDumper(yaml.SafeDumper):
@@ -110,7 +119,26 @@ def _instruction_fields(ctx: ManifoldContext) -> dict[str, Any]:
     return fields
 
 
-def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> str | None:
+def _existing_info(ctx: ManifoldContext) -> dict[str, Any]:
+    """The manifold's current dataset_info.yaml; empty when missing or unreadable."""
+    existing = ctx.manifold_path / "dataset_info.yaml"
+    if not existing.exists():
+        return {}
+    try:
+        data = yaml.safe_load(existing.read_text(encoding="utf-8")) or {}
+    except (yaml.YAMLError, OSError) as exc:
+        logger.warning("Cannot read %s: %s", existing, exc)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _recorded_label_fields(existing: dict[str, Any]) -> dict[str, Any]:
+    """The label fields a repair recorded in the existing dataset_info.yaml."""
+    return {k: existing[k] for k in RECORDED_LABEL_FIELDS if existing.get(k) is not None}
+
+
+def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None,
+               existing: dict[str, Any]) -> str | None:
     """Compiler task id (task_taxonomy.json) of the manifold.
 
     The compiler passes it as the ``task_type`` override. A docs-only
@@ -123,15 +151,8 @@ def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None) -> str | 
     registered = entry.get("task_override") or entry.get("task")
     if registered:
         return str(registered)
-    existing = ctx.manifold_path / "dataset_info.yaml"
-    if existing.exists():
-        try:
-            data = yaml.safe_load(existing.read_text(encoding="utf-8")) or {}
-        except (yaml.YAMLError, OSError) as exc:
-            logger.warning("Cannot read task_type from %s: %s", existing, exc)
-            return None
-        if isinstance(data, dict) and data.get("task_type"):
-            return str(data["task_type"])
+    if existing.get("task_type"):
+        return str(existing["task_type"])
     return None
 
 
@@ -150,6 +171,7 @@ def generate_dataset_info_yaml(
     """
     ctx = ensure_context(context_or_path, overrides=overrides)
     manifold_name = ctx.manifold_name
+    existing = _existing_info(ctx)
 
     # Resolve sources list
     src_keys = (
@@ -164,12 +186,13 @@ def generate_dataset_info_yaml(
         "name": manifold_name,
         "count": ctx.lineage.total_samples,
         "task": ctx.task,
-        "task_type": _task_type(ctx, overrides),
+        "task_type": _task_type(ctx, overrides, existing),
         "category": ctx.profile.category,
         "canonical_format": _canonical_format(ctx),
         "original_sources": src_keys,
         "source": f"{manifold_name}-manifold",
         "last_processed": datetime.now(UTC).isoformat(),
+        **_recorded_label_fields(existing),
     }
 
     if info_payload["task_type"] is None:

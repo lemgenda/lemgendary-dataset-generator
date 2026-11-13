@@ -1,12 +1,13 @@
-"""SourceLabelService - write a source's per-file labels into a compiled manifold's shards.
+"""SourceLabelService - write a source's labels into a compiled manifold's shards.
 
-Single Responsibility: resolve the manifold's source label scheme and key
-layouts from the registry (``source_labels``, ``key_layouts``), pick the
-labeler for the scheme, and run :func:`tools.repair.source_label_fix.label_shard`
-over every shard (in worker processes when ``workers`` > 1).
+Single Responsibility: resolve the manifold's labeler and key resolver from
+the registry (``source_labels`` with ``key_layouts``: per-file masks or
+landmarks; ``class_labels``: classes from key rules and a pseudo-label table)
+and run :func:`tools.repair.source_label_fix.label_shard` over every shard (in
+worker processes when ``workers`` > 1).
 
-- ``plan`` only reads; it is what ``repair masks`` and ``repair
-  face-landmarks`` print in their default dry run.
+- ``plan`` only reads; it is what ``repair masks``, ``repair
+  face-landmarks`` and ``repair class-labels`` print in their default dry run.
 - ``apply`` refuses before any write while the plan has a problem; otherwise
   each shard the plan found to change is rewritten, verified and swapped in
   atomically; samples a labeler dropped leave index.json and the
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,20 +32,24 @@ from typing import Any
 import numpy as np
 import yaml
 
+from core.class_labels import ClassLabelRules
 from core.docs.generators.dataset_info_yaml import write_dataset_info
-from core.sample_policy import KeyLayout, parse_key_layouts
+from core.sample_policy import parse_key_layouts
 from core.source_labels import SOURCE_LABEL_SCHEMES, LandmarkScheme, MaskScheme
 from core.source_manifolds import registry_entry_for_folder
+from tools.repair.class_labeler import ClassLabeler
 from tools.repair.landmark_labeler import LandmarkLabeler
 from tools.repair.mask_labeler import MaskLabeler
 from tools.repair.metadata_fix import INDEX_FILE, INFO_FILE, replace_file
 from tools.repair.source_label_fix import (
     LABELLED,
     UNCHANGED,
+    KeyResolver,
+    LayoutFilesFactory,
     SampleLabeler,
     ShardLabelResult,
-    SourceFiles,
     SourceLabelError,
+    every_key_resolver,
     label_shard,
 )
 from utils.shard_audit import find_shards
@@ -86,6 +91,13 @@ class SourceLabelPlan:
             total.update(result.statuses)
         return total
 
+    def tallies(self) -> Counter[str]:
+        """Samples per labeler tally group over all shards."""
+        total: Counter[str] = Counter()
+        for result in self.results:
+            total.update(result.tallies)
+        return total
+
     def metrics(self) -> dict[str, list[float]]:
         """Every metric value over all shards."""
         merged: dict[str, list[float]] = {}
@@ -103,6 +115,9 @@ class SourceLabelPlan:
                   f" {sum(1 for r in self.results if r.changed)}, rewritten"
                   f" {sum(1 for r in self.results if r.written)}")]
         lines.append("  " + ", ".join(f"{name} {n}" for name, n in sorted(statuses.items())))
+        tallies = self.tallies()
+        if tallies:
+            lines.append("  " + ", ".join(f"{name} {n}" for name, n in sorted(tallies.items())))
         for name, values in sorted(self.metrics().items()):
             arr = np.asarray(values, dtype=np.float64)
             p5, p50, p95 = np.percentile(arr, _PERCENTILES)
@@ -121,16 +136,16 @@ class SourceLabelPlan:
         return lines
 
 
-_WORKER: dict[str, SourceFiles] = {}
+ResolverFactory = Callable[[], KeyResolver]
+_WORKER: dict[str, KeyResolver] = {}
 
 
-def _init_worker(root: Path, layouts: Mapping[str, KeyLayout], suffix: str) -> None:
-    _WORKER["files"] = SourceFiles.build(root, layouts, suffix)
+def _init_worker(factory: ResolverFactory) -> None:
+    _WORKER["resolver"] = factory()
 
 
-def _worker_shard(shard: Path, labeler: SampleLabeler, layouts: Mapping[str, KeyLayout],
-                  write: bool) -> ShardLabelResult:
-    return label_shard(shard, labeler, layouts, _WORKER["files"], write)
+def _worker_shard(shard: Path, labeler: SampleLabeler, write: bool) -> ShardLabelResult:
+    return label_shard(shard, labeler, _WORKER["resolver"], write)
 
 
 ShardCallback = Callable[[ShardLabelResult], None]
@@ -139,12 +154,11 @@ ShardCallback = Callable[[ShardLabelResult], None]
 class SourceLabelService:
     """Plan and apply one source's per-file labels for one manifold."""
 
-    def __init__(self, labeler: SampleLabeler, layouts: Mapping[str, KeyLayout], root: Path,
-                 workers: int = 1, label_json: str | None = None) -> None:
+    def __init__(self, labeler: SampleLabeler, resolvers: ResolverFactory, workers: int = 1,
+                 label_json: str | None = None) -> None:
         self.labeler = labeler
         self.label_json = label_json
-        self.layouts = dict(layouts)
-        self.root = root
+        self.resolvers = resolvers
         self.workers = max(1, workers)
         self.on_shard: ShardCallback | None = None
 
@@ -167,7 +181,25 @@ class SourceLabelService:
         if not layouts:
             raise SourceLabelError(f"{manifold_dir.name}: the registry entry has no key_layouts")
         labeler = LABELER_FACTORIES[scheme_type](scheme, str(spec["source"]))
-        return cls(labeler, layouts, root, workers, entry.get("label_json"))
+        return cls(labeler, LayoutFilesFactory(root, layouts, labeler.file_suffix), workers,
+                   entry.get("label_json"))
+
+    @classmethod
+    def for_class_labels(cls, manifold_dir: Path, table_root: Path,
+                         workers: int = 1) -> SourceLabelService:
+        """The service writing ``manifold_dir``'s registry ``class_labels``.
+
+        Pseudo labels are read from ``table_root`` (``repair pseudo-labels``).
+        Raises :class:`SourceLabelError` when the entry has no class labels,
+        ``ValueError`` when they are invalid, ``OSError`` / ``yaml.YAMLError``
+        when the registry cannot be read.
+        """
+        entry = registry_entry_for_folder(manifold_dir.name) or {}
+        spec = entry.get("class_labels")
+        if not spec:
+            raise SourceLabelError(f"{manifold_dir.name}: the registry entry has no class_labels")
+        labeler = ClassLabeler(ClassLabelRules.from_spec(spec), table_root)
+        return cls(labeler, every_key_resolver, workers, entry.get("label_json"))
 
     def _run(self, manifold_dir: Path, title: str, write: bool,
              only: list[Path] | None = None) -> SourceLabelPlan:
@@ -177,14 +209,13 @@ class SourceLabelService:
             plan.notes.append("no WebDataset shards")
             return plan
         if self.workers == 1:
-            files = SourceFiles.build(self.root, self.layouts, self.labeler.file_suffix)
+            resolver = self.resolvers()
             for shard in shards:
-                self._collect(plan, label_shard(shard, self.labeler, self.layouts, files, write))
+                self._collect(plan, label_shard(shard, self.labeler, resolver, write))
             return plan
         with ProcessPoolExecutor(max_workers=self.workers, initializer=_init_worker,
-                                 initargs=(self.root, self.layouts,
-                                           self.labeler.file_suffix)) as pool:
-            futures = [pool.submit(_worker_shard, shard, self.labeler, self.layouts, write)
+                                 initargs=(self.resolvers,)) as pool:
+            futures = [pool.submit(_worker_shard, shard, self.labeler, write)
                        for shard in shards]
             for future in as_completed(futures):
                 self._collect(plan, future.result())
@@ -240,7 +271,8 @@ class SourceLabelService:
         Raises :class:`SourceLabelError` when the label files do not match
         the key layouts.
         """
-        return self._run(manifold_dir, f"source labels, dry run ({self.labeler.file_suffix})",
+        return self._run(manifold_dir,
+                         f"source labels, dry run ({self.labeler.file_suffix or 'key rules'})",
                          write=False)
 
     def apply(self, plan: SourceLabelPlan) -> SourceLabelPlan:

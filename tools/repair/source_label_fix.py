@@ -7,8 +7,16 @@ id, and the id is the rank of the file name among the source's label files
 (the compiler scanned the image folder in sorted name order, and the label
 folders hold the same names). Copies and auxiliary images are left alone.
 
-A :class:`SampleLabeler` turns one photo and its label file into the
-members to add or replace (a ``.mask.webp``) and its new JSON label. Per
+A :data:`KeyResolver` says what each sample key stands for: a
+:class:`LayoutFiles` resolver maps a photo key to its label file through
+the key layout (copies and auxiliary images are skipped), and
+:func:`every_key` takes every key as a sample without a label file (labels
+derived from the key and a label table, ``repair class-labels``). Resolvers
+are built by a picklable factory in each worker process
+(:class:`LayoutFilesFactory`, :func:`every_key_resolver`).
+
+A :class:`SampleLabeler` turns one sample (and its label file, if any) into
+the members to add or replace (a ``.mask.webp``) and its new JSON label. Per
 shard, :func:`label_shard` reads every sample once and either only reports
 (dry run) or writes a temporary shard (other members kept byte for byte,
 new members after the image, the JSON last), verifies it and swaps it in
@@ -27,7 +35,7 @@ import json
 import os
 import tarfile
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -43,12 +51,18 @@ __all__ = [
     "DROPPED",
     "LABELLED",
     "UNCHANGED",
+    "KeyResolver",
+    "KeySource",
+    "LayoutFiles",
+    "LayoutFilesFactory",
     "SampleInput",
     "SampleLabeler",
     "SampleUpdate",
     "ShardLabelResult",
     "SourceFiles",
     "SourceLabelError",
+    "every_key",
+    "every_key_resolver",
     "label_shard",
 ]
 
@@ -106,9 +120,69 @@ class SourceFiles:
 
 
 @dataclass(frozen=True)
-class SampleInput:
-    """One photo sample: its key, image size, JSON label, member suffixes and label file.
+class KeySource:
+    """What a resolver makes of one key: ``skip`` (a role left alone), a
+    ``problem`` (and its ``reason``), or a sample with its ``label_file`` (None
+    when labels do not come from per-file sources)."""
 
+    skip: str = ""
+    problem: str = ""
+    reason: str = ""
+    label_file: Path | None = None
+
+
+# What a sample key stands for (its role, a problem, or its label file).
+KeyResolver = Callable[[str], KeySource]
+
+
+@dataclass(frozen=True)
+class LayoutFiles:
+    """Photo keys of the key layouts, each with its per-file source label."""
+
+    layouts: Mapping[str, KeyLayout]
+    files: SourceFiles
+
+    def __call__(self, key: str) -> KeySource:
+        """Copies and auxiliary images are skipped; a photo gets its label file."""
+        role = key_role(key, self.layouts)
+        if role.role != ROLE_PHOTO:
+            return KeySource(skip=role.role)
+        if role.source.lower() not in self.layouts:
+            return KeySource(problem=NO_LAYOUT, reason=role.source)
+        label_file = self.files.file_for(role.source, role.file_id)
+        if label_file is None:
+            return KeySource(problem=MISSING_FILE, reason=f"file id {role.file_id}")
+        return KeySource(label_file=label_file)
+
+
+@dataclass(frozen=True)
+class LayoutFilesFactory:
+    """Builds a :class:`LayoutFiles` resolver (in each worker process)."""
+
+    root: Path
+    layouts: Mapping[str, KeyLayout]
+    suffix: str
+
+    def __call__(self) -> LayoutFiles:
+        """Index the label files; :class:`SourceLabelError` when they do not match."""
+        return LayoutFiles(self.layouts, SourceFiles.build(self.root, self.layouts, self.suffix))
+
+
+def every_key(_key: str) -> KeySource:
+    """Every key is a sample without a label file (labels come from the key)."""
+    return KeySource()
+
+
+def every_key_resolver() -> KeyResolver:
+    """The factory of :func:`every_key` (no per-process setup)."""
+    return every_key
+
+
+@dataclass(frozen=True)
+class SampleInput:
+    """One sample: its key, image size, JSON label, member suffixes and label file.
+
+    ``label_file`` is None when the resolver gives no per-file label.
     ``encode`` is False in a dry run: the labeler checks the label file but
     may skip encoding new members (nothing is written).
     """
@@ -118,8 +192,14 @@ class SampleInput:
     image: bytes
     meta: dict[str, Any] | None
     suffixes: frozenset[str]
-    label_file: Path
+    label_file: Path | None
     encode: bool = True
+
+    def require_label_file(self) -> Path:
+        """The label file; ``FileNotFoundError`` when the sample has none."""
+        if self.label_file is None:
+            raise FileNotFoundError(f"{self.key}: no source label file")
+        return self.label_file
 
 
 @dataclass
@@ -129,7 +209,8 @@ class SampleUpdate:
     ``status`` is :data:`LABELLED`, :data:`UNCHANGED`, :data:`DROPPED` or a
     problem name (``problem`` then says why). ``members`` maps a member suffix to its new
     payload; ``meta`` is the new JSON label; ``metrics`` are numbers the
-    plan summarises (for example how far a new box moved).
+    plan summarises (for example how far a new box moved); ``tally`` names
+    the groups the plan counts the sample in (for example its class).
     """
 
     status: str
@@ -137,6 +218,7 @@ class SampleUpdate:
     members: dict[str, bytes] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
     problem: str = ""
+    tally: tuple[str, ...] = ()
 
 
 class SampleLabeler(Protocol):
@@ -161,12 +243,17 @@ class ShardLabelResult:
     """What labelling one shard found (and, when written, changed)."""
 
     shard: Path
-    samples: int = 0
     statuses: Counter[str] = field(default_factory=Counter)
     problems: dict[str, str] = field(default_factory=dict)
     metrics: dict[str, list[float]] = field(default_factory=dict)
     dropped: dict[str, str] = field(default_factory=dict)
+    tallies: Counter[str] = field(default_factory=Counter)
     written: bool = False
+
+    @property
+    def samples(self) -> int:
+        """Samples read (each has exactly one status)."""
+        return sum(self.statuses.values())
 
     @property
     def changed(self) -> bool:
@@ -204,24 +291,19 @@ def _image_size(image: bytes) -> tuple[int, int]:
 @dataclass(frozen=True)
 class _Context:
     labeler: SampleLabeler
-    layouts: Mapping[str, KeyLayout]
-    files: SourceFiles
+    resolver: KeyResolver
     write: bool
 
 
 def _sample_input(ctx: _Context, key: str, payloads: dict[str, bytes],
                   result: ShardLabelResult) -> SampleInput | None:
-    """The labeler's input for a photo; None for copies, auxiliary images and problems."""
-    role = key_role(key, ctx.layouts)
-    if role.role != ROLE_PHOTO:
-        result.statuses[role.role] += 1
+    """The labeler's input for a sample; None for skipped keys and problems."""
+    source = ctx.resolver(key)
+    if source.skip:
+        result.statuses[source.skip] += 1
         return None
-    if role.source.lower() not in ctx.layouts:
-        result.add_problem(key, NO_LAYOUT, role.source)
-        return None
-    label_file = ctx.files.file_for(role.source, role.file_id)
-    if label_file is None:
-        result.add_problem(key, MISSING_FILE, f"file id {role.file_id}")
+    if source.problem:
+        result.add_problem(key, source.problem, source.reason)
         return None
     image_suffix = next((s for s in payloads if s in _IMAGE_SUFFIXES), None)
     if image_suffix is None:
@@ -230,7 +312,7 @@ def _sample_input(ctx: _Context, key: str, payloads: dict[str, bytes],
     image = payloads[image_suffix]
     return SampleInput(key=key, size=_image_size(image), image=image,
                        meta=_meta(payloads.get(_JSON)), suffixes=frozenset(payloads),
-                       label_file=label_file, encode=ctx.write)
+                       label_file=source.label_file, encode=ctx.write)
 
 
 def _update(ctx: _Context, key: str, payloads: dict[str, bytes],
@@ -240,6 +322,8 @@ def _update(ctx: _Context, key: str, payloads: dict[str, bytes],
     if sample is None:
         return None
     update = ctx.labeler.label(sample)
+    if update.status in (LABELLED, UNCHANGED, DROPPED):
+        result.tallies.update(update.tally)
     if update.status == DROPPED:
         result.statuses[DROPPED] += 1
         result.dropped[key] = update.problem
@@ -292,7 +376,6 @@ def _scan(ctx: _Context, shard: Path, result: ShardLabelResult,
     labelled: dict[str, set[str]] = {}
     with tarfile.open(shard, "r:") as src:
         for key, members in members_by_key(src):
-            result.samples += 1
             payloads = {split_member_name(m.name)[1]: _read(src, m) for m in members}
             update = _update(ctx, key, payloads, result)
             if update is None or update.status != DROPPED:
@@ -304,15 +387,15 @@ def _scan(ctx: _Context, shard: Path, result: ShardLabelResult,
     return keys, written, labelled
 
 
-def label_shard(shard: Path, labeler: SampleLabeler, layouts: Mapping[str, KeyLayout],
-                files: SourceFiles, write: bool) -> ShardLabelResult:
-    """Label the photos of ``shard``; with ``write`` swap in the verified rewrite.
+def label_shard(shard: Path, labeler: SampleLabeler, resolver: KeyResolver,
+                write: bool) -> ShardLabelResult:
+    """Label the samples of ``shard``; with ``write`` swap in the verified rewrite.
 
     The shard is written only when it has samples to label and no problem.
     Raises :class:`SourceLabelError` (original untouched) when the rewrite
     fails its verification.
     """
-    ctx = _Context(labeler, layouts, files, write)
+    ctx = _Context(labeler, resolver, write)
     result = ShardLabelResult(shard=shard)
     if not write:
         _scan(ctx, shard, result, None)

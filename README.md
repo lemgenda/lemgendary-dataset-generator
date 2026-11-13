@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.102-STABLE` |
+| **Version** | `v16.9.103-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -47,6 +47,8 @@ the strategy is the registry entry's `label_json`, else its task's
   records `num_classes`, `class_names` and `mask_source`. A mask has no text
   label.
 - `class_label` (classification): `class_id` (a number) or `class_name`.
+  Labels written by `repair class-labels` carry both plus `label_source`;
+  a pseudo label also `label_confidence` and `label_check_class`.
 - `caption` (diffusion): `caption`.
 
 An empty detection label is `{"object_count": 0, "objects": []}`: an image
@@ -58,6 +60,62 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.103 - `repair class-labels`: ClassificationMaster Classes (R4-B2)
+
+- ClassificationMaster shards carried no class: each JSON was
+  `{"split": ..., "task": "restoration"}` (the `labels/` folder of the large
+  Kaggle set holds YOLO object boxes). The registry entry now has
+  `label_json: class_label` and the new field `class_labels`: scheme
+  `nsfw_5` (0 drawings, 1 hentai, 2 neutral, 3 porn, 4 sexy, the GantMan
+  nsfw_model order) and ordered key rules (`core/class_labels.py`, first
+  match wins):
+  - `anime_dbrating` idx < 278,119: hentai (`danbooru-explicit`; the
+    compile took the explicit zip first, then general)
+  - `anime_dbrating` (rest): drawings (`danbooru-general`)
+  - `food101`: neutral (`food101`)
+  - `NSFW` (amaye15/NSFW, every source label is 4): pseudo label from
+    `gantman_inception_v3`, checked against `gantman_mobilenet_v2`, kept at
+    a top probability of at least 0.8 (`min_confidence`)
+- `repair pseudo-labels --table-root <dir>` (dry run unless `--apply`;
+  `services/pseudo_label_service.py`, `tools/repair/pseudo_labels.py`)
+  runs the rule's models over the pseudo-rule samples and writes a label
+  table outside the manifold, one JSON Lines file per shard (atomic, a
+  re-run resumes; `--max-shards` to measure first). It prints throughput
+  and the ETA of the rest. Models: ONNX conversions of the GantMan
+  nsfw_model (MIT) from `deepghs/imgutils-models` at a pinned revision,
+  run with onnxruntime on the CPU (`tools/repair/image_classifier.py`;
+  new dependency `onnxruntime==1.31.1`); images are decoded in worker
+  processes while the previous batch is predicted.
+- `repair class-labels --table-root <dir>` (dry run unless `--apply`;
+  `tools/repair/class_labeler.py` on the source label engine) writes
+  `class_id`, `class_name` and `label_source` into each sample's JSON;
+  pseudo labels also get `label_confidence` and `label_check_class`.
+  A pseudo label below `min_confidence` drops the sample (shard,
+  index.json, `count`); a sample without a rule or table row refuses the
+  apply. The plan counts samples per class, drops per class and the
+  agreement of the two models. dataset_info.yaml records `classes` (the 5
+  names) and `label_json`, classes.txt the 5 names.
+- Source label engine: a `KeyResolver` (a callable built per worker
+  process) says what a key stands for; `LayoutFiles` keeps the per-file
+  behaviour of `repair masks` / `repair face-landmarks`, `every_key`
+  serves key-rule labels. `SampleUpdate.tally` feeds per-group counts into
+  the plan; `ShardLabelResult.samples` is derived from the statuses.
+- Docs regeneration keeps what label repairs recorded: dataset_info.yaml
+  carries `label_json`, `classes` and `landmark_source` over
+  (`RECORDED_LABEL_FIELDS`; a regeneration had dropped them), and
+  classes.txt takes the registry's mask or class scheme, then the recorded
+  `classes`, before the task heuristics (local RetinaFace classes.txt was
+  `detection`, now `face`).
+- Measured on the local sample (val shards 0, 15 and 18, 2.1 GB of the
+  73.9 GB set; 4,965 NSFW samples): 37 samples/s with both models on 24
+  CPU threads; 56.6 % of NSFW samples reach 0.8 (kept: porn 990, sexy 898,
+  neutral 488, hentai 382, drawings 50), the two models agree on 86.4 % of
+  the kept ones (73.7 % overall). As a check, the model gives the rule
+  class to 89.8 % of explicit anime and 98.8 % of food101 samples.
+- Tests: `tests/test_class_labels.py` (each rule, invalid specs, pseudo
+  table with fake models and resume, pool decoder, apply, drop, refusal)
+  and a docs regeneration test in `tests/test_docs.py`.
 
 ### v16.9.102 - Val Draw Over All Source Files: RetinaFace Splits Like ParseNet
 
