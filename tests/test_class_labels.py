@@ -41,6 +41,8 @@ from tools.repair.pseudo_labels import (
 )
 from tools.repair.source_label_fix import (
     DROPPED,
+    LABELLED,
+    UNCHANGED,
     SampleInput,
     SourceLabelError,
     every_key_resolver,
@@ -263,7 +265,8 @@ class ClassLabelRepairTests(unittest.TestCase):
     """repair class-labels: plan, apply, re-plan."""
 
     def _service(self, table: Path, rules: ClassLabelRules | None = None) -> SourceLabelService:
-        return SourceLabelService(ClassLabeler(rules or _registry_rules(), table),
+        return SourceLabelService(ClassLabeler(rules or _registry_rules(), table,
+                                               "classification"),
                                   every_key_resolver, 1, "class_label")
 
     def test_plan_tallies_classes_and_agreement(self) -> None:
@@ -325,6 +328,7 @@ class ClassLabelRepairTests(unittest.TestCase):
             self.assertEqual(fields("anime_dbrating", _EXPLICIT - 1, "class_id", "class_name",
                                     "label_source", "split"),
                              (1, "hentai", "danbooru-explicit", "train"))
+            self.assertEqual({label["task"] for label in labels.values()}, {"classification"})
             self.assertEqual(fields("anime_dbrating", _EXPLICIT, "class_id", "label_source"),
                              (0, "danbooru-general"))
             self.assertEqual(fields("food101", 8, "class_id", "label_source",
@@ -364,6 +368,24 @@ class ClassLabelRepairTests(unittest.TestCase):
             service = SourceLabelService.for_class_labels(manifold, table)
             self.assertEqual(service.label_json, "class_label")
             self.assertEqual(service.plan(manifold).problems, 0)
+            labeler = service.labeler
+            assert isinstance(labeler, ClassLabeler)
+            self.assertEqual(labeler.task, "classification")
+
+    def test_stale_task_alone_is_rewritten(self) -> None:
+        """A label with the right class but the compile's stale task is changed."""
+        rules = _registry_rules()
+        key = _key("food101", 1)
+        meta = {"split": "train", "task": "restoration", "class_id": 2,
+                "class_name": "neutral", "label_source": "food101"}
+        sample = SampleInput(key, (12, 10), b"", meta, frozenset({"webp", "json"}), None)
+        update = ClassLabeler(rules, None, "classification").label(sample)
+        self.assertEqual(update.status, LABELLED)
+        assert update.meta is not None
+        self.assertEqual(update.meta["task"], "classification")
+        done = SampleInput(key, (12, 10), b"", update.meta, frozenset({"webp", "json"}), None)
+        self.assertEqual(ClassLabeler(rules, None, "classification").label(done).status,
+                         UNCHANGED)
 
 
 if __name__ == "__main__":

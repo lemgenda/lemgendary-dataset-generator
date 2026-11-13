@@ -37,6 +37,7 @@ from core.docs.generators.dataset_info_yaml import write_dataset_info
 from core.sample_policy import parse_key_layouts
 from core.source_labels import SOURCE_LABEL_SCHEMES, LandmarkScheme, MaskScheme
 from core.source_manifolds import registry_entry_for_folder
+from core.task_taxonomy import entry_task
 from tools.repair.class_labeler import ClassLabeler
 from tools.repair.landmark_labeler import LandmarkLabeler
 from tools.repair.mask_labeler import MaskLabeler
@@ -189,8 +190,9 @@ class SourceLabelService:
                          workers: int = 1) -> SourceLabelService:
         """The service writing ``manifold_dir``'s registry ``class_labels``.
 
-        Pseudo labels are read from ``table_root`` (``repair pseudo-labels``).
-        Raises :class:`SourceLabelError` when the entry has no class labels,
+        Pseudo labels are read from ``table_root`` (``repair pseudo-labels``);
+        each JSON's ``task`` becomes the entry's task. Raises
+        :class:`SourceLabelError` when the entry has no class labels,
         ``ValueError`` when they are invalid, ``OSError`` / ``yaml.YAMLError``
         when the registry cannot be read.
         """
@@ -198,7 +200,7 @@ class SourceLabelService:
         spec = entry.get("class_labels")
         if not spec:
             raise SourceLabelError(f"{manifold_dir.name}: the registry entry has no class_labels")
-        labeler = ClassLabeler(ClassLabelRules.from_spec(spec), table_root)
+        labeler = ClassLabeler(ClassLabelRules.from_spec(spec), table_root, entry_task(entry))
         return cls(labeler, every_key_resolver, workers, entry.get("label_json"))
 
     def _run(self, manifold_dir: Path, title: str, write: bool,

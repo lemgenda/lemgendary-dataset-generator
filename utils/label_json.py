@@ -54,7 +54,10 @@ records its scheme::
     {"nima_scores": {"distribution": [p1, ..., p10], "mean_score": 5.42}}
 
 ``class_label`` (classification): ``{"class_id": 3}`` for a numeric label,
-``{"class_name": "cat"}`` for a named one.
+``{"class_name": "cat"}`` for a named one. ``repair class-labels`` writes
+both plus ``label_source`` (a pseudo label also ``label_confidence`` and
+``label_check_class``) and sets the document's ``task`` to the manifold's
+registry task.
 
 ``caption`` (diffusion): ``{"caption": "a red house by a lake"}``.
 

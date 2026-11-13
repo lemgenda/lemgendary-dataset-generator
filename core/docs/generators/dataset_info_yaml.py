@@ -29,6 +29,7 @@ from core.docs.generators.common import (
     run_manifold_cli,
 )
 from core.docs.scanner import scan_forex_manifold
+from core.task_taxonomy import entry_task
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +148,9 @@ def _task_type(ctx: ManifoldContext, overrides: dict[str, Any] | None,
     """
     if overrides and overrides.get("task_type"):
         return str(overrides["task_type"])
-    entry = ctx.spec.unified_entry
-    registered = entry.get("task_override") or entry.get("task")
+    registered = entry_task(ctx.spec.unified_entry)
     if registered:
-        return str(registered)
+        return registered
     if existing.get("task_type"):
         return str(existing["task_type"])
     return None

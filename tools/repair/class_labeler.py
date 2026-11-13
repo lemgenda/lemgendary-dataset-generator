@@ -6,6 +6,10 @@ its key) gives either a fixed class or a pseudo label. The JSON label gets
 ``label_confidence`` (the model's top probability) and, with a check model,
 ``label_check_class`` (the check model's top class). Other JSON keys are kept.
 
+The JSON's ``task`` is set to the manifold's registry task when the labeler
+has one (ClassificationMaster shards were compiled with a stale
+``"task": "restoration"``).
+
 Pseudo labels come from the table ``repair pseudo-labels`` wrote
 (:func:`tools.repair.pseudo_labels.load_table`). A sample is dropped
 (``DROPPED``) when its top probability is below the rule's
@@ -62,6 +66,7 @@ class ClassLabeler:
 
     rules: ClassLabelRules
     table_root: Path | None = None
+    task: str | None = None
 
     @property
     def file_suffix(self) -> str:
@@ -73,8 +78,11 @@ class ClassLabeler:
         return {"classes": list(self.rules.scheme.class_names)}
 
     def _fields(self, class_name: str, label_source: str) -> dict[str, Any]:
-        return {"class_id": self.rules.scheme.class_id(class_name), "class_name": class_name,
-                "label_source": label_source}
+        fields: dict[str, Any] = {"class_id": self.rules.scheme.class_id(class_name),
+                                  "class_name": class_name, "label_source": label_source}
+        if self.task:
+            fields["task"] = self.task
+        return fields
 
     def _update(self, sample: SampleInput, fields: dict[str, Any],
                 tally: tuple[str, ...], metrics: dict[str, float]) -> SampleUpdate:

@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.105-STABLE` |
+| **Version** | `v16.9.106-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -60,6 +60,21 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.106 - `repair class-labels` Corrects the Stale JSON Task (R4-B2)
+
+- ClassificationMaster shards were compiled with `"task": "restoration"` in
+  every sample JSON. `repair class-labels` now also sets each labelled
+  sample's `task` to the manifold's registry task (`classification`), so a
+  sample whose class is already right but whose task is stale is rewritten
+  too. The task comes from the registry entry through the new
+  `core.task_taxonomy.entry_task` (`task_override`, else `task`), which
+  `registry_task` and dataset_info.yaml's `task_type` now share.
+- `utils/label_json.py` documents the fields `repair class-labels` writes
+  into a `class_label` document, including `task`.
+- Tests: `tests/test_class_labels.py` (every applied label carries
+  `classification`; a stale task alone is rewritten, then unchanged; the
+  registry service takes the entry's task).
 
 ### v16.9.105 - Pseudo Labels Kept Only When Both GantMan Models Agree (R4-B2)
 

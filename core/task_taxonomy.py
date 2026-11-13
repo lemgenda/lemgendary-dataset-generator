@@ -200,6 +200,12 @@ def clear_cache() -> None:
     _logged_heuristic.cache_clear()
 
 
+def entry_task(entry: Mapping[str, Any]) -> str | None:
+    """The task of one registry entry: ``task_override``, else ``task``; None when unset."""
+    registered = entry.get("task_override") or entry.get("task")
+    return str(registered) if registered else None
+
+
 def registry_task(datasets: Mapping[str, Any], name: str) -> str | None:
     """The registry task of a dataset key or name: ``task_override``, else ``task``."""
     lowered = name.lower()
@@ -207,9 +213,9 @@ def registry_task(datasets: Mapping[str, Any], name: str) -> str | None:
         if not isinstance(ds_cfg, dict):
             continue
         if ds_key.lower() == lowered or str(ds_cfg.get("name", "")).lower() == lowered:
-            registered = ds_cfg.get("task_override") or ds_cfg.get("task")
+            registered = entry_task(ds_cfg)
             if registered:
-                return str(registered)
+                return registered
     return None
 
 
