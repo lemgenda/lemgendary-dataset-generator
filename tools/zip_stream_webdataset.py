@@ -40,6 +40,7 @@ from utils.container_stream import (
     resolve_worker_count,
     update_dataset_info_format,
 )
+from utils.label_audit import verify_shard_labels
 from utils.progress import create_progress_bar
 from utils.reject_tally import RejectTally
 from utils.sample_group import write_sample
@@ -142,9 +143,10 @@ def _stream_archive(
     rejects.report()
 
 
-def _verify_shards(shards_dir: Path, ext: str) -> bool:
+def _verify_shards(shards_dir: Path, ext: str, label_json: str | None = None) -> bool:
     """Print the shard count/size; False when nothing was written or a shard is unsound
-    (zero-byte members, scattered sample groups, unreadable tar)."""
+    (zero-byte members, scattered sample groups, unreadable tar, a text label or a JSON
+    label that fails the ``label_json`` strategy's schema)."""
     shards_created = (
         list(shards_dir.glob(f"**/*.{ext}"))
         or list(shards_dir.glob("**/*.tar"))
@@ -158,7 +160,8 @@ def _verify_shards(shards_dir: Path, ext: str) -> bool:
     if not shards_created or total_shard_bytes == 0:
         print("[ERROR] Shard verification failed: 0 shards or 0 bytes created.")
         return False
-    if not verify_shard_set(shards_dir, "VERIFY"):
+    if not (verify_shard_set(shards_dir, "VERIFY")
+            and verify_shard_labels(shards_dir, "VERIFY", label_json)):
         print("[ERROR] Shard verification failed: the shards above are unsound.")
         return False
     return True
@@ -196,7 +199,7 @@ def stream_zip_to_webdataset(
                 " webp)."
             )
 
-        if not _verify_shards(shards_dir, opts.shard_ext.lstrip(".")):
+        if not _verify_shards(shards_dir, opts.shard_ext.lstrip("."), opts.label_json):
             return False
         if not enforce_sample_policy(target_dir):
             return False

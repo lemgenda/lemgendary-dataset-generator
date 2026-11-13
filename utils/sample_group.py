@@ -1,9 +1,10 @@
 """One WebDataset sample: its raw members, their encoding and contiguous writing.
 
 A sample groups every member that shares a key: the primary image, an
-optional restoration target, an optional segmentation mask, an optional
-label sidecar and, when the manifold names a ``label_json`` strategy
-(:mod:`utils.label_json`), a JSON sidecar derived from a text label.
+optional restoration target, an optional segmentation mask and an optional
+JSON label. JSON is the only label format inside shards: a text label is
+turned into its JSON document by the manifold's label strategy
+(:mod:`utils.label_json`), a JSON label is packed as it is.
 Converters build a :class:`RawSample`, encode it with
 :func:`encode_sample` (which rejects corrupt images) and write the result
 with :func:`write_sample`, which always places the whole group contiguously
@@ -28,8 +29,7 @@ from utils.image_payload import (
     encode_image_payload,
     encode_mask_payload,
 )
-from utils.label_json import build_label_json
-from utils.shard_audit import is_empty_defect
+from utils.label_json import label_document
 
 __all__ = [
     "LABEL_EXTS",
@@ -47,11 +47,10 @@ __all__ = [
     "write_sample",
 ]
 
-# Label sidecar extensions packed verbatim next to the image (YOLO txt, JSON).
+# Loose label file extensions a sample may come with (text, JSON); shards hold JSON only.
 LABEL_EXTS: tuple[str, ...] = (".txt", ".json")
 TARGET_SUFFIX = ".target"
 MASK_SUFFIX = ".mask"
-_TEXT_LABEL_EXT = ".txt"
 _JSON_LABEL_EXT = ".json"
 
 
@@ -136,28 +135,39 @@ def encode_sample(raw: RawSample, transcode_webp: bool) -> EncodedSample:
 
 
 def _label_members(raw: RawSample, label: RawMember) -> list[tuple[str, bytes]]:
-    """The label sidecar, plus the JSON sidecar ``raw.label_json`` derives from a text label.
+    """The sample's ``<key>.json`` label: a JSON label as it is, a text label converted.
 
-    An empty ``.txt`` label is kept (an image with no objects, the rule of
-    :func:`utils.shard_audit.is_empty_defect`); any other empty label is a defect.
+    A text label goes through ``raw.label_json`` (the manifold's strategy);
+    an empty text label becomes the strategy's empty document (an image with
+    no objects) or, when the strategy has none, no label member. A label that
+    cannot be read, or a text label without a strategy, rejects the sample.
     """
-    if is_empty_defect(f"{raw.key}{label.ext}", len(label.payload)):
-        raise CorruptImageError(f"{raw.key}{label.ext}: zero-byte label sidecar")
     try:
         text = label.payload.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise CorruptImageError(f"{raw.key}{label.ext}: label is not UTF-8") from exc
-    members = [(f"{raw.key}{label.ext}", label.payload)]
-    if raw.label_json is None or label.ext != _TEXT_LABEL_EXT:
-        return members
+    if label.ext == _JSON_LABEL_EXT:
+        return [(f"{raw.key}{_JSON_LABEL_EXT}", _json_label_payload(raw.key, text))]
+    if raw.label_json is None:
+        raise CorruptImageError(f"{raw.key}{label.ext}: text label without a label strategy")
     try:
-        derived = build_label_json(raw.label_json, text)
-    except ValueError as exc:
+        doc = label_document(raw.label_json, text)
+    except (KeyError, ValueError) as exc:
         raise CorruptImageError(f"{raw.key}{label.ext}: unreadable label ({exc})") from exc
-    if derived is not None:
-        payload = json.dumps(derived, separators=(",", ":")).encode("utf-8")
-        members.append((f"{raw.key}{_JSON_LABEL_EXT}", payload))
-    return members
+    if doc is None:
+        return []
+    return [(f"{raw.key}{_JSON_LABEL_EXT}", json.dumps(doc, separators=(",", ":")).encode())]
+
+
+def _json_label_payload(key: str, text: str) -> bytes:
+    """A loose JSON label, checked to be one JSON object."""
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise CorruptImageError(f"{key}{_JSON_LABEL_EXT}: invalid JSON ({exc})") from exc
+    if not isinstance(parsed, dict):
+        raise CorruptImageError(f"{key}{_JSON_LABEL_EXT}: the JSON label is not an object")
+    return text.encode("utf-8")
 
 
 def encode_sample_or_reject(raw: RawSample, transcode_webp: bool) -> SampleOutcome:

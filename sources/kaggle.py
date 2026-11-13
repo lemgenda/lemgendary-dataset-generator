@@ -24,16 +24,20 @@ from core.common_sync import (
     track_kaggle_dataset_status,
 )
 from core.kaggle_identity import default_owner
-from core.source_manifolds import SourceManifold, find_source_manifold
+from core.source_manifolds import (
+    SourceManifold,
+    find_registry_manifold,
+    find_source_manifold,
+)
 from tools.sync_kaggle_metadata import sync_metadata
 
 logger = logging.getLogger(__name__)
 
 
 def _source_manifold(clean_repo_id: str) -> SourceManifold | None:
-    """The registry entry that packs ``clean_repo_id`` as its source, else None."""
+    """The registry entry that packs ``clean_repo_id`` (as its source or itself), else None."""
     try:
-        return find_source_manifold(clean_repo_id)
+        return find_source_manifold(clean_repo_id) or find_registry_manifold(clean_repo_id)
     except (OSError, yaml.YAMLError) as exc:
         logger.warning("Source manifold lookup for %s failed: %s", clean_repo_id, exc)
         return None

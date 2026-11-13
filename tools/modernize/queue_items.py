@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from tools.modernize.common import LOOSE_SUBDIRS
+from utils.label_json import resolve_label_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class ManifoldSources(ManifoldRegistryEntry):
     target_dir: Path | None = None
     legacy_dir: Path | None = None
     zip_path: Path | None = None
-    # JSON sidecar strategy for text labels (registry ``label_json``).
+    # Label strategy of text labels (registry ``label_json``, else the task's).
     label_json: str | None = None
 
 
@@ -221,7 +222,7 @@ def _queue_item(datasets_root: Path, key: str, ds: dict[str, Any]) -> ManifoldQu
         target_dir=target_dir,
         legacy_dir=legacy_dir if legacy_dir.exists() else None,
         zip_path=_find_zip(datasets_root, mod_folder_name, name),
-        label_json=ds.get("label_json"),
+        label_json=resolve_label_strategy(ds.get("label_json"), ds.get("task")),
         **_scan_target(target_dir, can_fmt),
     )
 

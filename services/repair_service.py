@@ -10,13 +10,21 @@ metadata resync against the repaired shards) and carry it out safely.
   atomic ``os.replace``; the original is deleted by that swap and no copy
   is kept, so a crash never leaves a half-written file in place.
 - Running it again on a repaired manifold finds nothing to do.
+- ``plan`` also verifies the labels inside the shards (:mod:`utils.label_audit`:
+  no ``.txt`` members, every JSON label valid for the registry's label
+  strategy); those defects are reported in ``label_problems``, which this
+  repair does not fix (``repair txt-labels`` converts text labels).
 """
 
 from __future__ import annotations
 
+import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
+from core.source_manifolds import label_strategy_for_folder
 from tools.repair.member_webp import convertible_members
 from tools.repair.metadata_fix import (
     MetadataFix,
@@ -25,9 +33,10 @@ from tools.repair.metadata_fix import (
     plan_metadata_fix,
 )
 from tools.repair.shard_fix import ShardFix, apply_shard_fix, plan_shard_fix
+from utils.label_audit import audit_labels, label_audit_problems
 from utils.shard_audit import ShardSetAudit, audit_shard_set, find_shards
 
-__all__ = ["ManifoldRepairPlan", "RepairService", "physical_samples"]
+__all__ = ["ManifoldRepairPlan", "RepairService", "label_problems", "physical_samples"]
 
 _SPLITS = ("train", "val", "test")
 
@@ -40,6 +49,7 @@ class ManifoldRepairPlan:
     shard_fixes: list[ShardFix] = field(default_factory=list)
     metadata: MetadataFix | None = None
     notes: list[str] = field(default_factory=list)
+    label_problems: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
@@ -63,9 +73,29 @@ class ManifoldRepairPlan:
         if self.metadata is not None:
             lines.extend(f"  {line}" for line in self.metadata.summary())
         lines.extend(f"  note: {note}" for note in self.notes)
+        lines.extend(f"  LABELS: {problem}" for problem in self.label_problems)
         if not self.changed:
             lines.append("  nothing to repair")
         return lines
+
+
+def _registry_strategy(manifold_dir: Path) -> str | None:
+    """The registry's label strategy for ``manifold_dir`` (None when unknown or unreadable)."""
+    try:
+        return label_strategy_for_folder(manifold_dir.name)
+    except (OSError, yaml.YAMLError):
+        return None
+
+
+def label_problems(manifold_dir: Path, audit: ShardSetAudit) -> list[str]:
+    """Label defects of the readable shards: text labels and invalid JSON labels."""
+    if not audit.shards or any(shard.error for shard in audit.shards):
+        return []
+    try:
+        labels = audit_labels(audit.shards_dir, _registry_strategy(manifold_dir))
+    except (OSError, tarfile.TarError) as exc:
+        return [f"labels unreadable ({exc})"]
+    return label_audit_problems(labels)
 
 
 def _shard_physical(audit: ShardSetAudit, fixes: list[ShardFix]) -> PhysicalSamples:
@@ -134,6 +164,7 @@ class RepairService:
             fix = plan_shard_fix(shard)
             if fix is not None:
                 plan.shard_fixes.append(fix)
+        plan.label_problems = label_problems(manifold_dir, audit)
         physical = physical_samples(manifold_dir, plan.shard_fixes, audit)
         if physical is None:
             plan.notes.append("no shards, images/ or data/*.jsonl: metadata resync skipped")

@@ -34,6 +34,7 @@ __all__ = [
     "API_BASE",
     "HttpRangeReader",
     "KaggleHttpError",
+    "KaggleRateLimitError",
     "SignedUrl",
     "dataset_download_url",
     "kaggle_session",
@@ -43,6 +44,7 @@ __all__ = [
 API_BASE = "https://www.kaggle.com/api/v1"
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _NOT_FOUND = 404
+TOO_MANY_REQUESTS = 429
 _PARTIAL = 206
 _EXPIRED = frozenset({400, 401, 403})
 # Signed URLs live about an hour; refresh well before that.
@@ -53,6 +55,19 @@ _RETRIES = 8
 
 class KaggleHttpError(OSError):
     """A Kaggle download request failed (no credential, bad status, short read)."""
+
+
+class KaggleRateLimitError(KaggleHttpError):
+    """Kaggle answered HTTP 429; ``retry_after`` is its Retry-After in seconds, if any."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+def _retry_after(response: requests.Response) -> float | None:
+    value = response.headers.get("Retry-After", "")
+    return float(value) if value.strip().isdigit() else None
 
 
 def kaggle_session(credential: KaggleCredential | None = None) -> requests.Session:
@@ -87,6 +102,9 @@ def signed_url(session: requests.Session, handle: str, file_name: str | None = N
         return location
     if response.status_code == _NOT_FOUND:
         return None
+    if response.status_code == TOO_MANY_REQUESTS:
+        raise KaggleRateLimitError(f"Kaggle rate-limited the download of {handle}",
+                                   _retry_after(response))
     raise KaggleHttpError(
         f"Kaggle download of {handle}{'/' + file_name if file_name else ''} answered"
         f" HTTP {response.status_code}"

@@ -3,8 +3,10 @@
 Every command is a dry run unless ``--apply`` is given: it prints what would
 change and exits 0. With ``--apply`` each repaired file is verified and then
 replaces its original atomically; no copy of the original is kept (see
-:mod:`services.repair_service` and, for ``repair labels``,
-:mod:`services.label_repair_service`).
+:mod:`services.repair_service`, :mod:`services.label_repair_service` for
+``repair labels`` and :mod:`services.txt_label_service` for
+``repair txt-labels``). ``repair manifold`` also verifies the labels inside
+the shards and exits 1 while any is a text label or an invalid JSON label.
 """
 
 from __future__ import annotations
@@ -35,9 +37,11 @@ from services.label_repair_service import (
 )
 from services.repair_service import ManifoldRepairPlan, RepairService
 from services.sample_policy_service import SamplePolicyService
+from services.txt_label_service import TxtLabelPlan, TxtLabelService
 from tools.repair.label_restore import LabelRestoreError
 from tools.repair.sample_policy_fix import SamplePolicyError, SamplePolicyPlan
 from tools.repair.shard_fix import ShardFixError
+from tools.repair.txt_label_fix import TxtLabelError
 from utils.label_json import LABEL_JSON_BUILDERS
 
 repair_app = typer.Typer(help="Repair compiled manifolds (dry run unless --apply).")
@@ -75,9 +79,10 @@ _REPAIR_ERRORS = (OSError, tarfile.TarError, ShardFixError, ValueError)
 _LABEL_ERRORS = (OSError, tarfile.TarError, LabelRestoreError, ValueError, UnicodeDecodeError)
 _CLASSES_FILE = "classes.txt"
 _POLICY_ERRORS = (OSError, tarfile.TarError, SamplePolicyError, ValueError, yaml.YAMLError)
+_TXT_ERRORS = (OSError, tarfile.TarError, TxtLabelError)
 
 
-def _print(plan: ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan) -> None:
+def _print(plan: ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan | TxtLabelPlan) -> None:
     for line in plan.report():
         console.print(line, markup=False, highlight=False)
 
@@ -87,14 +92,14 @@ def _run(service: RepairService, manifold_dir: Path, apply: bool) -> bool:
     plan = service.plan(manifold_dir)
     _print(plan)
     if not apply or not plan.changed:
-        return True
+        return not plan.label_problems
     try:
         remaining = service.apply(plan)
     except _REPAIR_ERRORS as exc:
         console.print(f"[red]Repair of {manifold_dir.name} failed: {exc}[/red]")
         return False
     console.print("  applied", markup=False, highlight=False)
-    if remaining.changed:
+    if remaining.changed or remaining.label_problems:
         console.print("[yellow]  still not clean after the repair:[/yellow]")
         _print(remaining)
         return False
@@ -131,7 +136,7 @@ def repair_all(root: RootOpt = None, apply: ApplyOpt = False) -> None:
 
 
 def _label_strategy(manifold_dir: Path, strategy: str | None) -> str:
-    """``strategy``, else the registry entry's ``label_json``; exit 1 when neither is known."""
+    """``strategy``, else the registry entry's label strategy; exit 1 when neither is known."""
     try:
         chosen = strategy or label_strategy_for_folder(manifold_dir.name)
     except (OSError, yaml.YAMLError) as exc:
@@ -176,6 +181,36 @@ def repair_labels(opts: LabelRepairOptions) -> None:
     if not apply:
         console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
     raise typer.Exit(code=1 if plan.mismatched else 0)
+
+
+StrategyOpt = Annotated[
+    str | None,
+    typer.Option("--strategy", help="Label strategy (default: the registry entry's)"),
+]
+
+
+@repair_app.command("txt-labels")
+def repair_txt_labels(model: ModelOpt = None, manifold: ManifoldOpt = None,
+                      strategy: StrategyOpt = None, apply: ApplyOpt = False) -> None:
+    """Convert the shards' .txt label members into their JSON labels and remove them."""
+    manifold_dir = require_target(TargetOptions(model=model, manifold=manifold))
+    service = TxtLabelService(_label_strategy(manifold_dir, strategy))
+    try:
+        plan = service.plan(manifold_dir)
+        _print(plan)
+        if apply and plan.changed:
+            remaining = service.apply(plan)
+            console.print("  applied", markup=False, highlight=False)
+            if remaining.changed:
+                console.print("[yellow]  still not clean after the repair:[/yellow]")
+                _print(remaining)
+                raise typer.Exit(code=1)
+    except _TXT_ERRORS as exc:
+        console.print(f"[red]Text label repair of {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=1 if plan.mismatched or plan.unreadable else 0)
 
 
 def _policy_service(manifold_dir: Path) -> SamplePolicyService:

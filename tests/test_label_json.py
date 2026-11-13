@@ -66,15 +66,15 @@ class SampleEncodingTests(unittest.TestCase):
     """The shared encoder adds the JSON sidecar and rejects image copies as masks."""
 
     def test_label_json_member(self) -> None:
-        """A .txt label gets a derived .json only when the strategy is set."""
+        """A .txt label becomes the .json label; without a strategy the sample is rejected."""
         raw = RawSample("a", RawMember(_jpeg(), ".jpg"),
                         label=RawMember(_LINE.encode(), ".txt"), label_json="face_landmarks")
         sample = encode_sample_or_reject(raw, transcode_webp=True).sample
         assert sample is not None
-        self.assertEqual([n for n, _ in sample.members], ["a.webp", "a.txt", "a.json"])
+        self.assertEqual([n for n, _ in sample.members], ["a.webp", "a.json"])
         plain = encode_sample_or_reject(RawSample("a", raw.primary, label=raw.label), True)
-        assert plain.sample is not None
-        self.assertEqual([n for n, _ in plain.sample.members], ["a.webp", "a.txt"])
+        self.assertIsNone(plain.sample)
+        self.assertIn("without a label strategy", plain.reason)
 
     def test_mask_copy_of_image_is_rejected(self) -> None:
         """A 'mask' that is the image itself is not a class mask."""
@@ -105,7 +105,7 @@ class LooseConvertTests(unittest.TestCase):
             handle = tf.extractfile("f0.json")
             assert handle is not None
             meta = json.loads(handle.read())
-        self.assertEqual(names, ["f0.webp", "f0.txt", "f0.json", "f1.webp", "f1.txt", "f1.json"])
+        self.assertEqual(names, ["f0.webp", "f0.json", "f1.webp", "f1.json"])
         self.assertEqual(len(meta["objects"][0]["landmarks_normalized"]), 10)
 
 

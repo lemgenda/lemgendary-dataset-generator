@@ -2,9 +2,12 @@
 
 Every sample is assembled from all of its loose files (image, ``.target``
 image, ``.mask`` image, ``.txt``/``.json`` label) and written as one
-contiguous member group. Corrupt images are rejected rather than packed, and
-the loose folders are only purged after :mod:`tools.modernize.loose_verify`
-has found every loose file inside the shards on disk.
+contiguous member group; the label is packed as ``<key>.json`` only (a text
+label through ``label_json``, the manifold's label strategy). Corrupt images
+are rejected rather than packed, the written shards' labels are verified
+against the strategy's schema, and the loose folders are only purged after
+:mod:`tools.modernize.loose_verify` has found every loose file inside the
+shards on disk.
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ from utils.container_stream import (
     resolve_worker_count,
     update_dataset_info_format,
 )
+from utils.label_audit import verify_shard_labels
 from utils.reject_tally import RejectTally
 from utils.sample_group import (
     RawMember,
@@ -198,6 +202,9 @@ def convert_loose_directory_to_webdataset(
 
     _stamp_format(target_dir, "webdataset", opts.transcode_webp)
     rejects.report()
+    if not verify_shard_labels(shards_dir, "CONVERT", opts.label_json):
+        print("[ERROR] Label verification failed: loose folders kept.")
+        return False
 
     if opts.purge_loose:
         _purge_after_verification(source_dir, written, opts, rejects)

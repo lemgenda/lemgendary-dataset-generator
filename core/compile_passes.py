@@ -271,14 +271,14 @@ def _index_record(row: Any) -> dict[str, Any]:
 
 
 def _write_shard_sample(sink: Any, res: dict[str, Any], img_bytes: Any) -> None:
-    """Write one diffusion sample into its source's WebDataset shard."""
+    """Write one diffusion sample into its source's WebDataset shard (caption in the JSON)."""
     sink.write(
         {
             "__key__": res["name"],
             "jpg": img_bytes,
-            "txt": res["caption"],
             "json": json.dumps(
                 {
+                    "caption": res["caption"],
                     "style": res["style_tag"],
                     "cluster": res["cluster_id"],
                     "source": res["source"],

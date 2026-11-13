@@ -106,13 +106,14 @@ class TestLooseConvert(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             src = self._layout(Path(tmp))
             out = Path(tmp) / "out"
-            convert_loose_directory_to_webdataset(src, out, purge_loose=True, max_workers=2)
+            convert_loose_directory_to_webdataset(src, out, purge_loose=True, max_workers=2,
+                                                  label_json="yolo_boxes")
             names = _members(out / "shards" / "train" / "shard-00000.data")
             self.assertEqual(
                 names,
                 [
-                    "a.webp", "a.target.webp", "a.mask.webp", "a.txt",
-                    "c.webp", "c.target.webp", "c.mask.webp", "c.txt",
+                    "a.webp", "a.target.webp", "a.mask.webp", "a.json",
+                    "c.webp", "c.target.webp", "c.mask.webp", "c.json",
                 ],
             )
             _assert_contiguous(self, names)

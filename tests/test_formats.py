@@ -151,7 +151,7 @@ class TestWebDatasetWriter(unittest.TestCase):
                 image_bytes=b"fake_image_bytes_1",
                 image_format="webp",
                 target_bytes=b"fake_target_bytes_1",
-                label="test label one",
+                label="0 0.5 0.5 0.2 0.2",
                 metadata={"score": 0.95, "source": "test"},
             )
             sample2 = Sample(
@@ -173,15 +173,18 @@ class TestWebDatasetWriter(unittest.TestCase):
                 names = tar.getnames()
                 self.assertIn("sample_001.webp", names)
                 self.assertIn("sample_001.target.webp", names)
-                self.assertIn("sample_001.txt", names)
+                self.assertNotIn("sample_001.txt", names)
                 self.assertIn("sample_001.json", names)
                 self.assertIn("sample_002.webp", names)
 
-                # Verify payload
-                txt_member = tar.extractfile("sample_001.txt")
-                self.assertIsNotNone(txt_member)
-                if txt_member is not None:
-                    self.assertEqual(txt_member.read(), b"test label one")
+                # The text label is merged into the JSON label with the metadata.
+                json_member = tar.extractfile("sample_001.json")
+                assert json_member is not None
+                meta = json.loads(json_member.read())
+                self.assertEqual(meta["object_count"], 1)
+                self.assertEqual(meta["objects"][0]["bbox_cxcywh_normalized"],
+                                 [0.5, 0.5, 0.2, 0.2])
+                self.assertEqual(meta["source"], "test")
 
     def test_splits_get_their_own_shards(self) -> None:
         """Samples of different splits never share a shard (audit 2.1.6)."""
@@ -213,7 +216,10 @@ class TestWebDatasetWriter(unittest.TestCase):
             with tarfile.open(tar_files[0], "r") as tar:
                 names = tar.getnames()
                 self.assertIn("item_001.jpg", names)
-                self.assertIn("item_001.txt", names)
+                self.assertNotIn("item_001.txt", names)
+                caption = tar.extractfile("item_001.json")
+                assert caption is not None
+                self.assertEqual(json.loads(caption.read()), {"caption": "a beautiful sunrise"})
 
 
 class TestParquetWriter(unittest.TestCase):

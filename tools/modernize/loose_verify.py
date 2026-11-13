@@ -5,7 +5,9 @@ and ``labels/`` folders. Before that is allowed, :func:`missing_loose_members`
 reads the member names of every shard actually on disk and lists each loose
 file whose expected member is absent. Rejected (corrupt) samples are excluded
 because they were deliberately not written; orphan masks or labels that have
-no image are reported as missing, so they block the purge.
+no image are reported as missing, so they block the purge. A loose label
+(``.txt`` or ``.json``) is expected as the sample's ``<key>.json`` member,
+the one label format inside shards.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from utils.sample_group import MASK_SUFFIX, TARGET_SUFFIX
 __all__ = ["expected_member_names", "missing_loose_members", "shard_member_names"]
 
 _WEBP = ".webp"
+_JSON = ".json"
 
 
 def shard_member_names(shard_dir: Path) -> set[str]:
@@ -50,7 +53,7 @@ def expected_member_names(split: LooseSplit, transcode_webp: bool) -> dict[str, 
     for stem, path in split.masks.items():
         expected[f"{stem}{MASK_SUFFIX}{_WEBP}"] = path
     for stem, path in split.labels.items():
-        expected[f"{stem}{path.suffix.lower()}"] = path
+        expected[f"{stem}{_JSON}"] = path
     return expected
 
 

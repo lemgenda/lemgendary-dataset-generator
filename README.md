@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.97-STABLE` |
+| **Version** | `v16.9.98-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -23,7 +23,68 @@
 
 ---
 
+## Shard Label Format (JSON Only)
+
+Inside WebDataset shards a sample's label is always `<key>.json`; there are
+no `.txt` label members. Masks stay `<key>.mask.webp`. The schemas live in
+one place, `utils/label_json.py` (module docstring and `LABEL_STRATEGIES`);
+the strategy is the registry entry's `label_json`, else its task's
+(`TASK_STRATEGIES`). Coordinates are normalised to 0..1, boxes are
+`cx cy w h`.
+
+- `face_landmarks` (detection-face, RetinaFace): `face_count`, `objects[]`
+  with `category_id`, `bbox_cxcywh_normalized` and, when the face has real
+  landmarks, `landmarks_normalized` (10 values).
+- `yolo_boxes` (detection, pose, restoration, super-resolution,
+  parameter_prediction): `object_count`, `objects[]` with `category_id`,
+  `bbox_cxcywh_normalized` and, for pose lines, `keypoints`.
+- `yolo_polygons` (segmentation): `object_count`, `objects[]` with
+  `category_id`, `polygon_normalized`.
+- `nima` (quality): `nima_scores` with `distribution` (10) and `mean_score`.
+- `class_label` (classification): `class_id` (a number) or `class_name`.
+- `caption` (diffusion): `caption`.
+
+An empty detection label is `{"object_count": 0, "objects": []}`: an image
+without objects, kept as a valid negative. The shard verifier
+(`repair manifold`, the converters' post-write check, `utils/label_audit.py`)
+fails on any `.txt` member and on any JSON label that breaks its schema;
+`repair txt-labels` converts legacy `.txt` members.
+
+---
+
 ## Changelog
+
+### v16.9.98 - JSON Is the Only Shard Label Format (R4-J1)
+
+- Owner decision: inside WebDataset shards a label is `<key>.json` only.
+  `utils/label_json.py` is the schema SSOT (see "Shard Label Format"):
+  strategies `face_landmarks`, `yolo_boxes`, `yolo_polygons`, `nima`,
+  `class_label`, `caption`, each with a builder (text to JSON), required keys
+  and an empty document; `TASK_STRATEGIES` picks one per registry task when
+  `label_json` is unset (`resolve_label_strategy`).
+- Every shard writer packs JSON only: the loose and zip converters
+  (`utils/sample_group.py`: a text label goes through the strategy, an empty
+  detection label becomes zero objects, a text label without a strategy or
+  one that cannot be read rejects the sample), `WebDatasetWriter` (label
+  merged into the metadata JSON), the diffusion pass and `ShardWriter`
+  (caption in the JSON). The loose purge barrier expects `<key>.json` for a
+  loose label.
+- Shard verifier: `utils/label_audit.py` reads every label member; a `.txt`
+  member or a JSON label that fails its schema is a defect. The converters'
+  post-write check and `repair manifold` (new `LABELS:` lines, exit 1) run it.
+- `repair txt-labels` (dry run unless `--apply`;
+  `tools/repair/txt_label_fix.py`, `services/txt_label_service.py`): merges
+  each `.txt` member into the sample's JSON (keys only in the text are added,
+  shared keys must agree, nothing is dropped), reports MISMATCH and
+  UNREADABLE labels and then refuses the apply, removes the `.txt` members,
+  and swaps in verified rewrites atomically (no copies). A re-run finds
+  nothing to do.
+- `sync pull` of a registered compiled manifold packs its text labels with
+  the entry's strategy (`find_registry_manifold`). The file-by-file download
+  waits on Kaggle HTTP 429 (Retry-After, else 30 s doubling up to 600 s) on
+  listing pages and files instead of failing.
+- Tests: `tests/test_json_labels.py`; JSON-only expectations in the format,
+  loose-convert and label tests.
 
 ### v16.9.97 - Face Detection Sample Policy and Landmark Val (R4-B6)
 

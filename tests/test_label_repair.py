@@ -173,22 +173,26 @@ class LabelRepairCliTests(LabelRepairTestBase):
         self.assertEqual(result.exit_code, 1, result.output)
 
     def test_registry_lookup(self) -> None:
-        """RetinaFace has face_landmarks; ClassificationMaster has no label strategy."""
+        """RetinaFace has face_landmarks; other entries get their task's strategy."""
         self.assertEqual(label_strategy_for_folder(_FOLDER), "face_landmarks")
-        self.assertIsNone(label_strategy_for_folder("LemGendizedClassificationMaster"))
+        self.assertEqual(label_strategy_for_folder("LemGendizedClassificationMaster"),
+                         "class_label")
+        self.assertEqual(label_strategy_for_folder("LemGendizedYoloV8n"), "yolo_boxes")
+        self.assertIsNone(label_strategy_for_folder("LemGendizedUnknown"))
 
 
 class EmptyTextLabelTests(unittest.TestCase):
-    """An empty .txt label (no objects) is packed, not a reason to drop the sample."""
+    """An empty .txt label (no objects) is packed as an empty JSON label, not dropped."""
 
     def test_empty_txt_label_is_kept(self) -> None:
-        """Only the image and the empty label; no JSON is derived from nothing."""
+        """The image and the strategy's empty document; no .txt member."""
         raw = RawSample(key="k", primary=RawMember(_jpeg(), ".jpg"),
                         label=RawMember(b"", ".txt"), label_json="face_landmarks")
         outcome = encode_sample_or_reject(raw, transcode_webp=False)
         assert outcome.sample is not None, outcome.reason
         self.assertEqual(outcome.sample.member("k.txt"), b"")
-        self.assertEqual(outcome.sample.member("k.json"), b"")
+        self.assertEqual(json.loads(outcome.sample.member("k.json")),
+                         {"face_count": 0, "objects": []})
 
     def test_empty_json_label_is_rejected(self) -> None:
         """An empty JSON label is still a defect."""
