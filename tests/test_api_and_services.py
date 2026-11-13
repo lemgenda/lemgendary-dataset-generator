@@ -414,7 +414,7 @@ class TestAllServicesOrchestration(unittest.TestCase):
             ret = SyncService.push(model="nima_technical", url=None, no_wait=True)
             self.assertEqual(ret, 0)
             mock_push.assert_called_once_with(
-                manifold_name="nima_technical", repo_id=None, no_wait=True
+                manifold_name="nima_technical", repo_id=None, no_wait=True, notes=None
             )
 
         with patch("tools.manifold_sync.action_get") as mock_pull:

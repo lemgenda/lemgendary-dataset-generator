@@ -20,8 +20,10 @@ from typing import Any, ClassVar
 from unittest.mock import patch
 
 import yaml
+from typer.testing import CliRunner
 
 from api.routes.kaggle import get_kaggle_status
+from cli import app as cli_app
 from core import kaggle_credentials as creds
 from core.cli_args import __version__
 from core.docs.context import _resolve_citations
@@ -241,6 +243,41 @@ class VersionNotesTests(unittest.TestCase):
             f"LemGendary Dataset Compiler v{__version__}; 3 samples (train 2, val 1)",
         )
         meta.assert_not_called()
+
+    def test_extra_notes_follow_the_generated_part(self) -> None:
+        """Text given with --notes follows the release and counts; blank text adds nothing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifold = Path(tmp)
+            _write_index(manifold, {"train": 1})
+            notes = build_version_notes(manifold, "  Masks rebuilt;\n split by file id. ")
+            blank = build_version_notes(manifold, "   ")
+        base = f"LemGendary Dataset Compiler v{__version__}; 1 samples (train 1)"
+        self.assertEqual(notes, f"{base}. Masks rebuilt; split by file id.")
+        self.assertEqual(blank, base)
+
+    def test_cli_push_passes_notes_to_kagglehub(self) -> None:
+        """`sync push --notes` reaches kagglehub's version_notes through the push path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            manifold = parent / "LemGendizedDemo"
+            manifold.mkdir()
+            _write_index(manifold, {"train": 2})
+            with patch("tools.manifold_sync.OUT_PARENT", parent), \
+                    patch("tools.manifold_sync.setup_auth", return_value=True), \
+                    patch("tools.manifold_sync.cleanup_temp_archives"), \
+                    patch("core.sync_upload.ensure_kaggle_dataset_exists", return_value=True), \
+                    patch("core.sync_upload.get_dataset_version_info",
+                          return_value={"latest_version": 1}), \
+                    patch("core.sync_upload.kagglehub.dataset_upload") as upload:
+                result = CliRunner().invoke(cli_app, [
+                    "sync", "push", "--model", "LemGendizedDemo", "--url", "owner/demo",
+                    "--no-wait", "--notes", "Labels rebuilt.",
+                ])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            upload.call_args.kwargs["version_notes"],
+            f"LemGendary Dataset Compiler v{__version__}; 2 samples (train 2). Labels rebuilt.",
+        )
 
 
 class _FakeKaggleApi:

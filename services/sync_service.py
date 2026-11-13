@@ -69,14 +69,18 @@ class SyncService:
         model: str,
         url: str | None = None,
         no_wait: bool = False,
+        notes: str | None = None,
     ) -> int:
+        """Upload a local manifold to Kaggle; returns the exit code.
 
-        """Upload a local manifold to Kaggle; returns the exit code."""
+        ``notes`` describes the new version (added to the generated version notes).
+        """
         try:
             manifold_sync.action_sync(
                 manifold_name=model,
                 repo_id=url,
                 no_wait=no_wait,
+                notes=notes,
             )
             return 0
         except SystemExit as exc:

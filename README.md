@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.108-STABLE` |
+| **Version** | `v16.9.109-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,21 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.109 - `sync push --notes`: Version Notes Say What Changed
+
+- `sync push --notes TEXT` adds a short description of the new version to
+  the generated version notes (compiler release and sample counts), after
+  `". "`; whitespace is collapsed and blank text adds nothing
+  (`core/sync_version_notes.py`). The text passes through
+  `SyncService.push`, `tools.manifold_sync.action_sync` and
+  `perform_dataset_upload` (`core/sync_upload.py`) to KaggleHub's
+  `version_notes`. Without `--notes` the notes are unchanged.
+- Used for the new versions of LemGendizedRetinaFace, LemGendizedParseNet
+  and LemGendizedClassificationMaster (rebuilt labels, file id splits,
+  `shard_offsets.json`).
+- Tests: `tests/test_kaggle_sync_audit.py` (notes text, and the CLI push
+  reaching KaggleHub against a fake).
 
 ### v16.9.108 - Shards Ship a `shard_offsets.json` Member Offset Index
 

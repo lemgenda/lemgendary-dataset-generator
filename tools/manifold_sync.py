@@ -119,8 +119,11 @@ def get_kaggle_ref(manifold_id: str | None) -> str | None:
 
     return None
 
-def action_sync(manifold_name, repo_id=None, no_wait=False):
-    """Zip and Upload a manifold to Kaggle with byte-metered progress and status monitoring."""
+def action_sync(manifold_name, repo_id=None, no_wait=False, notes=None):
+    """Zip and Upload a manifold to Kaggle with byte-metered progress and status monitoring.
+
+    ``notes`` describes the new version (added to the generated version notes).
+    """
     resolved_folder = resolve_manifold_folder(manifold_name)
     src_dir = OUT_PARENT / resolved_folder
     if not src_dir.exists():
@@ -145,7 +148,8 @@ def action_sync(manifold_name, repo_id=None, no_wait=False):
     success = perform_dataset_upload(
         src_path=src_dir,
         clean_repo_id=clean_repo_id,
-        no_wait=no_wait
+        no_wait=no_wait,
+        notes=notes,
     )
     if not success:
         sys.exit(1)

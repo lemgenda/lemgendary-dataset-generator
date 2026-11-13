@@ -176,8 +176,13 @@ def _stage_archive(src_path: Path) -> tuple[Path, Path, int]:
     return staging_dir, target_zip, file_count
 
 
-def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = False) -> bool:
-    """Stage, archive, upload, update metadata, and track a dataset upload to Kaggle."""
+def perform_dataset_upload(
+    src_path: Path, clean_repo_id: str, no_wait: bool = False, notes: str | None = None
+) -> bool:
+    """Stage, archive, upload, update metadata, and track a dataset upload to Kaggle.
+
+    ``notes`` describes the version; it follows the generated version notes.
+    """
     if is_kaggle_large_manifold(clean_repo_id):
         print(f"[SAFEGUARD] Refusing to upload to legacy *large manifold: {clean_repo_id}")
         return False
@@ -205,7 +210,7 @@ def perform_dataset_upload(src_path: Path, clean_repo_id: str, no_wait: bool = F
     zip_size_gb = target_zip.stat().st_size / (1024**3)
     print(f"[SYNC] Staging archive ready: {target_zip.name} ({zip_size_gb:.2f} GB)")
 
-    version_notes = build_version_notes(src_path)
+    version_notes = build_version_notes(src_path, notes)
     if not _upload_staging_archive(clean_repo_id, staging_dir, target_zip, version_notes):
         return False
     print("[SUCCESS] Dataset upload payload transferred to Kaggle.")

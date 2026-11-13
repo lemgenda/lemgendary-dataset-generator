@@ -2,7 +2,9 @@
 
 Kaggle shows the notes next to each dataset version. They name the compiler
 release that built the manifold and the sample counts its index.json (else
-dataset_info.yaml) records, so every published version is labelled.
+dataset_info.yaml) records, so every published version is labelled. A push
+may add a short description of what changed (``sync push --notes``); it
+follows the generated part.
 """
 
 from __future__ import annotations
@@ -33,8 +35,8 @@ def _count_text(counts: ExpectedCounts) -> str | None:
     return None
 
 
-def build_version_notes(manifold_dir: Path) -> str:
-    """Version notes for uploading ``manifold_dir``: compiler release and sample counts."""
+def _generated_notes(manifold_dir: Path) -> str:
+    """Compiler release plus the recorded sample counts (release only when unreadable)."""
     notes = f"LemGendary Dataset Compiler v{__version__}"
     try:
         count_text = _count_text(expected_counts(manifold_dir))
@@ -43,3 +45,14 @@ def build_version_notes(manifold_dir: Path) -> str:
                        manifold_dir, exc)
         return notes
     return f"{notes}; {count_text}" if count_text else notes
+
+
+def build_version_notes(manifold_dir: Path, extra: str | None = None) -> str:
+    """Version notes for uploading ``manifold_dir``: compiler release and sample counts.
+
+    ``extra`` (what changed in this version) follows them after ``". "``;
+    blank text adds nothing.
+    """
+    notes = _generated_notes(manifold_dir)
+    extra_text = " ".join((extra or "").split())
+    return f"{notes}. {extra_text}" if extra_text else notes

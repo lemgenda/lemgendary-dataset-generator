@@ -31,9 +31,12 @@ def sync_push(
     model: str = typer.Option(..., "--model", "-m", help="Local manifold name or registry key"),
     url: str | None = typer.Option(None, "--url", help="Kaggle slug override"),
     no_wait: bool = typer.Option(False, "--no-wait", help="Skip server-side extraction monitoring"),
+    notes: str | None = typer.Option(
+        None, "--notes", help="What changed in this version; added to the generated version notes"
+    ),
 ) -> None:
     """Push a compiled manifold to Kaggle."""
-    code = SyncService.push(model=model, url=url, no_wait=no_wait)
+    code = SyncService.push(model=model, url=url, no_wait=no_wait, notes=notes)
     raise typer.Exit(code=code)
 
 
