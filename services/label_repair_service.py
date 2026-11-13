@@ -33,6 +33,7 @@ from tools.repair.label_restore import (
 )
 from tools.repair.metadata_fix import INFO_FILE, replace_file
 from utils.shard_audit import find_shards
+from utils.shard_offsets import write_shard_offsets
 
 __all__ = ["LabelRepairPlan", "LabelRepairService", "LabelSource", "read_classes"]
 
@@ -177,6 +178,7 @@ class LabelRepairService:
             )
         for shard_plan in plan.shards:
             apply_label_restore(shard_plan, self.labels, self.source.strategy)
+        write_shard_offsets(plan.manifold_dir / "shards")
         if plan.info_changes:
             info = {**_read_info(plan.manifold_dir), **plan.info_changes}
             replace_file(plan.manifold_dir / INFO_FILE, lambda tmp: write_dataset_info(tmp, info))

@@ -8,9 +8,10 @@ replaces its original atomically; no copy of the original is kept (see
 ``repair txt-labels``, :mod:`services.source_label_service` for ``repair
 masks``, ``repair face-landmarks`` and ``repair class-labels``,
 :mod:`services.pseudo_label_service` for ``repair pseudo-labels``, which only
-writes a label table outside the manifold). ``repair manifold`` also verifies the
-labels inside the shards and exits 1 while any is a text label or an invalid
-JSON label.
+writes a label table outside the manifold, :mod:`services.shard_offsets_service`
+for ``repair shard-offsets``, which only writes ``shard_offsets.json``). ``repair
+manifold`` also verifies the labels inside the shards and exits 1 while any is a
+text label or an invalid JSON label.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ from services.loose_pack_service import LoosePackError, LoosePackPlan, LoosePack
 from services.pseudo_label_service import PseudoLabelService, PseudoPlan
 from services.repair_service import ManifoldRepairPlan, RepairService
 from services.sample_policy_service import SamplePolicyService
+from services.shard_offsets_service import ShardOffsetsPlan, ShardOffsetsService
 from services.source_label_service import SourceLabelPlan, SourceLabelService
 from services.txt_label_service import TxtLabelPlan, TxtLabelService
 from tools.repair.label_restore import LabelRestoreError
@@ -101,7 +103,7 @@ _PROGRESS_EVERY = 10
 _SECONDS_PER_HOUR = 3600.0
 
 RepairPlan = (ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan | TxtLabelPlan
-              | LoosePackPlan | SourceLabelPlan | PseudoPlan)
+              | LoosePackPlan | SourceLabelPlan | PseudoPlan | ShardOffsetsPlan)
 
 
 def _print(plan: RepairPlan) -> None:
@@ -433,6 +435,34 @@ def repair_pseudo_labels(opts: PseudoLabelOptions) -> None:
                           highlight=False)
     except _PSEUDO_ERRORS as exc:
         console.print(f"[red]Pseudo labels of {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=0)
+
+
+_OFFSETS_ERRORS = (OSError, tarfile.TarError)
+
+
+@repair_app.command("shard-offsets")
+def repair_shard_offsets(model: ModelOpt = None, manifold: ManifoldOpt = None,
+                         apply: ApplyOpt = False) -> None:
+    """Write each shard folder's shard_offsets.json (member offsets); shards are not changed."""
+    manifold_dir = require_target(TargetOptions(model=model, manifold=manifold))
+    service = ShardOffsetsService()
+    try:
+        plan = service.plan(manifold_dir)
+        _print(plan)
+        if apply and plan.changed:
+            run = service.apply(plan)
+            for line in run.report():
+                console.print(line, markup=False, highlight=False)
+            if run.remaining.changed:
+                console.print("[yellow]  still not current after writing:[/yellow]")
+                _print(run.remaining)
+                raise typer.Exit(code=1)
+    except _OFFSETS_ERRORS as exc:
+        console.print(f"[red]Shard index of {manifold_dir.name} failed: {exc}[/red]")
         raise typer.Exit(code=1) from exc
     if not apply:
         console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from api.models import DatasetFormatStats
+from utils.shard_offsets import OFFSETS_FILENAME
 
 __all__ = [
     "DatasetFileStats",
@@ -32,6 +33,8 @@ _ROOT_SHARD_EXTS = (*_SHARD_EXTS, "jsonl")
 _LOOSE_DIRS = ("images", "targets", "masks", "labels")
 _LOOSE_FORMATS = {"webp": "webp", "jpg": "jpg", "jpeg": "jpg", "png": "png", "parquet": "parquet"}
 _LOOSE_SKIP_EXTS = ("txt", "json", "yaml", "md", "ipynb")
+# Metadata files next to shards whose names would pass the shard-name rule.
+_NOT_SHARDS = ("index.json", OFFSETS_FILENAME)
 
 _MODEL_FAMILY_MARKERS = (
     "NIMA", "NAFNET", "MPRNET", "MIRNET", "FFANET", "YOLO", "FOREX", "DEGRADATION",
@@ -118,7 +121,7 @@ def _ext(fname: str) -> str:
 
 
 def _is_container_shard(fname: str, ext: str, container_name: str) -> bool:
-    if fname == "index.json":
+    if fname in _NOT_SHARDS:
         return False
     return (
         ext in _SHARD_EXTS
@@ -171,7 +174,7 @@ def _scan_containers(tally: _ScanTally, manifold_path: Path) -> None:
 def _tally_root_file(tally: _ScanTally, entry: os.DirEntry) -> None:
     fname = entry.name
     ext = _ext(fname)
-    if fname != "index.json" and (
+    if fname not in _NOT_SHARDS and (
         ext in _ROOT_SHARD_EXTS or fname.startswith(("shard", "chunk"))
     ):
         tally.shards_count += 1

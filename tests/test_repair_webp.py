@@ -18,6 +18,7 @@ from tools.repair.member_webp import convertible_members, webp_name
 from tools.repair.shard_fix import plan_shard_fix
 from utils.container_stream import IMAGE_WEBP_QUALITY
 from utils.shard_audit import audit_shard
+from utils.shard_offsets import OFFSETS_FILENAME
 
 
 def _encoded(fmt: str, mode: str = "RGB", size: tuple[int, int] = (8, 6)) -> bytes:
@@ -100,7 +101,9 @@ class MemberWebpTests(unittest.TestCase):
         self.assertEqual(members["p0.webp"], expected.getvalue())
         info = yaml.safe_load((self.manifold / "dataset_info.yaml").read_text(encoding="utf-8"))
         self.assertEqual(info["image_format"], "webp")
-        self.assertEqual(sorted(p.name for p in self.shard.parent.iterdir()), [self.shard.name])
+        # No copy of the original is kept; the shard's offset index sits next to it.
+        self.assertEqual(sorted(p.name for p in self.shard.parent.iterdir()),
+                         [self.shard.name, OFFSETS_FILENAME])
         self.assertIsNone(plan_shard_fix(audit_shard(self.shard)))
 
     def test_taken_webp_name_is_not_converted(self) -> None:

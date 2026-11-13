@@ -52,6 +52,7 @@ from utils.sample_group import (
     to_mds_record,
     write_sample,
 )
+from utils.shard_offsets import write_shard_offsets
 
 # Missing loose files listed before a blocked purge gives up printing.
 _MISSING_PREVIEW = 10
@@ -202,6 +203,7 @@ def convert_loose_directory_to_webdataset(
 
     _stamp_format(target_dir, "webdataset", opts.transcode_webp)
     rejects.report()
+    write_shard_offsets(shards_dir)
     if not verify_shard_labels(shards_dir, "CONVERT", opts.label_json):
         print("[ERROR] Label verification failed: loose folders kept.")
         return False

@@ -10,6 +10,9 @@ metadata resync against the repaired shards) and carry it out safely.
   atomic ``os.replace``; the original is deleted by that swap and no copy
   is kept, so a crash never leaves a half-written file in place.
 - Running it again on a repaired manifold finds nothing to do.
+- A ``shard_offsets.json`` present next to the shards is checked
+  (:mod:`utils.shard_offsets`); a stale one is rewritten by ``apply``, which
+  refreshes the index of every shard directory after rewriting shards.
 - ``plan`` also verifies the labels inside the shards (:mod:`utils.label_audit`:
   no ``.txt`` members, every JSON label valid for the registry's label
   strategy); those defects are reported in ``label_problems``, which this
@@ -35,6 +38,7 @@ from tools.repair.metadata_fix import (
 from tools.repair.shard_fix import ShardFix, apply_shard_fix, plan_shard_fix
 from utils.label_audit import audit_labels, label_audit_problems
 from utils.shard_audit import ShardSetAudit, audit_shard_set, find_shards
+from utils.shard_offsets import offsets_problems, write_shard_offsets
 
 __all__ = ["ManifoldRepairPlan", "RepairService", "label_problems", "physical_samples"]
 
@@ -50,11 +54,13 @@ class ManifoldRepairPlan:
     metadata: MetadataFix | None = None
     notes: list[str] = field(default_factory=list)
     label_problems: list[str] = field(default_factory=list)
+    offsets_problems: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
         """True when applying would modify a file."""
-        return bool(self.shard_fixes) or bool(self.metadata and self.metadata.changed)
+        return (bool(self.shard_fixes) or bool(self.offsets_problems)
+                or bool(self.metadata and self.metadata.changed))
 
     def report(self) -> list[str]:
         """Human-readable lines describing the plan."""
@@ -72,6 +78,8 @@ class ManifoldRepairPlan:
             lines.append(f"  shard {fix.shard.parent.name}/{fix.shard.name}: {'; '.join(what)}")
         if self.metadata is not None:
             lines.extend(f"  {line}" for line in self.metadata.summary())
+        lines.extend(f"  rewrite stale shard index: {problem}"
+                     for problem in self.offsets_problems)
         lines.extend(f"  note: {note}" for note in self.notes)
         lines.extend(f"  LABELS: {problem}" for problem in self.label_problems)
         if not self.changed:
@@ -165,6 +173,8 @@ class RepairService:
             if fix is not None:
                 plan.shard_fixes.append(fix)
         plan.label_problems = label_problems(manifold_dir, audit)
+        plan.offsets_problems = offsets_problems(
+            audit.shards_dir, {shard.path: shard.members for shard in audit.shards})
         physical = physical_samples(manifold_dir, plan.shard_fixes, audit)
         if physical is None:
             plan.notes.append("no shards, images/ or data/*.jsonl: metadata resync skipped")
@@ -177,6 +187,7 @@ class RepairService:
         manifold_dir = plan.manifold_dir
         for fix in plan.shard_fixes:
             apply_shard_fix(fix)
+        write_shard_offsets(manifold_dir / "shards")
         physical = physical_samples(manifold_dir)
         if physical is not None:
             metadata = plan_metadata_fix(manifold_dir, physical)

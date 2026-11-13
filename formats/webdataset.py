@@ -23,6 +23,7 @@ from typing import Any
 from webdataset.writer import ShardWriter as WdsShardWriter
 
 from utils.label_json import label_document, resolve_label_strategy
+from utils.shard_offsets import write_shard_offsets
 
 from .base import Sample, Writer
 
@@ -40,7 +41,8 @@ class WebDatasetWriter(Writer):
 
     Shards are partitioned by split (``shards/<split>/shard-%05d.<ext>``),
     the same layout the loose and zip converters write, so the split of a
-    sample is never lost.
+    sample is never lost. ``close`` writes each split's ``shard_offsets.json``
+    (:mod:`utils.shard_offsets`).
     """
 
     def __init__(self) -> None:
@@ -103,6 +105,8 @@ class WebDatasetWriter(Writer):
         for sink in self._sinks.values():
             sink.close()
         self._sinks.clear()
+        if self._out_dir is not None:
+            write_shard_offsets(self._out_dir)
 
 
 class ShardWriter:
@@ -137,5 +141,6 @@ class ShardWriter:
         })
 
     def close(self) -> None:
-        """Close the underlying tar sink."""
+        """Close the underlying tar sink and index the shards it wrote."""
         self.sink.close()
+        write_shard_offsets(self.output_dir)

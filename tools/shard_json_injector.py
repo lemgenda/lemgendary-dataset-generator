@@ -8,6 +8,8 @@ import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from utils.shard_offsets import write_shard_offsets
+
 logger = logging.getLogger(__name__)
 
 _MODELS = (
@@ -139,6 +141,7 @@ def _process_split(model_path: Path, split: str) -> None:
     report = _SplitReport()
     for shard_file in shard_files:
         _rewrite_shard(shard_file, json_dir, report)
+    write_shard_offsets(shards_dir)
     _print_split_summary(split, json_dir, report)
 
 

@@ -20,6 +20,7 @@ from tqdm import tqdm
 from tools.modernize.common import SPLITS, update_dataset_info
 from tools.modernize.queue_items import _fast_has_tar_shards
 from utils.shard_audit import verify_shard_set
+from utils.shard_offsets import write_shard_offsets
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +283,7 @@ def transcode_mds_to_webdataset(
     total_samples, total_shards, total_expected = _transcode_splits(
         found_splits, mds_dir, shards_dir, _ShardTarget(shards_dir, ext, shard_size_samples)
     )
+    write_shard_offsets(shards_dir)
 
     update_dataset_info(
         target_dir,

@@ -36,6 +36,7 @@ from core.compile_tasks import TaskItem, count_one
 from core.compiler_core import CONFIG, batch_worker
 from formats.base import parse_also_format
 from tools.migrate_manifold_format import migrate_manifold
+from utils.shard_offsets import write_shard_offsets
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +332,8 @@ def write_index(conn: sqlite3.Connection, output_root: Path,
         final_index.extend(_index_source(conn, source, sink))
         if sink:
             sink.close()
+    if shard_dir is not None:
+        write_shard_offsets(shard_dir)
 
     random.seed(42)
     random.shuffle(final_index)

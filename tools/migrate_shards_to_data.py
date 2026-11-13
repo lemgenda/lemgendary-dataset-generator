@@ -10,6 +10,8 @@ import sys
 import time
 from pathlib import Path
 
+from utils.shard_offsets import write_shard_offsets
+
 
 def _rename_shards(shards_dir: Path, from_ext: str, to_ext: str, dry_run: bool) -> tuple[int, int]:
     """Rename every ``from_ext`` shard under ``shards_dir``; return (count, bytes)."""
@@ -67,6 +69,8 @@ def migrate_shards(
         manifold_renamed, manifold_bytes = _rename_shards(shards_dir, from_ext, to_ext, dry_run)
         if not manifold_renamed:
             continue
+        if not dry_run:
+            write_shard_offsets(shards_dir)
 
         total_renamed += manifold_renamed
         total_bytes += manifold_bytes

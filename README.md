@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.107-STABLE` |
+| **Version** | `v16.9.108-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -59,7 +59,74 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 
 ---
 
+## Shard Offset Index (`shard_offsets.json`)
+
+Every WebDataset shard folder (`shards/<split>/`) carries a
+`shard_offsets.json`: for each plain tar shard its `size`, `mtime_ns` and
+the `names`, `offsets` and `sizes` of its regular members
+(`{"version": 2, "shards": {...}}`, the training suite's
+`training/data/containers/shard_tables.py` layout). The training suite
+reads it instead of every tar header of a split. It accepts an entry when
+the shard size matches and either the modification time matches or the
+headers of the first, middle and last member agree, so the file stays valid
+after a Kaggle upload. `utils/shard_offsets.py` is the only writer and
+checker. Every step that writes or rewrites shards refreshes it: compile
+(`WebDatasetWriter`, the diffusion shard pass), zip streaming, loose
+packing, MDS transcoding, and the shard repairs (`repair manifold`,
+`labels`, `txt-labels`, `masks`, `face-landmarks`, `class-labels`,
+`sample-policy`, `pack-loose`). `repair shard-offsets` writes it for an
+existing manifold without touching the shards. The shard verifier checks a
+present file and fails on a stale one.
+
+---
+
 ## Changelog
+
+### v16.9.108 - Shards Ship a `shard_offsets.json` Member Offset Index
+
+- New `utils/shard_offsets.py`, the single writer and checker of
+  `shards/<split>/shard_offsets.json` in the training suite's layout
+  (`version` 2; per shard `size`, `mtime_ns`, `names`, `offsets`, `sizes`).
+  The training suite (v16.9.215 and later) reads it instead of scanning
+  every tar header, which took 15 to 48 minutes for a 53 GB split on
+  Kaggle. It does not import the training suite. Unchanged shards keep
+  their entry; rewritten ones are rescanned; compressed shards get none.
+- Writers call `write_shard_offsets` once their shards are in place:
+  `WebDatasetWriter.close` and the legacy `ShardWriter.close` (compile and
+  `--also-format`), the diffusion shard pass (`core/compile_passes.py`),
+  zip streaming, loose packing (`repair pack-loose`), MDS transcoding, the
+  sample policy (`repair sample-policy` and the compile step), and the
+  `apply` of `repair manifold`, `labels`, `txt-labels`, `masks`,
+  `face-landmarks` and `class-labels`; also `tools/shard_json_injector.py`
+  and `tools/migrate_shards_to_data.py`.
+- New `repair shard-offsets [--model KEY | --manifold PATH] [--apply]`
+  (`services/shard_offsets_service.py`): the dry run reports each shard
+  folder's index as missing, stale or current; `--apply` writes it without
+  touching the shards and prints the size and time.
+- The shard verifier checks a present index (`utils/shard_audit.py`
+  `shard_set_problems`, so the converters' post-write check, and
+  `repair manifold`, which rewrites a stale one): every plain shard needs
+  an entry the training suite would accept, with the member count of the
+  audit, and no entry may name a missing shard.
+- `SHARD_SUFFIXES` and `find_shards` moved to `utils/shard_files.py`
+  (`utils/shard_audit.py` re-exports them).
+- The GUI catalog scan (`api/manifold_scan.py`) no longer counts
+  `shard_offsets.json` as a shard. Generated manifold READMEs describe it.
+- Upload: the staging zip packs every file of the manifold folder and
+  KaggleHub's default ignore list only skips `.git/`, `.cache/` and
+  `.huggingface/`, so the index is uploaded; a newer index also makes the
+  staging zip be rebuilt.
+- Local manifolds indexed with `repair shard-offsets --apply`:
+  LemGendizedRetinaFace 103 shards, 850,446 members, 75.5 MiB in 98 s;
+  LemGendizedParseNet 111 shards, 1,275,774 members, 101.8 MiB in 101 s;
+  LemGendizedClassificationMaster 158 shards, 1,507,068 members,
+  107.0 MiB in 163 s. The training suite's reader accepts every train
+  shard from the file (1.5 to 3.1 s per split, no header scan).
+- Tests: `tests/test_shard_offsets.py` (layout, reuse, compressed and
+  emptied folders, verifier cases, `repair manifold`, writers, CLI, GUI
+  scan) and `tests/test_shard_offsets_compat.py` (the training suite's own
+  `ShardTableStore` accepts the file, also after an mtime change; skipped
+  with the reason when the sibling suite is not importable).
 
 ### v16.9.107 - RetinaFace Targets Synced With the Training Suite (Provisional)
 

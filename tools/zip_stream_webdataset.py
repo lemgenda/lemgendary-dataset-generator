@@ -45,6 +45,7 @@ from utils.progress import create_progress_bar
 from utils.reject_tally import RejectTally
 from utils.sample_group import write_sample
 from utils.shard_audit import verify_shard_set
+from utils.shard_offsets import write_shard_offsets
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,7 @@ def stream_zip_to_webdataset(
 
     try:
         _stream_archive(zip_path, target_dir, shards_dir, opts, workers)
+        write_shard_offsets(shards_dir)
 
         ds_info_path = target_dir / "dataset_info.yaml"
         if update_dataset_info_format(ds_info_path, "webdataset", opts.transcode_webp):

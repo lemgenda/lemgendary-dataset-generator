@@ -57,6 +57,7 @@ from tools.repair.metadata_fix import INDEX_FILE, INFO_FILE, replace_file
 from tools.repair.shard_fix import REPAIR_TMP_SUFFIX
 from utils.container_stream import SHARD_SAMPLES
 from utils.shard_audit import audit_shard, find_shards, members_by_key
+from utils.shard_offsets import write_shard_offsets
 
 __all__ = [
     "PlanCounts",
@@ -472,6 +473,7 @@ def apply_sample_policy(plan: SamplePolicyPlan) -> SamplePolicyPlan:
             _rewrite_source(shard, acts)
         for split_dir in (p for p in shards_dir.iterdir() if p.is_dir()):
             _renumber(split_dir)
+        write_shard_offsets(shards_dir)
     _rewrite_index(plan)
     _rewrite_info(plan)
     return plan_sample_policy(plan.manifold_dir, plan.rule)

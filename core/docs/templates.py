@@ -300,7 +300,8 @@ def build_structure_text(
         ),
         "shards": (
             "WebDataset shards per split (tar archives named `.data` or `.tar`), one"
-            " member group per sample."
+            " member group per sample; each split's `shard_offsets.json` records where"
+            " every member starts, so readers skip the tar header scan."
         ),
         "forex": "Shards containing serialized manifold data.",
         "dataset_info.yaml": "Manifest metadata for automated PyTorch loaders.",

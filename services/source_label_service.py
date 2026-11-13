@@ -54,6 +54,7 @@ from tools.repair.source_label_fix import (
     label_shard,
 )
 from utils.shard_audit import find_shards
+from utils.shard_offsets import write_shard_offsets
 
 __all__ = ["LABELER_FACTORIES", "SourceLabelPlan", "SourceLabelService"]
 
@@ -291,6 +292,7 @@ class SourceLabelService:
         if written.problems:
             raise SourceLabelError(f"{written.problems} samples have no usable label file;"
                                    " their shards were not rewritten")
+        write_shard_offsets(plan.manifold_dir / "shards")
         fresh = self.plan(plan.manifold_dir)
         dropped = {k.rpartition("/")[2] for r in written.results for k in r.dropped}
         self._record_metadata(plan.manifold_dir, dropped,

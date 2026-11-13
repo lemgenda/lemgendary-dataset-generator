@@ -24,6 +24,9 @@ from typing import Any
 
 import yaml
 
+from utils.shard_files import SHARD_SUFFIXES, find_shards
+from utils.shard_offsets import offsets_problems
+
 __all__ = [
     "MAY_BE_EMPTY_SUFFIXES",
     "SHARD_SUFFIXES",
@@ -41,7 +44,6 @@ __all__ = [
     "verify_shard_set",
 ]
 
-SHARD_SUFFIXES = (".data", ".tar")
 _ALL_SPLIT = "all"
 MAY_BE_EMPTY_SUFFIXES = (".txt",)
 _REPORTED_PROBLEMS = 10
@@ -148,13 +150,6 @@ def audit_shard(path: Path) -> ShardAudit:
     return audit
 
 
-def find_shards(shards_dir: Path) -> list[Path]:
-    """Every shard under ``shards_dir`` (all splits), sorted."""
-    if not shards_dir.is_dir():
-        return []
-    return sorted(p for p in shards_dir.rglob("*") if p.is_file() and p.suffix in SHARD_SUFFIXES)
-
-
 def _split_of(shards_dir: Path, shard: Path) -> str:
     parts = shard.relative_to(shards_dir).parts
     return parts[0] if len(parts) > 1 else _ALL_SPLIT
@@ -235,7 +230,8 @@ def shard_set_problems(
     expected_total: int | None = None,
 ) -> list[str]:
     """Human-readable defects: unreadable shards, empty members, scattered or
-    incomplete groups, and a total that differs from ``expected_total``.
+    incomplete groups, a total that differs from ``expected_total``, and a stale
+    ``shard_offsets.json`` (:func:`utils.shard_offsets.offsets_problems`).
 
     A set where any sample has a ``.target.*`` member is a paired set: every
     sample must have one.
@@ -265,6 +261,8 @@ def shard_set_problems(
             problems.append(f"{name}: {len(missing)} samples missing one of {required}")
     if expected_total is not None and audit.total_samples != expected_total:
         problems.append(f"{audit.total_samples} samples in shards, expected {expected_total}")
+    problems.extend(offsets_problems(audit.shards_dir,
+                                     {shard.path: shard.members for shard in audit.shards}))
     return problems
 
 

@@ -22,6 +22,7 @@ from tools.repair.txt_label_fix import (
     plan_txt_label_fix,
 )
 from utils.shard_audit import find_shards
+from utils.shard_offsets import write_shard_offsets
 
 __all__ = ["TxtLabelPlan", "TxtLabelService"]
 
@@ -113,4 +114,5 @@ class TxtLabelService:
             )
         for shard_plan in plan.shards:
             apply_txt_label_fix(shard_plan)
+        write_shard_offsets(plan.manifold_dir / "shards")
         return self.plan(plan.manifold_dir)
