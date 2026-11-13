@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.109-STABLE` |
+| **Version** | `v16.9.110-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,21 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.110 - Kaggle Upload Sends 8 MiB Chunks
+
+- `sync push` streamed the staging zip through kagglehub's
+  `tqdm.utils.CallbackIOWrapper`, which urllib3 reads in 16 KB blocks; one
+  upload stalled near 2.6 MB/s on Windows (45 GB in about 5 h).
+- New `core/gcs_upload_chunks.py`: `LargeChunkReader` returns
+  `UPLOAD_CHUNK_BYTES` (8 MiB) per read whatever size is asked, reports each
+  block to the progress bar and reads from the current position, so
+  kagglehub's resume seek still applies. `install_large_chunk_upload()`
+  sets `kagglehub.gcs_upload.CallbackIOWrapper` next to the tqdm patch in
+  `core/sync_upload.py`. A 64 MB test upload to a public speed endpoint went
+  from 3.9 MB/s to 22-63 MB/s (4-32 MiB chunks all similar).
+- Tests: `tests/test_gcs_upload_chunks.py` (chunk size, callback totals,
+  EOF, seeked offset, install on the push path; no network).
 
 ### v16.9.109 - `sync push --notes`: Version Notes Say What Changed
 

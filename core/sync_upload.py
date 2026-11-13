@@ -15,6 +15,7 @@ from typing import Any
 
 import kagglehub
 
+from core.gcs_upload_chunks import install_large_chunk_upload
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS, KAGGLE_REMOTE_ERRORS
 from core.sync_auth import is_kaggle_large_manifold
 from core.sync_metadata import push_kaggle_dataset_metadata
@@ -126,6 +127,7 @@ def _upload_staging_archive(
         print("[SYNC] Uploading archive to Kaggle via KaggleHub API...")
         print(f"[SYNC] Version notes: {version_notes}")
         _patch_gcs_upload_tqdm()
+        install_large_chunk_upload()
         kagglehub.dataset_upload(clean_repo_id, str(staging_dir), version_notes=version_notes)
         upload_success = True
     except KAGGLE_REMOTE_ERRORS as e:
