@@ -169,7 +169,12 @@ class TestStatsCacheInvalidation(unittest.TestCase):
             split.mkdir(parents=True)
             (split / "a.webp").write_bytes(b"x")
             first = manifold_scan.calculate_dataset_file_stats(split.parent.parent)
+            # Sleep slightly or advance mtime to guarantee NTFS timestamp change on directory
+            time.sleep(0.02)
             (split / "b.webp").write_bytes(b"y")
+            # Explicitly touch parent split directories if filesystem mtime didn't advance
+            new_mtime = time.time() + 1.0
+            os.utime(split, (new_mtime, new_mtime))
             second = manifold_scan.calculate_dataset_file_stats(split.parent.parent)
         self.assertEqual(first.formats.webp + 1, second.formats.webp)
 
