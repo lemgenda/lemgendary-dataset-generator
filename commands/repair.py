@@ -5,14 +5,17 @@ change and exits 0. With ``--apply`` each repaired file is verified and then
 replaces its original atomically; no copy of the original is kept (see
 :mod:`services.repair_service`, :mod:`services.label_repair_service` for
 ``repair labels`` and :mod:`services.txt_label_service` for
-``repair txt-labels``). ``repair manifold`` also verifies the labels inside
-the shards and exits 1 while any is a text label or an invalid JSON label.
+``repair txt-labels``, :mod:`services.source_label_service` for ``repair
+masks``). ``repair manifold`` also verifies the labels inside the shards and
+exits 1 while any is a text label or an invalid JSON label.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import os
 import tarfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -28,6 +31,7 @@ from commands.options import (
     require_target,
 )
 from core.paths import DEFAULT_OUTPUT_FOLDER, from_root
+from core.source_labels import MaskScheme
 from core.source_manifolds import label_strategy_for_folder
 from services.label_repair_service import (
     LabelRepairPlan,
@@ -38,10 +42,12 @@ from services.label_repair_service import (
 from services.loose_pack_service import LoosePackError, LoosePackPlan, LoosePackService
 from services.repair_service import ManifoldRepairPlan, RepairService
 from services.sample_policy_service import SamplePolicyService
+from services.source_label_service import SourceLabelPlan, SourceLabelService
 from services.txt_label_service import TxtLabelPlan, TxtLabelService
 from tools.repair.label_restore import LabelRestoreError
 from tools.repair.sample_policy_fix import SamplePolicyError, SamplePolicyPlan
 from tools.repair.shard_fix import ShardFixError
+from tools.repair.source_label_fix import ShardLabelResult, SourceLabelError
 from tools.repair.txt_label_fix import TxtLabelError
 from utils.label_json import LABEL_JSON_BUILDERS
 
@@ -82,9 +88,12 @@ _CLASSES_FILE = "classes.txt"
 _POLICY_ERRORS = (OSError, tarfile.TarError, SamplePolicyError, ValueError, yaml.YAMLError)
 _TXT_ERRORS = (OSError, tarfile.TarError, TxtLabelError)
 _PACK_ERRORS = (OSError, tarfile.TarError, LoosePackError, ValueError, yaml.YAMLError)
+_SOURCE_LABEL_ERRORS = (OSError, tarfile.TarError, SourceLabelError, ValueError,
+                        yaml.YAMLError)
+_PROGRESS_EVERY = 10
 
 RepairPlan = (ManifoldRepairPlan | LabelRepairPlan | SamplePolicyPlan | TxtLabelPlan
-              | LoosePackPlan)
+              | LoosePackPlan | SourceLabelPlan)
 
 
 def _print(plan: RepairPlan) -> None:
@@ -255,8 +264,8 @@ def _policy_service(manifold_dir: Path) -> SamplePolicyService:
 @repair_app.command("sample-policy")
 def repair_sample_policy(model: ModelOpt = None, manifold: ManifoldOpt = None,
                          apply: ApplyOpt = False) -> None:
-    """Apply the registry's sample policy: drop copies, auxiliary images and no-face
-    samples, and re-split so val holds landmark-bearing photos."""
+    """Apply the registry's sample policy: drop copies, auxiliary images and the kinds
+    the policy drops (no-face samples), and re-split by source file id."""
     manifold_dir = require_target(TargetOptions(model=model, manifold=manifold))
     service = _policy_service(manifold_dir)
     try:
@@ -275,3 +284,60 @@ def repair_sample_policy(model: ModelOpt = None, manifold: ManifoldOpt = None,
     if not apply:
         console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
     raise typer.Exit(code=0)
+
+
+WorkersOpt = Annotated[
+    int, typer.Option("--workers", help="Worker processes (default: CPU count minus 2)")
+]
+
+
+def _default_workers() -> int:
+    return max(1, (os.cpu_count() or 1) - 2)
+
+
+def _progress(total: list[int]) -> Callable[[ShardLabelResult], None]:
+    def _report(result: ShardLabelResult) -> None:
+        total[0] += 1
+        if total[0] % _PROGRESS_EVERY == 0:
+            console.print(f"  ... {total[0]} shards ({result.shard.name})", markup=False,
+                          highlight=False)
+    return _report
+
+
+def _source_labels(target: TargetOptions, root: Path, scheme_type: type, workers: int,
+                   apply: bool) -> None:
+    """Plan (and with ``apply`` write) the registry's per-file source labels of one manifold."""
+    manifold_dir = require_target(target)
+    if not root.is_dir():
+        console.print(f"[red]Label folder not found: {root}[/red]")
+        raise typer.Exit(code=1)
+    try:
+        service = SourceLabelService.for_manifold(manifold_dir, root, scheme_type,
+                                                  workers or _default_workers())
+        service.on_shard = _progress([0])
+        plan = service.plan(manifold_dir)
+        _print(plan)
+        if apply and plan.changed and not plan.problems:
+            remaining = service.apply(plan)
+            console.print("  applied", markup=False, highlight=False)
+            _print(remaining)
+            if remaining.changed or remaining.problems:
+                raise typer.Exit(code=1)
+    except _SOURCE_LABEL_ERRORS as exc:
+        console.print(f"[red]Source label repair of {manifold_dir.name} failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if not apply:
+        console.print("[cyan]Dry run: nothing was changed. Re-run with --apply.[/cyan]")
+    raise typer.Exit(code=1 if plan.problems else 0)
+
+
+@repair_app.command("masks")
+def repair_masks(
+    masks_root: Annotated[Path, typer.Option(
+        "--masks-root", help="Folder holding each source's mask folder (key_layouts files_dir)")],
+    model: ModelOpt = None, manifold: ManifoldOpt = None, workers: WorkersOpt = 0,
+    apply: ApplyOpt = False,
+) -> None:
+    """Write each photo's source class mask as <key>.mask.webp (lossless) plus its JSON label."""
+    _source_labels(TargetOptions(model=model, manifold=manifold), masks_root, MaskScheme,
+                   workers, apply)

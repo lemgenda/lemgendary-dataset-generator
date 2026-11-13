@@ -4,10 +4,11 @@ The plan reads every shard's JSON sidecars once and decides, per sample key:
 
 1. drop the key when the registry's key layout marks it a duplicate sample
    copy or an auxiliary image (a face-parsing map scanned as an image);
-2. drop it when its label holds no face;
+2. drop it when the policy drops its kind (a face policy: no face);
 3. otherwise give it its split: a seeded share (``val_split``) of the
-   landmark-bearing photos of each source goes to val (drawn by source file
-   id), every other photo goes to train.
+   photos of each source whose kind may go to val (a face policy: those
+   with landmarks) goes to val, drawn by source file id; every other photo
+   goes to train.
 
 A key stored twice keeps one copy (one already in its split, if any).
 
@@ -32,7 +33,6 @@ import os
 import re
 import tarfile
 from collections import Counter
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -42,12 +42,9 @@ import yaml
 from core.config_schema import DatasetEntry
 from core.docs.generators.dataset_info_yaml import write_dataset_info
 from core.sample_policy import (
-    FACE_LANDMARKS,
-    FACE_NONE,
     ROLE_PHOTO,
     KeyLayout,
     SamplePolicy,
-    face_kind,
     key_role,
     parse_key_layouts,
     sample_policy,
@@ -58,7 +55,7 @@ from tools.repair.label_restore import read_sidecars
 from tools.repair.metadata_fix import INDEX_FILE, INFO_FILE, replace_file
 from tools.repair.shard_fix import REPAIR_TMP_SUFFIX
 from utils.container_stream import SHARD_SAMPLES
-from utils.shard_audit import audit_shard, find_shards, split_member_name
+from utils.shard_audit import audit_shard, find_shards, members_by_key
 
 __all__ = [
     "PlanCounts",
@@ -118,6 +115,7 @@ class _Seen:
 class PlanCounts:
     """Sample counts before and after, drops by reason, and the metadata updates."""
 
+    kinds: set[str] = field(default_factory=set)
     before: Counter[str] = field(default_factory=Counter)
     reasons: Counter[str] = field(default_factory=Counter)
     after: Counter[str] = field(default_factory=Counter)
@@ -148,6 +146,9 @@ class SamplePolicyPlan:
         """Samples that move into ``target``."""
         return sum(1 for acts in self.actions.values() for a in acts.values() if a == target)
 
+    def _kinds(self, counter: Counter[str], prefix: str = "") -> str:
+        return ", ".join(f"{kind} {counter[prefix + kind]}" for kind in sorted(self.counts.kinds))
+
     def report(self) -> list[str]:
         """Human-readable lines describing the plan."""
         b, a = self.counts.before, self.counts.after
@@ -155,18 +156,16 @@ class SamplePolicyPlan:
             (f"[{self.manifold_dir.name}] sample policy {self.rule.policy.name}"
              f" (val_split {self.rule.val_split})"),
             (f"  now: {b['samples']} samples (train {b['train']}, val {b['val']});"
-             f" with landmarks {b['landmarks']} (val {b['val_landmarks']}),"
-             f" box only {b['box_only']}, no face {b['no_face']}"),
+             f" {self._kinds(b)}; val {self._kinds(b, 'val_')}"),
         ]
         lines.extend(f"  drop {reason}: {n}" for reason, n in sorted(self.counts.reasons.items()))
         lines.append(f"  move train -> val {self.moves(VAL)}, val -> train {self.moves(TRAIN)}")
         lines.append(
             f"  after: {a['samples']} samples (train {a['train']}, val {a['val']});"
-            f" val with landmarks {a['val_landmarks']}, train with landmarks"
-            f" {a['train_landmarks']}, train box only {a['train_box_only']}"
+            f" train {self._kinds(a, 'train_')}; val {self._kinds(a, 'val_')}"
         )
         for source, (val, total) in sorted(self.counts.val_by_source.items()):
-            lines.append(f"  val {source}: {val} of {total} landmark photos")
+            lines.append(f"  val {source}: {val} of {total} val candidates")
         if self.counts.index_changes:
             lines.append(f"  {INDEX_FILE}: {self.counts.index_changes} entries removed or re-split")
         if self.counts.info_count is not None:
@@ -188,13 +187,13 @@ def _scan(manifold_dir: Path, plan: SamplePolicyPlan) -> dict[str, list[_Seen]]:
     for shard in find_shards(shards_dir):
         split = _split_of(shards_dir, shard)
         for key, meta in read_sidecars(shard).items():
-            kind = face_kind(meta)
+            kind = plan.rule.policy.kind_of(meta)
             seen.setdefault(key, []).append(_Seen(shard, split, kind))
+            plan.counts.kinds.add(kind)
             plan.counts.before["samples"] += 1
             plan.counts.before[split] += 1
             plan.counts.before[kind] += 1
-            if split == VAL and kind == FACE_LANDMARKS:
-                plan.counts.before["val_landmarks"] += 1
+            plan.counts.before[f"{split}_{kind}"] += 1
     return seen
 
 
@@ -202,8 +201,8 @@ def _drop_reason(key: str, kind: str, rule: SampleRule) -> str | None:
     role = key_role(key, rule.layouts).role
     if role != ROLE_PHOTO:
         return role
-    if rule.policy.drop_without_objects and kind == FACE_NONE:
-        return FACE_NONE
+    if kind in rule.policy.drop_kinds:
+        return kind
     return None
 
 
@@ -230,7 +229,8 @@ def _desired(seen: dict[str, list[_Seen]], plan: SamplePolicyPlan) -> dict[str, 
             plan.counts.reasons[reason] += 1
             continue
         desired[key] = TRAIN
-        if kind == FACE_LANDMARKS or not plan.rule.policy.val_needs_landmarks:
+        val_kinds = plan.rule.policy.val_kinds
+        if val_kinds is None or kind in val_kinds:
             role = key_role(key, plan.rule.layouts)
             candidates.setdefault(role.source, []).append((key, role.file_id))
     for key in _val_keys(candidates, plan):
@@ -321,22 +321,6 @@ def plan_sample_policy(manifold_dir: Path, rule: SampleRule) -> SamplePolicyPlan
 
 
 # ─── Apply ──────────────────────────────────────────────────────────────────
-def _members_by_key(tf: tarfile.TarFile) -> Iterator[tuple[str, list[tarfile.TarInfo]]]:
-    """Each sample's members in shard order (groups are contiguous in a sound shard)."""
-    key, group = "", []
-    for member in tf:
-        if not member.isfile():
-            continue
-        member_key = split_member_name(member.name)[0]
-        if group and member_key != key:
-            yield key, group
-            group = []
-        key = member_key
-        group.append(member)
-    if group:
-        yield key, group
-
-
 def _verify(path: Path, keys: list[str], label: str) -> None:
     audit = audit_shard(path)
     if audit.error or audit.needs_rewrite or audit.keys != keys:
@@ -372,7 +356,7 @@ def _write_new_shard(final: Path, items: list[tuple[Path, str]]) -> None:
         with tarfile.open(tmp, "w") as dst:
             for shard, keys in wanted.items():
                 with tarfile.open(shard, "r:") as src:
-                    for key, members in _members_by_key(src):
+                    for key, members in members_by_key(src):
                         if key in keys:
                             for member in members:
                                 dst.addfile(member, src.extractfile(member))
@@ -404,7 +388,7 @@ def _rewrite_source(shard: Path, acts: dict[str, str]) -> None:
     kept: list[str] = []
     try:
         with tarfile.open(shard, "r:") as src, tarfile.open(tmp, "w") as dst:
-            for key, members in _members_by_key(src):
+            for key, members in members_by_key(src):
                 if key in acts:
                     continue
                 for member in members:

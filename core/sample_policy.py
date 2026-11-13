@@ -1,8 +1,11 @@
 """Per-manifold sample policies, chosen by the registry entry (SSOT).
 
 A registry entry gets a policy from its label strategy (``label_json``) or
-its task; :func:`sample_policy` is the one lookup. The face detection policy
-(``label_json: face_landmarks``, or task ``detection-face``):
+its task; :func:`sample_policy` is the one lookup. A policy sorts each
+sample into a kind from its JSON sidecar (``kind_of``), drops the kinds in
+``drop_kinds`` and draws val from the kinds in ``val_kinds`` (None: every
+kept kind). The face detection policy (``label_json: face_landmarks``, or
+task ``detection-face``):
 
 - a sample whose label holds no face (no label, empty label,
   ``objects: []``) is dropped: a detector learns nothing from an aligned
@@ -12,6 +15,10 @@ its task; :func:`sample_policy` is the one lookup. The face detection policy
   source and keyed by the source file id, so val measures the landmarks
   too and a file never sits in both splits; samples with a box but no
   landmarks stay in train.
+
+The face parsing policy (``label_json: segmentation_mask``) drops nothing by
+kind (``repair masks`` gives every photo its mask) and draws val from all
+photos by source file id, so a file never sits in both splits.
 
 Key layouts (``key_layouts`` in the registry) describe manifolds compiled
 before the source scan skipped auxiliary folders: per source, the sample
@@ -24,7 +31,7 @@ dropped; a photo's file id is ``idx - copies``.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,6 +42,9 @@ __all__ = [
     "FACE_DETECTION",
     "FACE_LANDMARKS",
     "FACE_NONE",
+    "FACE_PARSING",
+    "MASK_NONE",
+    "MASK_PRESENT",
     "ROLE_AUXILIARY",
     "ROLE_COPY",
     "ROLE_PHOTO",
@@ -43,6 +53,7 @@ __all__ = [
     "SamplePolicy",
     "face_kind",
     "key_role",
+    "mask_kind",
     "parse_key_layouts",
     "sample_policy",
     "split_rank",
@@ -51,34 +62,14 @@ __all__ = [
 FACE_NONE = "no_face"
 FACE_BOX_ONLY = "box_only"
 FACE_LANDMARKS = "landmarks"
+MASK_NONE = "no_mask"
+MASK_PRESENT = "mask"
 
 ROLE_PHOTO = "photo"
 ROLE_COPY = "sample_copy"
 ROLE_AUXILIARY = "auxiliary_image"
 
 _LANDMARK_VALUES = 10
-
-
-@dataclass(frozen=True)
-class SamplePolicy:
-    """What a manifold keeps and how it splits."""
-
-    name: str
-    drop_without_objects: bool
-    val_needs_landmarks: bool
-    seed: int = 42
-
-
-FACE_DETECTION = SamplePolicy("face_detection", drop_without_objects=True,
-                              val_needs_landmarks=True)
-
-_BY_LABEL_JSON: dict[str, SamplePolicy] = {"face_landmarks": FACE_DETECTION}
-_BY_TASK: dict[str, SamplePolicy] = {"detection-face": FACE_DETECTION}
-
-
-def sample_policy(label_json: str | None, task: str | None = None) -> SamplePolicy | None:
-    """The policy of a manifold with this label strategy or task; None when it has none."""
-    return _BY_LABEL_JSON.get(label_json or "") or _BY_TASK.get(task or "")
 
 
 def _has_landmarks(obj: Any) -> bool:
@@ -97,13 +88,55 @@ def face_kind(meta: Mapping[str, Any] | None) -> str:
     return FACE_LANDMARKS if any(_has_landmarks(o) for o in objects) else FACE_BOX_ONLY
 
 
+def mask_kind(meta: Mapping[str, Any] | None) -> str:
+    """``mask`` when the sidecar records a class mask (``num_classes``), else ``no_mask``."""
+    classes = meta.get("num_classes") if meta is not None else None
+    present = isinstance(classes, int) and not isinstance(classes, bool) and classes > 0
+    return MASK_PRESENT if present else MASK_NONE
+
+
+@dataclass(frozen=True)
+class SamplePolicy:
+    """What a manifold keeps and how it splits.
+
+    ``kind_of`` sorts a sample by its JSON sidecar; samples of ``drop_kinds``
+    are dropped; val is drawn from ``val_kinds`` (None: every kept kind).
+    """
+
+    name: str
+    kind_of: Callable[[Mapping[str, Any] | None], str]
+    drop_kinds: frozenset[str]
+    val_kinds: frozenset[str] | None
+    seed: int = 42
+
+
+FACE_DETECTION = SamplePolicy("face_detection", face_kind,
+                              drop_kinds=frozenset({FACE_NONE}),
+                              val_kinds=frozenset({FACE_LANDMARKS}))
+FACE_PARSING = SamplePolicy("face_parsing", mask_kind, drop_kinds=frozenset(), val_kinds=None)
+
+_BY_LABEL_JSON: dict[str, SamplePolicy] = {"face_landmarks": FACE_DETECTION,
+                                           "segmentation_mask": FACE_PARSING}
+_BY_TASK: dict[str, SamplePolicy] = {"detection-face": FACE_DETECTION}
+
+
+def sample_policy(label_json: str | None, task: str | None = None) -> SamplePolicy | None:
+    """The policy of a manifold with this label strategy or task; None when it has none."""
+    return _BY_LABEL_JSON.get(label_json or "") or _BY_TASK.get(task or "")
+
+
 @dataclass(frozen=True)
 class KeyLayout:
-    """Key index layout of one source: ``copies`` duplicates, then ``photos`` images."""
+    """Key index layout of one source: ``copies`` duplicates, then ``photos`` images.
+
+    ``files_dir`` names the source's folder under a local root of its
+    per-file labels (``repair masks`` / ``repair face-landmarks``).
+    """
 
     source: str
     copies: int
     photos: int
+    files_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -119,7 +152,8 @@ def parse_key_layouts(raw: Iterable[Mapping[str, Any]] | None) -> dict[str, KeyL
     """Registry ``key_layouts`` by lower-case source."""
     layouts: dict[str, KeyLayout] = {}
     for item in raw or ():
-        layout = KeyLayout(str(item["source"]), int(item["copies"]), int(item["photos"]))
+        layout = KeyLayout(str(item["source"]), int(item["copies"]), int(item["photos"]),
+                           str(item.get("files_dir") or ""))
         layouts[layout.source.lower()] = layout
     return layouts
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import tarfile
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ __all__ = [
     "expected_counts",
     "find_shards",
     "is_empty_defect",
+    "members_by_key",
     "shard_set_problems",
     "split_member_name",
     "verify_shard_set",
@@ -51,6 +53,22 @@ def split_member_name(name: str) -> tuple[str, str]:
     stem, dot, rest = base.partition(".")
     key = f"{head}/{stem}" if head else stem
     return key, f"{dot}{rest}"
+
+
+def members_by_key(tf: tarfile.TarFile) -> Iterator[tuple[str, list[tarfile.TarInfo]]]:
+    """Each sample's file members in shard order (groups are contiguous in a sound shard)."""
+    key, group = "", []
+    for member in tf:
+        if not member.isfile():
+            continue
+        member_key = split_member_name(member.name)[0]
+        if group and member_key != key:
+            yield key, group
+            group = []
+        key = member_key
+        group.append(member)
+    if group:
+        yield key, group
 
 
 def _is_target(suffix: str) -> bool:

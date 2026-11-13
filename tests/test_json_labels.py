@@ -65,7 +65,8 @@ class LabelDocumentTests(unittest.TestCase):
             "class_label": "4",
             "caption": "a red house",
         }
-        self.assertEqual(set(cases), set(LABEL_STRATEGIES))
+        # A segmentation mask has no text label (tests/test_source_masks.py).
+        self.assertEqual(set(cases) | {"segmentation_mask"}, set(LABEL_STRATEGIES))
         for strategy, text in cases.items():
             with self.subTest(strategy=strategy):
                 doc = label_document(strategy, text)

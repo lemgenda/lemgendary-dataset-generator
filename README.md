@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.99-STABLE` |
+| **Version** | `v16.9.100-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -41,6 +41,10 @@ the strategy is the registry entry's `label_json`, else its task's
 - `yolo_polygons` (segmentation): `object_count`, `objects[]` with
   `category_id`, `polygon_normalized`.
 - `nima` (quality): `nima_scores` with `distribution` (10) and `mean_score`.
+- `segmentation_mask` (face parsing, ParseNet): the class mask is the
+  `<key>.mask.webp` member (lossless, one class id per pixel); the JSON
+  records `num_classes`, `class_names` and `mask_source`. A mask has no text
+  label.
 - `class_label` (classification): `class_id` (a number) or `class_name`.
 - `caption` (diffusion): `caption`.
 
@@ -53,6 +57,44 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.100 - `repair masks`: ParseNet Gets Its SFHQ Class Masks (R4-B1)
+
+- ParseNet was compiled from the image files of SFHQ parts 1-4 only: no
+  sample had a mask, half the samples were the face-parsing maps of
+  `segmentations/` scanned as images and 3,030 were sample-folder copies.
+  The registry entry now has the RetinaFace treatment: `scan_exclude_dirs`
+  (`segmentations`, `landmarks`, the sample folders), `key_layouts` (copies,
+  then photos, then seg maps per part) and `label_json: segmentation_mask`.
+- New registry fields: `source_labels` (`scheme`, `source`: the per-file
+  labels a source ships next to its images) and `key_layouts[].files_dir`
+  (the source's folder under a local label root). Schemes live in
+  `core/source_labels.py`; `celebamask_hq_19` is the 19-class
+  CelebAMask-HQ / BiSeNet scheme of the SFHQ masks.
+- `repair masks --masks-root <dir>` (dry run unless `--apply`;
+  `tools/repair/source_label_fix.py`, `tools/repair/mask_labeler.py`,
+  `services/source_label_service.py`): each photo key maps to its source file
+  id through the key layout, the id is the rank of the file name among the
+  part's mask files (the compile scanned the image folder in sorted name
+  order; the zip listings show the same names in images/, segmentations/
+  and landmarks/). The PNG must be a single-channel class-id map of the
+  photo's size with values 0..18; it is stored as `<key>.mask.webp` with the
+  shard writers' lossless encoder and decoded again, and the class ids must
+  match exactly. The JSON label gets `num_classes`, `class_names` and
+  `mask_source: sfhq-bisenet`. Shards are rewritten in worker processes
+  (`--workers`), each verified and swapped in atomically (no copies); any
+  problem (missing or invalid mask, a source without layout) refuses the
+  apply. dataset_info.yaml records `label_json` and `classes`, and
+  classes.txt the 19 class names (the classes.txt generator reads the
+  registry's mask scheme too).
+- Sample policies are generic: a policy sorts samples into kinds
+  (`kind_of`), drops `drop_kinds` and draws val from `val_kinds`. The new
+  face parsing policy (`label_json: segmentation_mask`) drops copies and seg
+  maps by key and splits all photos by SFHQ file id (`val_split`), so no file
+  is in both splits; `repair sample-policy` applies it.
+- `members_by_key` moved to `utils/shard_audit.py` (shared by the shard
+  rewriters).
+- Tests: `tests/test_source_masks.py`.
 
 ### v16.9.99 - `repair pack-loose`: YOLOv8n Moves to WebDataset (R4-J1)
 

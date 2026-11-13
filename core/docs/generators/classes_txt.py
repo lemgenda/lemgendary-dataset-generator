@@ -12,10 +12,24 @@ from pathlib import Path
 
 from core.docs.context import ManifoldContext, resolve_manifold_context
 from core.docs.generators.common import manifold_parser, run_manifold_cli
+from core.source_labels import SOURCE_LABEL_SCHEMES, MaskScheme
+from core.source_manifolds import registry_entry_for_folder
+
+
+def _mask_class_names(manifold_name: str) -> list[str] | None:
+    """The class names of the registry entry's mask scheme (``source_labels``), if any."""
+    entry = registry_entry_for_folder(manifold_name) or {}
+    spec = entry.get("source_labels") or {}
+    scheme = SOURCE_LABEL_SCHEMES.get(str(spec.get("scheme", "")))
+    return list(scheme.class_names) if isinstance(scheme, MaskScheme) else None
 
 
 def resolve_classes_list(manifold_name: str, task: str) -> list[str]:
     """Resolve the accurate list of target classes for a specific manifold and task."""
+    mask_classes = _mask_class_names(manifold_name)
+    if mask_classes:
+        return mask_classes
+
     name_lower = manifold_name.lower()
 
     if task == "forex" or "forex" in name_lower:

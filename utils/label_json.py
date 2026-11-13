@@ -20,7 +20,9 @@ strategy (all coordinates normalised to 0..1, boxes as ``cx cy w h``):
   corner) is present only when the line carries ten coordinates that are not
   all zero: the Kaggle RetinaFace source writes ten zeros for a face whose
   landmarks were not detected, and the training suite masks absent
-  landmarks out (``data/sample_labels.face_target_from_json``).
+  landmarks out (``data/sample_labels.face_target_from_json``). A label
+  rebuilt from source landmarks (``repair face-landmarks``) also records
+  ``landmark_source`` (for example ``sfhq-110pt``).
 
 ``yolo_boxes`` (detection, pose and the auto-labelled restoration tasks)::
 
@@ -37,6 +39,15 @@ strategy (all coordinates normalised to 0..1, boxes as ``cx cy w h``):
 
     {"object_count": 1,
      "objects": [{"category_id": 1, "polygon_normalized": [x0, y0, x1, y1, ...]}]}
+
+``segmentation_mask`` (face parsing, ParseNet): the class mask is the
+``<key>.mask.webp`` member (lossless, one class id per pixel); the JSON
+records its scheme::
+
+    {"num_classes": 19, "class_names": ["background", "skin", ...],
+     "mask_source": "sfhq-bisenet"}
+
+  A mask has no text label: a non-empty text label is rejected.
 
 ``nima`` (quality)::
 
@@ -164,6 +175,12 @@ def _yolo_polygons_json(text: str) -> dict[str, Any]:
     return {"object_count": len(objects), "objects": objects}
 
 
+def _segmentation_mask_json(text: str) -> dict[str, Any] | None:
+    if not text.strip():
+        return None
+    raise ValueError("a segmentation mask has no text label (the mask is <key>.mask.webp)")
+
+
 def _nima_json(text: str) -> dict[str, Any] | None:
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
@@ -264,6 +281,26 @@ def _scalar_problems(doc: Mapping[str, Any]) -> list[str]:
     caption = doc.get("caption")
     if caption is not None and not isinstance(caption, str):
         problems.append("caption is not a string")
+    for source_key in ("mask_source", "landmark_source"):
+        value = doc.get(source_key)
+        if value is not None and not (isinstance(value, str) and value.strip()):
+            problems.append(f"{source_key} is not a non-empty string")
+    return problems + _mask_problems(doc)
+
+
+def _mask_problems(doc: Mapping[str, Any]) -> list[str]:
+    problems = []
+    count = doc.get("num_classes")
+    if count is not None and (not isinstance(count, int) or isinstance(count, bool)
+                              or count < 1):
+        problems.append("num_classes is not a positive integer")
+    names = doc.get("class_names")
+    if names is not None:
+        if not (isinstance(names, list) and names
+                and all(isinstance(n, str) and n.strip() for n in names)):
+            problems.append("class_names is not a list of non-empty strings")
+        elif isinstance(count, int) and len(names) != count:
+            problems.append(f"class_names has {len(names)} names, num_classes is {count}")
     return problems
 
 
@@ -298,6 +335,8 @@ LABEL_STRATEGIES: dict[str, LabelStrategy] = {
                       empty={"face_count": 0, "objects": []}),
         LabelStrategy("yolo_boxes", _yolo_boxes_json, ("object_count", "objects")),
         LabelStrategy("yolo_polygons", _yolo_polygons_json, ("object_count", "objects")),
+        LabelStrategy("segmentation_mask", _segmentation_mask_json,
+                      ("num_classes", "class_names")),
         LabelStrategy("nima", _nima_json, ("nima_scores",)),
         LabelStrategy("class_label", _class_label_json, ("class_id", "class_name"),
                       any_of=True),

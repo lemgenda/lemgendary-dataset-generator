@@ -36,6 +36,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core import paths
+from core.source_labels import SOURCE_LABEL_SCHEMES
 from core.task_taxonomy import taxonomy
 from utils.label_json import LABEL_JSON_BUILDERS
 
@@ -63,6 +64,25 @@ class KeyLayoutSpec(BaseModel):
     source: str
     copies: int = Field(ge=0)
     photos: int = Field(gt=0)
+    # The source's folder under a local root of per-file labels (repair masks).
+    files_dir: str | None = None
+
+
+class SourceLabelSpec(BaseModel):
+    """Per-file source labels of a manifold (core.source_labels scheme + recorded tag)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scheme: str
+    source: str = Field(min_length=1)
+
+    @field_validator("scheme")
+    @classmethod
+    def _known_scheme(cls, value: str) -> str:
+        if value not in SOURCE_LABEL_SCHEMES:
+            raise ValueError(f"source_labels scheme '{value}' is not one of"
+                             f" {sorted(SOURCE_LABEL_SCHEMES)}")
+        return value
 
 
 # ─── Registry-level ─────────────────────────────────────────────────────────
@@ -227,6 +247,8 @@ class DatasetEntry(BaseModel):
     # existed (sample copies, then photos, then auxiliary images); the sample
     # policy repair drops the copies and auxiliary images by key.
     key_layouts: list[KeyLayoutSpec] = Field(default_factory=list)
+    # Per-file labels the source ships next to its images (masks, landmarks).
+    source_labels: SourceLabelSpec | None = None
 
     # Policies (Phase 3 / Phase 4 consumers — optional; defaults apply)
     image_format: ImageFormatPolicy = Field(default_factory=ImageFormatPolicy)
