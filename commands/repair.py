@@ -6,8 +6,9 @@ replaces its original atomically; no copy of the original is kept (see
 :mod:`services.repair_service`, :mod:`services.label_repair_service` for
 ``repair labels`` and :mod:`services.txt_label_service` for
 ``repair txt-labels``, :mod:`services.source_label_service` for ``repair
-masks``). ``repair manifold`` also verifies the labels inside the shards and
-exits 1 while any is a text label or an invalid JSON label.
+masks`` and ``repair face-landmarks``). ``repair manifold`` also verifies the
+labels inside the shards and exits 1 while any is a text label or an invalid
+JSON label.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from commands.options import (
     require_target,
 )
 from core.paths import DEFAULT_OUTPUT_FOLDER, from_root
-from core.source_labels import MaskScheme
+from core.source_labels import LandmarkScheme, MaskScheme
 from core.source_manifolds import label_strategy_for_folder
 from services.label_repair_service import (
     LabelRepairPlan,
@@ -341,3 +342,16 @@ def repair_masks(
     """Write each photo's source class mask as <key>.mask.webp (lossless) plus its JSON label."""
     _source_labels(TargetOptions(model=model, manifold=manifold), masks_root, MaskScheme,
                    workers, apply)
+
+
+@repair_app.command("face-landmarks")
+def repair_face_landmarks(
+    landmarks_root: Annotated[Path, typer.Option(
+        "--landmarks-root",
+        help="Folder holding each source's landmark folder (key_layouts files_dir)")],
+    model: ModelOpt = None, manifold: ManifoldOpt = None, workers: WorkersOpt = 0,
+    apply: ApplyOpt = False,
+) -> None:
+    """Rebuild each photo's face box and 5 landmarks from its source landmark file."""
+    _source_labels(TargetOptions(model=model, manifold=manifold), landmarks_root,
+                   LandmarkScheme, workers, apply)

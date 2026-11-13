@@ -359,6 +359,9 @@ datasets:
     source_manifolds:
       - kaggle://lemtreursi/lemgendizedretinafacemobilenetlarge
     label_json: face_landmarks
+    source_labels:
+      scheme: sfhq_110
+      source: sfhq-110pt
     val_split: 0.12
     labeling: true
     scan_exclude_dirs:
@@ -370,15 +373,19 @@ datasets:
       - source: synthetic-faces-high-quality-sfhq-part-1
         copies: 580
         photos: 89785
+        files_dir: part1
       - source: synthetic-faces-high-quality-sfhq-part-2
         copies: 790
         photos: 91361
+        files_dir: part2
       - source: synthetic-faces-high-quality-sfhq-part-3
         copies: 880
         photos: 118358
+        files_dir: part3
       - source: synthetic-faces-high-quality-sfhq-part-4
         copies: 780
         photos: 125754
+        files_dir: part4
     refs:
       - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-1
       - ref: kaggle://selfishgene/synthetic-faces-high-quality-sfhq-part-2

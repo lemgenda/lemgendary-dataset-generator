@@ -14,8 +14,10 @@ shard, :func:`label_shard` reads every sample once and either only reports
 new members after the image, the JSON last), verifies it and swaps it in
 with ``os.replace``; no copy of the original is kept. A shard with a
 problem (no layout for a source, a missing or invalid label file) is never
-written. A sample whose label is already in place is unchanged, so a re-run
-finds nothing to do.
+written. A labeler may drop a photo whose label file holds no usable label
+(``DROPPED``, for example a failed landmark fit): it is left out of the
+rewritten shard and listed in ``dropped``. A sample whose label is already
+in place is unchanged, so a re-run finds nothing to do.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from utils.sample_group import add_tar_member
 from utils.shard_audit import audit_shard, members_by_key, split_member_name
 
 __all__ = [
+    "DROPPED",
     "LABELLED",
     "UNCHANGED",
     "SampleInput",
@@ -51,12 +54,12 @@ __all__ = [
 
 LABELLED = "labelled"
 UNCHANGED = "unchanged"
+DROPPED = "dropped"
 NO_LAYOUT = "no key layout"
 MISSING_FILE = "missing label file"
 NO_IMAGE = "no image member"
 _JSON = ".json"
 _IMAGE_SUFFIXES = (".webp", ".jpg", ".jpeg", ".png")
-_KEPT_PROBLEMS = 20
 
 
 class SourceLabelError(RuntimeError):
@@ -123,8 +126,8 @@ class SampleInput:
 class SampleUpdate:
     """What a labeler makes of one sample.
 
-    ``status`` is :data:`LABELLED`, :data:`UNCHANGED` or a problem name
-    (``problem`` then says why). ``members`` maps a member suffix to its new
+    ``status`` is :data:`LABELLED`, :data:`UNCHANGED`, :data:`DROPPED` or a
+    problem name (``problem`` then says why). ``members`` maps a member suffix to its new
     payload; ``meta`` is the new JSON label; ``metrics`` are numbers the
     plan summarises (for example how far a new box moved).
     """
@@ -161,21 +164,24 @@ class ShardLabelResult:
     samples: int = 0
     statuses: Counter[str] = field(default_factory=Counter)
     problems: dict[str, str] = field(default_factory=dict)
-    problem_count: int = 0
     metrics: dict[str, list[float]] = field(default_factory=dict)
+    dropped: dict[str, str] = field(default_factory=dict)
     written: bool = False
 
     @property
     def changed(self) -> bool:
-        """True when the shard has samples to label."""
-        return self.statuses[LABELLED] > 0
+        """True when the shard has samples to label or drop."""
+        return self.statuses[LABELLED] > 0 or bool(self.dropped)
+
+    @property
+    def problem_count(self) -> int:
+        """Samples with a problem."""
+        return len(self.problems)
 
     def add_problem(self, key: str, status: str, reason: str) -> None:
-        """Count a problem; keep the first few for the report."""
+        """Record a problem sample and why."""
         self.statuses[status] += 1
-        self.problem_count += 1
-        if len(self.problems) < _KEPT_PROBLEMS:
-            self.problems[key] = f"{status}: {reason}" if reason else status
+        self.problems[key] = f"{status}: {reason}" if reason else status
 
 
 def _read(tf: tarfile.TarFile, member: tarfile.TarInfo) -> bytes:
@@ -203,9 +209,9 @@ class _Context:
     write: bool
 
 
-def _update(ctx: _Context, key: str, payloads: dict[str, bytes],
-            result: ShardLabelResult) -> SampleUpdate | None:
-    """The sample's update; None for copies, auxiliary images and problems."""
+def _sample_input(ctx: _Context, key: str, payloads: dict[str, bytes],
+                  result: ShardLabelResult) -> SampleInput | None:
+    """The labeler's input for a photo; None for copies, auxiliary images and problems."""
     role = key_role(key, ctx.layouts)
     if role.role != ROLE_PHOTO:
         result.statuses[role.role] += 1
@@ -222,10 +228,22 @@ def _update(ctx: _Context, key: str, payloads: dict[str, bytes],
         result.add_problem(key, NO_IMAGE, "")
         return None
     image = payloads[image_suffix]
-    sample = SampleInput(key=key, size=_image_size(image), image=image,
-                         meta=_meta(payloads.get(_JSON)), suffixes=frozenset(payloads),
-                         label_file=label_file, encode=ctx.write)
+    return SampleInput(key=key, size=_image_size(image), image=image,
+                       meta=_meta(payloads.get(_JSON)), suffixes=frozenset(payloads),
+                       label_file=label_file, encode=ctx.write)
+
+
+def _update(ctx: _Context, key: str, payloads: dict[str, bytes],
+            result: ShardLabelResult) -> SampleUpdate | None:
+    """The sample's update; None when it is not labelled, dropped or changed."""
+    sample = _sample_input(ctx, key, payloads, result)
+    if sample is None:
+        return None
     update = ctx.labeler.label(sample)
+    if update.status == DROPPED:
+        result.statuses[DROPPED] += 1
+        result.dropped[key] = update.problem
+        return update
     if update.status not in (LABELLED, UNCHANGED):
         result.add_problem(key, update.status, update.problem)
         return None
@@ -238,6 +256,8 @@ def _update(ctx: _Context, key: str, payloads: dict[str, bytes],
 def _write_group(dst: tarfile.TarFile, src: tarfile.TarFile, key: str,
                  members: list[tarfile.TarInfo], update: SampleUpdate | None) -> int:
     """Write one sample (updated when ``update`` is given); return its member count."""
+    if update is not None and update.status == DROPPED:
+        return 0
     if update is None:
         for member in members:
             dst.addfile(member, src.extractfile(member))
@@ -272,11 +292,12 @@ def _scan(ctx: _Context, shard: Path, result: ShardLabelResult,
     labelled: dict[str, set[str]] = {}
     with tarfile.open(shard, "r:") as src:
         for key, members in members_by_key(src):
-            keys.append(key)
             result.samples += 1
             payloads = {split_member_name(m.name)[1]: _read(src, m) for m in members}
             update = _update(ctx, key, payloads, result)
-            if update is not None:
+            if update is None or update.status != DROPPED:
+                keys.append(key)
+            if update is not None and update.status == LABELLED:
                 labelled[key] = set(update.members) | {_JSON}
             if dst is not None:
                 written += _write_group(dst, src, key, members, update)
@@ -307,6 +328,11 @@ def label_shard(shard: Path, labeler: SampleLabeler, layouts: Mapping[str, KeyLa
     except (OSError, tarfile.TarError, SourceLabelError):
         tmp.unlink(missing_ok=True)
         raise
+    if not keys:
+        tmp.unlink()
+        shard.unlink()
+        result.written = True
+        return result
     os.replace(tmp, shard)
     result.written = True
     return result

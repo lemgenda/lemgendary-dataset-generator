@@ -8,10 +8,11 @@ over every shard (in worker processes when ``workers`` > 1).
 - ``plan`` only reads; it is what ``repair masks`` and ``repair
   face-landmarks`` print in their default dry run.
 - ``apply`` refuses before any write while the plan has a problem; otherwise
-  each shard the plan found to change is rewritten, verified and swapped in atomically,
-  dataset_info.yaml records ``label_json`` and the labeler's fields (mask
-  ``classes``, also written to classes.txt), and a fresh plan is returned
-  (normally nothing left to do).
+  each shard the plan found to change is rewritten, verified and swapped in
+  atomically; samples a labeler dropped leave index.json and the
+  dataset_info.yaml ``count``; dataset_info.yaml records ``label_json`` and
+  the labeler's fields (mask ``classes``, also written to classes.txt); and
+  a fresh plan is returned (normally nothing left to do).
 
 New schemes plug in through :data:`LABELER_FACTORIES` (scheme type to
 labeler), so the engine and this service stay closed for modification.
@@ -19,6 +20,7 @@ labeler), so the engine and this service stay closed for modification.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from collections.abc import Callable, Mapping
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -31,10 +33,11 @@ import yaml
 
 from core.docs.generators.dataset_info_yaml import write_dataset_info
 from core.sample_policy import KeyLayout, parse_key_layouts
-from core.source_labels import SOURCE_LABEL_SCHEMES, MaskScheme
+from core.source_labels import SOURCE_LABEL_SCHEMES, LandmarkScheme, MaskScheme
 from core.source_manifolds import registry_entry_for_folder
+from tools.repair.landmark_labeler import LandmarkLabeler
 from tools.repair.mask_labeler import MaskLabeler
-from tools.repair.metadata_fix import INFO_FILE, replace_file
+from tools.repair.metadata_fix import INDEX_FILE, INFO_FILE, replace_file
 from tools.repair.source_label_fix import (
     LABELLED,
     UNCHANGED,
@@ -49,7 +52,8 @@ from utils.shard_audit import find_shards
 __all__ = ["LABELER_FACTORIES", "SourceLabelPlan", "SourceLabelService"]
 
 LabelerFactory = Callable[[Any, str], SampleLabeler]
-LABELER_FACTORIES: dict[type, LabelerFactory] = {MaskScheme: MaskLabeler}
+LABELER_FACTORIES: dict[type, LabelerFactory] = {MaskScheme: MaskLabeler,
+                                                 LandmarkScheme: LandmarkLabeler}
 
 _SHOWN = 5
 _CLASSES_FILE = "classes.txt"
@@ -104,6 +108,9 @@ class SourceLabelPlan:
             p5, p50, p95 = np.percentile(arr, _PERCENTILES)
             lines.append(f"  {name}: n {arr.size}, mean {arr.mean():.4f}, p5 {p5:.4f},"
                          f" median {p50:.4f}, p95 {p95:.4f}")
+        dropped = [f"{k}: {v}" for r in self.results for k, v in r.dropped.items()]
+        if dropped:
+            lines.append(f"  drop {len(dropped)} samples ({' | '.join(dropped[:_SHOWN])})")
         if self.problems:
             examples = [f"{k}: {v}" for r in self.results for k, v in r.problems.items()]
             lines.append(f"  PROBLEMS: {self.problems} samples ({' | '.join(examples[:_SHOWN])});"
@@ -189,11 +196,31 @@ class SourceLabelService:
         if self.on_shard is not None:
             self.on_shard(result)
 
-    def _record_metadata(self, manifold_dir: Path) -> None:
-        """dataset_info.yaml ``label_json`` and the labeler's fields; classes.txt for classes."""
+    @staticmethod
+    def _drop_index_entries(manifold_dir: Path, dropped: set[str]) -> None:
+        """Remove the dropped samples from index.json."""
+        index_path = manifold_dir / INDEX_FILE
+        if not dropped or not index_path.is_file():
+            return
+        entries = json.loads(index_path.read_text(encoding="utf-8"))
+        kept = [e for e in entries
+                if not (isinstance(e, dict) and str(e.get("name", "")) in dropped)]
+
+        def _write(tmp: Path) -> None:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(kept, f, indent=2)
+
+        replace_file(index_path, _write)
+
+    def _record_metadata(self, manifold_dir: Path, dropped: set[str], samples: int) -> None:
+        """index.json without dropped samples; dataset_info.yaml ``label_json``, the
+        labeler's fields and ``count`` (after drops); classes.txt for classes."""
+        self._drop_index_entries(manifold_dir, dropped)
         fields = dict(self.labeler.info_fields())
         if self.label_json:
             fields["label_json"] = self.label_json
+        if dropped:
+            fields["count"] = samples
         info_path = manifold_dir / INFO_FILE
         if info_path.is_file():
             loaded = yaml.safe_load(info_path.read_text(encoding="utf-8"))
@@ -230,8 +257,10 @@ class SourceLabelService:
         if written.problems:
             raise SourceLabelError(f"{written.problems} samples have no usable label file;"
                                    " their shards were not rewritten")
-        self._record_metadata(plan.manifold_dir)
         fresh = self.plan(plan.manifold_dir)
+        dropped = {k.rpartition("/")[2] for r in written.results for k in r.dropped}
+        self._record_metadata(plan.manifold_dir, dropped,
+                              sum(r.samples for r in fresh.results))
         fresh.notes.append(f"rewritten {sum(1 for r in written.results if r.written)} shards,"
                            f" labelled {written.statuses()[LABELLED]} samples")
         return fresh

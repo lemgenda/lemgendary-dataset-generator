@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.100-STABLE` |
+| **Version** | `v16.9.101-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -34,7 +34,8 @@ the strategy is the registry entry's `label_json`, else its task's
 
 - `face_landmarks` (detection-face, RetinaFace): `face_count`, `objects[]`
   with `category_id`, `bbox_cxcywh_normalized` and, when the face has real
-  landmarks, `landmarks_normalized` (10 values).
+  landmarks, `landmarks_normalized` (10 values). Labels rebuilt from source
+  landmarks (`repair face-landmarks`) also record `landmark_source`.
 - `yolo_boxes` (detection, pose, restoration, super-resolution,
   parameter_prediction): `object_count`, `objects[]` with `category_id`,
   `bbox_cxcywh_normalized` and, for pose lines, `keypoints`.
@@ -57,6 +58,41 @@ fails on any `.txt` member and on any JSON label that breaks its schema;
 ---
 
 ## Changelog
+
+### v16.9.101 - `repair face-landmarks`: RetinaFace Boxes and Points From SFHQ (R4-B3)
+
+- RetinaFace labels came from a face detector run on the aligned SFHQ crops:
+  whole-head boxes (median 0.86 x 0.97 of the image) and landmarks on a
+  near-fixed template. They are now rebuilt from the SFHQ `landmarks/`
+  files (110 points; scheme `sfhq_110` in `core/source_labels.py`, registry
+  `source_labels: {scheme: sfhq_110, source: sfhq-110pt}` and
+  `key_layouts[].files_dir`).
+- Points 0-67 of the SFHQ layout follow the iBUG 300-W 68-point order (the
+  card documents 110 points incl. hairlines without an index table; the
+  order was checked on the data). `core/face_geometry.py` derives the five
+  RetinaFace points in the WIDER FACE / ArcFace order, image-left first:
+  left eye centre (mean of 36-41), right eye centre (42-47), nose tip (30),
+  left and right mouth corner (48, 54). The box follows WIDER FACE (tight
+  face, no hair): x and bottom from the extent of points 0-67 (cheek to
+  cheek, chin), top raised above the highest brow point by 0.2 of the
+  brow-to-chin height (mid forehead, below the SFHQ hairline points),
+  clipped to the image.
+- `repair face-landmarks --landmarks-root <dir>` (dry run unless `--apply`;
+  `tools/repair/landmark_labeler.py` on the `repair masks` engine) replaces
+  each photo's `objects` with that one face (`face_count` 1) and records
+  `landmark_source: sfhq-110pt`; other JSON keys and the train/val split
+  stay. The detector boxes are not kept (other convention, template
+  landmarks). Plausibility (eye order, eyes above nose above the mouth
+  centre, every point in the box) is checked per sample; a sample that fails
+  (a failed landmark fit) is dropped from its shard, index.json and the
+  dataset_info.yaml `count` (engine status `DROPPED`); a missing or
+  malformed landmark file refuses the apply. The plan reports
+  `box_area_ratio`, `box_iou` and `landmark_nme` (mean point distance over
+  the inter-ocular distance) against the detector labels.
+- Schemes are split into `MASK_SCHEMES` and `LANDMARK_SCHEMES` (`FivePoints`,
+  `BoxRule`); the service picks the labeler by scheme type
+  (`LABELER_FACTORIES`).
+- Tests: `tests/test_source_landmarks.py`.
 
 ### v16.9.100 - `repair masks`: ParseNet Gets Its SFHQ Class Masks (R4-B1)
 
