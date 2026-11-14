@@ -47,7 +47,7 @@ def extract_kaggle_description(readme_content: str) -> str:
     return readme_content.strip()
 
 
-_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
+_IMAGE_SUFFIXES = (".webp", ".jpg", ".jpeg", ".png")
 
 _IMAGES_DESCRIPTION = "Partitioned visual imagery assets and target frames formatted for training."
 _DIR_DESCRIPTIONS = {

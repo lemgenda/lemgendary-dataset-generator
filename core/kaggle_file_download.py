@@ -247,10 +247,14 @@ def download_dataset_files(handle: str, target_dir: Path, clients: FileDownloadC
             return item.name, str(exc)
         return item.name, None
 
+    total_files = len(pending) + result.skipped
     with ThreadPoolExecutor(max_workers=max(1, clients.workers)) as pool:
         for name, error in pool.map(_one, sorted(pending, key=lambda j: -j[0].size)):
             if error is None:
                 result.downloaded += 1
             else:
                 result.failed[name] = error
+            done = result.downloaded + result.skipped
+            pct = (done / total_files * 100.0) if total_files else 100.0
+            print(f"DOWNLOADING: {handle} [{done}/{total_files} files] ({pct:.1f}%)", flush=True)
     return result

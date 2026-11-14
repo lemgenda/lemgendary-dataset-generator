@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.110"
+    "version": "16.9.111"
   },
   "paths": {
     "/api/health": {
@@ -1960,6 +1960,17 @@
               }
             ],
             "title": "Kaggle Ref"
+          },
+          "recommended_preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Preset"
           }
         },
         "type": "object",
@@ -2413,6 +2424,11 @@
           "active_workers": {
             "type": "integer",
             "title": "Active Workers"
+          },
+          "recommended_workers": {
+            "type": "integer",
+            "title": "Recommended Workers",
+            "default": 4
           }
         },
         "type": "object",
@@ -3186,6 +3202,54 @@
             ],
             "title": "Shard Ext",
             "description": "WebDataset shard file extension without dot"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date",
+            "description": "Forex/time-series start date (YYYY-MM-DD)"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date",
+            "description": "Forex/time-series end date (YYYY-MM-DD)"
+          },
+          "target_samples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Samples",
+            "description": "Target sample count for LLM synthesis"
+          },
+          "label_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Strategy",
+            "description": "Detection/pose label strategy"
           }
         },
         "type": "object",

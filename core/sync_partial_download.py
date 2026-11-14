@@ -75,7 +75,10 @@ def _files(handle: str, target_dir: Path, prefixes: tuple[str, ...]) -> bool:
 
 def download_file_by_file(handle: str, target_dir: Path, prefixes: tuple[str, ...] = ()) -> bool:
     """Download every file (or those under ``prefixes``) into ``target_dir``; True when all are."""
-    print(f"[GET] Kaggle has no whole-dataset archive for {handle}; downloading file by file.")
+    print(
+        f"[GET] Kaggle whole-dataset archive is unavailable or awaiting compression "
+        f"for {handle}; downloading file by file."
+    )
     try:
         return _files(handle, target_dir, prefixes)
     except _ERRORS as exc:

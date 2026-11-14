@@ -14,6 +14,7 @@ import io
 from PIL import Image
 
 from utils.container_stream import transcode_to_webp
+from utils.image import is_blank_image
 
 __all__ = [
     "CorruptImageError",
@@ -50,6 +51,9 @@ def encode_image_payload(
 ) -> tuple[bytes, str]:
     """Validate ``raw`` and return ``(payload, extension)``, WebP-transcoded on request."""
     validate_image_bytes(raw, name)
+    with Image.open(io.BytesIO(raw)) as img:
+        if min(img.size) >= 64 and is_blank_image(img):
+            raise CorruptImageError(f"{name}: blank or solid-color image")
     if not transcode_webp:
         return raw, ext.lower()
     return transcode_to_webp(raw, ext, quality=quality)

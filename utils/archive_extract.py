@@ -134,10 +134,30 @@ def _run_hidden(cmd: list[str]) -> int:
 
 def _try_7z(seven_z: str, source_archive: Path, dest_path: Path) -> bool:
     print(f"[EXTRACT] High-throughput native extraction via 7-Zip: {source_archive.name}")
-    cmd = [seven_z, "x", str(source_archive), f"-o{dest_path}", "-aos", "-bsp0", "-mmt=on", "-y"]
+    cmd = [seven_z, "x", str(source_archive), f"-o{dest_path}", "-aos", "-bsp1", "-mmt=on", "-y"]
     try:
-        returncode = _run_hidden(cmd)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        last_pct = -1
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                for token in line.split():
+                    if token.endswith("%") and token[:-1].isdigit():
+                        pct = int(token[:-1])
+                        if pct != last_pct:
+                            last_pct = pct
+                            print(f"EXTRACTING: {source_archive.name} ({pct}%)", flush=True)
+        returncode = proc.wait()
         if returncode == 0:
+            if last_pct < 100:
+                print(f"EXTRACTING: {source_archive.name} (100%)", flush=True)
             return True
         print(f"[WARN] 7-Zip exited with return code {returncode}. Attempting fallback...")
     except (OSError, subprocess.SubprocessError) as exc:

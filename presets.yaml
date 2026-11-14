@@ -72,3 +72,37 @@ presets:
     hardlink_gate: true
     containers:
       - "parquet"
+
+  forex-timeseries:
+    name: "forex-timeseries"
+    title: "Forex & Commodities Time-Series (MT5 -> Parquet)"
+    description: "Multi-timeframe OHLCV time-series ingestion from MetaTrader 5 with technical indicator
+      synthesis and Zstd-compressed Parquet export."
+    image_format: "webp"
+    image_quality: 92
+    target_quality: 92
+    mask_format: "webp-lossless"
+    min_resolution: 256
+    resampling: "lanczos"
+    vetting_enabled: false
+    labeling_enabled: false
+    hardlink_gate: false
+    containers:
+      - "parquet"
+
+  llm-instruction:
+    name: "llm-instruction"
+    title: "Causal LLM Instruction Synthesis (Docs -> JSONL)"
+    description: "Generates high-fidelity instruction-tuning JSONL corpora from workspace documentation,
+      architecture specs, and canonical registries."
+    image_format: "webp"
+    image_quality: 92
+    target_quality: 92
+    mask_format: "webp-lossless"
+    min_resolution: 256
+    resampling: "lanczos"
+    vetting_enabled: false
+    labeling_enabled: false
+    hardlink_gate: false
+    containers:
+      - "jsonl"

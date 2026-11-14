@@ -51,8 +51,14 @@ def quick_compile_command(req: QuickCompileRequest) -> ServiceInvocation:
     compiler's own default applies.
     """
     return compile_invocation({
-        "model": req.model, "preset": req.preset, "max_gb": req.max_gb,
-        "workers": req.workers, "shard_ext": req.shard_ext,
+        "model": req.model,
+        "preset": req.preset,
+        "max_gb": req.max_gb,
+        "workers": req.workers,
+        "shard_ext": req.shard_ext,
+        "start_date": req.start_date,
+        "end_date": req.end_date,
+        "label_strategy": req.label_strategy,
     })
 
 

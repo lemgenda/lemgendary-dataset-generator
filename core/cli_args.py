@@ -29,7 +29,7 @@ from generators import LabelGenerator, MaskGenerator, PromptGenerator
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.110"
+__version__ = "16.9.111"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────
@@ -162,6 +162,20 @@ def build_parser() -> argparse.ArgumentParser:
             "WebDataset shard file extension without dot "
             "(default: 'data', obfuscated for Kaggle backend ingestion)"
         ),
+    )
+    parser.add_argument(
+        "--start-date",
+        dest="start_date",
+        type=str,
+        default=None,
+        help="Optional start date (YYYY-MM-DD) for Forex/time-series compilation",
+    )
+    parser.add_argument(
+        "--end-date",
+        dest="end_date",
+        type=str,
+        default=None,
+        help="Optional end date (YYYY-MM-DD) for Forex/time-series compilation",
     )
     parser.add_argument(
         "--force-duplicate",

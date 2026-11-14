@@ -33,3 +33,17 @@ def is_black_image(img: Image.Image, threshold: float = 0.1) -> bool:
     stat = np.array(grayscale)
     black_ratio = float(np.sum(stat < 10) / stat.size)
     return black_ratio > (1.0 - threshold)
+
+
+def is_blank_image(img: Image.Image, min_std: float = 1.5) -> bool:
+    """Detect blank, solid-color, or near-black frames.
+
+    Returns True when the image is near-black or has grayscale standard
+    deviation below ``min_std`` (uniform/constant-color frames).
+    """
+    if is_black_image(img):
+        return True
+    img_thumb = img.resize((64, 64), Image.Resampling.NEAREST) if img.size[0] > 64 else img
+    grayscale = img_thumb.convert("L")
+    stat = np.array(grayscale, dtype=np.float32)
+    return float(np.std(stat)) < min_std

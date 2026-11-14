@@ -28,6 +28,7 @@ from api.models import (
     DatasetStatsListResponse,
 )
 from core import paths
+from core.presets import recommended_preset_for_dataset
 
 __all__ = [
     "DatasetFileStats",
@@ -288,6 +289,7 @@ def _build_detail(
         hardlink_ratio=stats.hardlink_ratio,
         sources=sources,
         kaggle_ref=reg_info.get("kaggle_ref"),
+        recommended_preset=recommended_preset_for_dataset(meta.task, meta.canonical_format),
     )
 
 

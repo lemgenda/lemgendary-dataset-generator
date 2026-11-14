@@ -48,6 +48,8 @@ class CompileOptions(TypedDict, total=False):
     prompt_strategy: str | None
     mask_strategy: str | None
     shard_ext: str | None
+    start_date: str | None
+    end_date: str | None
     cleanup: bool
 
 
@@ -67,6 +69,9 @@ COMPILE_FLAGS: FlagTable = (
     Flag("mask_format", "--mask-format", "text"),
     Flag("also_format", "--also-format", "text"),
     Flag("shard_ext", "--shard-ext", "text"),
+    Flag("start_date", "--start-date", "text"),
+    Flag("end_date", "--end-date", "text"),
+    Flag("label_strategy", "--label-strategy", "text"),
     Flag("force_duplicate", "--force-duplicate", "switch"),
     Flag("accept_space_loss", "--accept-space-loss", "switch"),
     Flag("label_strategy", "--label-strategy", "text"),

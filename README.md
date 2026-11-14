@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.110-STABLE` |
+| **Version** | `v16.9.111-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,19 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.111 - Smart Presets, 100% WebP Purity & Blank Image Rejection
+
+- Added `forex-timeseries` (Parquet) and `llm-instruction` (JSONL) presets to
+  `presets.yaml` and `recommended_preset_for_dataset()` in `core/presets.py`.
+- Added `recommended_workers` (70% of CPU cores) to `HardwareInfo` and
+  `recommended_preset` to `DatasetDetailStats`.
+- Added `--start-date`, `--end-date`, and `--label-strategy` CLI/API compile
+  options.
+- Enforced `is_blank_image` rejection in `utils/image_payload.py` and `.webp`
+  cover banners in `core/docs/generators/cover_image.py`.
+- Added file-by-file Kaggle download progress (`DOWNLOADING:`) and 7-Zip
+  extraction progress (`EXTRACTING:`).
 
 ### v16.9.110 - Kaggle Upload Sends 8 MiB Chunks
 

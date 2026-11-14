@@ -150,7 +150,7 @@ def _create_fallback_banner(
     )
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(target_path, "JPEG", quality=95)
+    img.save(target_path, "WEBP", quality=95)
     return target_path
 
 
@@ -170,13 +170,15 @@ def generate_cover_image(
     ctx = ensure_context(context_or_path)
 
     target_dir = ctx.manifold_path
-    image_name = ctx.inventory.cover_image_name or f"{ctx.manifold_name}.jpg"
+    image_name = ctx.inventory.cover_image_name or f"{ctx.manifold_name}.webp"
+    if image_name.lower().endswith((".jpg", ".jpeg", ".png")):
+        image_name = f"{Path(image_name).stem}.webp"
     image_path = target_dir / image_name
 
-    # Check for any existing jpg/png if specific name doesn't exist
+    # Check for any existing webp/jpg/png if specific name doesn't exist
     if not image_path.exists():
         for cand in target_dir.iterdir():
-            if cand.is_file() and cand.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+            if cand.is_file() and cand.suffix.lower() in [".webp", ".jpg", ".jpeg", ".png"]:
                 image_path = cand
                 image_name = cand.name
                 break

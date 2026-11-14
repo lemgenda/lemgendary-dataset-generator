@@ -174,3 +174,18 @@ def validate_preset(preset_data: dict[str, Any]) -> bool:
     except ValidationError as exc:
         _log.debug("Preset dictionary failed validation: %s", exc)
         return False
+
+
+def recommended_preset_for_dataset(task: str, canonical_format: str | None = None) -> str:
+    """Return the canonical recommended preset key for a dataset task/format."""
+    t = (task or "").strip().lower()
+    fmt = (canonical_format or "").strip().lower()
+    if t == "forex" or fmt == "parquet":
+        return "forex-timeseries"
+    if t in ("ai_helper", "llm", "nlp") or fmt == "jsonl":
+        return "llm-instruction"
+    if t in ("detection", "pose"):
+        return "detection-variable"
+    if t in ("restoration", "super-resolution", "segmentation"):
+        return "restoration-hardlinked"
+    return "quality-vision"

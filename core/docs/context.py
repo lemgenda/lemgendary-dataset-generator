@@ -37,7 +37,7 @@ __all__ = [
     "resolve_manifold_context",
 ]
 
-_COVER_SUFFIXES = [".jpg", ".jpeg", ".png"]
+_COVER_SUFFIXES = [".webp", ".jpg", ".jpeg", ".png"]
 
 _DEFAULT_KEYWORDS = [
     "computer-vision", "deep-learning", "image", "benchmark", "artificial-intelligence"
@@ -135,7 +135,7 @@ def _scan_inventory(output_root: Path, manifold_name: str) -> Inventory:
 
     if inventory.cover_image_name is None:
         expected_img_stem = manifold_name.replace("LemGendized", "").replace("Large", "")
-        inventory.cover_image_name = f"{expected_img_stem or manifold_name}.jpg"
+        inventory.cover_image_name = f"{expected_img_stem or manifold_name}.webp"
         inventory.cover_image_path = output_root / inventory.cover_image_name
     return inventory
 

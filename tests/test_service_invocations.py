@@ -39,6 +39,8 @@ _COMPILE_VALUES: dict[str, Any] = {
     "mask_format": "png",
     "also_format": "mds",
     "shard_ext": "tar",
+    "start_date": "2019-01-01",
+    "end_date": "2026-11-14",
     "force_duplicate": True,
     "accept_space_loss": True,
     "label_strategy": LabelGenerator.strategies()[0],

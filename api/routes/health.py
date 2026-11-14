@@ -33,6 +33,7 @@ def get_hardware_info() -> HardwareInfo:
         cuda_available=cuda_avail,
         device_name=device_name,
         active_workers=job_manager.count_active_jobs(),
+        recommended_workers=max(1, round(cpu_count * 0.7)),
     )
 
 
