@@ -223,6 +223,14 @@ class FileDownloadClients:
     workers: int = _WORKERS
 
 
+def _log_file_progress(handle: str, result: FileDownloadResult, pending_count: int) -> None:
+    """Emit a per-file progress line for GUI/CLI progress bars."""
+    total_files = pending_count + result.skipped
+    done = result.downloaded + result.skipped
+    pct = (done / total_files * 100.0) if total_files else 100.0
+    print(f"DOWNLOADING: {handle} [{done}/{total_files} files] ({pct:.1f}%)", flush=True)
+
+
 def download_dataset_files(handle: str, target_dir: Path, clients: FileDownloadClients,
                            prefixes: tuple[str, ...] = ()) -> FileDownloadResult:
     """Download the dataset's files (or those under ``prefixes``) into ``target_dir``."""
@@ -247,14 +255,11 @@ def download_dataset_files(handle: str, target_dir: Path, clients: FileDownloadC
             return item.name, str(exc)
         return item.name, None
 
-    total_files = len(pending) + result.skipped
     with ThreadPoolExecutor(max_workers=max(1, clients.workers)) as pool:
         for name, error in pool.map(_one, sorted(pending, key=lambda j: -j[0].size)):
             if error is None:
                 result.downloaded += 1
             else:
                 result.failed[name] = error
-            done = result.downloaded + result.skipped
-            pct = (done / total_files * 100.0) if total_files else 100.0
-            print(f"DOWNLOADING: {handle} [{done}/{total_files} files] ({pct:.1f}%)", flush=True)
+            _log_file_progress(handle, result, len(pending))
     return result

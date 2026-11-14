@@ -132,29 +132,32 @@ def _run_hidden(cmd: list[str]) -> int:
     return subprocess.run(cmd, creationflags=cflags, check=False).returncode
 
 
+def _stream_7z_progress(stdout: Any, archive_name: str) -> int:
+    """Parse `-bsp1` 7-Zip stdout percentage tokens and emit progress lines."""
+    last_pct = -1
+    if stdout is None:
+        return last_pct
+    for line in stdout:
+        for token in line.split():
+            if token.endswith("%") and token[:-1].isdigit():
+                pct = int(token[:-1])
+                if pct != last_pct:
+                    last_pct = pct
+                    print(f"EXTRACTING: {archive_name} ({pct}%)", flush=True)
+    return last_pct
+
+
 def _try_7z(seven_z: str, source_archive: Path, dest_path: Path) -> bool:
     print(f"[EXTRACT] High-throughput native extraction via 7-Zip: {source_archive.name}")
     cmd = [seven_z, "x", str(source_archive), f"-o{dest_path}", "-aos", "-bsp1", "-mmt=on", "-y"]
+    cflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        last_pct = -1
-        if proc.stdout is not None:
-            for line in proc.stdout:
-                for token in line.split():
-                    if token.endswith("%") and token[:-1].isdigit():
-                        pct = int(token[:-1])
-                        if pct != last_pct:
-                            last_pct = pct
-                            print(f"EXTRACTING: {source_archive.name} ({pct}%)", flush=True)
-        returncode = proc.wait()
+        with subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", creationflags=cflags,
+        ) as proc:
+            last_pct = _stream_7z_progress(proc.stdout, source_archive.name)
+            returncode = proc.wait()
         if returncode == 0:
             if last_pct < 100:
                 print(f"EXTRACTING: {source_archive.name} (100%)", flush=True)
@@ -180,10 +183,10 @@ def _try_tar(native_tar: str, source_archive: Path, dest_path: Path) -> bool:
 def _native_extract(source_archive: Path, dest_path: Path, is_tar: bool) -> bool:
     """Try 7-Zip, then native tar (tar archives only); flatten and return True on success."""
     seven_z = _find_7z()
-    done = bool(seven_z) and _try_7z(str(seven_z), source_archive, dest_path)
+    done = bool(seven_z) and _try_7z(seven_z, source_archive, dest_path)
     if not done:
         native_tar = _find_tar()
-        done = is_tar and bool(native_tar) and _try_tar(str(native_tar), source_archive, dest_path)
+        done = is_tar and bool(native_tar) and _try_tar(native_tar, source_archive, dest_path)
     if done:
         _flatten_common_root(dest_path)
     return done

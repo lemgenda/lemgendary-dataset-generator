@@ -89,11 +89,12 @@ present file and fails on a stale one.
 - Added `recommended_workers` (70% of CPU cores) to `HardwareInfo` and
   `recommended_preset` to `DatasetDetailStats`.
 - Added `--start-date`, `--end-date`, and `--label-strategy` CLI/API compile
-  options.
+  options (`api/models.py`, `api/gui_compile.py`).
 - Enforced `is_blank_image` rejection in `utils/image_payload.py` and `.webp`
   cover banners in `core/docs/generators/cover_image.py`.
-- Added file-by-file Kaggle download progress (`DOWNLOADING:`) and 7-Zip
-  extraction progress (`EXTRACTING:`).
+- Added file-by-file Kaggle download progress (`DOWNLOADING:` in
+  `core/kaggle_file_download.py`) and 7-Zip extraction progress (`EXTRACTING:`
+  in `utils/archive_extract.py`).
 
 ### v16.9.110 - Kaggle Upload Sends 8 MiB Chunks
 

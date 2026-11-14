@@ -272,10 +272,18 @@ class QuickCompileRequest(BaseModel):
     shard_ext: str | None = Field(
         default=None, description="WebDataset shard file extension without dot"
     )
-    start_date: str | None = Field(default=None, description="Forex/time-series start date (YYYY-MM-DD)")
-    end_date: str | None = Field(default=None, description="Forex/time-series end date (YYYY-MM-DD)")
-    target_samples: int | None = Field(default=None, description="Target sample count for LLM synthesis")
-    label_strategy: str | None = Field(default=None, description="Detection/pose label strategy")
+    start_date: str | None = Field(
+        default=None, description="Forex/time-series start date (YYYY-MM-DD)"
+    )
+    end_date: str | None = Field(
+        default=None, description="Forex/time-series end date (YYYY-MM-DD)"
+    )
+    target_samples: int | None = Field(
+        default=None, description="Target sample count for LLM synthesis"
+    )
+    label_strategy: str | None = Field(
+        default=None, description="Detection/pose label strategy"
+    )
 
 
 class GuiStateResponse(BaseModel):
