@@ -31,6 +31,8 @@
 - Integrated curation telemetry into `base_compiler.py` and
   `metadata_compiler.py` (`rejected_records.jsonl`, `build_manifest.json`,
   `quality_report.json`).
+- Fixed `RuntimeWarning` on non-positive close ratios and resolved Pyrefly/lint
+  diagnostics in `forex/qa.py`.
 
 ---
 

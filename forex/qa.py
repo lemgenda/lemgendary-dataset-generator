@@ -71,16 +71,19 @@ def flag_anomalous_bars(
     log_ret = np.zeros_like(c)
     if len(c) > 1:
         valid = (c[:-1] > 0) & (c[1:] > 0)
-        log_ret[1:] = np.where(valid, np.log(c[1:] / np.maximum(c[:-1], 1e-12)), 0.0)
+        ratio = np.where(valid, c[1:] / np.maximum(c[:-1], 1e-12), 1.0)
+        log_ret[1:] = np.log(ratio)
     med = float(np.median(log_ret))
     mad = float(np.median(np.abs(log_ret - med)))
     if mad > 1e-12:
-        z = np.abs(log_ret - med) / (1.4826 * mad)
-        spike = z > mad_z_thresh
+        spike = (np.abs(log_ret - med) / (1.4826 * mad)) > mad_z_thresh
     else:
         spike = np.zeros_like(c, dtype=bool)
 
-    return pd.Series(bad_price | bad_hl | spike, index=df.index, name="is_anomalous")
+    out = pd.Series(bad_price | bad_hl | spike)
+    out.index = df.index
+    out.name = "is_anomalous"
+    return out
 
 
 def classify_volatility_regime(
@@ -98,7 +101,10 @@ def classify_volatility_regime(
         "low_vol",
         np.where(vol >= q67, "high_vol", "normal_vol"),
     )
-    return pd.Series(regimes, index=close.index, name="vol_regime")
+    out = pd.Series(regimes)
+    out.index = close.index
+    out.name = "vol_regime"
+    return out
 
 
 def audit_horizon_leakage(
@@ -108,7 +114,7 @@ def audit_horizon_leakage(
     test_idx: np.ndarray,
 ) -> LeakageAuditReport:
     """Verify no training label interval overlaps with any test interval."""
-    monotonic_ok = bool(pred_times.is_monotonic_increasing)
+    monotonic_ok = pred_times.is_monotonic_increasing
     if len(train_idx) == 0 or len(test_idx) == 0:
         return LeakageAuditReport(
             ok=monotonic_ok,
