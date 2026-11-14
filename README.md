@@ -3499,6 +3499,15 @@ raw-sets/                                          # Source datasets (Cleanup Gu
 
 ---
 
+### 2026-11-14 — Forex Time-Series QA & Purged Splits
+
+- Added `forex/qa.py` (`resample_ohlcv_utc`, `flag_anomalous_bars`,
+  `classify_volatility_regime`, `purged_walk_forward_splits`,
+  `audit_horizon_leakage`, `build_split_audit_summary`).
+- Added `tests/test_forex_qa.py` covering deterministic UTC resampling,
+  anomalous bar flagging, causal volatility regimes, and zero-leakage
+  purged walk-forward splits.
+
 ### 2026-11-14 — WebDataset Manifold Curation & QA
 
 - Added `core/visual_qa.py` (`check_image_integrity`, `check_mask_integrity`,
