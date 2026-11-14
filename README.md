@@ -3499,6 +3499,19 @@ raw-sets/                                          # Source datasets (Cleanup Gu
 
 ---
 
+### 2026-11-14 — WebDataset Manifold Curation & QA
+
+- Added `core/visual_qa.py` (`check_image_integrity`, `check_mask_integrity`,
+  `compute_class_weights`, `validate_label_records`).
+- Added `degrade/schedule.py` (`DegradationSchedule` with SHA-256 per-sample
+  seeding and `uniform`/`linear`/`cosine` severity schedules).
+- Updated `formats/webdataset.py` (`WebDatasetWriter`) with dual-bound shard
+  packing (`wds_shard_size_bytes=1_000_000_000`, `wds_max_count=10_000`).
+- Added `tests/test_webdataset_qa.py` covering unit and end-to-end WebDataset
+  QA, degradation determinism, and visual QA report generation.
+
+---
+
 ## Project Ecosystem
 
 | # | Project | Folder |
