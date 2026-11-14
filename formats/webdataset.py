@@ -49,6 +49,7 @@ class WebDatasetWriter(Writer):
         self._sinks: dict[str, Any] = {}
         self._out_dir: Path | None = None
         self._max_size = 1_000_000_000
+        self._max_count = 10_000
         self._shard_ext = "data"
         self._label_json: str | None = None
 
@@ -56,6 +57,7 @@ class WebDatasetWriter(Writer):
         self._out_dir = Path(output_root) / "shards"
         self._out_dir.mkdir(parents=True, exist_ok=True)
         self._max_size = int(getattr(policy, "wds_shard_size_bytes", 1_000_000_000))
+        self._max_count = int(getattr(policy, "wds_max_count", 10_000))
         self._shard_ext = str(getattr(policy, "shard_extension", "data")).removeprefix(".")
         self._label_json = getattr(policy, "label_json", None)
 
@@ -66,7 +68,7 @@ class WebDatasetWriter(Writer):
             split_dir = self._out_dir / split
             split_dir.mkdir(parents=True, exist_ok=True)
             pattern = _wds_pattern(split_dir / f"shard-%05d.{self._shard_ext}")
-            sink = WdsShardWriter(pattern, maxsize=self._max_size)
+            sink = WdsShardWriter(pattern, maxsize=self._max_size, maxcount=self._max_count)
             self._sinks[split] = sink
         return sink
 

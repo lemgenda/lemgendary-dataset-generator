@@ -3506,7 +3506,8 @@ raw-sets/                                          # Source datasets (Cleanup Gu
 - Added `degrade/schedule.py` (`DegradationSchedule` with SHA-256 per-sample
   seeding and `uniform`/`linear`/`cosine` severity schedules).
 - Updated `formats/webdataset.py` (`WebDatasetWriter`) with dual-bound shard
-  packing (`wds_shard_size_bytes=1_000_000_000`, `wds_max_count=10_000`).
+  packing (`wds_shard_size_bytes=1_000_000_000`, `wds_max_count=10_000`) and
+  `maxcount` support.
 - Added `tests/test_webdataset_qa.py` covering unit and end-to-end WebDataset
   QA, degradation determinism, and visual QA report generation.
 
