@@ -1,0 +1,1093 @@
+{
+  "$defs": {
+    "ChunkingConfig": {
+      "additionalProperties": false,
+      "description": "Declarative chunking parameters for knowledge processing.",
+      "properties": {
+        "strategy": {
+          "default": "recursive",
+          "enum": [
+            "recursive",
+            "semantic",
+            "exact"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "chunk_size": {
+          "default": 1200,
+          "title": "Chunk Size",
+          "type": "integer"
+        },
+        "chunk_overlap": {
+          "default": 200,
+          "title": "Chunk Overlap",
+          "type": "integer"
+        }
+      },
+      "title": "ChunkingConfig",
+      "type": "object"
+    },
+    "ClassLabelSpec": {
+      "additionalProperties": false,
+      "description": "Class labels of a classification manifold: a scheme and ordered key rules.",
+      "properties": {
+        "scheme": {
+          "title": "Scheme",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/ClassRuleSpec"
+          },
+          "minItems": 1,
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scheme",
+        "rules"
+      ],
+      "title": "ClassLabelSpec",
+      "type": "object"
+    },
+    "ClassRuleSpec": {
+      "additionalProperties": false,
+      "description": "One class label rule (core.class_labels.ClassRule).",
+      "properties": {
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "below": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Below"
+        },
+        "class_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class Name"
+        },
+        "pseudo_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pseudo Model"
+        },
+        "check_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Check Model"
+        },
+        "min_confidence": {
+          "default": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "require_check_agreement": {
+          "default": false,
+          "title": "Require Check Agreement",
+          "type": "boolean"
+        },
+        "label_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label Source"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "ClassRuleSpec",
+      "type": "object"
+    },
+    "ContainerPolicy": {
+      "additionalProperties": true,
+      "description": "Container format policy (Phase 4 consumer).",
+      "properties": {
+        "primary": {
+          "default": "directory",
+          "enum": [
+            "directory",
+            "mds",
+            "litdata",
+            "webdataset",
+            "parquet",
+            "jsonl"
+          ],
+          "title": "Primary",
+          "type": "string"
+        },
+        "extra": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra",
+          "type": "array"
+        },
+        "preserve_hardlinks": {
+          "default": true,
+          "title": "Preserve Hardlinks",
+          "type": "boolean"
+        }
+      },
+      "title": "ContainerPolicy",
+      "type": "object"
+    },
+    "DatasetEntry": {
+      "additionalProperties": false,
+      "description": "A single manifold definition inside `datasets:`.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kaggle_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kaggle Ref"
+        },
+        "kaggle_dataset_urls": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Kaggle Dataset Urls",
+          "type": "array"
+        },
+        "val_split": {
+          "default": 0.12,
+          "exclusiveMaximum": 1.0,
+          "minimum": 0.0,
+          "title": "Val Split",
+          "type": "number"
+        },
+        "nsfw_ratio": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Nsfw Ratio",
+          "type": "number"
+        },
+        "labeling": {
+          "default": true,
+          "title": "Labeling",
+          "type": "boolean"
+        },
+        "vetting": {
+          "default": true,
+          "title": "Vetting",
+          "type": "boolean"
+        },
+        "task_override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Override"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task"
+        },
+        "task_confirmed": {
+          "default": true,
+          "title": "Task Confirmed",
+          "type": "boolean"
+        },
+        "dataset_type": {
+          "default": "vision",
+          "enum": [
+            "vision",
+            "forex",
+            "diffusion",
+            "vlm",
+            "ai_helper",
+            "nlp",
+            "llm"
+          ],
+          "title": "Dataset Type",
+          "type": "string"
+        },
+        "acquisition_mode": {
+          "default": "kaggle",
+          "enum": [
+            "hf",
+            "kaggle",
+            "gh",
+            "gdrive",
+            "mt5_terminal",
+            "local"
+          ],
+          "title": "Acquisition Mode",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Refs",
+          "type": "array"
+        },
+        "source_manifolds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Manifolds",
+          "type": "array"
+        },
+        "label_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label Json"
+        },
+        "scan_exclude_dirs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scan Exclude Dirs",
+          "type": "array"
+        },
+        "key_layouts": {
+          "items": {
+            "$ref": "#/$defs/KeyLayoutSpec"
+          },
+          "title": "Key Layouts",
+          "type": "array"
+        },
+        "source_labels": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceLabelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "class_labels": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassLabelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_format": {
+          "$ref": "#/$defs/ImageFormatPolicy"
+        },
+        "container": {
+          "$ref": "#/$defs/ContainerPolicy"
+        },
+        "canonical_format": {
+          "anyOf": [
+            {
+              "enum": [
+                "directory",
+                "mds",
+                "litdata",
+                "webdataset",
+                "parquet",
+                "jsonl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Format"
+        },
+        "modernized_folder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modernized Folder"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subtitle"
+        },
+        "keywords": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keywords",
+          "type": "array"
+        },
+        "license": {
+          "default": "CC-BY-NC-4.0",
+          "title": "License",
+          "type": "string"
+        },
+        "expected_update_frequency": {
+          "default": "never",
+          "enum": [
+            "never",
+            "annually",
+            "monthly",
+            "weekly",
+            "daily"
+          ],
+          "title": "Expected Update Frequency",
+          "type": "string"
+        },
+        "is_private": {
+          "default": false,
+          "title": "Is Private",
+          "type": "boolean"
+        },
+        "author": {
+          "default": "Lem Treursic",
+          "title": "Author",
+          "type": "string"
+        },
+        "provenance_sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Provenance Sources",
+          "type": "array"
+        },
+        "pairs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pairs"
+        },
+        "timeframe_rungs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeframe Rungs"
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Date"
+        },
+        "lookback_bars": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookback Bars"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "compression": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compression"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "storage_size_approx": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Size Approx"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "citations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "collection_methodology": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Methodology"
+        },
+        "coverage": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage"
+        },
+        "author_bio": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author Bio"
+        },
+        "train_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Train File"
+        },
+        "val_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Val File"
+        },
+        "test_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test File"
+        },
+        "test_split": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test Split"
+        },
+        "split_strategy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Split Strategy"
+        },
+        "stratify_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stratify By"
+        },
+        "validation_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Validation Requirements",
+          "type": "array"
+        },
+        "llm_pipeline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMPipelineConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "DatasetEntry",
+      "type": "object"
+    },
+    "GlobalConstraints": {
+      "additionalProperties": true,
+      "description": "Global size bounds applied to every non-forex manifold.",
+      "properties": {
+        "min_size_gb": {
+          "default": 6.0,
+          "minimum": 0.0,
+          "title": "Min Size Gb",
+          "type": "number"
+        },
+        "max_size_gb": {
+          "default": 190.0,
+          "exclusiveMinimum": 0.0,
+          "title": "Max Size Gb",
+          "type": "number"
+        }
+      },
+      "title": "GlobalConstraints",
+      "type": "object"
+    },
+    "ImageFormatPolicy": {
+      "additionalProperties": true,
+      "description": "Image transcoding policy (Phase 3 consumer).",
+      "properties": {
+        "format": {
+          "default": "webp",
+          "enum": [
+            "webp",
+            "jpeg",
+            "png",
+            "keep"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "quality": {
+          "default": 92,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Quality",
+          "type": "integer"
+        },
+        "mask_format": {
+          "default": "webp-lossless",
+          "enum": [
+            "webp-lossless",
+            "png"
+          ],
+          "title": "Mask Format",
+          "type": "string"
+        },
+        "target_quality": {
+          "default": 95,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Target Quality",
+          "type": "integer"
+        }
+      },
+      "title": "ImageFormatPolicy",
+      "type": "object"
+    },
+    "KeyLayoutSpec": {
+      "additionalProperties": false,
+      "description": "Key index layout of one source in an older compile (core.sample_policy.KeyLayout).",
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "copies": {
+          "minimum": 0,
+          "title": "Copies",
+          "type": "integer"
+        },
+        "photos": {
+          "exclusiveMinimum": 0,
+          "title": "Photos",
+          "type": "integer"
+        },
+        "files_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Files Dir"
+        }
+      },
+      "required": [
+        "source",
+        "copies",
+        "photos"
+      ],
+      "title": "KeyLayoutSpec",
+      "type": "object"
+    },
+    "KnowledgeSourceConfig": {
+      "additionalProperties": false,
+      "description": "Declarative specification of an offline or online knowledge source.",
+      "properties": {
+        "type": {
+          "enum": [
+            "markdown_dir",
+            "markdown_file",
+            "yaml_file",
+            "json_file",
+            "text_file",
+            "csv_file",
+            "remote_url"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "glob": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Glob"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "url_prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url Prefix"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tag"
+        },
+        "cache_ttl_hours": {
+          "default": 168,
+          "title": "Cache Ttl Hours",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "KnowledgeSourceConfig",
+      "type": "object"
+    },
+    "LLMPipelineConfig": {
+      "additionalProperties": false,
+      "description": "Declarative configuration for LLM dataset synthesis and knowledge extraction.",
+      "properties": {
+        "system_prompt": {
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "schema_format": {
+          "default": "chatml_turn3",
+          "title": "Schema Format",
+          "type": "string"
+        },
+        "target_samples": {
+          "default": 525,
+          "title": "Target Samples",
+          "type": "integer"
+        },
+        "generator_module": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generator Module"
+        },
+        "knowledge_sources": {
+          "items": {
+            "$ref": "#/$defs/KnowledgeSourceConfig"
+          },
+          "title": "Knowledge Sources",
+          "type": "array"
+        },
+        "chunking": {
+          "$ref": "#/$defs/ChunkingConfig"
+        },
+        "quality_invariants": {
+          "$ref": "#/$defs/QualityInvariantsConfig"
+        }
+      },
+      "required": [
+        "system_prompt"
+      ],
+      "title": "LLMPipelineConfig",
+      "type": "object"
+    },
+    "QualityInvariantsConfig": {
+      "additionalProperties": false,
+      "description": "Quality gate and compliance configuration.",
+      "properties": {
+        "zero_emojis": {
+          "default": true,
+          "title": "Zero Emojis",
+          "type": "boolean"
+        },
+        "enforce_epistemic_tags": {
+          "default": true,
+          "title": "Enforce Epistemic Tags",
+          "type": "boolean"
+        },
+        "intake_protocol_stages": {
+          "default": 3,
+          "title": "Intake Protocol Stages",
+          "type": "integer"
+        },
+        "max_duplicate_threshold": {
+          "default": 0.0,
+          "title": "Max Duplicate Threshold",
+          "type": "number"
+        }
+      },
+      "title": "QualityInvariantsConfig",
+      "type": "object"
+    },
+    "RegistryMetadata": {
+      "additionalProperties": true,
+      "description": "The `_registry_metadata` block at the top of unified_data.yaml.",
+      "properties": {
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "name_prefix": {
+          "title": "Name Prefix",
+          "type": "string"
+        },
+        "name_suffix": {
+          "title": "Name Suffix",
+          "type": "string"
+        },
+        "output_folder_name": {
+          "title": "Output Folder Name",
+          "type": "string"
+        },
+        "specialization": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specialization"
+        },
+        "global_constraints": {
+          "$ref": "#/$defs/GlobalConstraints"
+        },
+        "citation_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Citation Url"
+        }
+      },
+      "required": [
+        "version",
+        "name_prefix",
+        "name_suffix",
+        "output_folder_name"
+      ],
+      "title": "RegistryMetadata",
+      "type": "object"
+    },
+    "SourceLabelSpec": {
+      "additionalProperties": false,
+      "description": "Per-file source labels of a manifold (core.source_labels scheme + recorded tag).",
+      "properties": {
+        "scheme": {
+          "title": "Scheme",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scheme",
+        "source"
+      ],
+      "title": "SourceLabelSpec",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": true,
+      "description": "A single source dataset reference inside a manifold definition.",
+      "properties": {
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "tag": {
+          "default": "sfw",
+          "title": "Tag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Root model for unified_data.yaml.",
+  "properties": {
+    "registry_metadata": {
+      "$ref": "#/$defs/RegistryMetadata"
+    },
+    "datasets": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DatasetEntry"
+      },
+      "title": "Datasets",
+      "type": "object"
+    }
+  },
+  "required": [
+    "registry_metadata"
+  ],
+  "title": "UnifiedData",
+  "type": "object"
+}

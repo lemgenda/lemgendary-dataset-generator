@@ -3499,6 +3499,13 @@ raw-sets/                                          # Source datasets (Cleanup Gu
 
 ---
 
+### 2026-11-15 — Unified Data JSON Schema Export
+
+- Exported canonical JSON Schema (`unified_data.schema.json`) from
+  `core/config_schema.py` (`UnifiedData.model_json_schema()`).
+- Added `tests/test_config_schema_export.py` verifying `unified_data.yaml`
+  validation, JSON Schema parity, and clear failure on invalid configs.
+
 ### 2026-11-14 — Forex Time-Series QA & Purged Splits
 
 - Added `forex/qa.py` (`resample_ohlcv_utc`, `flag_anomalous_bars`,
