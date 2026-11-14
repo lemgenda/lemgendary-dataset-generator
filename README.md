@@ -21,6 +21,17 @@
 
 [paper]: ../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md
 
+### v16.9.112 - SOTA LLM Data Curation, Deduplication & Decontamination Pipeline
+
+- Added `tools/llm_helper/curation.py` implementing heuristic quality filtering
+  (Shannon entropy + n-gram repetition), MinHash + n-gram cosine deduplication,
+  cross-split decontamination, metadata enrichment (`license`, `language`,
+  `difficulty`, `quality_score`, `content_sha256`), and deterministic
+  `manifest_sha256` Merkle hashing.
+- Integrated curation telemetry into `base_compiler.py` and
+  `metadata_compiler.py` (`rejected_records.jsonl`, `build_manifest.json`,
+  `quality_report.json`).
+
 ---
 
 ## Shard Label Format (JSON Only)

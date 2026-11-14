@@ -111,12 +111,15 @@ class TestValidatePathContainment(unittest.TestCase):
         except OSError as exc:  # Windows without Developer Mode / admin rights
             if os.name == "nt":
                 junction = self.root / "ai_helper" / "escape_dir"
-                subprocess.run(
-                    ["cmd", "/c", "mklink", "/J", str(junction), str(self.outside_dir)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
+                try:
+                    subprocess.run(
+                        ["cmd", "/c", "mklink", "/J", str(junction), str(self.outside_dir)],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                except (OSError, subprocess.CalledProcessError) as j_exc:
+                    self.skipTest(f"symlink/junction creation is not permitted: {j_exc}")
                 target_rel = f"ai_helper/escape_dir/{self.outside_file.name}"
             else:
                 self.skipTest(f"symlink creation is not permitted on this system: {exc}")

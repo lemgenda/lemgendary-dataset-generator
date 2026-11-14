@@ -20,6 +20,8 @@ from typing import Any
 
 from core.docs.generators.dataset_info_yaml import write_dataset_info
 
+from .curation import compute_manifest_hash
+
 logger = logging.getLogger("lemdata.llm.metadata")
 
 
@@ -114,6 +116,11 @@ def generate_llm_metadata(
     Accepts ``test_records`` as an optional keyword argument.
     """
     test_records: list[dict[str, Any]] | None = extra.pop("test_records", None)
+    curation_meta = {
+        "rejected_records": extra.pop("rejected_records", None) or [],
+        "curation_stats": extra.pop("curation_stats", None) or {},
+        "seed": int(extra.pop("seed", 42)),
+    }
     if descriptor is None:
         descriptor = LLMManifoldDescriptor(**extra)
     elif extra:
@@ -122,12 +129,13 @@ def generate_llm_metadata(
     target_dir = Path(manifold_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "data").mkdir(parents=True, exist_ok=True)
-    train_count = len(train_records)
-    val_count = len(val_records)
-    test_count = len(test_records) if test_records else 0
 
     # 1. dataset_info.yaml
-    counts = (train_count, val_count, test_count) if test_count > 0 else (train_count, val_count)
+    counts: tuple[int, int] | tuple[int, int, int] = (
+        (len(train_records), len(val_records), len(test_records))
+        if test_records
+        else (len(train_records), len(val_records))
+    )
     _write_dataset_info(target_dir, dataset_name, descriptor, counts)
 
     # 2. category.txt & classes.txt
@@ -137,23 +145,27 @@ def generate_llm_metadata(
     # 3. index.json
     index_entries = _split_index_entries(dataset_name, "train", train_records, 0, descriptor.task)
     index_entries += _split_index_entries(
-        dataset_name, "val", val_records, train_count, descriptor.task
+        dataset_name, "val", val_records, len(train_records), descriptor.task
     )
     if test_records:
         index_entries += _split_index_entries(
-            dataset_name, "test", test_records, train_count + val_count, descriptor.task
+            dataset_name,
+            "test",
+            test_records,
+            len(train_records) + len(val_records),
+            descriptor.task,
         )
     with open(target_dir / "index.json", "w", encoding="utf-8") as f:
         json.dump(index_entries, f, indent=2)
 
-    total_count = train_count + val_count + test_count
     _write_build_artifacts(
         target_dir,
         dataset_name,
         descriptor,
         (train_records, val_records, test_records or []),
+        curation_meta=curation_meta,
     )
-    logger.info("Generated metadata files for %s (%d records).", dataset_name, total_count)
+    logger.info("Generated metadata files for %s (%d records).", dataset_name, sum(counts))
 
 
 def _write_build_artifacts(
@@ -161,23 +173,32 @@ def _write_build_artifacts(
     dataset_name: str,
     descriptor: LLMManifoldDescriptor,
     split_records: tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
+    curation_meta: dict[str, Any] | None = None,
 ) -> None:
     """Emit build manifests, quality reports, and source tracking artifacts."""
+    meta = curation_meta or {}
     train_records, val_records, test_records = split_records
     all_records = train_records + val_records + test_records
-    src_manifest = _build_source_manifest(all_records, descriptor)
-    with open(target_dir / "source_manifest.json", "w", encoding="utf-8") as f:
-        json.dump(src_manifest, f, indent=2)
+    artifacts = {
+        "source_manifest.json": _build_source_manifest(all_records, descriptor),
+        "build_manifest.json": _build_manifest_payload(
+            dataset_name,
+            train_records,
+            val_records,
+            test_records,
+            seed=int(meta.get("seed", 42)),
+        ),
+        "quality_report.json": _build_quality_report(
+            all_records, curation_stats=meta.get("curation_stats")
+        ),
+    }
+    for filename, payload in artifacts.items():
+        (target_dir / filename).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    bld_manifest = _build_manifest_payload(dataset_name, train_records, val_records, test_records)
-    with open(target_dir / "build_manifest.json", "w", encoding="utf-8") as f:
-        json.dump(bld_manifest, f, indent=2)
-
-    qlty_report = _build_quality_report(all_records)
-    with open(target_dir / "quality_report.json", "w", encoding="utf-8") as f:
-        json.dump(qlty_report, f, indent=2)
-
-    (target_dir / "rejected_records.jsonl").write_text("", encoding="utf-8")
+    rej_lines = [
+        json.dumps(r, ensure_ascii=False) + "\n" for r in (meta.get("rejected_records") or [])
+    ]
+    (target_dir / "rejected_records.jsonl").write_text("".join(rej_lines), encoding="utf-8")
 
 
 def _build_source_manifest(
@@ -203,11 +224,14 @@ def _build_manifest_payload(
     train_records: list[dict[str, Any]],
     val_records: list[dict[str, Any]],
     test_records: list[dict[str, Any]],
+    seed: int = 42,
 ) -> dict[str, Any]:
-    """Compile build manifest detailing splits, counts, and checksums."""
+    """Compile build manifest detailing splits, counts, seed, and Merkle checksum."""
     return {
         "dataset_name": dataset_name,
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "seed": seed,
+        "manifest_sha256": compute_manifest_hash(train_records, val_records, test_records),
         "splits": {
             "train": len(train_records),
             "val": len(val_records),
@@ -218,8 +242,11 @@ def _build_manifest_payload(
     }
 
 
-def _build_quality_report(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Catalog taxonomy counts, epistemic status breakdown, and validation summary."""
+def _build_quality_report(
+    records: list[dict[str, Any]],
+    curation_stats: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Catalog taxonomy counts, epistemic status breakdown, and curation summary."""
     categories: dict[str, int] = {}
     tiers: dict[str, int] = {}
     for r in records:
@@ -231,6 +258,7 @@ def _build_quality_report(records: list[dict[str, Any]]) -> dict[str, Any]:
         "total_records_evaluated": len(records),
         "categories": categories,
         "authority_tiers": tiers,
+        "curation_stats": curation_stats or {},
         "critical_errors": 0,
         "status": "PASSED_QUALITY_GATE",
     }

@@ -24,6 +24,12 @@ import yaml
 from core.config_schema import load_unified_data
 
 from .chunker import RecursiveChunker
+from .curation import (
+    CurationStats,
+    decontaminate_splits,
+    heuristic_quality_filter,
+    minhash_semantic_dedup,
+)
 from .knowledge_ingestor import KnowledgeIngestor
 from .knowledge_synthesizer import compile_knowledge_corpus
 from .metadata_compiler import LLMManifoldDescriptor, generate_llm_metadata
@@ -68,24 +74,60 @@ class BaseLLMCompiler:
     ) -> dict[str, Any]:
         """Compile a complete LLM manifold declared in unified_data.yaml with atomic swap."""
         cfg = self._get_dataset_config(dataset_key)
-        folder = cfg.get("modernized_folder", dataset_key)
-        target_dir = self.workspace_root / "LemGendaryDatasets" / folder
-
+        target_dir = (
+            self.workspace_root / "LemGendaryDatasets" / cfg.get("modernized_folder", dataset_key)
+        )
         records = custom_records or self._generate_records(dataset_key, cfg)
         self._require_valid(records)
 
-        val_ratio = float(cfg.get("val_split", 0.20) or 0.20)
-        test_ratio = float(cfg.get("test_split") or 0.0)
-        splits = _partition_records(records, val_ratio, test_ratio)
-
+        splits, curation_meta = self._prepare_splits_and_curation(records, cfg)
         with tempfile.TemporaryDirectory(prefix=f".staging_build_{dataset_key}_") as tmp_dir:
             staging_dir = Path(tmp_dir)
             (staging_dir / "data").mkdir(parents=True, exist_ok=True)
-            res = self._write_outputs(staging_dir, dataset_key, cfg, splits, len(records))
+            res = self._write_outputs(
+                staging_dir,
+                dataset_key,
+                cfg,
+                splits,
+                curation_meta=curation_meta,
+            )
             _atomic_sync_directories(staging_dir, target_dir)
 
         _remap_output_paths(res, target_dir, cfg, dataset_key)
         return res
+
+    def _prepare_splits_and_curation(
+        self,
+        records: list[dict[str, Any]],
+        cfg: dict[str, Any],
+    ) -> tuple[
+        tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
+        dict[str, Any],
+    ]:
+        """Curate records, partition into splits, and decontaminate train against eval."""
+        llm_pipe = cfg.get("llm_pipeline", {})
+        seed = int(llm_pipe.get("seed", 42))
+        curated, rejected, stats = self._curate_records(records, llm_pipe)
+
+        val_ratio = float(cfg.get("val_split", 0.20) or 0.20)
+        test_ratio = float(cfg.get("test_split") or 0.0)
+        train_recs, val_recs, test_recs = _partition_records(
+            curated, val_ratio, test_ratio, seed=seed
+        )
+        train_recs, leaked = decontaminate_splits(train_recs, val_recs, test_recs)
+        rejected.extend(leaked)
+        final_stats = CurationStats(
+            input_count=stats.input_count,
+            quality_rejected=stats.quality_rejected,
+            dedup_rejected=stats.dedup_rejected,
+            decontam_rejected=len(leaked),
+            output_count=len(train_recs) + len(val_recs) + len(test_recs),
+        )
+        return (train_recs, val_recs, test_recs), {
+            "rejected": rejected,
+            "curation_stats": final_stats.to_dict(),
+            "seed": seed,
+        }
 
     def _get_dataset_config(self, dataset_key: str) -> dict[str, Any]:
         """Retrieve and validate dataset configuration."""
@@ -95,16 +137,37 @@ class BaseLLMCompiler:
             raise KeyError(f"Dataset key '{dataset_key}' not found in {self.config_path}")
         return cfg
 
+    def _curate_records(
+        self,
+        records: list[dict[str, Any]],
+        llm_pipe: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], CurationStats]:
+        """Run heuristic quality filtering and MinHash/semantic deduplication."""
+        min_q = float(llm_pipe.get("min_quality_score", 0.30))
+        accepted_q, rej_q = heuristic_quality_filter(records, min_quality=min_q)
+        accepted_d, rej_d = minhash_semantic_dedup(accepted_q)
+        stats = CurationStats(
+            input_count=len(records),
+            quality_rejected=len(rej_q),
+            dedup_rejected=len(rej_d),
+            decontam_rejected=0,
+            output_count=len(accepted_d),
+        )
+        return accepted_d, rej_q + rej_d, stats
+
     def _write_outputs(
         self,
         target_dir: Path,
         dataset_key: str,
         cfg: dict[str, Any],
         splits: tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
-        total: int,
+        *,
+        curation_meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Write jsonl shards and trigger metadata generation."""
         train_recs, val_recs, test_recs = splits
+        meta = curation_meta or {}
+        total = len(train_recs) + len(val_recs) + len(test_recs)
         train_path = target_dir / Path(cfg.get("train_file", f"data/{dataset_key}_train.jsonl"))
         val_path = target_dir / Path(cfg.get("val_file", f"data/{dataset_key}_val.jsonl"))
         _write_jsonl(train_path, train_recs)
@@ -122,6 +185,9 @@ class BaseLLMCompiler:
             val_recs,
             descriptor=_descriptor_for(cfg),
             test_records=test_recs if test_recs else None,
+            rejected_records=meta.get("rejected"),
+            curation_stats=meta.get("curation_stats"),
+            seed=int(meta.get("seed", 42)),
         )
 
         res: dict[str, Any] = {
@@ -192,10 +258,13 @@ def _remap_output_paths(
 
 
 def _partition_records(
-    records: list[dict[str, Any]], val_split: float, test_split: float = 0.0
+    records: list[dict[str, Any]],
+    val_split: float,
+    test_split: float = 0.0,
+    seed: int = 42,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Deterministic category-stratified 3-way split (seed 42) avoiding prompt overlap."""
-    rng = random.Random(42)
+    """Deterministic category-stratified 3-way split avoiding prompt overlap."""
+    rng = random.Random(seed)
     by_category: dict[str, list[dict[str, Any]]] = {}
     for r in records:
         by_category.setdefault(r.get("category", "default"), []).append(r)
