@@ -89,7 +89,9 @@ present file and fails on a stale one.
 - Added `recommended_workers` (70% of CPU cores) to `HardwareInfo` and
   `recommended_preset` to `DatasetDetailStats`.
 - Added `--start-date`, `--end-date`, and `--label-strategy` CLI/API compile
-  options (`api/models.py`, `api/gui_compile.py`).
+  options (`api/models.py`, `api/gui_compile.py`, `api/routes/gui.py`,
+  `services/compiler_service.py`), and upgraded `boto3`/`botocore` to `1.44.3`
+  in `requirements.txt`.
 - Enforced `is_blank_image` rejection in `utils/image_payload.py` and `.webp`
   cover banners in `core/docs/generators/cover_image.py`.
 - Added file-by-file Kaggle download progress (`DOWNLOADING:` in

@@ -198,14 +198,7 @@ async def quick_compile(
         job_manager,
         JobType.COMPILE,
         quick_compile_command(req),
-        {
-            "model": req.model,
-            "preset": req.preset,
-            "max_gb": req.max_gb,
-            "workers": req.workers,
-            "shard_ext": req.shard_ext,
-            "preset_details": preset_cfg.to_dict(),
-        },
+        {**req.model_dump(exclude_none=True), "preset_details": preset_cfg.to_dict()},
     )
     logger.info(
         "Dispatched quick-compile job %s with preset %s for model %s", job.id, req.preset, req.model

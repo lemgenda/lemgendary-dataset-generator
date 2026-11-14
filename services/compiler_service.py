@@ -71,7 +71,6 @@ COMPILE_FLAGS: FlagTable = (
     Flag("shard_ext", "--shard-ext", "text"),
     Flag("start_date", "--start-date", "text"),
     Flag("end_date", "--end-date", "text"),
-    Flag("label_strategy", "--label-strategy", "text"),
     Flag("force_duplicate", "--force-duplicate", "switch"),
     Flag("accept_space_loss", "--accept-space-loss", "switch"),
     Flag("label_strategy", "--label-strategy", "text"),
