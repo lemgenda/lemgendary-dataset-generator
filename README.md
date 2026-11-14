@@ -3503,7 +3503,8 @@ raw-sets/                                          # Source datasets (Cleanup Gu
 
 - Added `forex/qa.py` (`resample_ohlcv_utc`, `flag_anomalous_bars`,
   `classify_volatility_regime`, `purged_walk_forward_splits`,
-  `audit_horizon_leakage`, `build_split_audit_summary`).
+  `audit_horizon_leakage`, `build_split_audit_summary`) and wired
+  `flag_anomalous_bars` into `forex/sharding.py`.
 - Added `tests/test_forex_qa.py` covering deterministic UTC resampling,
   anomalous bar flagging, causal volatility regimes, and zero-leakage
   purged walk-forward splits.
