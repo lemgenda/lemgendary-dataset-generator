@@ -19,7 +19,7 @@ Evidence legend:
 
 ### Strengths
 
-- Clean extension contracts exist at the leaf level: the `Writer` Protocol
+- Clean extension contracts exist at the leaf level: the `Writer` Protocol.
   (`formats/base.py:47`), the `Generator` Protocol (`generators/base.py:39`)
   and the `DegradationProfile` Protocol (`degrade/base.py:32`).
 - `unified_data.yaml` is validated by a Pydantic schema

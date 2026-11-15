@@ -23,7 +23,7 @@
 
 ### v16.9.112 - SOTA LLM Data Curation, Deduplication & Decontamination Pipeline
 
-- Added `tools/llm_helper/curation.py` implementing heuristic quality filtering
+- Added `tools/llm_helper/curation.py` implementing heuristic quality filtering,
   (Shannon entropy + n-gram repetition), MinHash + n-gram cosine deduplication,
   cross-split decontamination, metadata enrichment (`license`, `language`,
   `difficulty`, `quality_score`, `content_sha256`), and deterministic
