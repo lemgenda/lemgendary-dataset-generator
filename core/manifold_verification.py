@@ -18,12 +18,12 @@ from typing import Any
 import numpy as np
 import pyarrow.parquet as pq
 import yaml
+
 from audit.vision_audit import VisionAuditor
+from core.visual_qa import check_image_integrity, check_mask_integrity
 from utils.label_json import label_problems, resolve_label_strategy
 from utils.shard_audit import audit_shard_set
 from utils.shard_offsets import OFFSETS_FILENAME
-
-from core.visual_qa import check_image_integrity, check_mask_integrity
 
 logger = logging.getLogger(__name__)
 

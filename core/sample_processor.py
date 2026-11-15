@@ -22,8 +22,6 @@ from audit.vision_audit import (
     AuditResult,
     NimaCheck,
 )
-from utils.image import ensure_srgb
-
 from core.compiler_config import CONFIG, get_args
 from core.compiler_worker import WORKER, get_labeler, link_or_copy, torch, write_image
 from core.error_types import SAMPLE_PROCESSING_ERRORS
@@ -52,6 +50,7 @@ from core.sample_scoring import (
     model_score,
 )
 from core.sample_targets import resolve_target
+from utils.image import ensure_srgb
 
 logger = logging.getLogger(__name__)
 

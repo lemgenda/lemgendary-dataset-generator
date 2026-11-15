@@ -41,6 +41,8 @@
   on raw quotes prior to log-return normalization in `forex/pipeline_runner.py`
   and checking `np.isfinite` in `forex/sharding.py`.
 - Added comprehensive unit tests in `tests/test_manifold_verification.py`.
+- Fixed import ordering and typing in `core/manifold_verification.py` and
+  `core/sample_processor.py` adhering to Ruff I001 and Pylint 10.00/10.
 - Mandatory changelog gate note: pre-commit hooks across the entire ecosystem
   strictly enforce that any commit containing functional code modifications
   must update the project's `README.md` changelog, or the commit will fail and
