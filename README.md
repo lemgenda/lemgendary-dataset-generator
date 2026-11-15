@@ -23,6 +23,8 @@
 
 ### v16.9.113 - Manifold Verification Pipeline, QA & Shard Sidecars
 
+- Fixed Ruff `I001` import organization and formatting across core
+  processors (`sample_processor.py`, `visual_qa.py`).
 - Added `core/manifold_verification.py` and `commands/verify.py`:
   Unified manifold validation contracts for WebDataset (vision), Forex
   (OHLCV time-series), and LLM (instruction JSONL). Enforces per-sample

@@ -8,10 +8,10 @@ Provides:
 
 from __future__ import annotations
 
-import io
-import math
 from collections import Counter
 from dataclasses import dataclass
+import io
+import math
 from typing import Any
 
 import numpy as np

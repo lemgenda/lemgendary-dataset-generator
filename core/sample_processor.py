@@ -7,9 +7,9 @@ and returns its registry record. Diffusion samples are handled by
 ``core.sample_batch``.
 """
 
+from dataclasses import dataclass
 import io
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
