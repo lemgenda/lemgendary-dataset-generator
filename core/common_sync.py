@@ -26,12 +26,24 @@ from core.sync_auth import (
     split_owner_slug,
 )
 from core.sync_download import DownloadRequest, perform_dataset_download
+from core.sync_manifest import (
+    ManifestFileEntry,
+    SyncManifest,
+    SyncReport,
+    compute_sync_manifest,
+    is_push_idempotent_noop,
+    read_sync_state,
+    verify_sync_manifest,
+    write_sync_state,
+)
 from core.sync_metadata import push_kaggle_dataset_metadata
 from core.sync_remote import (
     DatasetVersionInfo,
     ensure_kaggle_dataset_exists,
     get_dataset_status,
     get_dataset_version_info,
+    parse_version_pin,
+    resolve_pinned_version,
 )
 from core.sync_tracking import track_kaggle_dataset_status
 from core.sync_transfer import (
@@ -47,19 +59,29 @@ __all__ = [
     "CHUNK_SIZE",
     "DatasetVersionInfo",
     "DownloadRequest",
+    "ManifestFileEntry",
+    "SyncManifest",
+    "SyncReport",
     "cleanup_temp_archives",
+    "compute_sync_manifest",
     "copy_tree_with_progress",
     "copy_with_progress",
     "ensure_kaggle_dataset_exists",
     "get_dataset_status",
     "get_dataset_version_info",
     "is_kaggle_large_manifold",
+    "is_push_idempotent_noop",
     "normalize_kaggle_handle",
+    "parse_version_pin",
     "perform_dataset_download",
     "perform_dataset_upload",
     "push_kaggle_dataset_metadata",
+    "read_sync_state",
+    "resolve_pinned_version",
     "robust_staging_cleanup",
     "setup_kaggle_auth",
     "split_owner_slug",
     "track_kaggle_dataset_status",
+    "verify_sync_manifest",
+    "write_sync_state",
 ]

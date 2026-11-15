@@ -15,8 +15,9 @@ import shutil
 import socket
 import subprocess
 import tarfile
+import time
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import kagglehub
@@ -25,11 +26,13 @@ import yaml
 from core.kaggle_errors import KAGGLE_CLIENT_ERRORS
 from core.lazy_imports import load_kaggle_api
 from core.sync_auth import kaggle_cli_creationflags
+from core.sync_manifest import SyncReport, verify_sync_manifest
 from core.sync_partial_download import (
     download_file_by_file,
     download_selected,
     is_missing_archive_error,
 )
+from core.sync_remote import parse_version_pin, resolve_pinned_version
 from core.sync_transfer import copy_tree_with_progress
 from tools.stream_zip_to_container import stream_zip_to_webdataset
 from utils.archive import smart_extract, verify_archive
@@ -59,11 +62,22 @@ class NoWholeArchiveError(RuntimeError):
     """Kaggle has no whole-dataset archive for this dataset (download answered 404)."""
 
 
-def _archive_candidates(request: DownloadRequest) -> list[Path]:
+def _archive_candidates(
+    request: DownloadRequest, resolved_version: int | None = None
+) -> list[Path]:
     """Archive paths a previous or fresh download may have produced, in priority order."""
     root, target = request.root_datasets_dir, request.target_dir
     name, slug = request.manifold_name, request.slug
+    versioned: list[Path] = []
+    if resolved_version is not None:
+        versioned = [
+            root / f"{name}_v{resolved_version}.zip",
+            root / f"{slug}_v{resolved_version}.zip",
+            target / f"{name}_v{resolved_version}.zip",
+            target / f"{slug}_v{resolved_version}.zip",
+        ]
     return [
+        *versioned,
         root / f"{name}.zip",
         root / f"{slug}.zip",
         root / f"{name.lower()}.zip",
@@ -121,31 +135,36 @@ def _download_competition(request: DownloadRequest, candidates: list[Path]) -> P
     return None
 
 
-def _download_via_api_or_cli(request: DownloadRequest) -> bool:
+def _download_via_api_or_cli(
+    request: DownloadRequest, resolved_version: int | None = None
+) -> bool:
     """Download the dataset zip via the Kaggle API, falling back to the Kaggle CLI.
 
     Raises :class:`NoWholeArchiveError` when Kaggle has no archive to download.
     """
     root = request.root_datasets_dir
+    if resolved_version is None:
+        try:
+            socket.setdefaulttimeout(60.0)
+            api = load_kaggle_api()()
+            api.authenticate()
+            print(f"[GET] Streaming dataset archive directly to {root} via Kaggle API...")
+            api.dataset_download_files(
+                request.clean_repo_id, path=str(root), unzip=False, quiet=False
+            )
+            return True
+        except KAGGLE_CLIENT_ERRORS as ex:
+            if is_missing_archive_error(ex):
+                raise NoWholeArchiveError(str(ex)) from ex
+            print(
+                f"[WARN] Kaggle API direct download encountered an issue: {ex}. Falling back to"
+                " Kaggle CLI..."
+            )
     try:
-        socket.setdefaulttimeout(60.0)
-        api = load_kaggle_api()()
-        api.authenticate()
-        print(f"[GET] Streaming dataset archive directly to {root} via Kaggle API...")
-        api.dataset_download_files(request.clean_repo_id, path=str(root), unzip=False, quiet=False)
-        return True
-    except KAGGLE_CLIENT_ERRORS as ex:
-        if is_missing_archive_error(ex):
-            raise NoWholeArchiveError(str(ex)) from ex
-        print(
-            f"[WARN] Kaggle API direct download encountered an issue: {ex}. Falling back to Kaggle"
-            " CLI..."
-        )
-    try:
-        subprocess.run(
-            ["kaggle", "datasets", "download", request.clean_repo_id, "-p", str(root)],
-            check=True,
-        )
+        cli_cmd = ["kaggle", "datasets", "download", request.clean_repo_id, "-p", str(root)]
+        if resolved_version is not None:
+            cli_cmd.extend(["-v", str(resolved_version)])
+        subprocess.run(cli_cmd, check=True)
         return True
     except (OSError, subprocess.CalledProcessError) as cli_ex:
         print(f"[WARN] Kaggle CLI download also failed: {cli_ex}. Falling back to kagglehub...")
@@ -165,10 +184,17 @@ class _Fetched:
     tree_copied: bool = False
 
 
-def _download_via_kagglehub(request: DownloadRequest) -> _Fetched:
+def _download_via_kagglehub(
+    request: DownloadRequest, resolved_version: int | None = None
+) -> _Fetched:
     """Last-resort kagglehub download: return a single file, or copy the cached tree."""
     target_dir = request.target_dir
-    path = kagglehub.dataset_download(request.clean_repo_id)
+    handle = (
+        f"{request.clean_repo_id}/versions/{resolved_version}"
+        if resolved_version is not None
+        else request.clean_repo_id
+    )
+    path = kagglehub.dataset_download(handle)
     if os.path.isfile(path):
         return _Fetched(archive=Path(path))
     print(f"[GET] Dataset cached by kagglehub at {path}. Finalizing to {target_dir}...")
@@ -199,18 +225,27 @@ def _locate_downloaded_archive(request: DownloadRequest, candidates: list[Path])
     return None
 
 
-def _fetch_remote_archive(request: DownloadRequest, candidates: list[Path]) -> _Fetched:
+def _fetch_remote_archive(
+    request: DownloadRequest,
+    candidates: list[Path],
+    resolved_version: int | None = None,
+) -> _Fetched:
     """Download archive or directory payload from Kaggle."""
     if request.is_competition:
         return _Fetched(archive=_download_competition(request, candidates))
     try:
-        downloaded = _download_via_api_or_cli(request)
+        if resolved_version is None:
+            downloaded = _download_via_api_or_cli(request)
+        else:
+            downloaded = _download_via_api_or_cli(request, resolved_version=resolved_version)
     except NoWholeArchiveError:
         return _Fetched(
             tree_copied=download_file_by_file(request.clean_repo_id, request.target_dir)
         )
     if not downloaded:
-        return _download_via_kagglehub(request)
+        if resolved_version is None:
+            return _download_via_kagglehub(request)
+        return _download_via_kagglehub(request, resolved_version=resolved_version)
     return _Fetched(archive=_locate_downloaded_archive(request, candidates))
 
 
@@ -220,7 +255,7 @@ def _registry_marks_webdataset(target_dir: Path, slug: str) -> bool:
         yd_path = Path(__file__).resolve().parent.parent / "unified_data.yaml"
         if not yd_path.exists():
             return False
-        with open(yd_path, "r", encoding="utf-8") as yf:
+        with open(yd_path, encoding="utf-8") as yf:
             ydata = yaml.safe_load(yf) or {}
         for entry in ydata.get("datasets", {}).values():
             if entry.get("canonical_format") != "webdataset":
@@ -336,31 +371,191 @@ def _unpack_archive(archive: Path, request: DownloadRequest) -> bool:
     return True
 
 
-def perform_dataset_download(request: DownloadRequest, only: tuple[str, ...] = ()) -> bool:
+def _populate_pull_report(
+    report: SyncReport | None,
+    *,
+    request: DownloadRequest,
+    status: str,
+    elapsed: float,
+    **fields: object,
+) -> None:
+    """Fill ``report`` in-place if requested by caller."""
+    if report is None:
+        return
+    report.update(
+        action="pull",
+        repo_id=request.clean_repo_id,
+        manifold=request.manifold_name,
+        status=status,
+        elapsed_seconds=round(elapsed, 4),
+        **fields,
+    )
+
+
+def _run_selected_download(
+    clean_req: DownloadRequest,
+    only: tuple[str, ...],
+    resolved_version: int | None,
+) -> tuple[bool, str, list[str]]:
+    """Download only ``only`` prefixes and verify their checksums in sync_manifest.json."""
+    if resolved_version is None:
+        selected_ok = download_selected(clean_req.clean_repo_id, clean_req.target_dir, only)
+    else:
+        selected_ok = download_selected(
+            clean_req.clean_repo_id, clean_req.target_dir, only, version=resolved_version
+        )
+    if not selected_ok:
+        return False, "", ["Selected member download failed"]
+    manifest_ok, manifest_sha, manifest_errs = verify_sync_manifest(
+        clean_req.target_dir, only=only
+    )
+    if not manifest_ok:
+        for err in manifest_errs:
+            print(f"[ERROR] Manifest verification failed: {err}")
+    return manifest_ok, manifest_sha, manifest_errs
+
+
+def _extract_full_download(
+    clean_req: DownloadRequest, resolved_version: int | None
+) -> tuple[bool, bool]:
+    """Fetch and extract the full archive or file tree; returns (extracted_ok, resumed)."""
+    candidates = _archive_candidates(clean_req, resolved_version=resolved_version)
+    local_archive = (
+        _find_verified_local_archive(candidates) if resolved_version is None else None
+    )
+    fetched = (
+        _Fetched(archive=local_archive)
+        if local_archive is not None
+        else _fetch_remote_archive(clean_req, candidates, resolved_version=resolved_version)
+    )
+    extracted_ok = False
+    if fetched.archive is not None and fetched.archive.is_file():
+        extracted_ok = _unpack_archive(fetched.archive, clean_req)
+    elif fetched.tree_copied and any(clean_req.target_dir.iterdir()):
+        print(f"[SUCCESS] Manifold data present in {clean_req.target_dir}")
+        extracted_ok = True
+    else:
+        print(f"[ERROR] Could not locate or download archive for {clean_req.clean_repo_id}")
+    return extracted_ok, local_archive is not None
+
+
+def _resolve_request_version(
+    request: DownloadRequest,
+    version: int | str | None,
+    start_t: float,
+    report_out: SyncReport | None,
+) -> tuple[DownloadRequest, int | None, int | str | None] | None:
+    """Resolve and validate the requested version pin; returns None when invalid."""
+    base_repo_id, effective_pin = parse_version_pin(request.clean_repo_id, version)
+    clean_req = (
+        replace(request, clean_repo_id=base_repo_id)
+        if base_repo_id != request.clean_repo_id
+        else request
+    )
+    try:
+        resolved_version = resolve_pinned_version(base_repo_id, effective_pin)
+    except ValueError as pin_err:
+        msg = f"Invalid version pin for {base_repo_id}: {pin_err}"
+        print(f"[ERROR] {msg}")
+        logger.error(msg)
+        _populate_pull_report(
+            report_out,
+            request=clean_req,
+            status="failed",
+            elapsed=time.monotonic() - start_t,
+            version=None,
+            pinned_version=effective_pin,
+            manifest_sha256="",
+            checksum_verified=False,
+            resumed=False,
+            errors=[msg],
+        )
+        return None
+    if resolved_version is not None:
+        print(f"[GET] Pinned to dataset version v{resolved_version} for {base_repo_id}")
+    return clean_req, resolved_version, effective_pin
+
+
+def _verify_and_report_full_pull(
+    clean_req: DownloadRequest,
+    resolved_version: int | None,
+    effective_pin: int | str | None,
+    start_t: float,
+    report_out: SyncReport | None,
+) -> bool:
+    """Extract full archive and verify sync_manifest.json."""
+    extracted_ok, resumed = _extract_full_download(clean_req, resolved_version)
+    if not extracted_ok:
+        _populate_pull_report(
+            report_out,
+            request=clean_req,
+            status="failed",
+            elapsed=time.monotonic() - start_t,
+            version=resolved_version,
+            pinned_version=effective_pin,
+            manifest_sha256="",
+            checksum_verified=False,
+            resumed=resumed,
+            errors=[f"Download or extraction failed for {clean_req.clean_repo_id}"],
+        )
+        return False
+
+    manifest_ok, manifest_sha, manifest_errs = verify_sync_manifest(clean_req.target_dir)
+    if not manifest_ok:
+        for err in manifest_errs:
+            print(f"[ERROR] Post-pull manifest checksum verification failed: {err}")
+            logger.error("Post-pull manifest checksum verification failed: %s", err)
+    _populate_pull_report(
+        report_out,
+        request=clean_req,
+        status="passed" if manifest_ok else "failed",
+        elapsed=time.monotonic() - start_t,
+        version=resolved_version,
+        pinned_version=effective_pin,
+        manifest_sha256=manifest_sha,
+        checksum_verified=manifest_ok,
+        resumed=resumed,
+        errors=manifest_errs,
+    )
+    return manifest_ok
+
+
+def perform_dataset_download(
+    request: DownloadRequest,
+    only: tuple[str, ...] = (),
+    *,
+    version: int | str | None = None,
+    report_out: SyncReport | None = None,
+) -> bool:
     """Download and extract a manifold from Kaggle with full resumption and verification.
 
     ``only`` (folders ending in ``/`` or files, relative to the dataset's
     wrapper folder) fetches just those members, never the whole archive.
     """
-    request.root_datasets_dir.mkdir(parents=True, exist_ok=True)
-    request.target_dir.mkdir(parents=True, exist_ok=True)
+    start_t = time.monotonic()
+    resolved_info = _resolve_request_version(request, version, start_t, report_out)
+    if resolved_info is None:
+        return False
+    clean_req, resolved_version, effective_pin = resolved_info
+
+    clean_req.root_datasets_dir.mkdir(parents=True, exist_ok=True)
+    clean_req.target_dir.mkdir(parents=True, exist_ok=True)
     if only:
-        return download_selected(request.clean_repo_id, request.target_dir, only)
+        sel_ok, sel_sha, sel_errs = _run_selected_download(clean_req, only, resolved_version)
+        _populate_pull_report(
+            report_out,
+            request=clean_req,
+            status="passed" if sel_ok else "failed",
+            elapsed=time.monotonic() - start_t,
+            version=resolved_version,
+            pinned_version=effective_pin,
+            manifest_sha256=sel_sha,
+            checksum_verified=sel_ok,
+            resumed=False,
+            errors=sel_errs,
+        )
+        return sel_ok
 
-    candidates = _archive_candidates(request)
-    local_archive = _find_verified_local_archive(candidates)
-    fetched = (
-        _Fetched(archive=local_archive)
-        if local_archive is not None
-        else _fetch_remote_archive(request, candidates)
+    return _verify_and_report_full_pull(
+        clean_req, resolved_version, effective_pin, start_t, report_out
     )
-    if fetched.archive is not None and fetched.archive.is_file():
-        return _unpack_archive(fetched.archive, request)
-
-    target_dir = request.target_dir
-    if fetched.tree_copied and any(target_dir.iterdir()):
-        print(f"[SUCCESS] Manifold data present in {target_dir}")
-        return True
-
-    print(f"[ERROR] Could not locate or download archive for {request.clean_repo_id}")
-    return False

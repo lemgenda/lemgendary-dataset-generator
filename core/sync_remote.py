@@ -77,6 +77,61 @@ def get_dataset_version_info(repo_id: str) -> DatasetVersionInfo:
         }
 
 
+def parse_version_pin(
+    repo_id: str, version: int | str | None = None
+) -> tuple[str, int | str | None]:
+    """Extract clean ``owner/slug`` handle and optional version pin from ``repo_id``."""
+    clean = repo_id.replace("kaggle://", "").strip().strip("/")
+    inline_pin: int | str | None = None
+    if "@" in clean:
+        clean, inline_pin = clean.rsplit("@", 1)
+    elif "/versions/" in clean:
+        clean, inline_pin = clean.split("/versions/", 1)
+        inline_pin = inline_pin.split("/")[0]
+    effective_pin = version if version is not None else inline_pin
+    return clean.strip("/"), effective_pin
+
+
+def resolve_pinned_version(
+    repo_id: str, version_pin: int | str | None
+) -> int | None:
+    """Resolve a numeric version or tag (``3``, ``"v3"``, ``"latest"``) to an integer version."""
+    if version_pin is None:
+        return None
+    if isinstance(version_pin, int):
+        target = version_pin
+    else:
+        raw = str(version_pin).strip()
+        if not raw:
+            return None
+        lower = raw.lower()
+        if lower == "latest":
+            info = get_dataset_version_info(repo_id)
+            return info["latest_version"] or None
+        if lower.startswith("v") and lower[1:].isdigit():
+            target = int(lower[1:])
+        elif raw.isdigit():
+            target = int(raw)
+        else:
+            raise ValueError(
+                f"Invalid version pin {version_pin!r} for {repo_id}; "
+                "use a positive integer, 'v<N>', or 'latest'."
+            )
+
+    if target <= 0:
+        raise ValueError(f"Pinned version must be >= 1, got {target}")
+
+    info = get_dataset_version_info(repo_id)
+    known_versions = info.get("versions") or {}
+    if known_versions and target not in known_versions:
+        available = ", ".join(str(v) for v in sorted(known_versions))
+        raise ValueError(
+            f"Pinned version {target} does not exist for '{repo_id}' "
+            f"(available versions: {available})"
+        )
+    return target
+
+
 def _classify_cli_status(out: str, returncode: int) -> str | None:
     """Map ``kaggle datasets status`` output to ready / creating / error / raw last word."""
     if "ready" in out:
@@ -86,7 +141,7 @@ def _classify_cli_status(out: str, returncode: int) -> str | None:
     if "error" in out or "failed" in out:
         return "error"
     if returncode == 0 and out:
-        return out.split()[-1]
+        return out.rsplit(maxsplit=1)[-1]
     return None
 
 

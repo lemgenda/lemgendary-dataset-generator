@@ -21,51 +21,6 @@
 
 [paper]: ../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md
 
-### v16.9.113 - Manifold Verification Pipeline, QA & Shard Sidecars
-
-- Fixed Ruff `I001` import organization and formatting across core
-  processors (`sample_processor.py`, `visual_qa.py`).
-- Added `core/manifold_verification.py` and `commands/verify.py`:
-  Unified manifold validation contracts for WebDataset (vision), Forex
-  (OHLCV time-series), and LLM (instruction JSONL). Enforces per-sample
-  schema conformance, split set-disjointness, domain QA, sidecar byte-map
-  indexing, provenance count triangulation, and deterministic Merkle
-  manifest SHA-256 calculation.
-- Added visual QA filters to `audit/vision_audit.py` and
-  `core/sample_processor.py` (`ERR_BLANK_FRAME`, `ERR_LOW_VARIANCE`,
-  `ERR_CORRUPT_IMAGE`, `ERR_CORRUPT_LABEL`) ensuring blank frames and
-  low-variance images (max channel standard deviation < 1.0) are eliminated
-  during compilation.
-- Added automatic `<shard>.data.index.json` sidecar generation in
-  `utils/shard_offsets.py` and verified metadata count derivation in
-  `core/docs/lineage_tally.py`.
-- Fixed Forex parquet empty partition bug by evaluating price anomaly checks
-  on raw quotes prior to log-return normalization in `forex/pipeline_runner.py`
-  and checking `np.isfinite` in `forex/sharding.py`.
-- Added comprehensive unit tests in `tests/test_manifold_verification.py`.
-- Fixed import ordering and typing in `core/manifold_verification.py` and
-  `core/sample_processor.py` adhering to Ruff I001 and Pylint 10.00/10.
-- Mandatory changelog gate note: pre-commit hooks across the entire ecosystem
-  strictly enforce that any commit containing functional code modifications
-  must update the project's `README.md` changelog, or the commit will fail and
-  be blocked.
-
-### v16.9.112 - SOTA LLM Data Curation, Deduplication & Decontamination Pipeline
-
-- Added `tools/llm_helper/curation.py` implementing heuristic quality filtering,
-  (Shannon entropy + n-gram repetition), MinHash + n-gram cosine deduplication,
-  cross-split decontamination, metadata enrichment (`license`, `language`,
-  `difficulty`, `quality_score`, `content_sha256`), and deterministic
-  `manifest_sha256` Merkle hashing.
-- Integrated curation telemetry into `base_compiler.py` and
-  `metadata_compiler.py` (`rejected_records.jsonl`, `build_manifest.json`,
-  `quality_report.json`).
-- Fixed `RuntimeWarning` on non-positive close ratios and resolved Pyrefly/lint
-  diagnostics in `forex/qa.py`.
-- Added `include_uncompiled` query parameter to `GET /datasets/with-stats`
-  (`api/routes/gui.py`, `api/dataset_stats.py`) so the GUI compiler dropdown
-  includes all `unified_data.yaml` entries even when not yet compiled on disk.
-
 ---
 
 ## Shard Label Format (JSON Only)
@@ -126,6 +81,69 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.113 - Kaggle Sync Hardening, Manifest Verification & Shard Sidecars
+
+- Added `core/sync_manifest.py` (`SyncManifest`, `ManifestFileEntry`,
+  `SyncReport`, `compute_sync_manifest`, `verify_sync_manifest`,
+  `is_push_idempotent_noop`, `read_sync_state`, `write_sync_state`): computes
+  deterministic per-file SHA-256 digests and Merkle root `manifest_sha256` in
+  `sync_manifest.json`, verifies file hashes and `.data.index.json` shard
+  sidecar sizes on both push and pull, and skips re-uploading unchanged
+  manifolds unless `--force` is specified.
+- Hardened `core/sync_upload.py`, `core/sync_download.py`,
+  `core/sync_remote.py`, `core/kaggle_http.py`, `tools/manifold_sync.py`,
+  `services/sync_service.py`, and `commands/sync.py` with retry/exponential
+  backoff on transient upload failures (preserving staged archives for
+  resumable retries), dataset version pinning (`--version`,
+  `owner/slug@<version>`, `owner/slug/versions/<version>`), non-interactive
+  safety guards (`--force` and non-TTY detection), and machine-readable
+  `SyncReport` emission (`--report <path>`, `--json`).
+- Added `tests/test_kaggle_sync_prompt10.py` covering deterministic manifest
+  hashing, tampered payload detection, idempotent push, interrupted upload
+  retry/resume failure injection, version pinning, and JSON sync reports.
+- Fixed Ruff `I001` import organization and formatting across core
+  processors (`sample_processor.py`, `visual_qa.py`).
+- Added `core/manifold_verification.py` and `commands/verify.py`:
+  Unified manifold validation contracts for WebDataset (vision), Forex
+  (OHLCV time-series), and LLM (instruction JSONL). Enforces per-sample
+  schema conformance, split set-disjointness, domain QA, sidecar byte-map
+  indexing, provenance count triangulation, and deterministic Merkle
+  manifest SHA-256 calculation.
+- Added visual QA filters to `audit/vision_audit.py` and
+  `core/sample_processor.py` (`ERR_BLANK_FRAME`, `ERR_LOW_VARIANCE`,
+  `ERR_CORRUPT_IMAGE`, `ERR_CORRUPT_LABEL`) ensuring blank frames and
+  low-variance images (max channel standard deviation < 1.0) are eliminated
+  during compilation.
+- Added automatic `<shard>.data.index.json` sidecar generation in
+  `utils/shard_offsets.py` and verified metadata count derivation in
+  `core/docs/lineage_tally.py`.
+- Fixed Forex parquet empty partition bug by evaluating price anomaly checks
+  on raw quotes prior to log-return normalization in `forex/pipeline_runner.py`
+  and checking `np.isfinite` in `forex/sharding.py`.
+- Added comprehensive unit tests in `tests/test_manifold_verification.py`.
+- Fixed import ordering and typing in `core/manifold_verification.py` and
+  `core/sample_processor.py` adhering to Ruff I001 and Pylint 10.00/10.
+- Mandatory changelog gate note: pre-commit hooks across the entire ecosystem
+  strictly enforce that any commit containing functional code modifications
+  must update the project's `README.md` changelog, or the commit will fail and
+  be blocked.
+
+### v16.9.112 - SOTA LLM Data Curation, Deduplication & Decontamination Pipeline
+
+- Added `tools/llm_helper/curation.py` implementing heuristic quality filtering,
+  (Shannon entropy + n-gram repetition), MinHash + n-gram cosine deduplication,
+  cross-split decontamination, metadata enrichment (`license`, `language`,
+  `difficulty`, `quality_score`, `content_sha256`), and deterministic
+  `manifest_sha256` Merkle hashing.
+- Integrated curation telemetry into `base_compiler.py` and
+  `metadata_compiler.py` (`rejected_records.jsonl`, `build_manifest.json`,
+  `quality_report.json`).
+- Fixed `RuntimeWarning` on non-positive close ratios and resolved Pyrefly/lint
+  diagnostics in `forex/qa.py`.
+- Added `include_uncompiled` query parameter to `GET /datasets/with-stats`
+  (`api/routes/gui.py`, `api/dataset_stats.py`) so the GUI compiler dropdown
+  includes all `unified_data.yaml` entries even when not yet compiled on disk.
 
 ### v16.9.111 - Smart Presets, 100% WebP Purity & Blank Image Rejection
 

@@ -52,6 +52,10 @@ MANIFOLD_SYNC_FLAGS: FlagTable = (
     Flag("model", "--model", "text"),
     Flag("repo_id", "--url", "text"),
     Flag("no_wait", "--no-wait", "switch"),
+    Flag("force", "--force", "switch"),
+    Flag("version", "--version", "text"),
+    Flag("report_path", "--report", "text"),
+    Flag("json_output", "--json", "switch"),
 )
 
 
@@ -70,6 +74,7 @@ class SyncService:
         url: str | None = None,
         no_wait: bool = False,
         notes: str | None = None,
+        **options: Any,
     ) -> int:
         """Upload a local manifold to Kaggle; returns the exit code.
 
@@ -81,6 +86,7 @@ class SyncService:
                 repo_id=url,
                 no_wait=no_wait,
                 notes=notes,
+                **options,
             )
             return 0
         except SystemExit as exc:
@@ -95,6 +101,7 @@ class SyncService:
         url: str,
         output_name: str | None = None,
         only: tuple[str, ...] = (),
+        **options: Any,
     ) -> int:
         """Pull remote manifold from registry (``only``: just these folders or files)."""
 
@@ -103,6 +110,7 @@ class SyncService:
                 repo_id=url,
                 output_name=output_name,
                 only=only,
+                **options,
             )
             return 0
         except SystemExit as exc:
@@ -153,11 +161,17 @@ class SyncService:
 
     @staticmethod
     def sync_manifold(
-        action: str, model: str | None = None, repo_id: str | None = None, no_wait: bool = False
+        action: str,
+        model: str | None = None,
+        repo_id: str | None = None,
+        no_wait: bool = False,
+        **options: Any,
     ) -> int:
         """Push (``sync``) or pull (``get``) a manifold, resolving names from the registry."""
         try:
-            return manifold_sync.run_sync_action(action, model, repo_id, no_wait=no_wait)
+            return manifold_sync.run_sync_action(
+                action, model, repo_id, no_wait=no_wait, **options
+            )
         except SystemExit as exc:
             return _exit_code(exc)
         except SERVICE_ERRORS as exc:

@@ -1,15 +1,19 @@
 """Upload manifolds to Kaggle and download them back; run as ``python -m tools.manifold_sync``."""
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 from core.common_sync import (
     DownloadRequest,
+    SyncReport,
     cleanup_temp_archives,
+    parse_version_pin,
     perform_dataset_download,
     perform_dataset_upload,
     setup_kaggle_auth,
@@ -28,7 +32,7 @@ YAML_DATA = {}
 META = {}
 yaml_file = ROOT / "unified_data.yaml"
 if yaml_file.exists():
-    with open(yaml_file, "r", encoding="utf-8") as f:
+    with open(yaml_file, encoding="utf-8") as f:
         YAML_DATA = yaml.safe_load(f) or {}
     META = YAML_DATA.get("_registry_metadata", {})
     DATASETS_META = YAML_DATA.get("datasets", {})
@@ -119,29 +123,67 @@ def get_kaggle_ref(manifold_id: str | None) -> str | None:
 
     return None
 
-def action_sync(manifold_name, repo_id=None, no_wait=False, notes=None):
+def _emit_sync_report(
+    report: SyncReport,
+    *,
+    report_path: str | Path | None = None,
+    json_output: bool = False,
+) -> None:
+    """Write machine-readable SyncReport to file and/or stdout when requested."""
+    payload = report.to_dict()
+    if report_path:
+        out_file = Path(report_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(f"{json.dumps(payload, indent=2)}\n", encoding="utf-8")
+    if json_output:
+        print(json.dumps(payload, indent=2))
+
+
+def _resolve_sync_repo(manifold_name: str, resolved_folder: str, repo_id: str | None) -> str:
+    """Resolve clean Kaggle repo ID (owner/slug) for a push."""
+    resolved = repo_id or get_kaggle_ref(manifold_name) or get_kaggle_ref(resolved_folder)
+    if not resolved:
+        resolved = f"{default_owner()}/{resolved_folder.lower().replace('_', '')}"
+    return resolved.replace("kaggle://", "")
+
+
+def action_sync(
+    manifold_name: str,
+    repo_id: str | None = None,
+    no_wait: bool = False,
+    notes: str | None = None,
+    **options: Any,
+) -> SyncReport:
     """Zip and Upload a manifold to Kaggle with byte-metered progress and status monitoring.
 
     ``notes`` describes the new version (added to the generated version notes).
     """
+    report_path = options.get("report_path")
+    json_output = bool(options.get("json_output", False))
+    report = SyncReport(action="push", manifold=str(manifold_name or ""))
     resolved_folder = resolve_manifold_folder(manifold_name)
     src_dir = OUT_PARENT / resolved_folder
     if not src_dir.exists():
-        print(
-            f"[ERROR] Local manifold '{manifold_name}' (resolved: '{resolved_folder}') not found at"
+        err_msg = (
+            f"Local manifold '{manifold_name}' (resolved: '{resolved_folder}') not found at"
             f" {src_dir}"
         )
-        return
+        print(f"[ERROR] {err_msg}")
+        report.update(status="failed", errors=[err_msg])
+        _emit_sync_report(report, report_path=report_path, json_output=json_output)
+        sys.exit(1)
 
-    resolved_repo = repo_id or get_kaggle_ref(manifold_name) or get_kaggle_ref(resolved_folder)
-    if not resolved_repo:
-        resolved_repo = f"{default_owner()}/{resolved_folder.lower().replace('_', '')}"
-
-    clean_repo_id = resolved_repo.replace("kaggle://", "")
+    clean_repo_id = _resolve_sync_repo(manifold_name, resolved_folder, repo_id)
     owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else default_owner()
-    setup_auth(default_user=owner)
+    if not setup_auth(default_user=owner):
+        report.update(
+            repo_id=clean_repo_id,
+            status="failed",
+            errors=[f"Kaggle authentication failed for owner '{owner}'"],
+        )
+        _emit_sync_report(report, report_path=report_path, json_output=json_output)
+        sys.exit(1)
 
-    # Pre-cleanup any dangling staging directories (preserves recent archives for resumption)
     cleanup_temp_archives(manifold_name=resolved_folder, base_dir=OUT_PARENT, force=False)
 
     print(f"\n[SYNC] Preparing to upload '{resolved_folder}' to Kaggle ({clean_repo_id})")
@@ -150,9 +192,13 @@ def action_sync(manifold_name, repo_id=None, no_wait=False, notes=None):
         clean_repo_id=clean_repo_id,
         no_wait=no_wait,
         notes=notes,
+        force=bool(options.get("force", False)),
+        report_out=report,
     )
+    _emit_sync_report(report, report_path=report_path, json_output=json_output)
     if not success:
         sys.exit(1)
+    return report
 
 
 def _free_gb(path: Path) -> float:
@@ -163,75 +209,111 @@ def _free_gb(path: Path) -> float:
     return shutil.disk_usage(probe).free / (1024**3)
 
 
-def action_get(repo_id, output_name=None, only=()):
+def _is_interactive_tty() -> bool:
+    """True when stdin is an interactive terminal."""
+    return bool(getattr(sys.stdin, "isatty", lambda: False)())
+
+
+def _resolve_get_output_name(base_repo_id: str, output_name: str | None) -> str:
+    """Resolve local folder name under OUT_PARENT for a pull."""
+    if output_name:
+        return output_name
+    slug = base_repo_id.rsplit("/", maxsplit=1)[-1]
+    for v in DATASETS_META.values():
+        ref = v.get("kaggle_ref", "")
+        if base_repo_id.lower() in ref.lower():
+            return v.get("modernized_folder") or _compiled_folder_name(v.get("name", ""))
+    return slug
+
+
+def _check_pull_preconditions(dest_dir: Path, output_name: str, *, force: bool) -> bool:
+    """Check existing folder collision and free disk space; returns False when user aborts."""
+    if dest_dir.exists() and not force and _is_interactive_tty():
+        print(f"[WARNING] Local manifold '{output_name}' already exists at {dest_dir}!")
+        ans = input("Do you want to RESUME extraction or overwrite? (R/o/n): ").strip().lower()
+        if ans == "o":
+            confirm = input(
+                f"[CRITICAL] Are you ABSOLUTELY sure? Type 'YES' to delete {dest_dir}: "
+            ).strip()
+            if confirm != "YES":
+                print("[GET] Override cancelled. Aborting.")
+                return False
+            print("[GET] Purging existing manifold...")
+            shutil.rmtree(dest_dir, ignore_errors=True)
+        elif ans == "n":
+            print("[GET] Aborting.")
+            return False
+
+    free_gb = _free_gb(OUT_PARENT)
+    if free_gb < 20.0:
+        print(f"[WARNING] Low disk space! Only {free_gb:.2f} GB free on {OUT_PARENT.drive}.")
+        if not force and _is_interactive_tty():
+            if input("Continue anyway? (y/N): ").strip().lower() != "y":
+                print("[GET] Aborting.")
+                return False
+    else:
+        print(f"[GET] Disk check passed ({free_gb:.2f} GB free).")
+    return True
+
+
+def action_get(
+    repo_id: str,
+    output_name: str | None = None,
+    only: tuple[str, ...] = (),
+    **options: Any,
+) -> SyncReport:
     """Download and extract a manifold from Kaggle with byte-level progress and full resumption.
 
     ``only`` (folders ending in ``/`` or file names, relative to the dataset's
     wrapper folder) fetches just those members. The datasets root is created
     when it does not exist yet.
     """
-    clean_repo_id = repo_id.replace("kaggle://", "")
-    slug = clean_repo_id.split("/")[-1]
-    if not output_name:
-        output_name = slug
-        for v in DATASETS_META.values():
-            ref = v.get("kaggle_ref", "")
-            if clean_repo_id.lower() in ref.lower():
-                output_name = v.get("modernized_folder") or _compiled_folder_name(
-                    v.get("name", "")
-                )
-                break
+    version = options.get("version")
+    force = bool(options.get("force", False))
+    report_path = options.get("report_path")
+    json_output = bool(options.get("json_output", False))
 
-    dest_dir = OUT_PARENT / output_name
+    base_repo_id, effective_version = parse_version_pin(repo_id.replace("kaggle://", ""), version)
+    resolved_output = _resolve_get_output_name(base_repo_id, output_name)
+    dest_dir = OUT_PARENT / resolved_output
+    report = SyncReport(
+        action="pull",
+        repo_id=base_repo_id,
+        manifold=resolved_output,
+        pinned_version=effective_version,
+    )
 
-    print(f"\n[GET] Requesting LemGendized Manifold: {clean_repo_id}")
-
-    # Collision check if directory already exists
-    if dest_dir.exists():
-        print(f"[WARNING] Local manifold '{output_name}' already exists at {dest_dir}!")
-        ans = input("Do you want to RESUME extraction or overwrite? (R/o/n): ").strip().lower()
-        if ans == 'o':
-            confirm = input(
-                f"[CRITICAL] Are you ABSOLUTELY sure? Type 'YES' to delete {dest_dir}: "
-            ).strip()
-            if confirm == 'YES':
-                print("[GET] Purging existing manifold...")
-                shutil.rmtree(dest_dir, ignore_errors=True)
-            else:
-                print("[GET] Override cancelled. Aborting.")
-                return
-        elif ans == 'n':
-            print("[GET] Aborting.")
-            return
-
-    # Disk space check (Require at least 20GB free as a baseline safeguard)
-    free_gb = _free_gb(OUT_PARENT)
-    if free_gb < 20.0:
-        print(f"[WARNING] Low disk space! Only {free_gb:.2f} GB free on {OUT_PARENT.drive}.")
-        ans = input("Continue anyway? (y/N): ").strip().lower()
-        if ans != 'y':
-            print("[GET] Aborting.")
-            return
-    else:
-        print(f"[GET] Disk check passed ({free_gb:.2f} GB free).")
+    print(f"\n[GET] Requesting LemGendized Manifold: {base_repo_id}")
+    if not _check_pull_preconditions(dest_dir, resolved_output, force=force):
+        report.status = "aborted"
+        _emit_sync_report(report, report_path=report_path, json_output=json_output)
+        return report
 
     OUT_PARENT.mkdir(parents=True, exist_ok=True)
-    owner = clean_repo_id.split("/")[0] if "/" in clean_repo_id else default_owner()
-    setup_auth(default_user=owner)
+    owner = base_repo_id.split("/")[0] if "/" in base_repo_id else default_owner()
+    if not setup_auth(default_user=owner):
+        report.status = "failed"
+        report.errors = [f"Kaggle authentication failed for owner '{owner}'"]
+        _emit_sync_report(report, report_path=report_path, json_output=json_output)
+        sys.exit(1)
 
     success = perform_dataset_download(
         DownloadRequest(
-            clean_repo_id=clean_repo_id,
+            clean_repo_id=base_repo_id,
             target_dir=dest_dir,
             root_datasets_dir=OUT_PARENT,
-            manifold_name=output_name,
-            slug=slug,
+            manifold_name=resolved_output,
+            slug=base_repo_id.split("/")[-1],
             is_competition=False,
         ),
         only=tuple(only),
+        version=effective_version,
+        report_out=report,
     )
+    _emit_sync_report(report, report_path=report_path, json_output=json_output)
     if not success:
         sys.exit(1)
+    return report
 
 
 
@@ -258,6 +340,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--push", action="store_true", help="Alias for --action sync")
     parser.add_argument("--pull", action="store_true", help="Alias for --action get")
     parser.add_argument("--force", action="store_true", help="Force sync operation")
+    parser.add_argument("--version", type=str, default=None, help="Pin dataset version on pull")
+    parser.add_argument("--report", type=str, default=None, help="Write JSON SyncReport to path")
+    parser.add_argument("--json", action="store_true", help="Print JSON SyncReport to stdout")
     return parser
 
 
@@ -380,7 +465,11 @@ def _resolve_targets(
 
 
 def run_sync_action(
-    action: str, model: str | None = None, repo_id: str | None = None, no_wait: bool = False
+    action: str,
+    model: str | None = None,
+    repo_id: str | None = None,
+    no_wait: bool = False,
+    **options: Any,
 ) -> int:
     """Authenticate and run a ``sync`` (push) or ``get`` (pull) of one manifold.
 
@@ -389,24 +478,24 @@ def run_sync_action(
     ``action_sync`` exits with 1 when the upload fails.
     """
     model, repo_id = _resolve_targets(action, model, repo_id)
-    return _run_resolved(action, model, repo_id, no_wait=no_wait)
+    return _run_resolved(action, model, repo_id, no_wait=no_wait, **options)
 
 
 def _run_resolved(
     action: str,
     model: str | None,
     repo_id: str | None,
-    *,
-    credentials: tuple[str | None, str | None] = (None, None),
-    no_wait: bool = False,
+    **options: Any,
 ) -> int:
+    credentials = options.pop("credentials", (None, None))
+    no_wait = bool(options.pop("no_wait", False))
     default_user = repo_id.split("/")[0] if repo_id and "/" in repo_id else None
     if not setup_auth(credentials[0], credentials[1], default_user):
         return 1
     if action == "sync":
-        action_sync(model, repo_id, no_wait=no_wait)
+        action_sync(model or "", repo_id, no_wait=no_wait, **options)
     elif action == "get":
-        action_get(repo_id, model)
+        action_get(repo_id or "", model, **options)
     return 0
 
 
@@ -416,7 +505,15 @@ def main():
     action = _resolve_action(args)
     model, repo_id = _resolve_targets(action, args.model, args.url)
     code = _run_resolved(
-        action, model, repo_id, credentials=(args.user, args.token), no_wait=args.no_wait
+        action,
+        model,
+        repo_id,
+        credentials=(args.user, args.token),
+        no_wait=args.no_wait,
+        force=args.force,
+        version=args.version,
+        report_path=args.report,
+        json_output=args.json,
     )
     if code != 0:
         sys.exit(code)

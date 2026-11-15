@@ -91,8 +91,13 @@ def _progress(stats: ExtractStats) -> None:
           flush=True)
 
 
-def _ranges(handle: str, url: str, session: requests.Session, target_dir: Path,
-            prefixes: tuple[str, ...]) -> bool:
+def _ranges(
+    handle: str,
+    url: str,
+    session: requests.Session,
+    target_dir: Path,
+    prefixes: tuple[str, ...],
+) -> bool:
     signed = SignedUrl(lambda: signed_url(session, handle), initial=url)
     reader = HttpRangeReader(signed)
     members = select_members(read_central_directory(reader), prefixes)
@@ -108,15 +113,22 @@ def _ranges(handle: str, url: str, session: requests.Session, target_dir: Path,
     return not stats.failed
 
 
-def download_selected(handle: str, target_dir: Path, prefixes: tuple[str, ...]) -> bool:
+def download_selected(
+    handle: str,
+    target_dir: Path,
+    prefixes: tuple[str, ...],
+    *,
+    version: int | None = None,
+) -> bool:
     """Fetch only the members under ``prefixes`` into ``target_dir``; True when all arrived."""
     target_dir.mkdir(parents=True, exist_ok=True)
+    versioned_handle = f"{handle}/versions/{version}" if version is not None else handle
     try:
         session = kaggle_session()
-        url = signed_url(session, handle)
+        url = signed_url(session, versioned_handle)
         if url is None:
             return download_file_by_file(handle, target_dir, prefixes)
-        return _ranges(handle, url, session, target_dir, prefixes)
+        return _ranges(versioned_handle, url, session, target_dir, prefixes)
     except _ERRORS as exc:
         print(f"[ERROR] Selected download of {handle} failed: {exc}")
         return False

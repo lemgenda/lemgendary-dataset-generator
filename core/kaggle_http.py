@@ -87,16 +87,30 @@ def kaggle_session(credential: KaggleCredential | None = None) -> requests.Sessi
     return session
 
 
-def dataset_download_url(handle: str, file_name: str | None = None) -> str:
+def dataset_download_url(
+    handle: str, file_name: str | None = None, version: int | None = None
+) -> str:
     """The Kaggle API download URL of a dataset (``owner/slug``) or of one of its files."""
     url = f"{API_BASE}/datasets/download/{handle}"
-    return f"{url}/{urllib.parse.quote(file_name, safe='')}" if file_name else url
+    if file_name:
+        url = f"{url}/{urllib.parse.quote(file_name, safe='')}"
+    if version is not None:
+        url = f"{url}?datasetVersionNumber={version}"
+    return url
 
 
-def signed_url(session: requests.Session, handle: str, file_name: str | None = None) -> str | None:
+def signed_url(
+    session: requests.Session,
+    handle: str,
+    file_name: str | None = None,
+    version: int | None = None,
+) -> str | None:
     """The signed storage URL Kaggle redirects to; None when Kaggle has no such archive."""
-    response = session.get(dataset_download_url(handle, file_name), allow_redirects=False,
-                           timeout=_TIMEOUT_S)
+    response = session.get(
+        dataset_download_url(handle, file_name, version=version),
+        allow_redirects=False,
+        timeout=_TIMEOUT_S,
+    )
     location = response.headers.get("Location")
     if response.status_code in _REDIRECTS and location:
         return location
