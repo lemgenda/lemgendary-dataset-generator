@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from core import paths
+from core.presets import recommended_preset_for_dataset
 
 from api.manifold_scan import (
     DatasetFileStats,
@@ -27,8 +29,6 @@ from api.models import (
     DatasetSourceInfo,
     DatasetStatsListResponse,
 )
-from core import paths
-from core.presets import recommended_preset_for_dataset
 
 __all__ = [
     "DatasetFileStats",
@@ -66,7 +66,7 @@ def read_yaml_mapping(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except _READ_ERRORS as exc:
         logger.warning("Ignoring unreadable %s: %s", path, exc)
@@ -157,7 +157,7 @@ def _count_jsonl_lines(jsonl_paths: list[Path]) -> int:
     total = 0
     for jf in jsonl_paths:
         try:
-            with open(jf, "r", encoding="utf-8") as jf_in:
+            with open(jf, encoding="utf-8") as jf_in:
                 total += sum(1 for line in jf_in if line.strip())
         except OSError as exc:
             logger.debug("Failed counting lines in %s: %s", jf, exc)
@@ -233,9 +233,13 @@ def _is_compiled(
     formats = stats.formats
     has_images = formats.webp > 0 or formats.jpg > 0 or formats.png > 0
     populated_directory = meta.format_val == "directory" and meta.sample_count > 0
-    return bool(
-        shards_count > 0 or formats.parquet > 0 or is_mds or has_jsonl
-        or populated_directory or has_images
+    return (
+        shards_count > 0
+        or formats.parquet > 0
+        or is_mds
+        or has_jsonl
+        or populated_directory
+        or has_images
     )
 
 
@@ -293,19 +297,56 @@ def _build_detail(
     )
 
 
-def build_dataset_stats_response(root: Path) -> DatasetStatsListResponse:
-    """Enriched catalog of every manifold folder under ``root``."""
-    if not root.exists():
-        return DatasetStatsListResponse(
-            datasets=[], total=0, total_size_bytes=0, total_size_gb=0.0
-        )
+def _build_uncompiled_detail(key: str, reg_info: dict[str, Any]) -> DatasetDetailStats:
+    """Build a placeholder ``DatasetDetailStats`` for a registry entry not on disk."""
+    canonical_format = str(reg_info.get("canonical_format") or "webdataset")
+    container = reg_info.get("container")
+    fmt = (
+        str(container.get("primary"))
+        if isinstance(container, dict) and container.get("primary")
+        else canonical_format
+    )
+    task = str(reg_info.get("task") or "unknown")
+    display_name = str(reg_info.get("title") or reg_info.get("name") or key)
+    return DatasetDetailStats(
+        key=key,
+        name=str(reg_info.get("name") or key),
+        display_name=display_name,
+        path="",
+        format=fmt,
+        canonical_format=canonical_format,
+        task=task,
+        status="uncompiled",
+        sample_count=0,
+        size_bytes=0,
+        size_gb=0.0,
+        formats={},
+        has_hardlinks=False,
+        hardlink_ratio=0.0,
+        recommended_preset=recommended_preset_for_dataset(task, canonical_format),
+    )
 
+
+def build_dataset_stats_response(
+    root: Path,
+    include_uncompiled: bool = False,
+) -> DatasetStatsListResponse:
+    """Enriched catalog of every manifold folder under ``root``."""
     folder_index = _load_folder_index()
-    dataset_stats = [
-        _build_detail(entry, folder_index)
-        for entry in sorted(root.iterdir(), key=lambda p: p.name.lower())
-        if entry.is_dir() and not entry.name.startswith(".")
-    ]
+    dataset_stats: list[DatasetDetailStats] = []
+    if root.exists():
+        dataset_stats = [
+            _build_detail(entry, folder_index)
+            for entry in sorted(root.iterdir(), key=lambda p: p.name.lower())
+            if entry.is_dir() and not entry.name.startswith(".")
+        ]
+    if include_uncompiled:
+        existing_keys = {d.key for d in dataset_stats}
+        for key, reg_info in folder_index.values():
+            if key and key not in existing_keys:
+                dataset_stats.append(_build_uncompiled_detail(key, reg_info))
+                existing_keys.add(key)
+        dataset_stats.sort(key=lambda d: (d.display_name or d.name).lower())
     total_storage_bytes = sum(d.size_bytes for d in dataset_stats)
     return DatasetStatsListResponse(
         datasets=dataset_stats,

@@ -33,6 +33,9 @@
   `quality_report.json`).
 - Fixed `RuntimeWarning` on non-positive close ratios and resolved Pyrefly/lint
   diagnostics in `forex/qa.py`.
+- Added `include_uncompiled` query parameter to `GET /datasets/with-stats`
+  (`api/routes/gui.py`, `api/dataset_stats.py`) so the GUI compiler dropdown
+  includes all `unified_data.yaml` entries even when not yet compiled on disk.
 
 ---
 

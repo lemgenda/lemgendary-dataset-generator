@@ -13,6 +13,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
+from core import presets
+from core.cli_args import __version__
+
 from api.dataset_stats import build_dataset_stats_response
 from api.gui_compile import (
     build_custom_entry,
@@ -40,8 +43,6 @@ from api.models import (
 )
 from api.routes.datasets import _resolve_output_root
 from api.routes.health import _START_TIME, get_hardware_info
-from core import presets
-from core.cli_args import __version__
 
 __all__ = [
     "custom_compile",
@@ -92,9 +93,11 @@ async def get_gui_state() -> GuiStateResponse:
 
 
 @router.get("/datasets/with-stats", response_model=DatasetStatsListResponse)
-def get_datasets_with_stats() -> DatasetStatsListResponse:
+def get_datasets_with_stats(include_uncompiled: bool = False) -> DatasetStatsListResponse:
     """Enriched dataset catalog with detailed format breakdown, storage metrics, and hardlinks."""
-    return build_dataset_stats_response(_resolve_output_root())
+    return build_dataset_stats_response(
+        _resolve_output_root(), include_uncompiled=include_uncompiled
+    )
 
 
 def _elapsed_seconds(job: JobResponse) -> float:
@@ -119,7 +122,9 @@ def _progress_from_log(log_content: str) -> float:
                     return float(parts[-1].strip())
                 except ValueError as val_exc:
                     logger.debug(
-                        "Could not parse progress percentage from line '%s': %s", line, val_exc
+                        "Could not parse progress percentage from line '%s': %s",
+                        line,
+                        val_exc,
                     )
             break
     return 0.0
@@ -201,7 +206,10 @@ async def quick_compile(
         {**req.model_dump(exclude_none=True), "preset_details": preset_cfg.to_dict()},
     )
     logger.info(
-        "Dispatched quick-compile job %s with preset %s for model %s", job.id, req.preset, req.model
+        "Dispatched quick-compile job %s with preset %s for model %s",
+        job.id,
+        req.preset,
+        req.model,
     )
     return job
 
@@ -234,6 +242,8 @@ async def custom_compile(
         custom_compile_parameters(req, names, preset_name, cleaned_refs),
     )
     logger.info(
-        "Dispatched custom compile job %s for custom manifold %s", job.id, names.pascal_name
+        "Dispatched custom compile job %s for custom manifold %s",
+        job.id,
+        names.pascal_name,
     )
     return job
