@@ -17,11 +17,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from utils.naming import sample_key_source
+from utils.shard_audit import audit_shards
+
 from core.docs.context_resolvers import read_yaml_count
 from core.docs.context_types import SplitCounts
 from core.docs.metadata import format_source
 from core.docs.scanner import scan_forex_manifold
-from utils.naming import sample_key_source
 
 logger = logging.getLogger(__name__)
 
@@ -171,12 +173,34 @@ def _load_index_items(output_root: Path) -> list[dict[str, Any]]:
     if not index_file.exists():
         return []
     try:
-        with open(index_file, "r", encoding="utf-8") as f:
+        with open(index_file, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError) as exc:
         logger.debug("Could not parse index.json for sample counts: %s", exc)
         return []
     return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+
+
+def _tally_shards(
+    output_root: Path, manifold_name: str, unified_entry: dict[str, Any]
+) -> TallyResult | None:
+    """Tally samples directly from WebDataset shards when present."""
+    shards_dir = output_root / "shards"
+    if not shards_dir.is_dir():
+        return None
+
+    try:
+        audit = audit_shards(shards_dir)
+        if audit.total_samples > 0:
+            names = unified_entry.get("provenance_sources") or [manifold_name]
+            splits = SplitCounts(
+                train=audit.split_counts.get("train", 0),
+                val=audit.split_counts.get("val", 0),
+            )
+            return TallyResult(uncounted_sources(names), audit.total_samples, splits)
+    except (OSError, ValueError) as exc:
+        logger.debug("Could not audit shards for tally: %s", exc)
+    return None
 
 
 def tally_sources(
@@ -196,5 +220,8 @@ def tally_sources(
     items = _load_index_items(output_root)
     if items:
         return _tally_items(items, manifold_name, unified_entry)
+    shards_tally = _tally_shards(output_root, manifold_name, unified_entry)
+    if shards_tally is not None:
+        return shards_tally
     names = unified_entry.get("provenance_sources") or []
     return TallyResult(uncounted_sources(names), read_yaml_count(output_root), _NOT_RECORDED)

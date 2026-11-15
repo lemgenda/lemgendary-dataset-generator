@@ -20,8 +20,9 @@ from .indicators import compute_indicators
 from .labels import generate_labels, normalize_ohlcv
 from .mt5_download import download_bars
 from .mt5_session import MT5Credentials, connect_mt5, disconnect_mt5
+from .qa import flag_anomalous_bars
 from .schema import TIMEFRAME_LOOKBACK
-from .sharding import ShardTarget, build_windows_and_save_by_year
+from .sharding import ShardTarget, build_windows_and_save_by_year, consolidate_year_parquet
 
 __all__ = ["load_forex_datasets", "main", "run_download_pipeline"]
 
@@ -39,7 +40,7 @@ def load_forex_datasets(yaml_path):
     if not os.path.exists(yaml_path):
         raise FileNotFoundError(f"YAML config not found: {yaml_path}")
 
-    with open(yaml_path, 'r', encoding="utf-8") as f:
+    with open(yaml_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
     datasets = []
@@ -108,9 +109,16 @@ def _process_task(task, missing_datasets, out_dir):
     print(f"   [MAX-SAMPLES] Set to {max_samples:,} for {tf}min timeframe.")
 
     df = download_bars(pair, tf, start_date=start_date, retries=3)
-    if df is None:
+    if df is None or len(df) == 0:
         print(f" [SKIP] {pair} @ {tf}min - symbol not available. Skipping all datasets.")
         return
+
+    # Check raw OHLCV bars for anomalies before normalizing
+    anomalous = flag_anomalous_bars(df)
+    if anomalous.any():
+        bad_cnt = int(anomalous.sum())
+        print(f"   [QA] Filtered {bad_cnt} anomalous raw bars out of {len(df)}.")
+        df = df[~anomalous].copy()
 
     df = normalize_ohlcv(generate_labels(compute_indicators(df), pair))
 
@@ -123,6 +131,21 @@ def _process_task(task, missing_datasets, out_dir):
             seq_len=seq_len,
             max_samples=max_samples,
         )
+
+
+def _consolidate_datasets(dataset_defs: list[dict], out_dir: str) -> None:
+    """Consolidate year shards into single ForexUniverse{year}.parquet."""
+    for d_def in dataset_defs:
+        ds_dir = os.path.join(out_dir, d_def["name"])
+        if not os.path.isdir(ds_dir):
+            continue
+        for item in sorted(os.listdir(ds_dir)):
+            sub_p = os.path.join(ds_dir, item)
+            if not os.path.isdir(sub_p) or not item.startswith("ForexUniverse"):
+                continue
+            year_str = item.replace("ForexUniverse", "")
+            if year_str.isdigit():
+                consolidate_year_parquet(ds_dir, int(year_str))
 
 
 def run_download_pipeline(
@@ -154,6 +177,8 @@ def run_download_pipeline(
                 )
                 continue
             _process_task(task, missing, out_dir)
+
+        _consolidate_datasets(dataset_defs, out_dir)
     finally:
         disconnect_mt5()
 

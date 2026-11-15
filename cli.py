@@ -31,6 +31,7 @@ from commands.presets import presets_app
 from commands.repair import repair_app
 from commands.server import server_app
 from commands.sync import sync_app
+from commands.verify import verify_cmd
 
 app = typer.Typer(
     name="lemgendary",
@@ -42,6 +43,7 @@ app = typer.Typer(
 # Top-level commands.
 app.command()(version)
 app.command(name="compile")(compile_manifold)
+app.command(name="verify")(verify_cmd)
 app.command()(transcode)
 app.command()(audit)
 app.command()(label)

@@ -18,7 +18,6 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from .pipeline_config import CHUNK_SIZE, FEATURES
-from .qa import flag_anomalous_bars
 from .shard_table import ShardLabels, build_shard_table, open_shard_writer
 
 __all__ = [
@@ -181,10 +180,10 @@ def build_windows_and_save_by_year(
         stride = max(1, int(np.ceil(n_total / max_samples))) if max_samples > 0 else 1
 
     indices = np.arange(0, n_total, stride)
-    if {"open", "high", "low", "close"}.issubset(df.columns):
-        anomalous = flag_anomalous_bars(df).to_numpy()
+    if not np.all(np.isfinite(src.features)):
+        valid_mask = np.all(np.isfinite(src.features), axis=1)
         indices = np.array(
-            [i for i in indices if not anomalous[i : i + seq_len].any()],
+            [i for i in indices if valid_mask[i : i + seq_len].all()],
             dtype=indices.dtype,
         )
         if len(indices) == 0:

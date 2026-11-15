@@ -17,6 +17,8 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageStat
 
+from audit.vision_audit import is_blank_solid_color
+
 
 @dataclass(frozen=True)
 class ImageQAResult:
@@ -57,12 +59,7 @@ def check_image_integrity(
                 return ImageQAResult(
                     ok=False, reason="zero_dimension", width=w, height=h, max_stddev=0.0
                 )
-            extrema = img.getextrema()
-            if isinstance(extrema[0], tuple):
-                is_blank = all(mn == mx for mn, mx in extrema)
-            else:
-                is_blank = extrema[0] == extrema[1]
-            if is_blank:
+            if is_blank_solid_color(img):
                 return ImageQAResult(
                     ok=False, reason="blank_solid_color", width=w, height=h, max_stddev=0.0
                 )

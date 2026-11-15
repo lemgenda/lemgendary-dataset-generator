@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageStat
 
 # ─── Canonical reject codes ─────────────────────────────────────────────────
 # Every code is a stable identifier. Adding codes is safe; renaming them
@@ -24,6 +24,10 @@ ERR_RES_UNDERFLOW = "ERR_RES_UNDERFLOW"
 ERR_RES_OVERFLOW = "ERR_RES_OVERFLOW"
 ERR_BLACK_FRAME = "ERR_BLACK_FRAME"
 ERR_WHITE_FRAME = "ERR_WHITE_FRAME"
+ERR_BLANK_FRAME = "ERR_BLANK_FRAME"
+ERR_LOW_VARIANCE = "ERR_LOW_VARIANCE"
+ERR_CORRUPT_IMAGE = "ERR_CORRUPT_IMAGE"
+ERR_CORRUPT_LABEL = "ERR_CORRUPT_LABEL"
 ERR_ASPECT_EXTREME = "ERR_ASPECT_EXTREME"
 ERR_PAIR_MISMATCH = "ERR_PAIR_MISMATCH"
 ERR_PAIR_MODE_MISMATCH = "ERR_PAIR_MODE_MISMATCH"
@@ -50,6 +54,14 @@ _MAGIC = {
     b"\x89HDF\r\n\x1a\n": "hdf5",
     b"\x93NUMPY": "numpy",  # .npy
 }
+
+
+def is_blank_solid_color(img: Image.Image) -> bool:
+    """Detect whether an image has identical min and max values across all channels."""
+    extrema = img.getextrema()
+    if isinstance(extrema[0], tuple):
+        return all(mn == mx for mn, mx in extrema)
+    return extrema[0] == extrema[1]
 
 
 @dataclass
@@ -160,6 +172,25 @@ class VisionAuditor:
                 valid=False,
                 code=ERR_BLACK_FRAME,
                 reason=f">{1.0 - self.black_threshold:.0%} of pixels near-black",
+            )
+
+        # Blank solid-color gate
+        if is_blank_solid_color(img):
+            return AuditResult(
+                valid=False,
+                code=ERR_BLANK_FRAME,
+                reason="solid-color blank frame",
+            )
+
+        # Low-variance gate (max stddev < 1.0)
+        stat = ImageStat.Stat(img)
+        max_std = float(max(stat.stddev))
+        if max_std < 1.0:
+            return AuditResult(
+                valid=False,
+                code=ERR_LOW_VARIANCE,
+                reason=f"low-variance image (max stddev {max_std:.4f} < 1.0)",
+                details={"max_stddev": round(max_std, 4)},
             )
 
         # Aspect-ratio guard

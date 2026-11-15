@@ -225,6 +225,31 @@ def _write_atomic(path: Path, payload: str) -> None:
             tmp.unlink()
 
 
+def _write_shard_sidecar(shard: Path, names: list[str]) -> None:
+    """Write `<shard>.index.json` sidecar for one shard (e.g. data-00000.data.index.json)."""
+    sidecar_path = shard.with_name(f"{shard.name}.index.json")
+    try:
+        stat = shard.stat()
+        payload = {
+            "version": 1,
+            "shard": {
+                "size": int(stat.st_size),
+                "mtime_ns": int(stat.st_mtime_ns),
+            },
+            "samples": [[name, None, None, None, None] for name in names],
+        }
+        _write_atomic(sidecar_path, json.dumps(payload, separators=(",", ":")))
+    except OSError as exc:
+        logger.warning("Could not write shard sidecar %s: %s", sidecar_path, exc)
+
+
+def _ensure_shard_sidecar(shard: Path, names: list[str]) -> None:
+    """Ensure the `<shard>.index.json` sidecar exists and is fresh."""
+    sidecar_path = shard.with_name(f"{shard.name}.index.json")
+    if not sidecar_path.is_file():
+        _write_shard_sidecar(shard, names)
+
+
 def _index_dir(shard_dir: Path) -> OffsetsWrite:
     """Write (or refresh) the index of one shard directory."""
     path = shard_dir / OFFSETS_FILENAME
@@ -238,12 +263,15 @@ def _index_dir(shard_dir: Path) -> OffsetsWrite:
         if kept is not None:
             entries[shard.name] = previous
             members += len(kept)
+            _ensure_shard_sidecar(shard, previous.get("names", []))
             continue
         refs = scan_tar_members(shard)
         scanned += 1
         if refs is not None:
-            entries[shard.name] = _encode(shard, refs)
+            encoded = _encode(shard, refs)
+            entries[shard.name] = encoded
             members += len(refs)
+            _write_shard_sidecar(shard, [ref.name for ref in refs])
     if not entries:
         if path.is_file():
             path.unlink()
@@ -267,6 +295,14 @@ def write_shard_offsets(shards_root: Path) -> list[OffsetsWrite]:
             if orphan.parent not in dirs:
                 logger.info("Removing shard index %s: its folder holds no shards.", orphan)
                 orphan.unlink()
+        for orphan_sidecar in sorted(shards_root.rglob("*.index.json")):
+            if orphan_sidecar.name in (OFFSETS_FILENAME, "index.json"):
+                continue
+            shard_name = orphan_sidecar.name[: -len(".index.json")]
+            shard_file = orphan_sidecar.with_name(shard_name)
+            if not shard_file.is_file():
+                logger.info("Removing orphan shard sidecar %s.", orphan_sidecar)
+                orphan_sidecar.unlink()
     for result in results:
         logger.info("Shard index %s: %d shards, %d rescanned, %d members.",
                     result.shard_dir, result.shards, result.scanned, result.members)

@@ -13,13 +13,38 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.111-STABLE` |
+| **Version** | `v16.9.113-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
 | **Documentation & Specification** | [PAPER_DATASET_COMPILER.md][paper] |
 
 [paper]: ../lemgendary-docs/MD-Papers/PAPER_DATASET_COMPILER.md
+
+### v16.9.113 - Manifold Verification Pipeline, QA & Shard Sidecars
+
+- Added `core/manifold_verification.py` and `commands/verify.py`:
+  Unified manifold validation contracts for WebDataset (vision), Forex
+  (OHLCV time-series), and LLM (instruction JSONL). Enforces per-sample
+  schema conformance, split set-disjointness, domain QA, sidecar byte-map
+  indexing, provenance count triangulation, and deterministic Merkle
+  manifest SHA-256 calculation.
+- Added visual QA filters to `audit/vision_audit.py` and
+  `core/sample_processor.py` (`ERR_BLANK_FRAME`, `ERR_LOW_VARIANCE`,
+  `ERR_CORRUPT_IMAGE`, `ERR_CORRUPT_LABEL`) ensuring blank frames and
+  low-variance images (max channel standard deviation < 1.0) are eliminated
+  during compilation.
+- Added automatic `<shard>.data.index.json` sidecar generation in
+  `utils/shard_offsets.py` and verified metadata count derivation in
+  `core/docs/lineage_tally.py`.
+- Fixed Forex parquet empty partition bug by evaluating price anomaly checks
+  on raw quotes prior to log-return normalization in `forex/pipeline_runner.py`
+  and checking `np.isfinite` in `forex/sharding.py`.
+- Added comprehensive unit tests in `tests/test_manifold_verification.py`.
+- Mandatory changelog gate note: pre-commit hooks across the entire ecosystem
+  strictly enforce that any commit containing functional code modifications
+  must update the project's `README.md` changelog, or the commit will fail and
+  be blocked.
 
 ### v16.9.112 - SOTA LLM Data Curation, Deduplication & Decontamination Pipeline
 
@@ -339,7 +364,7 @@ present file and fails on a stale one.
 - Tests: `tests/test_sample_policy.py` (a manifold missing two files keeps
   the same val set by file id).
 
-### v16.9.101 - `repair face-landmarks`: RetinaFace Boxes and Points From SFHQ (R4-B3)
+### v16.9.101 - `repair face-landmarks`: SFHQ Boxes and Points (R4-B3)
 
 - RetinaFace labels came from a face detector run on the aligned SFHQ crops:
   whole-head boxes (median 0.86 x 0.97 of the image) and landmarks on a
@@ -493,7 +518,7 @@ present file and fails on a stale one.
   `read_sidecars` (`tools/repair/label_restore.py`) is public.
 - Tests: `tests/test_sample_policy.py`.
 
-### v16.9.96 - `sync pull`: Missing Root, File-by-File Fallback, `--only` (R4-B7)
+### v16.9.96 - `sync pull`: Root Fallback, Per-File Mode & `--only` (R4-B7)
 
 - A missing datasets root (`LemGendaryDatasets/`) crashed `sync pull` in
   `shutil.disk_usage`. Free space is now measured at the nearest existing
@@ -957,7 +982,8 @@ present file and fails on a stale one.
 
 ### v16.9.73 - Kaggle Reference Specification for AIHelperLemGend
 
-- `unified_data.yaml`: Registered `kaggle_ref: kaggle://lemtreursi/lemgendizedaihelperlemgend`
+- `unified_data.yaml`: Registered `kaggle_ref:
+  kaggle://lemtreursi/lemgendizedaihelperlemgend`
   for the `ai_helper_lemgend` instruction tuning manifold, surfacing the "Audit
   Notebooks" button in the Desktop GUI.
 
@@ -969,9 +995,10 @@ present file and fails on a stale one.
   manifest (`requirements-datasets.txt`).
 - Synchronized `core.cli_args.__version__`, `openapi.json`, and API contracts.
 
-### v16.9.71 - AIHelper LLM Pipeline Pydantic Validation & Knowledge Ingestor Enhancement
+### v16.9.71 - AIHelper LLM Pipeline Pydantic Validation & Knowledge Ingest
 
-- `tools/llm_helper/base_compiler.py`: integrated canonical `load_unified_data()`
+- `tools/llm_helper/base_compiler.py`: integrated canonical
+  `load_unified_data()`
   Pydantic manifest validation into `BaseLLMCompiler`, replacing raw YAML
   parsing; added 3-way document-grouped partitioner (`train`/`val`/`test`).
 - `tools/llm_helper/metadata_compiler.py`: updated metadata generation to record
@@ -1010,7 +1037,7 @@ present file and fails on a stale one.
 - Cleaned up obsolete local `.kaggle_token`, `.huggingface_token`, and
   `.mt5_credentials` files.
 
-### v16.9.69 - 80-Column Markdown, Yamllint Compliance, and D-12 Task Confirmation
+### v16.9.69 - 80-Column Markdown, Yamllint & D-12 Task Confirmation
 
 - `task_taxonomy.json` & `unified_data.yaml`: added `"forex"` and `"ai_helper"`
   task IDs to `task_taxonomy.json` and confirmed all four pending dataset tasks
@@ -1139,7 +1166,8 @@ fixed at the source with no suppressions or config changes.
 
 ### v16.9.60 - Kaggle Owner Read from the Ecosystem File
 
-- Tests, `core/docs/context.py` and the hub script build Kaggle owner values from
+- Tests, `core/docs/context.py` and the hub script build Kaggle owner values
+  from
   `core/ecosystem.py` instead of literals (clears 31 `ecosystem_ssot` findings).
 
 ### v16.9.59 - Shared Ecosystem File for Port, Kaggle Owner and lem-env
@@ -2473,8 +2501,8 @@ Compilation Support.*
   eliminating duplicate code paths and keeping manifold notebooks 100% identical
   to training suite outputs.
 - **Manifold Purge of Stale Legacy Notebooks** — Purged obsolete legacy
-  notebooks
-  (`LemGendizedClassificationMaster/classification_master_manifold_training.ipynb`,
+  notebooks (`LemGendizedClassificationMaster/`
+  `classification_master_manifold_training.ipynb`,
   `LemGendizedRetinaFace/retinaface_mobilenet_*`) and refreshed all 22 manifold
   directories with fresh, synchronized Kaggle and Colab notebooks.
 - **Updated CLI & Reduction Tooling (`tools/manifold_reduce.py`,

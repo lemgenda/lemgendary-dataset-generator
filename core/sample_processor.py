@@ -16,7 +16,14 @@ from typing import Any, cast
 import numpy as np
 from PIL import Image
 
-from audit.vision_audit import ERR_TARGET_MISSING, AuditResult, NimaCheck
+from audit.vision_audit import (
+    ERR_CORRUPT_IMAGE,
+    ERR_TARGET_MISSING,
+    AuditResult,
+    NimaCheck,
+)
+from utils.image import ensure_srgb
+
 from core.compiler_config import CONFIG, get_args
 from core.compiler_worker import WORKER, get_labeler, link_or_copy, torch, write_image
 from core.error_types import SAMPLE_PROCESSING_ERRORS
@@ -45,7 +52,6 @@ from core.sample_scoring import (
     model_score,
 )
 from core.sample_targets import resolve_target
-from utils.image import ensure_srgb
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +114,15 @@ class _ImageSample:
 
     def skip_record(self) -> dict[str, Any]:
         """Registry record for a sample that is already on disk."""
-        return {"name": self.name, "source": self.slug, "task": self.task, "split": self.split,
-                "hash": "skipped", "nima_score": 1.0, "size": 0}
+        return {
+            "name": self.name,
+            "source": self.slug,
+            "task": self.task,
+            "split": self.split,
+            "hash": "skipped",
+            "nima_score": 1.0,
+            "size": 0,
+        }
 
 
 def _open_sample(img_input: Any, slug: str, idx: int) -> tuple[Path, bytes, Any] | None:
@@ -145,17 +158,24 @@ def _passes_nima_gate(sample: _ImageSample, nima: NimaScore) -> bool:
         return True
     is_authenticity = "authentic" in sample.job.key.prefix.lower()
     threshold = 5.5 if sample.task == "diffusion" else CONFIG["nima_threshold"]
-    return WORKER.audit.auditor.passes_nima(NimaCheck(
-        sample.task, sample.slug, is_authenticity, nima.score, nima.probs, threshold,
-        sample.job.key.idx,
-    ))
+    return WORKER.audit.auditor.passes_nima(
+        NimaCheck(
+            sample.task,
+            sample.slug,
+            is_authenticity,
+            nima.score,
+            nima.probs,
+            threshold,
+            sample.job.key.idx,
+        )
+    )
 
 
 def _score_sample(sample: _ImageSample) -> NimaScore:
     """Resolve the sample's NIMA score from ground truth, path keywords or the model."""
     job = sample.job
-    nima = ground_truth_score(ScoreSource(sample.slug, job.context.fmt, job.ann_data,
-                                          sample.img_path))
+    src = ScoreSource(sample.slug, job.context.fmt, job.ann_data, sample.img_path)
+    nima = ground_truth_score(src)
     is_authenticity = "authentic" in job.key.prefix.lower()
     if is_authenticity:
         nima = authenticity_score(sample.img_path, nima)
@@ -190,12 +210,10 @@ _PAIRED_TASKS = ("restoration", "super-resolution", "segmentation")
 
 def _generated_mask(sample: _ImageSample) -> Any:
     """A segmentation mask from the Phase 5 generator, or None."""
-    if (sample.task != "segmentation" or WORKER.generators.mask_gen is None
-            or sample.img is None):
+    if sample.task != "segmentation" or WORKER.generators.mask_gen is None or sample.img is None:
         return None
-    return WORKER.generators.mask_gen.generate(
-        sample.img, context={"task": sample.task, "slug": sample.slug}
-    ).value
+    ctx = {"task": sample.task, "slug": sample.slug}
+    return WORKER.generators.mask_gen.generate(sample.img, context=ctx).value
 
 
 def _write_restoration_target(sample: _ImageSample, target: _Target) -> None:
@@ -206,28 +224,43 @@ def _write_restoration_target(sample: _ImageSample, target: _Target) -> None:
     """
     out_tgt = sample.target_out_path()
     if target.path:
-        write_image(loaded_img=None, source_bytes=b"", source_path=Path(target.path),
-                    out_path=out_tgt, kind="target")
+        write_image(
+            loaded_img=None, source_bytes=b"", source_path=Path(target.path),
+            out_path=out_tgt, kind="target",
+        )
     elif target.image:
-        write_image(loaded_img=target.image, source_bytes=b"", source_path=sample.img_path,
-                    out_path=out_tgt, kind="target")
+        write_image(
+            loaded_img=target.image, source_bytes=b"", source_path=sample.img_path,
+            out_path=out_tgt, kind="target",
+        )
     elif target.clean_only:
-        write_image(loaded_img=sample.img, source_bytes=sample.img_data,
-                    source_path=sample.img_path, out_path=out_tgt, kind="image")
+        write_image(
+            loaded_img=sample.img,
+            source_bytes=sample.img_data,
+            source_path=sample.img_path,
+            out_path=out_tgt,
+            kind="image",
+        )
     else:
-        write_image(loaded_img=target.mask, source_bytes=b"",
-                    source_path=sample.img_path, out_path=out_tgt, kind="mask")
+        write_image(
+            loaded_img=target.mask, source_bytes=b"", source_path=sample.img_path,
+            out_path=out_tgt, kind="mask",
+        )
 
 
 def _write_parameter_target(sample: _ImageSample, target: _Target, out_img: Path) -> None:
     """Write the target for parameter-prediction samples (the input itself as fallback)."""
     out_tgt = sample.target_out_path()
     if target.path:
-        write_image(loaded_img=None, source_bytes=b"", source_path=Path(target.path),
-                    out_path=out_tgt, kind="target")
+        write_image(
+            loaded_img=None, source_bytes=b"", source_path=Path(target.path),
+            out_path=out_tgt, kind="target",
+        )
     elif target.image:
-        write_image(loaded_img=target.image, source_bytes=b"", source_path=sample.img_path,
-                    out_path=out_tgt, kind="target")
+        write_image(
+            loaded_img=target.image, source_bytes=b"", source_path=sample.img_path,
+            out_path=out_tgt, kind="target",
+        )
     else:
         link_or_copy(out_img, out_tgt, "Param prediction")
 
@@ -242,18 +275,26 @@ def _write_outputs(sample: _ImageSample, target: _Target) -> Path | None:
         target.mask = _generated_mask(sample)
         if not target.has_source():
             logger.warning("Rejected %s (%s): no target found", sample.name, sample.task)
-            record_reject(sample.slug, sample.name, AuditResult(
-                valid=False, code=ERR_TARGET_MISSING, reason=f"no {sample.task} target found"))
+            res = AuditResult(
+                valid=False, code=ERR_TARGET_MISSING, reason=f"no {sample.task} target found"
+            )
+            record_reject(sample.slug, sample.name, res)
             return None
+    tgt_item = target.image or target.path or target.mask
     if not target.clean_only and not target_ok(
-            sample.slug, sample.name, sample.task, sample.img,
-            target.image or target.path or target.mask):
+        sample.slug, sample.name, sample.task, sample.img, tgt_item
+    ):
         return None
     out_img = sample.image_out_path()
     on_disk = WORKER.physical_index and sample.name.lower() in WORKER.physical_index
     if not on_disk and not target.clean_only:
-        out_img = write_image(loaded_img=sample.img, source_bytes=sample.img_data,
-                              source_path=sample.img_path, out_path=out_img, kind="image")
+        out_img = write_image(
+            loaded_img=sample.img,
+            source_bytes=sample.img_data,
+            source_path=sample.img_path,
+            out_path=out_img,
+            kind="image",
+        )
     if sample.task in _PAIRED_TASKS:
         _write_restoration_target(sample, target)
     elif sample.task == "parameter_prediction":
@@ -275,12 +316,18 @@ def _auto_label(sample: _ImageSample) -> list[Annotation]:
     return []
 
 
-def _annotate(sample: _ImageSample, src: AnnotationSource,
-              skip_labeling: bool) -> tuple[list[Annotation], bool]:
+def _annotate(
+    sample: _ImageSample, src: AnnotationSource, skip_labeling: bool
+) -> tuple[list[Annotation], bool]:
     """Parse the source annotations, falling back to auto-labeling; flag auto-labels."""
     annotations = parse_annotations(src)
-    if (annotations or sample.task in ["quality", "classification"]
-            or get_args().no_labeling or skip_labeling or sample.img is None):
+    if (
+        annotations
+        or sample.task in ["quality", "classification"]
+        or get_args().no_labeling
+        or skip_labeling
+        or sample.img is None
+    ):
         return annotations, False
     labels = _auto_label(sample)
     return labels, bool(labels)
@@ -302,30 +349,43 @@ def _prepare_sample(job: ImageJob) -> _ImageSample | None:
     if opened is None:
         return None
     img_path, img_data, img = opened
-    return _ImageSample(job=job, img_path=img_path,
-                        is_virtual=isinstance(job.img_input, (bytes, dict)),
-                        img_data=img_data, img=img)
+    is_virt = isinstance(job.img_input, (bytes, dict))
+    return _ImageSample(job=job, img_path=img_path, is_virtual=is_virt, img_data=img_data, img=img)
 
 
 def _vet_sample(sample: _ImageSample) -> bool:
-    """Check the file header, then decode the pixels when vetting or labeling needs them.
+    """Check the file header, decode pixels, and audit for corruption, blanks and variance.
 
     False when either audit rejects the sample (the reject is recorded).
     """
-    if not header_ok(sample.slug, sample.name,
-                     sample.img_data if sample.is_virtual else sample.img_path):
+    raw_img = sample.img_data if sample.is_virtual else sample.img_path
+    if not header_ok(sample.slug, sample.name, raw_img):
         return False
-    skip_labeling = sample.job.context.skip_labeling
-    if (sample.task in ["quality", "diffusion"] and not get_args().no_vetting) or not skip_labeling:
+    try:
         sample.img = _load_pixels(sample)
+        if hasattr(sample.img, "load"):
+            sample.img.load()
         sample.dims = sample.img.size
-        if not image_ok(sample.slug, sample.name, sample.img, sample.task):
-            return False
+    except (OSError, ValueError, SyntaxError) as exc:
+        record_reject(
+            sample.slug,
+            sample.name,
+            AuditResult(
+                valid=False,
+                code=ERR_CORRUPT_IMAGE,
+                reason=f"corrupt_image_decode_error:{exc}",
+            ),
+        )
+        return False
+
+    if not image_ok(sample.slug, sample.name, sample.img, sample.task):
+        return False
     return True
 
 
-def _write_sample_files(sample: _ImageSample, target_img: Any,
-                        target_path: str | None) -> Path | None:
+def _write_sample_files(
+    sample: _ImageSample, target_img: Any, target_path: str | None
+) -> Path | None:
     """Write the image and its target (clean-only restoration pairs reuse the input)."""
     slug = sample.slug.lower()
     clean_only = ("parsenet" in slug or "codeformer" in slug) and sample.task == "restoration"
@@ -334,8 +394,9 @@ def _write_sample_files(sample: _ImageSample, target_img: Any,
     return _write_outputs(sample, _Target(target_img, target_path, clean_only))
 
 
-def _label_and_record(sample: _ImageSample, nima: NimaScore, hashes: tuple[Any, str | None],
-                      out_img_path: Path) -> dict[str, Any]:
+def _label_and_record(
+    sample: _ImageSample, nima: NimaScore, hashes: tuple[Any, str | None], out_img_path: Path
+) -> dict[str, Any]:
     """Write the label file and return the sample's registry record."""
     job = sample.job
     task = sample.task
@@ -353,9 +414,14 @@ def _label_and_record(sample: _ImageSample, nima: NimaScore, hashes: tuple[Any, 
         write_label_file(label_file_path, label_lines(content, *sample.dims))
 
     return {
-        "name": sample.name, "source": sample.slug, "task": task, "split": sample.split,
-        "hash": hashes[0], "perceptual_hash": hashes[1],
-        "nima_score": round(nima.score, 3), "is_autolabeled": is_autolabeled,
+        "name": sample.name,
+        "source": sample.slug,
+        "task": task,
+        "split": sample.split,
+        "hash": hashes[0],
+        "perceptual_hash": hashes[1],
+        "nima_score": round(nima.score, 3),
+        "is_autolabeled": is_autolabeled,
         "has_segmentation": any(a_["type"] == "segmentation" for a_ in annotations),
         "has_pose": any(a_["type"] == "pose" for a_ in annotations),
         "label_path": str(label_file_path.resolve()),
@@ -375,8 +441,9 @@ def _process_image(job: ImageJob) -> dict[str, Any] | None:
         return sample.skip_record()
     if not _vet_sample(sample):
         return None
-    target_img, target_path = resolve_target(sample.task, job.ann_data, sample.img_path,
-                                             sample.is_virtual)
+    target_img, target_path = resolve_target(
+        sample.task, job.ann_data, sample.img_path, sample.is_virtual
+    )
 
     nima = _gated_score(sample)
     if nima is None:
@@ -394,7 +461,7 @@ def process_image(job: ImageJob) -> dict[str, Any] | None:
     try:
         return _process_image(job)
     except SAMPLE_PROCESSING_ERRORS as e:
-        failed = (job.img_input if isinstance(job.img_input, (str, Path))
-                  else f"virtual_{job.key.slug}_{job.key.idx:09d}")
+        is_path = isinstance(job.img_input, (str, Path))
+        failed = job.img_input if is_path else f"virtual_{job.key.slug}_{job.key.idx:09d}"
         logger.error("Failed processing %s: %s", failed, e)
         return None

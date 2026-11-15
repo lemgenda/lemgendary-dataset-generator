@@ -35,6 +35,7 @@ __all__ = [
     "ShardSetAudit",
     "audit_shard",
     "audit_shard_set",
+    "audit_shards",
     "expected_counts",
     "find_shards",
     "is_empty_defect",
@@ -188,6 +189,11 @@ def audit_shard_set(shards_dir: Path) -> ShardSetAudit:
     return result
 
 
+def audit_shards(shards_dir: Path) -> ShardSetAudit:
+    """Audit all shards under ``shards_dir``. Alias for ``audit_shard_set``."""
+    return audit_shard_set(shards_dir)
+
+
 @dataclass(frozen=True)
 class ExpectedCounts:
     """Sample counts the manifold's metadata claims (None when not recorded)."""
@@ -221,7 +227,7 @@ def expected_counts(manifold_dir: Path) -> ExpectedCounts:
         for entry in index:
             split = str(entry.get("split") or _ALL_SPLIT)
             splits[split] = splits.get(split, 0) + 1
-    return ExpectedCounts(int(count) if isinstance(count, int) else None, splits)
+    return ExpectedCounts(count if isinstance(count, int) else None, splits)
 
 
 def shard_set_problems(
@@ -239,13 +245,18 @@ def shard_set_problems(
     problems: list[str] = []
     if not audit.shards:
         problems.append(f"no shards under {audit.shards_dir}")
-    paired = any(_is_target(suffix) for shard in audit.shards
-                 for have in shard.suffixes.values() for suffix in have)
+    paired = any(
+        _is_target(suf)
+        for s in audit.shards
+        for have in s.suffixes.values()
+        for suf in have
+    )
     for shard in audit.shards:
         unpaired = shard.unpaired() if paired else []
         if unpaired:
-            problems.append(f"{shard.path.name}: {len(unpaired)} samples without a target"
-                            f" (first: {unpaired[0]})")
+            problems.append(
+                f"{shard.path.name}: {len(unpaired)} samples without target (first: {unpaired[0]})"
+            )
         name = shard.path.name
         if shard.error:
             problems.append(f"{name}: unreadable tar ({shard.error})")
@@ -253,16 +264,16 @@ def shard_set_problems(
             problems.append(f"{name}: {len(shard.zero_byte)} zero-byte members")
         if shard.scattered:
             problems.append(
-                f"{name}: {len(shard.scattered)} samples not contiguous"
-                f" (max member distance {shard.max_key_distance})"
+                f"{name}: {len(shard.scattered)} samples not contiguous "
+                f"(max member distance {shard.max_key_distance})"
             )
         missing = shard.incomplete(required) if required else []
         if missing:
             problems.append(f"{name}: {len(missing)} samples missing one of {required}")
     if expected_total is not None and audit.total_samples != expected_total:
         problems.append(f"{audit.total_samples} samples in shards, expected {expected_total}")
-    problems.extend(offsets_problems(audit.shards_dir,
-                                     {shard.path: shard.members for shard in audit.shards}))
+    members_map = {shard.path: shard.members for shard in audit.shards}
+    problems.extend(offsets_problems(audit.shards_dir, members_map))
     return problems
 
 
