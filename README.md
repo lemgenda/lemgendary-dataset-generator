@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.113-STABLE` |
+| **Version** | `v16.9.114-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,20 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.114 - SUITE_PAT Ingestion & Notebook/Doc Generation Audit
+
+- **SUITE_PAT Integration (`core/secrets.py`, `sources/gh.py`)**: Added
+  authoritative `get_suite_pat()` resolving `SUITE_PAT` from environment or
+  workspace `.secrets.yaml` under `github-primary`. Replaced direct git
+  cloning in `sources/gh.py` with authenticated git askpass execution using
+  `SUITE_PAT`. Deprecated legacy `GITHUB_PAT` with clear migration logging.
+- **Notebook & Document Generation Audits**: Audited `core/doc_generator.py`,
+  `core/docs/generators/`, and `core/docs/templates.py`. Verified markdown
+  structures, table formatting, anchor resolution, and deterministic output.
+- **Tests**: Added `tests/test_prompt11_suite_pat.py` validating `SUITE_PAT`
+  lookup, environment precedence, legacy deprecation logging, and git-askpass
+  credential transmission. All tests pass with zero diagnostics.
 
 ### v16.9.113 - Kaggle Sync Hardening, Manifest Verification & Shard Sidecars
 

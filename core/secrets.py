@@ -7,6 +7,7 @@ Single Source of Truth (SSOT).
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -87,3 +88,28 @@ def get_kaggle_vault_credentials(
     token = str(rec.get("secret_value") or "").strip() or None
     user = str(rec.get("username") or "").strip() or None
     return token, user
+
+
+def get_suite_pat(default: str | None = None) -> str | None:
+    """Retrieve SUITE_PAT exclusively from .secrets.yaml under key 'github-primary' or env."""
+    env_pat = os.environ.get("SUITE_PAT", "").strip()
+    if env_pat:
+        return env_pat
+
+    legacy_pat = os.environ.get("GITHUB_PAT") or os.environ.get("github_pat")
+    if legacy_pat:
+        _log.warning(
+            "GITHUB_PAT is deprecated and unsupported. Migrate to SUITE_PAT "
+            "(stored under 'github-primary' in .secrets.yaml)."
+        )
+
+    records = load_secrets_records()
+    for r in records:
+        if str(r.get("id", "")).strip() == "github-primary":
+            val = str(r.get("secret_value") or "").strip()
+            if val:
+                return val
+
+    # Fallback to default github service entry
+    val = get_secret_value("github", default=default)
+    return val
