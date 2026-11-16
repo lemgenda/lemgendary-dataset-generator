@@ -121,11 +121,11 @@ def _ext(fname: str) -> str:
 
 
 def _is_container_shard(fname: str, ext: str, container_name: str) -> bool:
-    if fname in _NOT_SHARDS:
+    if fname in _NOT_SHARDS or fname.endswith(".index.json"):
         return False
     return (
         ext in _SHARD_EXTS
-        or fname.startswith(("chunk", "shard"))
+        or (fname.startswith(("chunk", "shard")) and ext not in _LOOSE_SKIP_EXTS)
         or (container_name == "mds" and not ext)
     )
 

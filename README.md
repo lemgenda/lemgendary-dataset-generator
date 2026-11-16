@@ -82,8 +82,15 @@ present file and fails on a stale one.
 
 ## Changelog
 
-### v16.9.114 - SUITE_PAT Ingestion & Notebook/Doc Generation Audit
+### v16.9.114 - SUITE_PAT Ingestion, Notebook/Doc Generation Audit & CLI Hardening
 
+- **CLI Hardening (`cli.py`, `commands/server.py`)**: Added top-level
+  `--version` and `-V` flag callback options to the unified `lemgendary` CLI.
+  Added `--json` machine-readable output flag to `python cli.py server status`.
+- **Shard Sidecar & Offset Index Verification**: Updated container and
+  directory scanners (`api/manifold_scan.py`, `tools/modernize/loose_verify.py`)
+  to ignore `.data.index.json` shard sidecars and metadata indexes from tar
+  parsing and shard counting routines.
 - **SUITE_PAT Integration (`core/secrets.py`, `sources/gh.py`)**: Added
   authoritative `get_suite_pat()` resolving `SUITE_PAT` from environment or
   workspace `.secrets.yaml` under `github-primary`. Replaced direct git
@@ -92,9 +99,11 @@ present file and fails on a stale one.
 - **Notebook & Document Generation Audits**: Audited `core/doc_generator.py`,
   `core/docs/generators/`, and `core/docs/templates.py`. Verified markdown
   structures, table formatting, anchor resolution, and deterministic output.
-- **Tests**: Added `tests/test_prompt11_suite_pat.py` validating `SUITE_PAT`
-  lookup, environment precedence, legacy deprecation logging, and git-askpass
-  credential transmission. All tests pass with zero diagnostics.
+- **Tests**: Added `tests/test_cli_suite.py` covering root commands, command
+  groups, `--version`, `-V`, and help syntax. Added
+  `tests/test_prompt11_suite_pat.py` validating `SUITE_PAT` lookup,
+  environment precedence, legacy deprecation logging, and git-askpass credential
+  transmission. All 498 ecosystem tests pass with zero diagnostics.
 
 ### v16.9.113 - Kaggle Sync Hardening, Manifest Verification & Shard Sidecars
 

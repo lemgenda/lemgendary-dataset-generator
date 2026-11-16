@@ -28,7 +28,7 @@ def shard_member_names(shard_dir: Path) -> set[str]:
     """Return the names of the regular members of every tar shard directly in ``shard_dir``."""
     names: set[str] = set()
     for shard in sorted(shard_dir.glob("shard-*")):
-        if not shard.is_file():
+        if not shard.is_file() or shard.name.endswith(".json"):
             continue
         with tarfile.open(shard, "r") as tf:
             names.update(m.name for m in tf.getmembers() if m.isfile())

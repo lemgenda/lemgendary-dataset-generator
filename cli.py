@@ -40,6 +40,26 @@ app = typer.Typer(
     add_completion=False,
 )
 
+def _version_callback(value: bool) -> None:
+    if value:
+        version()
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    _version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the Dataset Compiler Suite version and exit.",
+    ),
+) -> None:
+    """LemGendary Dataset Compiler Suite - unified CLI."""
+
+
 # Top-level commands.
 app.command()(version)
 app.command(name="compile")(compile_manifold)

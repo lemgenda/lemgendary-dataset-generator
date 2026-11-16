@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.113"
+    "version": "16.9.114"
   },
   "paths": {
     "/api/health": {
@@ -100,6 +100,18 @@
         "summary": "Get Datasets With Stats",
         "description": "Enriched dataset catalog with detailed format breakdown, storage metrics, and hardlinks.",
         "operationId": "get_datasets_with_stats_api_gui_datasets_with_stats_get",
+        "parameters": [
+          {
+            "name": "include_uncompiled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Uncompiled"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -107,6 +119,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DatasetStatsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }

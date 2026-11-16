@@ -150,7 +150,14 @@ class TestEntryPointsRoundTrip(unittest.TestCase):
         invocation = sync_service.manifold_sync_invocation(action="get", model="LemGendizedX")
         with patch("tools.manifold_sync.run_sync_action", return_value=0) as run:
             self.assertEqual(sync_service.main(list(invocation.args)), 0)
-        run.assert_called_once_with("get", "LemGendizedX", None, no_wait=False)
+        run.assert_called_once_with(
+            "get",
+            "LemGendizedX",
+            None,
+            no_wait=False,
+            force=False,
+            json_output=False,
+        )
 
     def test_queue(self) -> None:
         """Queue arguments reach the modernization queue unchanged."""

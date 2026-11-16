@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import sys
@@ -119,23 +120,34 @@ def server_stop() -> None:
 
 @server_app.command("status")
 def server_status(
-    host: str | None = typer.Option(None, "--host", "-h"),
-    port: int | None = typer.Option(None, "--port", "-p"),
+    host: str | None = typer.Option(
+        None, "--host", "-h", help="API host (default: from ecosystem)"
+    ),
+    port: int | None = typer.Option(
+        None, "--port", "-p", help="API port (default: from ecosystem)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Output machine-readable JSON"),
 ) -> None:
     """Check the health, uptime, and hardware sensors of the API server."""
     host = host or server_host()
     port = port or server_port()
     if not _is_server_available(host, port):
-        console.print(
-            "[yellow]LemGendary Dataset Compiler API server is not running on"
-            f" http://{host}:{port}[/yellow]"
-        )
+        if json_output:
+            console.print('{"status": "offline", "running": false}')
+        else:
+            console.print(
+                "[yellow]LemGendary Dataset Compiler API server is not running on"
+                f" http://{host}:{port}[/yellow]"
+            )
         return
 
     try:
         resp = requests.get(f"http://{host}:{port}/api/health/full", timeout=3)
         if resp.status_code == 200:
             data = resp.json()
+            if json_output:
+                console.print(json.dumps(data, indent=2))
+                return
             table = Table(title="LemGendary Dataset Compiler API - Status")
             table.add_column("Property", style="bold cyan")
             table.add_column("Value", style="green")
@@ -158,8 +170,13 @@ def server_status(
             table.add_row("Swagger Documentation", f"http://{host}:{port}/docs")
 
             console.print(table)
+        elif json_output:
+            console.print(f'{{"status": "error", "code": {resp.status_code}}}')
         else:
             console.print(f"[red]Health endpoint returned status {resp.status_code}[/red]")
     except (requests.RequestException, ValueError) as exc:
         logger.warning("Error probing API server on %s:%s: %s", host, port, exc)
-        console.print(f"[red]Error probing server: {exc}[/red]")
+        if json_output:
+            console.print(f'{{"status": "error", "message": "{exc}"}}')
+        else:
+            console.print(f"[red]Error probing server: {exc}[/red]")

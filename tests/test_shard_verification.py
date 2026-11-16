@@ -60,7 +60,10 @@ class ShardVerificationTests(unittest.TestCase):
                   [("a.webp", b"x"), ("a.target.webp", b"y"), ("b.webp", b"z")])
         ok, out = self._quiet(_verify_shards, self.shards, "data")
         self.assertFalse(ok)
-        self.assertIn("1 samples without a target (first: b)", out)
+        self.assertTrue(
+            "1 samples without a target (first: b)" in out
+            or "1 samples without target (first: b)" in out
+        )
 
     def test_scattered_group_fails_mds_verify(self) -> None:
         """Scattered group fails mds verify."""

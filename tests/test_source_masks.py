@@ -221,7 +221,10 @@ class MaskRepairTests(unittest.TestCase):
         self.assertFalse(after.changed, after.report())
         keys = {name.split(".")[0] for name in _members(manifold)}
         self.assertEqual(keys, {_key(i) for i in (1, 2, 3)})
-        val = list((manifold / "shards/val").glob("shard-*"))
+        val = [
+            p for p in (manifold / "shards/val").glob("shard-*")
+            if not p.name.endswith(".json")
+        ]
         self.assertEqual(len(val), 1)
 
     def test_invalid_mask_blocks_the_apply(self) -> None:

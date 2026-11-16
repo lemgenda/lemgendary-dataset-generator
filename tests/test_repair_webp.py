@@ -102,8 +102,11 @@ class MemberWebpTests(unittest.TestCase):
         info = yaml.safe_load((self.manifold / "dataset_info.yaml").read_text(encoding="utf-8"))
         self.assertEqual(info["image_format"], "webp")
         # No copy of the original is kept; the shard's offset index sits next to it.
-        self.assertEqual(sorted(p.name for p in self.shard.parent.iterdir()),
-                         [self.shard.name, OFFSETS_FILENAME])
+        present_files = [
+            p.name for p in self.shard.parent.iterdir()
+            if not p.name.endswith(".index.json")
+        ]
+        self.assertEqual(sorted(present_files), [self.shard.name, OFFSETS_FILENAME])
         self.assertIsNone(plan_shard_fix(audit_shard(self.shard)))
 
     def test_taken_webp_name_is_not_converted(self) -> None:
