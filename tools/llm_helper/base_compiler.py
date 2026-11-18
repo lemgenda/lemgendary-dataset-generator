@@ -216,7 +216,7 @@ class BaseLLMCompiler:
         return compile_knowledge_corpus(
             knowledge_sources=llm_pipe.get("knowledge_sources", []),
             system_prompt=llm_pipe.get("system_prompt", ""),
-            target_samples=int(llm_pipe.get("target_samples", 525)),
+            max_samples=llm_pipe.get("max_samples"),
             workspace_root=self.workspace_root,
         )
 

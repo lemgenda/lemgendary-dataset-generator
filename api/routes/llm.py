@@ -12,11 +12,11 @@ import yaml
 from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+from services.llm_service import compile_llm_manifold, llm_compile_invocation
 
 from api.jobs import job_manager, submit_job
 from api.models import JobType
 from api.routes.datasets import _resolve_output_root
-from services.llm_service import compile_llm_manifold, llm_compile_invocation
 from tools.llm_helper.quality_validator import QualityValidator
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,6 @@ class LLMCompileRequest(BaseModel):
         ...,
         description="Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)",
     )
-    target_samples: int | None = Field(default=None, description="Override target sample count")
     async_mode: bool = Field(
         default=False, description="Run compilation as a background worker job"
     )
@@ -65,7 +64,7 @@ async def compile_llm_dataset(req: LLMCompileRequest) -> dict[str, Any]:
             job_manager,
             JobType.LLM,
             llm_compile_invocation(req.dataset_key),
-            {"dataset_key": req.dataset_key, "target_samples": req.target_samples},
+            {"dataset_key": req.dataset_key},
         )
         return {
             "status": "enqueued",
@@ -128,7 +127,7 @@ def validate_llm_corpus(req: LLMValidationRequest) -> dict[str, Any]:
     elif req.file_path is not None:
         corpus_path = resolve_corpus_path(req.file_path)
         try:
-            with open(corpus_path, "r", encoding="utf-8") as f:
+            with open(corpus_path, encoding="utf-8") as f:
                 records = [json.loads(line) for line in f if line.strip()]
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise HTTPException(

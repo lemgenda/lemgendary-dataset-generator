@@ -210,7 +210,7 @@ class LLMPipelineConfig(BaseModel):
 
     system_prompt: str
     schema_format: str = "chatml_turn3"
-    target_samples: int = 525
+    max_samples: int | None = None
     generator_module: str | None = None
     knowledge_sources: list[KnowledgeSourceConfig] = Field(default_factory=list)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)

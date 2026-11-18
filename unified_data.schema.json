@@ -907,10 +907,17 @@
           "title": "Schema Format",
           "type": "string"
         },
-        "target_samples": {
-          "default": 525,
-          "title": "Target Samples",
-          "type": "integer"
+        "max_samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Samples"
         },
         "generator_module": {
           "anyOf": [

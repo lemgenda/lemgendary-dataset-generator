@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from .chunker import RecursiveChunker
 from .knowledge_ingestor import KnowledgeDocument, KnowledgeIngestor
 from .taxonomy import (
     classify_category as _classify_category,
@@ -91,6 +92,87 @@ def _render_turns(category: str, doc_id: str, header: str, clean_text: str) -> t
     return user_tpl.format(**fields), reply_tpl.format(**fields)
 
 
+def _build_chatml_record(
+    meta: dict[str, str],
+    turns: tuple[str, str, str],
+) -> dict[str, Any]:
+    return {
+        **meta,
+        "messages": [
+            {"role": "system", "content": turns[0]},
+            {"role": "user", "content": turns[1]},
+            {"role": "assistant", "content": turns[2]},
+        ],
+    }
+
+
+def synthesize_instructions_from_section(
+    doc_id: str,
+    header: str,
+    content: str,
+    system_prompt: str,
+    index: int,
+) -> list[dict[str, Any]]:
+    """Convert an ingested document section into 1 or 2 ChatML records based on density."""
+    clean_text = _clean_content(content)
+    if len(clean_text) < 100:
+        return []
+
+    category = _classify_category(doc_id, header)
+    tier = _authority_tier(doc_id)
+    base_meta = {
+        "category": category,
+        "source_doc": doc_id,
+        "section_title": header.rsplit(" > ", maxsplit=1)[-1] if " > " in header else header,
+        "heading_path": header,
+        "authority_tier": tier,
+    }
+    doc_base = Path(doc_id).stem.lower()
+    user_prompt, assistant_reply = _render_turns(category, doc_id, header, clean_text)
+    records = [
+        _build_chatml_record(
+            {
+                **base_meta,
+                "id": "gen_"
+                + doc_base
+                + "_"
+                + hashlib.sha256(f"{doc_id}:{header}:{index}".encode()).hexdigest()[:8],
+            },
+            (system_prompt, user_prompt, assistant_reply),
+        )
+    ]
+
+    if (
+        len(clean_text.split()) >= 140
+        or "```" in clean_text
+        or "$$" in clean_text
+        or "\\(" in clean_text
+        or tier in ("tier_1_manifest", "tier_2_operational_manual")
+    ):
+        clean_h = re.sub(r"^[\d\.\s\-]+", "", header).strip()
+        records.append(
+            _build_chatml_record(
+                {
+                    **base_meta,
+                    "id": "gen_"
+                    + doc_base
+                    + "_"
+                    + hashlib.sha256(f"{doc_id}:{header}:{index}:op".encode()).hexdigest()[:8],
+                },
+                (
+                    system_prompt,
+                    (
+                        f"What are the operational constraints, verification steps, or key "
+                        f"parameters for {clean_h} in `{doc_id}`?"
+                    ),
+                    f"Operational breakdown for `{doc_id}` ({clean_h}):\n\n{clean_text}",
+                ),
+            )
+        )
+
+    return records
+
+
 def synthesize_instruction_from_section(
     doc_id: str,
     header: str,
@@ -99,33 +181,8 @@ def synthesize_instruction_from_section(
     index: int,
 ) -> dict[str, Any] | None:
     """Convert an ingested document section into a structured 3-turn ChatML record."""
-    clean_text = _clean_content(content)
-    if len(clean_text) < 100:
-        return None
-
-    path_ctx = header
-    leaf_header = header.rsplit(" > ", maxsplit=1)[-1] if " > " in header else header
-    category = _classify_category(doc_id, path_ctx)
-    doc_base = Path(doc_id).stem
-    user_prompt, assistant_reply = _render_turns(category, doc_id, path_ctx, clean_text)
-
-    # Deterministic SHA hash for record ID
-    record_hash = hashlib.sha256(f"{doc_id}:{path_ctx}:{index}".encode()).hexdigest()[:8]
-    record_id = f"gen_{doc_base.lower()}_{record_hash}"
-
-    return {
-        "id": record_id,
-        "category": category,
-        "source_doc": doc_id,
-        "section_title": leaf_header,
-        "heading_path": path_ctx,
-        "authority_tier": _authority_tier(doc_id),
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-            {"role": "assistant", "content": assistant_reply},
-        ],
-    }
+    recs = synthesize_instructions_from_section(doc_id, header, content, system_prompt, index)
+    return recs[0] if recs else None
 
 
 def _ingest_sources(knowledge_sources: list[dict[str, Any]], root: Path) -> list[KnowledgeDocument]:
@@ -176,10 +233,37 @@ def _convert_yaml_to_markdown_sections(content: str) -> str:
     md_blocks: list[str] = []
     if any(k in data for k in ("forex_predictor", "nima_aesthetic", "parsenet", "codeformer")):
         _append_model_manifest_sections(data, md_blocks)
+    elif "datasets" in data and isinstance(data.get("datasets"), dict):
+        _append_dataset_manifest_sections(data["datasets"], md_blocks)
     elif "platform_capabilities" in data or "desktop_client_baseline" in data:
         _append_capabilities_sections(data, md_blocks)
 
     return "\n\n".join(md_blocks) if md_blocks else content
+
+
+def _append_dataset_manifest_sections(
+    datasets: dict[str, Any], md_blocks: list[str]
+) -> None:
+    """Format dataset manifolds from unified_data.yaml into markdown."""
+    for d_key, d_info in datasets.items():
+        if not isinstance(d_info, dict):
+            continue
+        name = d_info.get("name", d_key)
+        title = d_info.get("title", name)
+        task = d_info.get("task", "vision")
+        fmt = d_info.get("canonical_format", "webdataset")
+        folder = d_info.get("modernized_folder", d_key)
+        subtitle = d_info.get("subtitle", "").strip()
+        sec = (
+            f"## Dataset Manifold Specification: {title} ({d_key})\n\n"
+            f"The **{title}** (`{d_key}`) manifold is stored in `{folder}`.\n"
+            f"- Task: `{task}`\n"
+            f"- Canonical Format: `{fmt}`\n"
+            f"- Validation Split: {d_info.get('val_split', 0.12)}\n\n"
+        )
+        if subtitle:
+            sec += f"{subtitle}\n\n"
+        md_blocks.append(sec)
 
 
 def _append_model_manifest_sections(data: dict[str, Any], md_blocks: list[str]) -> None:
@@ -190,9 +274,7 @@ def _append_model_manifest_sections(data: dict[str, Any], md_blocks: list[str]) 
         _append_single_model_section(m_key, m_info, md_blocks)
 
 
-def _append_single_model_section(
-    m_key: str, m_info: dict[str, Any], md_blocks: list[str]
-) -> None:
+def _append_single_model_section(m_key: str, m_info: dict[str, Any], md_blocks: list[str]) -> None:
     """Format one model entry from unified_models_v2."""
     name = m_info.get("name", m_key)
     arch = m_info.get("architecture_type", "Neural Architecture")
@@ -224,9 +306,8 @@ def _append_capabilities_sections(data: dict[str, Any], md_blocks: list[str]) ->
     s_ver = data.get("schema_version")
     d_ver = data.get("document_baseline")
     md_blocks.append(
-        f"## Canonical System Baselines and Governance\n\n"
-        f"Schema Version: {s_ver}\n"
-        f"Document Baseline: {d_ver}\n\n"
+        "## Canonical System Baselines and Governance\n\n"
+        f"Schema Version: {s_ver}\nDocument Baseline: {d_ver}\n\n"
     )
     for m in data.get("models", []):
         _append_capability_model(m, md_blocks)
@@ -311,36 +392,54 @@ def _iter_sections(content: str) -> Iterator[tuple[str, str, str]]:
             yield current_leaf, current_path or current_leaf, body
 
 
-def _synthesize_records(
-    docs: list[KnowledgeDocument], system_prompt: str
-) -> list[dict[str, Any]]:
-    """Turn every usable document section into a record, numbering only the kept ones."""
+def _synthesize_records(docs: list[KnowledgeDocument], system_prompt: str) -> list[dict[str, Any]]:
+    """Turn every usable document section into records, chunking oversized sections."""
+    chunker = RecursiveChunker(chunk_size=1200, chunk_overlap=200)
     raw_records: list[dict[str, Any]] = []
     for doc in docs:
         for _leaf, heading_path, text in _iter_sections(doc.content):
-            rec = synthesize_instruction_from_section(
-                doc.doc_id, heading_path, text, system_prompt, len(raw_records)
-            )
-            if rec:
-                raw_records.append(rec)
+            if len(text) > 2400:
+                sub_doc = KnowledgeDocument(
+                    doc_id=doc.doc_id,
+                    content=text,
+                    source_type=doc.source_type,
+                    source_path=doc.source_path,
+                    canonical_url=doc.canonical_url,
+                )
+                chunks = chunker.chunk_document(sub_doc)
+                for c_idx, chunk in enumerate(chunks, start=1):
+                    part_header = f"{heading_path} (Part {c_idx})"
+                    raw_records.extend(
+                        synthesize_instructions_from_section(
+                            doc.doc_id, part_header, chunk.text, system_prompt, len(raw_records)
+                        )
+                    )
+            else:
+                raw_records.extend(
+                    synthesize_instructions_from_section(
+                        doc.doc_id, heading_path, text, system_prompt, len(raw_records)
+                    )
+                )
     return raw_records
 
 
 def _round_robin_select(
-    raw_records: list[dict[str, Any]], target_samples: int
+    raw_records: list[dict[str, Any]], max_samples: int | None = None
 ) -> list[dict[str, Any]]:
-    """Pick up to ``target_samples`` records, one category at a time, sorted by id."""
+    """Order records deterministically by category and id; optionally cap at ``max_samples``."""
+    if max_samples is None:
+        return sorted(raw_records, key=lambda x: (str(x["category"]), str(x["id"])))
+
     by_category: dict[str, list[dict[str, Any]]] = {}
     for r in raw_records:
         by_category.setdefault(r["category"], []).append(r)
-    # Sort each category deterministically by record ID
     queues = [sorted(by_category[k], key=lambda x: str(x["id"])) for k in sorted(by_category)]
 
     selected: list[dict[str, Any]] = []
     depth = 0
-    while len(selected) < target_samples and any(depth < len(q) for q in queues):
+    while len(selected) < max_samples and any(depth < len(q) for q in queues):
         for queue in queues:
-            if len(selected) >= target_samples:
+            if len(selected) >= max_samples:
                 break
             if depth < len(queue):
                 selected.append(queue[depth])
@@ -353,20 +452,19 @@ def _round_robin_select(
 def compile_knowledge_corpus(
     knowledge_sources: list[dict[str, Any]],
     system_prompt: str,
-    target_samples: int = 525,
+    max_samples: int | None = None,
     workspace_root: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Synthesizes a full balanced instruction dataset purely from declared knowledge sources."""
+    """Synthesizes an instruction dataset from declared knowledge sources using autonomous yield."""
     root = workspace_root or Path(__file__).resolve().parents[3]
     all_docs = _ingest_sources(knowledge_sources, root)
     logger.info("Ingested %d knowledge documents across sources.", len(all_docs))
 
-    # Parse sections hierarchically from markdown/text documents
     raw_records = _synthesize_records(all_docs, system_prompt)
     logger.info("Synthesized %d candidate instruction records from documents.", len(raw_records))
 
     if not raw_records:
         return []
-    selected_records = _round_robin_select(raw_records, target_samples)
-    logger.info("Compiled %d balanced instruction records.", len(selected_records))
+    selected_records = _round_robin_select(raw_records, max_samples)
+    logger.info("Compiled %d instruction records.", len(selected_records))
     return selected_records

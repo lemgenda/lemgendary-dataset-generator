@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class JobState(str, Enum):
+class JobState(StrEnum):
     """Lifecycle state of a background job."""
     PENDING = "pending"
     RUNNING = "running"
@@ -18,7 +18,7 @@ class JobState(str, Enum):
     CANCELLED = "cancelled"
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Category of work a background job performs."""
     COMPILE = "compile"
     DEGRADE = "degrade"
@@ -277,9 +277,6 @@ class QuickCompileRequest(BaseModel):
     )
     end_date: str | None = Field(
         default=None, description="Forex/time-series end date (YYYY-MM-DD)"
-    )
-    target_samples: int | None = Field(
-        default=None, description="Target sample count for LLM synthesis"
     )
     label_strategy: str | None = Field(
         default=None, description="Detection/pose label strategy"

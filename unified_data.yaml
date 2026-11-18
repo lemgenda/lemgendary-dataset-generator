@@ -1109,7 +1109,6 @@ datasets:
         [PROBABLE], or [ILLUSTRATIVE]. Do not use ungrounded absolute guarantees; provide
         mathematically bounded engineering answers. Do not use emojis.'
       schema_format: chatml_turn3
-      target_samples: 1600
       generator_module: tools.llm_helper.knowledge_synthesizer
       knowledge_sources:
         - type: markdown_dir
@@ -1118,9 +1117,6 @@ datasets:
           url_prefix: https://lemgenda.github.io/ai-training-whitepapers/papers/
         - type: markdown_file
           path: lemgendary-docs/README.md
-          url_prefix: https://lemgenda.github.io/ai-training-whitepapers/
-        - type: markdown_file
-          path: lemgendary-docs/REVIEW_REPORT.md
           url_prefix: https://lemgenda.github.io/ai-training-whitepapers/
         - type: markdown_file
           path: lemgendary-docs/INVESTOR_STRATEGY_LEMGENDARY_2026.md
@@ -1133,6 +1129,9 @@ datasets:
           url_prefix: https://github.com/lemgenda/lemgendary-dataset-generator/blob/main
         - type: yaml_file
           path: lemgendary-training-suite/unified_models_v2.yaml
+          url: https://lemgenda.github.io/ai-training-whitepapers/index.html
+        - type: yaml_file
+          path: lemgendary-datasets/unified_data.yaml
           url: https://lemgenda.github.io/ai-training-whitepapers/index.html
         - type: yaml_file
           path: lemgendary-docs/canonical_capabilities.yaml

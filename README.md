@@ -82,6 +82,20 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.115 - Autonomous Knowledge Yield Discovery for LLM Manifolds
+
+- **Zero-Cap Density-Adaptive Synthesis**
+  (`tools/llm_helper/knowledge_synthesizer.py`,
+  `tools/llm_helper/base_compiler.py`): Removed hardcoded `target_samples`
+  truncation in favor of autonomous source analysis, `RecursiveChunker`
+  segmentation for oversized sections (`> 2400` chars), and density-aware
+  multi-perspective instruction synthesis.
+- **Manifold Routing & Schema** (`core/manifold_compile.py`,
+  `core/config_schema.py`, `unified_data.yaml`): Added explicit LLM/JSONL
+  dispatch in `_compile_manifold()`, replaced `target_samples` with optional
+  `max_samples`, and added `unified_data.yaml` as a Tier-1 manifest knowledge
+  source (`LemGendizedAIHelperLemGend`: `2,432` curated samples).
+
 ### v16.9.114 - SUITE_PAT Ingestion, Notebook/Doc Generation Audit & CLI Hardening
 
 - **CLI Hardening (`cli.py`, `commands/server.py`)**: Added top-level

@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
+from runtime.environment import load_torch
+
 from audit.reject_log import RejectLog
 from core.compile_forex import compile_forex_manifold, is_forex
 from core.compile_notebooks import (
@@ -68,7 +70,7 @@ from core.compiler_core import (
 from core.compiler_worker import WORKER
 from core.doc_generator import generate_dataset_docs
 from core.task_taxonomy import taxonomy
-from runtime.environment import load_torch
+from tools.llm_helper.base_compiler import BaseLLMCompiler
 
 # torch is loaded after the runtime env vars are set (see runtime.environment).
 torch = load_torch()
@@ -242,6 +244,19 @@ def _compile_manifold(args: argparse.Namespace, settings: CompileSettings,
     # ─── FOREX MANIFOLD ────────────────────────────────────────────────────
     if is_forex(model_config):
         return compile_forex_manifold(model_key, model_config, output_root, full_name, task)
+
+    # ─── LLM / AI HELPER MANIFOLD ──────────────────────────────────────────
+    if (
+        model_config.get("dataset_type") in ("llm", "ai_helper", "nlp")
+        or model_config.get("canonical_format") == "jsonl"
+    ):
+        res = BaseLLMCompiler(workspace_root=OUT_PARENT.parent).compile_manifold(model_key)
+        return ManifoldOutcome(
+            model_key,
+            Path(res["target_dir"]),
+            samples=int(res.get("total_records", 0)),
+            containers_written=("jsonl",),
+        )
 
     # ─── NON-FOREX MANIFOLDS ──────────────────────────────────────────────
     ctx = ManifoldContext(model_key, model_config, task, pascal_name, output_root,
