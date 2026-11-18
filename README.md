@@ -93,8 +93,9 @@ present file and fails on a stale one.
 - **Manifold Routing & Schema** (`core/manifold_compile.py`,
   `core/config_schema.py`, `unified_data.yaml`): Added explicit LLM/JSONL
   dispatch in `_compile_manifold()`, replaced `target_samples` with optional
-  `max_samples`, and added `unified_data.yaml` as a Tier-1 manifest knowledge
-  source (`LemGendizedAIHelperLemGend`: `2,432` curated samples).
+  `max_samples`, added `unified_data.yaml` as a Tier-1 manifest knowledge
+  source, and updated `provenance_sources` (`LemGendizedAIHelperLemGend`:
+  `2,432` curated samples).
 
 ### v16.9.114 - SUITE_PAT Ingestion, Notebook/Doc Generation Audit & CLI Hardening
 

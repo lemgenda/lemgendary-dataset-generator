@@ -1042,6 +1042,7 @@ datasets:
       - LemGendary AI Documentation Hub
       - General AI Training Knowledge Reference
       - Ecosystem Architecture and Current State Manifest
+      - Unified Data & Model Registries (unified_data.yaml, unified_models_v2.yaml)
       - Master Operations Manuals (GUI, CLI, API)
       - Dataset Compiler and Environment Manager Whitepapers
       - Training Suite and Training Pathology Documentation
