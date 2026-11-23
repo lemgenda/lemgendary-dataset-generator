@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.117-STABLE` |
+| **Version** | `v16.9.118-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,23 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.118 - Prose Distillation Hardening & LLM Recompile Parity
+
+- **Safe Sentence & Markdown Reflow (`tools/llm_helper/response_formatter.py`,
+  `tools/llm_helper/knowledge_synthesizer.py`)**: Added parenthesis-aware and
+  numbering-safe sentence segmentation, multi-line Markdown paragraph reflow,
+  raw JSON filtering, Semantic Symptom/Root Cause/Remediation stage alignment,
+  and section-matched GUI snapshot generation.
+- **Expanded State Grounding (`tools/llm_helper/copilot_grounding.py`)**:
+  Expanded `copilot_*` coverage across all 23 model specifications, all 21
+  datasets, and all controls in `GUI_CONTROL_REGISTRY.md`.
+- **Compile & Validate Parity (`core/manifold_compile.py`,
+  `tools/llm_helper/metadata_compiler.py`, `api/routes/llm.py`)**: Skips image
+  split folder creation for LLM manifolds, refreshes `README.md` and
+  `dataset-metadata.json` on every compile/recompile, and enables
+  `TokenValidationConfig(enforce_copilot_structure=True)` on
+  `POST /api/llm/validate`.
 
 ### v16.9.117 - State-Grounded Copilot LLM Compiler & Sequence Alignment Gate
 

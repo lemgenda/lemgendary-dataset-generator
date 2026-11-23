@@ -80,6 +80,7 @@ class BaseLLMCompiler:
         records = custom_records or self._generate_records(dataset_key, cfg)
         splits, curation_meta = self._prepare_splits_and_curation(records, cfg)
         self._require_valid([rec for split in splits for rec in split])
+        curation_meta["existing_dir"] = target_dir
         with tempfile.TemporaryDirectory(prefix=f".staging_build_{dataset_key}_") as tmp_dir:
             staging_dir = Path(tmp_dir)
             (staging_dir / "data").mkdir(parents=True, exist_ok=True)
@@ -189,6 +190,7 @@ class BaseLLMCompiler:
             rejected_records=meta.get("rejected"),
             curation_stats=meta.get("curation_stats"),
             seed=int(meta.get("seed", 42)),
+            manifest_meta=_manifest_meta(cfg, dataset_key, meta.get("existing_dir") or target_dir),
         )
 
         res: dict[str, Any] = {
@@ -305,6 +307,21 @@ def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
+
+
+def _manifest_meta(
+    cfg: dict[str, Any], dataset_key: str, existing_dir: Path
+) -> dict[str, Any]:
+    """Build Kaggle/README metadata passed into ``generate_llm_metadata``."""
+    return {
+        "title": cfg.get("title") or cfg.get("modernized_folder") or dataset_key,
+        "subtitle": cfg.get("subtitle") or cfg.get("category") or "",
+        "kaggle_ref": cfg.get("kaggle_ref"),
+        "train_file": cfg.get("train_file") or f"data/{dataset_key}_train.jsonl",
+        "val_file": cfg.get("val_file") or f"data/{dataset_key}_val.jsonl",
+        "test_file": cfg.get("test_file") or f"data/{dataset_key}_test.jsonl",
+        "existing_dir": str(existing_dir),
+    }
 
 
 def _descriptor_for(cfg: dict[str, Any]) -> LLMManifoldDescriptor:

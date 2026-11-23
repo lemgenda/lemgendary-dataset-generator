@@ -102,9 +102,17 @@ def _get_training_suite_notebook_generators():
     return get_training_suite_notebook_generators()
 
 
+def _is_llm_dataset(model_config: dict[str, Any]) -> bool:
+    """Return True when a registry entry declares an instruction/text LLM manifold."""
+    return (
+        model_config.get("dataset_type") in ("llm", "ai_helper", "nlp")
+        or model_config.get("canonical_format") == "jsonl"
+    )
+
+
 def _create_layout(output_root: Path, model_config: dict[str, Any], task: str) -> None:
     """Create the images/ (and labels/, masks/ or targets/) split folders of a new manifold."""
-    if output_root.exists() or is_forex(model_config):
+    if output_root.exists() or is_forex(model_config) or _is_llm_dataset(model_config):
         return
     subdirs = ["images"]
     layout_dir = taxonomy().layout_dir(task)
@@ -246,10 +254,7 @@ def _compile_manifold(args: argparse.Namespace, settings: CompileSettings,
         return compile_forex_manifold(model_key, model_config, output_root, full_name, task)
 
     # ─── LLM / AI HELPER MANIFOLD ──────────────────────────────────────────
-    if (
-        model_config.get("dataset_type") in ("llm", "ai_helper", "nlp")
-        or model_config.get("canonical_format") == "jsonl"
-    ):
+    if _is_llm_dataset(model_config):
         res = BaseLLMCompiler(workspace_root=OUT_PARENT.parent).compile_manifold(model_key)
         return ManifoldOutcome(
             model_key,

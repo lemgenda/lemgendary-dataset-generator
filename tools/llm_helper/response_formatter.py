@@ -29,6 +29,99 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\[`])")
 _CODE_FENCE_RE = re.compile(r"```.*?```", flags=re.DOTALL)
 _MULTI_WS_RE = re.compile(r"\s+")
 _LEADING_BULLET_RE = re.compile(r"^(?:[-*+]\s+|\d+[.)]\s+)")
+_JSON_KV_RE = re.compile(r'"[^"]+"\s*:\s*')
+_NUMBERED_PREFIX_RE = re.compile(r"(?:^|[\s(>\[`])\d+(?:\.\d+)*$")
+_ABBREV_RE = re.compile(r"\b(?:e\.g|i\.e|etc|vs|fig|sec|ch|v\d+(?:\.\d+)*)$", re.I)
+
+_EFFECTIVE_MIN_FALLBACK_TOKENS = ASSISTANT_TARGET_MIN_TOKENS + 30
+_SHRINK_TARGET_TOKENS = ASSISTANT_TARGET_MAX_TOKENS - 85
+
+
+def _balance_parens(text: str) -> str:
+    """Drop stray closing ')' and any unclosed trailing '(' clause cleanly."""
+    cleaned_chars: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+            cleaned_chars.append(ch)
+        elif ch == ")":
+            if depth > 0:
+                depth -= 1
+                cleaned_chars.append(ch)
+        else:
+            cleaned_chars.append(ch)
+    cleaned = "".join(cleaned_chars)
+    if depth == 0:
+        return cleaned
+
+    open_idx = len(cleaned)
+    cur_depth = 0
+    for idx, ch in enumerate(cleaned):
+        if ch == "(":
+            if cur_depth == 0:
+                open_idx = idx
+            cur_depth += 1
+        elif ch == ")":
+            cur_depth = max(0, cur_depth - 1)
+    prefix = cleaned[:open_idx].rstrip(" ,;:-")
+    if len(prefix) >= 24:
+        return prefix
+    return cleaned.replace("(", "").replace(")", "")
+
+
+def _split_safe_sentences(text: str) -> list[str]:
+    """Split prose on sentence boundaries, ignoring parens, decimals, and numbering."""
+    sentences: list[str] = []
+    start = 0
+    paren_depth = 0
+    n = len(text)
+    for idx, ch in enumerate(text):
+        if ch == "(":
+            paren_depth += 1
+            continue
+        if ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+            continue
+        if ch not in ".!?" or paren_depth > 0:
+            continue
+        if idx + 1 >= n or not text[idx + 1].isspace():
+            continue
+        nxt = text[idx + 1:].lstrip()
+        if not nxt or not (nxt[0].isupper() or nxt[0] in "[`\""):
+            continue
+        prefix = text[start:idx].rstrip()
+        if ch == "." and (_NUMBERED_PREFIX_RE.search(prefix) or _ABBREV_RE.search(prefix)):
+            continue
+        piece = text[start : idx + 1].strip()
+        if piece:
+            sentences.append(piece)
+        start = idx + 1
+    tail = text[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
+
+
+def _looks_like_raw_code_or_json(line: str) -> bool:
+    """Return True if a candidate line is raw JSON/YAML payload rather than prose."""
+    s = line.strip()
+    if not s:
+        return True
+    if s[0] in "{}[]" or _JSON_KV_RE.search(s):
+        return True
+    if '",.' in s or "\\n" in s or "```" in s:
+        return True
+    punct = sum(1 for c in s if c in "{}[]\";")
+    return punct >= max(4, len(s) // 8)
+
+
+def _clean_leaf_header(header: str) -> str:
+    """Extract a concise leaf section title free of hierarchical numbered breadcrumbs."""
+    leaf = header.rsplit(" > ", maxsplit=1)[-1] if " > " in header else header
+    cleaned = re.sub(r"^[\d\.\s\-]+", "", leaf).strip()
+    cleaned = re.sub(r"\s*\(Part \d+\)$", "", cleaned).strip()
+    return strip_emojis(cleaned or leaf).replace("`", "")
 
 
 @functools.lru_cache(maxsize=1)
@@ -134,7 +227,8 @@ def _clean_line(text: str) -> str:
     cleaned = strip_emojis(_CODE_FENCE_RE.sub(" ", text))
     cleaned = cleaned.replace("|", " ").replace("`", "")
     cleaned = _MULTI_WS_RE.sub(" ", cleaned).strip()
-    return _LEADING_BULLET_RE.sub("", cleaned).strip()
+    cleaned = _LEADING_BULLET_RE.sub("", cleaned).strip()
+    return _balance_parens(cleaned)
 
 
 def _ensure_single_sentence(text: str, epistemic_tag: str | None = None) -> str:
@@ -142,8 +236,9 @@ def _ensure_single_sentence(text: str, epistemic_tag: str | None = None) -> str:
     cleaned = _clean_line(text)
     if epistemic_tag:
         cleaned = re.sub(r"^\[(CONFIRMED|PROBABLE|ILLUSTRATIVE)\]\s*", "", cleaned).strip()
-    sentences = _SENTENCE_SPLIT_RE.split(cleaned) if cleaned else []
+    sentences = _split_safe_sentences(cleaned) if cleaned else []
     first = sentences[0].strip() if sentences and sentences[0].strip() else cleaned
+    first = _balance_parens(first).rstrip(" ,;:")
     if not first:
         first = "Follow the documented LemGendary AI Studio workflow for this operation."
     if first[-1] not in ".!?":
@@ -178,7 +273,7 @@ def _normalize_bullets(
     seen: set[str] = set()
     for raw in bullets:
         line = _clean_line(raw)
-        if len(line) < 12:
+        if len(line) < 25 or _looks_like_raw_code_or_json(line):
             continue
         if line[-1] not in ".!?":
             line += "."
@@ -213,6 +308,16 @@ def _assemble_reply(parts: _ReplyParts) -> str:
     return f"{parts.opening}\n\n{bullet_block}\n\n{parts.next_step}"
 
 
+def _safe_truncate_clause(text: str, limit: int) -> str:
+    """Truncate ``text`` cleanly without collapsing over an early parenthesis."""
+    raw = truncate_to_token_limit(text, limit)
+    balanced = _balance_parens(raw)
+    if len(balanced) < max(24, int(len(raw) * 0.7)) or count_tokens(balanced) < 16:
+        balanced = raw.replace("(", "").replace(")", "")
+    cleaned = balanced.rstrip(" .")
+    return f"{cleaned}." if cleaned else text
+
+
 def _shrink_to_target(parts: _ReplyParts, max_tokens: int) -> str:
     """Condense longest bullets then margins until reply fits ``max_tokens``."""
     cur_bullets = list(parts.bullets)
@@ -223,21 +328,21 @@ def _shrink_to_target(parts: _ReplyParts, max_tokens: int) -> str:
         reply = _assemble_reply(_ReplyParts(cur_opening, cur_bullets, cur_next))
         tokens = count_tokens(reply)
         if tokens <= max_tokens:
-            return reply
-        excess = tokens - max_tokens
+            break
         longest_idx = max(range(len(cur_bullets)), key=lambda i: count_tokens(cur_bullets[i]))
         cur_toks = count_tokens(cur_bullets[longest_idx])
-        target_toks = max(18, cur_toks - max(12, excess))
-        trimmed = truncate_to_token_limit(cur_bullets[longest_idx], target_toks).rstrip(".")
-        cur_bullets[longest_idx] = (trimmed + ".") if trimmed else cur_bullets[longest_idx]
+        target_toks = max(18, cur_toks - max(12, tokens - max_tokens))
+        cur_bullets[longest_idx] = _safe_truncate_clause(cur_bullets[longest_idx], target_toks)
         if cur_toks <= 20:
             break
 
     reply = _assemble_reply(_ReplyParts(cur_opening, cur_bullets, cur_next))
     if count_tokens(reply) > max_tokens:
-        cur_opening = truncate_to_token_limit(cur_opening, 55).rstrip(".") + "."
-        cur_next = truncate_to_token_limit(cur_next, 55).rstrip(".") + "."
+        cur_opening = _safe_truncate_clause(cur_opening, 55)
+        cur_next = _safe_truncate_clause(cur_next, 55)
         reply = _assemble_reply(_ReplyParts(cur_opening, cur_bullets, cur_next))
+    if count_tokens(reply) < ASSISTANT_TARGET_MIN_TOKENS:
+        return _append_pad_notes(cur_opening, cur_bullets, cur_next)
     return reply
 
 
@@ -261,19 +366,51 @@ def _append_bullet_supplement(
     return False
 
 
+_PAD_NOTES: tuple[str, ...] = (
+    " Always validate schema consistency via compiler-btn-validate-schema "
+    "and confirm environment parity with lem-env validate before promotion.",
+    " Inspect telemetry under tab-health or tab-dashboard to verify sidecar "
+    "ports and hardware constraints match the active manifest.",
+    " Consult unified_models_v2.yaml and unified_data.yaml in Config & Secrets "
+    "before dispatching local or cloud jobs.",
+    " Retain Monotonic Ratchet discipline by never reducing resolution rung "
+    "or dataset fraction across curriculum restarts.",
+    " Review quality_report.json and curation stats after every manifold "
+    "build to guarantee split integrity and sequence compliance.",
+)
+
+
+def _append_pad_notes(opening: str, cur_bullets: list[str], next_step: str) -> str:
+    """Append concise operational notes until reply satisfies minimum token floor."""
+    cur_next = next_step
+    reply = _assemble_reply(_ReplyParts(opening, cur_bullets, cur_next))
+    for note in _PAD_NOTES:
+        if count_tokens(reply) >= _EFFECTIVE_MIN_FALLBACK_TOKENS:
+            break
+        candidate = _assemble_reply(
+            _ReplyParts(opening, cur_bullets, f"{cur_next.rstrip('.')}.{note}")
+        )
+        if count_tokens(candidate) > _SHRINK_TARGET_TOKENS and (
+            count_tokens(reply) >= ASSISTANT_TARGET_MIN_TOKENS
+        ):
+            break
+        cur_next = f"{cur_next.rstrip('.')}.{note}"
+        reply = candidate
+    return reply
+
+
 def _expand_to_minimum(parts: _ReplyParts, options: ReplyOptions) -> str:
     """Add deterministic operational detail until ``ASSISTANT_TARGET_MIN_TOKENS`` is met."""
     cur_bullets = list(parts.bullets)
     pools = _category_grounding_pool()
-    pool = pools.get(options.category, pools["general_knowledge"])
-    seed = options.seed_key or parts.opening
-    offset = int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16)
+    pool = [*pools.get(options.category, ()), *pools["general_knowledge"]]
+    offset = int(hashlib.sha256((options.seed_key or parts.opening).encode()).hexdigest()[:8], 16)
     existing_lower = {b.lower() for b in cur_bullets}
 
     pool_idx = 0
     while (
         count_tokens(_assemble_reply(_ReplyParts(parts.opening, cur_bullets, parts.next_step)))
-        < ASSISTANT_TARGET_MIN_TOKENS
+        < _EFFECTIVE_MIN_FALLBACK_TOKENS
     ):
         if len(cur_bullets) < 4 and pool_idx < len(pool):
             extra = pool[(offset + pool_idx) % len(pool)]
@@ -292,18 +429,10 @@ def _expand_to_minimum(parts: _ReplyParts, options: ReplyOptions) -> str:
             parts,
             supplement,
             pool_idx % len(cur_bullets),
-            ASSISTANT_TARGET_MAX_TOKENS,
+            _SHRINK_TARGET_TOKENS,
         )
 
-    reply = _assemble_reply(_ReplyParts(parts.opening, cur_bullets, parts.next_step))
-    if count_tokens(reply) < ASSISTANT_TARGET_MIN_TOKENS:
-        pad_note = (
-            " Always validate schema consistency via compiler-btn-validate-schema "
-            "and confirm environment parity with lem-env validate before promotion."
-        )
-        cur_next = f"{parts.next_step.rstrip('.')}.{pad_note}"
-        reply = _assemble_reply(_ReplyParts(parts.opening, cur_bullets, cur_next))
-    return reply
+    return _append_pad_notes(parts.opening, cur_bullets, parts.next_step)
 
 
 def format_structured_reply(
@@ -321,40 +450,73 @@ def format_structured_reply(
 
     reply = _assemble_reply(parts)
     tokens = count_tokens(reply)
-    if tokens < ASSISTANT_TARGET_MIN_TOKENS:
+    if tokens < _EFFECTIVE_MIN_FALLBACK_TOKENS:
         reply = _expand_to_minimum(parts, opts)
-        tokens = count_tokens(reply)
-
-    if tokens > ASSISTANT_TARGET_MAX_TOKENS:
-        reply = _shrink_to_target(parts, max_tokens=ASSISTANT_TARGET_MAX_TOKENS)
+    elif tokens > _SHRINK_TARGET_TOKENS:
+        reply = _shrink_to_target(parts, max_tokens=_SHRINK_TARGET_TOKENS)
     return strip_emojis(reply)
 
 
-def _extract_candidate_facts(clean_text: str) -> list[str]:
-    """Extract clean, informative sentences or list items from source prose."""
-    stripped = strip_emojis(_CODE_FENCE_RE.sub(" ", clean_text))
-    facts: list[str] = []
+def _reflow_markdown_blocks(clean_text: str) -> list[str]:
+    """Strip code fences and join wrapped prose lines into complete logical blocks."""
+    stripped = strip_emojis(_CODE_FENCE_RE.sub("\n\n", clean_text))
+    blocks: list[str] = []
+    para_lines: list[str] = []
+
+    def _flush() -> None:
+        if para_lines:
+            joined = _MULTI_WS_RE.sub(" ", " ".join(para_lines)).strip()
+            if joined:
+                blocks.append(joined)
+            para_lines.clear()
+
     for raw_line in stripped.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or line.startswith("---"):
+            _flush()
+            continue
+        if _looks_like_raw_code_or_json(line):
+            _flush()
             continue
         if line.startswith("|") and line.endswith("|"):
+            _flush()
             cells = [c.strip() for c in line.strip("|").split("|") if c.strip()]
-            if not cells or all(set(c) <= set("-:") for c in cells):
-                continue
-            line = ": ".join(cells[:3])
-        line = _clean_line(line)
-        if len(line) < 18:
+            if cells and not all(set(c) <= set("-:") for c in cells):
+                blocks.append(": ".join(cells[:3]))
             continue
-        for sent in _SENTENCE_SPLIT_RE.split(line):
-            s = sent.strip()
-            if len(s) >= 18:
-                facts.append(s)
+        if _LEADING_BULLET_RE.match(line):
+            _flush()
+            para_lines.append(line)
+            continue
+        para_lines.append(line)
+    _flush()
+    return blocks
+
+
+def _extract_candidate_facts(clean_text: str) -> list[str]:
+    """Extract clean, complete sentences from reflowed markdown prose blocks."""
+    facts: list[str] = []
+    for block in _reflow_markdown_blocks(clean_text):
+        cleaned = _clean_line(block)
+        if len(cleaned) < 28 or _looks_like_raw_code_or_json(cleaned):
+            continue
+        for sent in _split_safe_sentences(cleaned):
+            s = _balance_parens(sent.strip()).rstrip(" ,;:")
+            if (
+                len(s) < 28
+                or len(s.split()) < 5
+                or s[0].islower()
+                or _looks_like_raw_code_or_json(s)
+            ):
+                continue
+            if s[-1] not in ".!?":
+                s += "."
+            facts.append(s)
     return facts
 
 
 def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | None) -> str:
-    """Build a tailored proactive next-step recommendation."""
+    """Build a tailored proactive next-step recommendation aligned to topic and state."""
     _env_p, _comp_p, train_p = sidecar_ports()
     if gui_state:
         sidecars = gui_state.get("sidecars") or {}
@@ -364,7 +526,11 @@ def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | N
                 "from tab-dashboard before dispatching training or evaluation."
             )
         active_train = gui_state.get("active_training")
-        if isinstance(active_train, dict) and active_train.get("model_key"):
+        if (
+            category == "model_pipeline"
+            and isinstance(active_train, dict)
+            and active_train.get("model_key")
+        ):
             mkey = active_train["model_key"]
             return (
                 f"Next step: monitor {mkey} under training-telemetry-tabs-tab-local "
@@ -385,6 +551,10 @@ def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | N
             f"Next step: verify flags with python cli.py --help and execute "
             f"lem-env validate after applying {clean_h}."
         ),
+        "api_procedure": (
+            f"Next step: inspect OpenAPI contracts and sidecar responses for {clean_h} "
+            "via WS /api/ws/events or WS /ws/log."
+        ),
         "gui_procedure": (
             f"Next step: locate the control in GUI_CONTROL_REGISTRY.md and check "
             f"sidecar port status before triggering {clean_h}."
@@ -397,6 +567,64 @@ def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | N
     )
 
 
+_STAGE_CUES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Stage 1 (Initial Triage)", ("symptom", "observed", "signature", "failure", "issue")),
+    ("Stage 2 (Targeted Diagnosis)", ("root cause", "cause", "diagnosis", "why", "trigger")),
+    (
+        "Stage 3 (Bounded Remediation)",
+        ("remediation", "fix", "resolution", "mitigation", "workaround", "verify"),
+    ),
+)
+_STAGE_STRIP_RE = re.compile(
+    r"^(?:symptom|observed|signature|root cause|cause|diagnosis|"
+    r"remediation|fix|resolution|mitigation|verification)\s*:?\s*",
+    re.IGNORECASE,
+)
+
+
+def _match_stage_line(first: str, low: str, assigned: list[str]) -> bool:
+    """Assign ``first`` to the first matching empty diagnostic stage slot."""
+    for idx, (label, cues) in enumerate(_STAGE_CUES):
+        if not assigned[idx] and any(c in low for c in cues):
+            body = _STAGE_STRIP_RE.sub("", first).strip()
+            if len(body) >= 24:
+                assigned[idx] = f"{label}: {body}"
+                return True
+    return False
+
+
+def _extract_troubleshooting_stages(clean_text: str) -> list[str]:
+    """Extract ordered Stage 1/2/3/Guardrail items from troubleshooting prose."""
+    diag_pool = _category_grounding_pool()["troubleshooting_diagnostic"]
+    assigned: list[str] = ["", "", ""]
+    guardrail = ""
+    for block in _reflow_markdown_blocks(clean_text):
+        cleaned = _clean_line(block)
+        if len(cleaned) < 28 or _looks_like_raw_code_or_json(cleaned):
+            continue
+        low = cleaned.lower()
+        if any(
+            low.startswith(k)
+            for k in ("model:", "dataset:", "hardware:", "tool:", "component:")
+        ):
+            continue
+        first = _split_safe_sentences(cleaned)[0]
+        if len(first) < 28:
+            continue
+        if not _match_stage_line(first, low, assigned) and not guardrail and any(
+            k in low for k in ("governor", "ratchet", "invariant", "prevent")
+        ):
+            guardrail = f"Governor Guardrail: {first}"
+
+    result = [
+        assigned[idx] or f"{_STAGE_CUES[idx][0]}: {diag_pool[idx].split(': ', 1)[-1]}"
+        for idx in range(3)
+    ]
+    if guardrail:
+        result.append(guardrail)
+    return result
+
+
 def distill_section_to_structured_parts(
     doc_id: str,
     header: str,
@@ -405,7 +633,7 @@ def distill_section_to_structured_parts(
     gui_state: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], str, str | None]:
     """Distill raw documentation prose into concise 3-part copilot components."""
-    clean_h = re.sub(r"^[\d\.\s\-]+", "", header).strip()
+    leaf_h = _clean_leaf_header(header)
     facts = _extract_candidate_facts(clean_text)
 
     epistemic_tag: str | None = None
@@ -415,26 +643,13 @@ def distill_section_to_structured_parts(
         epistemic_tag = "[CONFIRMED]"
 
     opening = (
-        f"In `{doc_id}` ({clean_h}), {facts[0]}"
+        f"In `{doc_id}` ({leaf_h}), {facts[0]}"
         if facts
-        else f"In `{doc_id}`, {clean_h} defines the canonical studio specification."
+        else f"In `{doc_id}`, {leaf_h} defines the canonical studio specification."
     )
-    raw_bullets = facts[1:5] if facts else [clean_text[:240]]
-
     if category == "troubleshooting_diagnostic":
-        stage_labels = (
-            "Stage 1 (Initial Triage)",
-            "Stage 2 (Targeted Diagnosis)",
-            "Stage 3 (Bounded Remediation)",
-            "Governor Guardrail",
-        )
-        diag_pool = _category_grounding_pool()["troubleshooting_diagnostic"]
-        tagged = [
-            f"{stage_labels[min(idx, len(stage_labels) - 1)]}: {txt}"
-            for idx, txt in enumerate(raw_bullets[:4])
-        ]
-        while len(tagged) < 3:
-            tagged.append(diag_pool[len(tagged)])
-        raw_bullets = tagged
+        raw_bullets = _extract_troubleshooting_stages(clean_text)
+    else:
+        raw_bullets = facts[1:5] if len(facts) > 1 else [f"{leaf_h} specification rule."]
 
-    return opening, raw_bullets, _select_next_step(category, clean_h, gui_state), epistemic_tag
+    return opening, raw_bullets, _select_next_step(category, leaf_h, gui_state), epistemic_tag

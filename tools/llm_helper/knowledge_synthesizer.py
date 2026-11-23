@@ -135,25 +135,69 @@ def _clean_content(text: str) -> str:
     return clean.strip()
 
 
+def _clean_leaf_heading(header: str) -> str:
+    """Return a clean leaf section title free of hierarchical parent breadcrumbs."""
+    leaf = header.rsplit(" > ", maxsplit=1)[-1] if " > " in header else header
+    cleaned = re.sub(r"^[\d\.\s\-]+", "", leaf).strip()
+    return re.sub(r"\s*\(Part \d+\)$", "", cleaned).strip() or leaf
+
+
+def _clean_prompt_heading(header: str) -> str:
+    """Keep parent context and chunk suffix so user queries stay unambiguous."""
+    parts = [re.sub(r"^[\d\.\s\-]+", "", seg).strip() for seg in header.split(" > ")]
+    kept = [p for p in parts if p]
+    return " > ".join(kept[-2:]) if kept else header
+
+
+def _matched_model_key(
+    clean_text: str, header: str, model_keys: list[str]
+) -> str | None:
+    """Return a model key mentioned in ``header`` or ``clean_text``, if any."""
+    haystack = f"{header}\n{clean_text[:600]}".lower()
+    for mk in model_keys:
+        if mk in haystack:
+            return mk
+    return None
+
+
+def _training_stub(
+    registry_ctx: RegistryContext | None, mkey: str, index: int, governor: str
+) -> dict[str, Any]:
+    m_info = (registry_ctx.models.get(mkey) if registry_ctx else None) or {}
+    return {
+        "model_key": mkey,
+        "status": "TRAINING",
+        "epoch": 10 + (index % 25),
+        "budget": 80,
+        "rung": 256,
+        "fraction": 0.4,
+        "governor": governor,
+        "metrics": {},
+        "targets": dict(m_info.get("sota_targets") or {"eval_loss": 1.15}),
+    }
+
+
 def _select_section_gui_state(
     category: str,
     index: int,
     registry_ctx: RegistryContext | None,
+    *,
+    header: str = "",
+    clean_text: str = "",
 ) -> dict[str, Any]:
-    """Build a lightweight Zustand snapshot matched to the section category."""
+    """Build a lightweight Zustand snapshot matched to the section category and topic."""
     hw = dict(HARDWARE_PROFILES[index % len(HARDWARE_PROFILES)])
-    model_keys = (
-        sorted(registry_ctx.models.keys())
-        if registry_ctx and registry_ctx.models
-        else ["nafnet_debluring", "codeformer", "ai_helper_lemgend"]
-    )
+    model_keys = sorted(registry_ctx.models.keys()) if registry_ctx and registry_ctx.models else [
+        "nafnet_debluring",
+        "codeformer",
+        "ai_helper_lemgend",
+    ]
     dataset_keys = (
         sorted(registry_ctx.datasets.keys())
         if registry_ctx and registry_ctx.datasets
         else ["nima_aesthetic", "ai_helper_lemgend"]
     )
-    mkey = model_keys[index % len(model_keys)]
-    dkey = dataset_keys[index % len(dataset_keys)]
+    explicit_mkey = _matched_model_key(clean_text, header, model_keys)
 
     tab = "tab-training"
     active_training: dict[str, Any] | None = None
@@ -162,26 +206,27 @@ def _select_section_gui_state(
 
     if category in ("gui_procedure", "api_procedure") and index % 2 == 0:
         tab = "tab-datasets"
-        active_compile = {"dataset_key": dkey, "status": "READY", "format": "webdataset"}
+        active_compile = {
+            "dataset_key": dataset_keys[index % len(dataset_keys)],
+            "status": "READY",
+            "format": "webdataset",
+        }
     elif category == "cli_command":
         tab = "tab-health"
-    elif category in ("model_pipeline", "troubleshooting_diagnostic", "general_knowledge"):
-        m_info = (registry_ctx.models.get(mkey) if registry_ctx else None) or {}
-        targets = dict(m_info.get("sota_targets") or {"eval_loss": 1.15})
-        is_diag = category == "troubleshooting_diagnostic"
-        active_training = {
-            "model_key": mkey,
-            "status": "TRAINING",
-            "epoch": 10 + (index % 25),
-            "budget": 80,
-            "rung": 256,
-            "fraction": 0.4,
-            "governor": "STABILIZATION_COOLDOWN" if is_diag else "NOMINAL_CRUISE",
-            "metrics": {},
-            "targets": targets,
-        }
-        if is_diag:
-            recent_errors.append(f"Telemetry alert on {mkey}: inspect metrics.csv and governor.")
+    elif category == "troubleshooting_diagnostic":
+        tab = "tab-health" if index % 2 == 0 else "tab-training"
+        recent_errors.append(f"Diagnostic alert: {_clean_leaf_heading(header or 'Diagnostics')}")
+        if explicit_mkey:
+            active_training = _training_stub(
+                registry_ctx, explicit_mkey, index, "STABILIZATION_COOLDOWN"
+            )
+    elif category == "model_pipeline" or (
+        category == "general_knowledge" and explicit_mkey is not None
+    ):
+        mkey = explicit_mkey or model_keys[index % len(model_keys)]
+        active_training = _training_stub(registry_ctx, mkey, index, "NOMINAL_CRUISE")
+    elif category == "general_knowledge":
+        tab = "tab-dashboard"
 
     return build_gui_state_snapshot(
         GuiStateOptions(
@@ -256,8 +301,11 @@ def _make_section_pair(source: _SectionSource, grounding: _PairGrounding) -> dic
         gui_state=grounding.gui_state,
     )
     if grounding.operational_mode:
-        clean_h = re.sub(r"^[\d\.\s\-]+", "", source.header).strip()
-        opening = f"Operational contract for `{source.doc_id}` ({clean_h}): {opening}"
+        opening = opening.replace(
+            f"In `{source.doc_id}`",
+            f"Per `{source.doc_id}` operational contract",
+            1,
+        )
         if len(bullets) >= 2:
             bullets = [*bullets[1:], bullets[0]]
 
@@ -313,7 +361,13 @@ def _synthesize_operational_pair(
     doc_base = fields["doc_base"].lower()
     op_raw = f"{ctx.doc_id}:{ctx.header}:{ctx.index}:op".encode()
     op_id = f"gen_{doc_base}_{hashlib.sha256(op_raw).hexdigest()[:8]}"
-    op_state = _select_section_gui_state(base_meta["category"], ctx.index + 1, ctx.registry_ctx)
+    op_state = _select_section_gui_state(
+        base_meta["category"],
+        ctx.index + 1,
+        ctx.registry_ctx,
+        header=ctx.header,
+        clean_text=ctx.clean_text,
+    )
     op_user = (
         f"In [GUI_STATE] on `{op_state['active_tab']}` "
         f"(backend={op_state['hardware']['backend']}), {op_tpl.format(**fields)}"
@@ -333,13 +387,19 @@ def _synthesize_operational_pair(
 def _synthesize_from_context(ctx: _SectionSynthesisContext) -> list[dict[str, Any]]:
     """Generate 1 or 2 ChatML records from a cleaned section context."""
     base_meta = _build_section_meta(ctx.doc_id, ctx.header)
-    clean_h = re.sub(r"^[\d\.\s\-]+", "", ctx.header).strip()
+    clean_h = _clean_prompt_heading(ctx.header)
     primary_tpl, op_tpl = _PROMPT_TEMPLATES.get(base_meta["category"], _DEFAULT_TEMPLATES)
     fields = {"h": clean_h, "doc_id": ctx.doc_id, "doc_base": Path(ctx.doc_id).stem}
 
     should_ground = (ctx.index % 3 != 0) if ctx.ground_with_state is None else ctx.ground_with_state
     gui_state = (
-        _select_section_gui_state(base_meta["category"], ctx.index, ctx.registry_ctx)
+        _select_section_gui_state(
+            base_meta["category"],
+            ctx.index,
+            ctx.registry_ctx,
+            header=ctx.header,
+            clean_text=ctx.clean_text,
+        )
         if should_ground
         else None
     )
@@ -624,6 +684,9 @@ def _synthesize_records(
     raw_records: list[dict[str, Any]] = []
     for doc in docs:
         for _leaf, heading_path, text in _iter_sections(doc.content):
+            leaf_clean = _clean_leaf_heading(heading_path).lower()
+            if leaf_clean in ("table of contents", "contents"):
+                continue
             if len(text) > 2400:
                 sub_doc = KnowledgeDocument(
                     doc_id=doc.doc_id,

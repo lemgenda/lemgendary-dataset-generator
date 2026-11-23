@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from core.docs.generators.dataset_info_yaml import write_dataset_info
+from core.ecosystem import docs_url, kaggle_owner
 
 from .curation import compute_manifest_hash
 
@@ -101,6 +102,16 @@ def _split_index_entries(
     return entries
 
 
+def _split_count_tuple(
+    train_records: list[dict[str, Any]],
+    val_records: list[dict[str, Any]],
+    test_records: list[dict[str, Any]] | None,
+) -> tuple[int, int] | tuple[int, int, int]:
+    if test_records:
+        return (len(train_records), len(val_records), len(test_records))
+    return (len(train_records), len(val_records))
+
+
 def generate_llm_metadata(
     manifold_dir: str | Path,
     dataset_name: str,
@@ -113,13 +124,14 @@ def generate_llm_metadata(
 
     Pass either ``descriptor`` or its fields as keywords (``category``,
     ``classes``, ``original_sources`` and optionally ``canonical_format``).
-    Accepts ``test_records`` as an optional keyword argument.
+    Accepts ``test_records`` and ``manifest_meta`` as optional keyword arguments.
     """
     test_records: list[dict[str, Any]] | None = extra.pop("test_records", None)
     curation_meta = {
         "rejected_records": extra.pop("rejected_records", None) or [],
         "curation_stats": extra.pop("curation_stats", None) or {},
         "seed": int(extra.pop("seed", 42)),
+        "manifest_meta": extra.pop("manifest_meta", None) or {},
     }
     if descriptor is None:
         descriptor = LLMManifoldDescriptor(**extra)
@@ -130,19 +142,11 @@ def generate_llm_metadata(
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / "data").mkdir(parents=True, exist_ok=True)
 
-    # 1. dataset_info.yaml
-    counts: tuple[int, int] | tuple[int, int, int] = (
-        (len(train_records), len(val_records), len(test_records))
-        if test_records
-        else (len(train_records), len(val_records))
-    )
+    counts = _split_count_tuple(train_records, val_records, test_records)
     _write_dataset_info(target_dir, dataset_name, descriptor, counts)
-
-    # 2. category.txt & classes.txt
     (target_dir / "category.txt").write_text(descriptor.category + "\n", encoding="utf-8")
     (target_dir / "classes.txt").write_text("\n".join(descriptor.classes) + "\n", encoding="utf-8")
 
-    # 3. index.json
     index_entries = _split_index_entries(dataset_name, "train", train_records, 0, descriptor.task)
     index_entries += _split_index_entries(
         dataset_name, "val", val_records, len(train_records), descriptor.task
@@ -175,30 +179,190 @@ def _write_build_artifacts(
     split_records: tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
     curation_meta: dict[str, Any] | None = None,
 ) -> None:
-    """Emit build manifests, quality reports, and source tracking artifacts."""
+    """Emit build manifests, quality reports, README.md, and Kaggle metadata."""
     meta = curation_meta or {}
-    train_records, val_records, test_records = split_records
-    all_records = train_records + val_records + test_records
-    artifacts = {
+    manifest_meta = meta.get("manifest_meta") or {}
+    all_records = split_records[0] + split_records[1] + split_records[2]
+    manifest_payload = _build_manifest_payload(
+        dataset_name,
+        split_records[0],
+        split_records[1],
+        split_records[2],
+        seed=int(meta.get("seed", 42)),
+    )
+    quality_report = _build_quality_report(
+        all_records, curation_stats=meta.get("curation_stats")
+    )
+    for filename, payload in {
         "source_manifest.json": _build_source_manifest(all_records, descriptor),
-        "build_manifest.json": _build_manifest_payload(
-            dataset_name,
-            train_records,
-            val_records,
-            test_records,
-            seed=int(meta.get("seed", 42)),
-        ),
-        "quality_report.json": _build_quality_report(
-            all_records, curation_stats=meta.get("curation_stats")
-        ),
-    }
-    for filename, payload in artifacts.items():
+        "build_manifest.json": manifest_payload,
+        "quality_report.json": quality_report,
+    }.items():
         (target_dir / filename).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     rej_lines = [
         json.dumps(r, ensure_ascii=False) + "\n" for r in (meta.get("rejected_records") or [])
     ]
     (target_dir / "rejected_records.jsonl").write_text("".join(rej_lines), encoding="utf-8")
+
+    readme_text = _build_llm_readme(
+        dataset_name, descriptor, manifest_payload, quality_report, manifest_meta
+    )
+    (target_dir / "README.md").write_text(readme_text, encoding="utf-8")
+    kaggle_meta = _build_llm_kaggle_metadata(
+        dataset_name, descriptor, manifest_payload, manifest_meta, readme_text
+    )
+    (target_dir / "dataset-metadata.json").write_text(
+        json.dumps(kaggle_meta, indent=2), encoding="utf-8"
+    )
+
+
+def _detect_existing_extras(manifest_meta: dict[str, Any]) -> tuple[str | None, list[str]]:
+    """Find cover image and notebooks preserved in an existing target directory."""
+    existing_raw = manifest_meta.get("existing_dir")
+    if not existing_raw:
+        return None, []
+    existing_dir = Path(str(existing_raw))
+    if not existing_dir.is_dir():
+        return None, []
+    cover: str | None = None
+    for ext in (".webp", ".jpg", ".png"):
+        matches = sorted(p.name for p in existing_dir.glob(f"*{ext}"))
+        if matches:
+            cover = matches[0]
+            break
+    notebooks = sorted(p.name for p in existing_dir.glob("*.ipynb"))
+    return cover, notebooks
+
+
+def _build_llm_readme(
+    dataset_name: str,
+    descriptor: LLMManifoldDescriptor,
+    manifest_payload: dict[str, Any],
+    quality_report: dict[str, Any],
+    manifest_meta: dict[str, Any],
+) -> str:
+    """Render concise Markdown README with live split counts and categories."""
+    splits = manifest_payload["splits"]
+    total = manifest_payload["total_records"]
+    tr_file = manifest_meta.get("train_file") or f"data/{descriptor.task}_train.jsonl"
+    va_file = manifest_meta.get("val_file") or f"data/{descriptor.task}_val.jsonl"
+    te_file = manifest_meta.get("test_file") or f"data/{descriptor.task}_test.jsonl"
+    default_ref = f"{kaggle_owner()}/{dataset_name.lower()}"
+    kaggle_id = manifest_meta.get("kaggle_ref") or default_ref
+    lines = [
+        f"# {dataset_name}",
+        "",
+        "> ChatML instruction-tuning corpus for the LemGendary AI Studio Copilot.",
+        "",
+        "## Dataset Overview",
+        "",
+        f"- **Category:** {descriptor.category}",
+        f"- **Total Samples:** {total:,}",
+        f"- **Format:** `{descriptor.canonical_format}` (3-turn ChatML)",
+        f"- **Seed / SHA-256:** `{manifest_payload['seed']}` / "
+        f"`{str(manifest_payload['manifest_sha256'])[:16]}`",
+        "",
+        "## Category Breakdown",
+        "",
+        "| Category | Records |",
+        "| :--- | ---: |",
+    ]
+    for cat, count in sorted(quality_report.get("categories", {}).items()):
+        lines.append(f"| `{cat}` | {count:,} |")
+    lines.extend([
+        "",
+        "## Physical Data Manifest",
+        "",
+        "| Split | Path | Samples |",
+        "| :--- | :--- | ---: |",
+        f"| Train | `{tr_file}` | {splits['train']:,} |",
+        f"| Validation | `{va_file}` | {splits['val']:,} |",
+    ])
+    if splits.get("test", 0) > 0:
+        lines.append(f"| Test | `{te_file}` | {splits['test']:,} |")
+    lines.extend([
+        "",
+        "## Provenance Sources",
+        "",
+        *[f"- {src}" for src in descriptor.original_sources],
+        "",
+        f"**Kaggle Reference:** `https://www.kaggle.com/datasets/{kaggle_id}`",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _collect_kaggle_resources(
+    descriptor: LLMManifoldDescriptor,
+    manifest_payload: dict[str, Any],
+    manifest_meta: dict[str, Any],
+) -> tuple[list[dict[str, str]], str | None]:
+    """Assemble Kaggle resources entries and cover image name for an LLM manifold."""
+    splits = manifest_payload["splits"]
+    total = manifest_payload["total_records"]
+    cover, notebooks = _detect_existing_extras(manifest_meta)
+    resources: list[dict[str, str]] = [
+        {
+            "path": manifest_meta.get("train_file") or f"data/{descriptor.task}_train.jsonl",
+            "description": f"Train split ({splits['train']:,} pairs).",
+        },
+        {
+            "path": manifest_meta.get("val_file") or f"data/{descriptor.task}_val.jsonl",
+            "description": f"Validation split ({splits['val']:,} pairs).",
+        },
+    ]
+    if splits.get("test", 0) > 0:
+        resources.append({
+            "path": manifest_meta.get("test_file") or f"data/{descriptor.task}_test.jsonl",
+            "description": f"Held-out test split ({splits['test']:,} pairs).",
+        })
+    for nb in notebooks:
+        resources.append({"path": nb, "description": f"Cloud training notebook ({nb})."})
+    if cover:
+        resources.append({"path": cover, "description": "Dataset cover banner."})
+    for fname in (
+        "dataset_info.yaml",
+        "index.json",
+        "build_manifest.json",
+        "quality_report.json",
+        "source_manifest.json",
+        "rejected_records.jsonl",
+        "README.md",
+        "category.txt",
+        "classes.txt",
+    ):
+        resources.append({"path": fname, "description": f"Generated {fname} artifact ({total:,})."})
+    return resources, cover
+
+
+def _build_llm_kaggle_metadata(
+    dataset_name: str,
+    descriptor: LLMManifoldDescriptor,
+    manifest_payload: dict[str, Any],
+    manifest_meta: dict[str, Any],
+    readme_text: str,
+) -> dict[str, Any]:
+    """Build synchronized Kaggle frictionless metadata JSON payload."""
+    resources, cover = _collect_kaggle_resources(descriptor, manifest_payload, manifest_meta)
+    default_ref = f"{kaggle_owner()}/{dataset_name.lower()}"
+    payload: dict[str, Any] = {
+        "title": manifest_meta.get("title") or dataset_name,
+        "id": manifest_meta.get("kaggle_ref") or default_ref,
+        "subtitle": manifest_meta.get("subtitle") or descriptor.category,
+        "description": readme_text,
+        "keywords": ["computer-science", "deep-learning", "artificial-intelligence", "text"],
+        "licenses": [{"name": "CC-BY-NC-4.0"}],
+        "isPrivate": False,
+        "expectedUpdateFrequency": "monthly",
+        "author": "Lem Treursic",
+        "resources": resources,
+        "provenanceSources": descriptor.original_sources,
+        "citations": [docs_url()],
+    }
+    if cover:
+        payload["headerImage"] = cover
+    return payload
 
 
 def _build_source_manifest(

@@ -348,15 +348,71 @@ def _model_bullets(
     ]
 
 
+def _model_prompt_variant(
+    model_key: str,
+    run: dict[str, Any],
+    hw: dict[str, Any],
+    primary_metric: str,
+    variant: int,
+) -> tuple[str, str, str]:
+    """Select user query, opening sentence, and next step for ``variant``."""
+    cur_val = run["metrics"].get(primary_metric, "N/A")
+    tgt_val = run["targets"].get(primary_metric, "N/A")
+    gap_note = (
+        f"{round(float(tgt_val) - float(cur_val), 4)}"
+        if isinstance(cur_val, (int, float)) and isinstance(tgt_val, (int, float))
+        else "pending evaluation"
+    )
+    if variant == 1:
+        prec_mode = (
+            "forces FP32 compute via Turing override (no BF16/FP16 AMP overflow)"
+            if hw["turing_no_tensor_cores"]
+            else f"uses native `{hw['backend']}` precision within `{hw['vram_mb']}` MB VRAM"
+        )
+        return (
+            f"Given [GUI_STATE] on `{hw['gpu']}` (vram_mb={hw['vram_mb']}, "
+            f"turing_no_tensor_cores={hw['turing_no_tensor_cores']}), how does "
+            f"`{model_key}` handle precision and Sawtooth VRAM safety at rung `{run['rung']}`?",
+            f"[CONFIRMED] `{model_key}` on `{hw['gpu']}` (`vram_mb={hw['vram_mb']}`) "
+            f"{prec_mode} at epoch `{run['epoch']}/{run['budget']}` under `{run['governor']}`.",
+            f"Next step: monitor `training-telemetry-tabs-tab-local` for `{model_key}` "
+            f"and wait for `{run['governor']}` to clear before bumping rung `{run['rung']}`.",
+        )
+    if variant == 2:
+        return (
+            f"In [GUI_STATE], `{model_key}` is at fraction `{run['fraction']}` and rung "
+            f"`{run['rung']}` under `{run['governor']}`. Can I decrease the rung or "
+            "run Blend Soup now?",
+            f"[CONFIRMED] `{model_key}` cannot step down from rung `{run['rung']}` "
+            f"(fraction `{run['fraction']}`) under the Monotonic Ratchet, and Blend Soup "
+            f"waits until `{primary_metric}` converges toward `{tgt_val}`.",
+            f"Next step: evaluate `{model_key}` with `train-btn-eval-{model_key}` and run "
+            f"`train-btn-soup-{model_key}` (Blend Soup) once plateau settles.",
+        )
+    return (
+        f"Look at [GUI_STATE] for {model_key} at epoch {run['epoch']}/{run['budget']} "
+        f"(rung={run['rung']}, fraction={run['fraction']}, governor={run['governor']}, "
+        f"vram_mb={hw['vram_mb']}). What is my gap to target on "
+        f"{primary_metric}, and what should I do next?",
+        f"[CONFIRMED] `{model_key}` is at epoch {run['epoch']}/{run['budget']} on rung "
+        f"`{run['rung']}` (fraction `{run['fraction']}`) under `{run['governor']}` with "
+        f"`{primary_metric}={cur_val}` versus SOTA target `{tgt_val}` (delta `{gap_note}`).",
+        f"Next step: keep `{model_key}` training until `{run['governor']}` clears "
+        f"cooldown, then run `train-btn-eval-{model_key}` and Blend Soup.",
+    )
+
+
 def _model_turns(
     model_key: str,
     model_info: dict[str, Any],
     gui_state: dict[str, Any],
     idx: int,
+    variant: int = 0,
 ) -> tuple[str, str, str]:
     """Build (retrieved, user, assistant) turns for a live model training copilot record."""
     run = gui_state["active_training"]
     targets = run["targets"]
+    hw = gui_state["hardware"]
     ladder = (model_info.get("optimization") or {}).get("res_ladder") or [run["rung"]]
     retrieved = build_retrieved_docs_snippet(
         f"{model_info.get('name', model_key)} ({model_key}) uses "
@@ -365,35 +421,17 @@ def _model_turns(
         f"SOTA targets: {json.dumps(targets)}."
     )
     primary_metric = next(iter(targets), "eval_loss")
-    cur_val = run["metrics"].get(primary_metric, "N/A")
-    tgt_val = targets.get(primary_metric, "N/A")
-    gap_note = (
-        f"{round(float(tgt_val) - float(cur_val), 4)}"
-        if isinstance(cur_val, (int, float)) and isinstance(tgt_val, (int, float))
-        else "pending evaluation"
-    )
-    user_turn = (
-        f"Look at [GUI_STATE] for {model_key} at epoch {run['epoch']}/{run['budget']} "
-        f"(rung={run['rung']}, fraction={run['fraction']}, governor={run['governor']}, "
-        f"vram_mb={gui_state['hardware']['vram_mb']}). What is my gap to target on "
-        f"{primary_metric}, and what should I do next?"
-    )
-    opening = (
-        f"[CONFIRMED] `{model_key}` is at epoch {run['epoch']}/{run['budget']} on rung "
-        f"`{run['rung']}` (fraction `{run['fraction']}`) under `{run['governor']}` with "
-        f"`{primary_metric}={cur_val}` versus SOTA target `{tgt_val}` (delta `{gap_note}`)."
+    user_turn, opening, next_step = _model_prompt_variant(
+        model_key, run, hw, primary_metric, variant
     )
     assistant_turn = format_structured_reply(
         opening,
-        _model_bullets(model_key, run, gui_state["hardware"], ladder, primary_metric),
-        (
-            f"Next step: keep `{model_key}` training until `{run['governor']}` clears "
-            f"cooldown, then run `train-btn-eval-{model_key}` and Blend Soup."
-        ),
+        _model_bullets(model_key, run, hw, ladder, primary_metric),
+        next_step,
         ReplyOptions(
             category="model_pipeline",
             epistemic_tag="[CONFIRMED]",
-            seed_key=f"{model_key}:{idx}:{run['governor']}",
+            seed_key=f"{model_key}:{idx}:v{variant}:{run['governor']}",
         ),
     )
     return retrieved, user_turn, assistant_turn
@@ -404,16 +442,21 @@ def _make_model_state_record(
     model_info: dict[str, Any],
     idx: int,
     system_prompt: str,
+    variant: int = 0,
 ) -> dict[str, Any]:
     """Build one live training copilot record grounded in ``unified_models_v2.yaml``."""
     gui_state, _hw, governor = _build_model_run_snapshot(model_key, model_info, idx)
     run = gui_state["active_training"]
-    retrieved, user_turn, assistant_turn = _model_turns(model_key, model_info, gui_state, idx)
+    retrieved, user_turn, assistant_turn = _model_turns(
+        model_key, model_info, gui_state, idx, variant=variant
+    )
     sys_turn = format_grounded_system_turn(
         system_prompt, gui_state=gui_state, retrieved_docs=retrieved
     )
     return {
-        "id": _deterministic_id("copilot_train", f"{model_key}:{idx}:{governor}:{run['rung']}"),
+        "id": _deterministic_id(
+            "copilot_train", f"{model_key}:{idx}:v{variant}:{governor}:{run['rung']}"
+        ),
         "category": "model_pipeline",
         "source_doc": "unified_models_v2.yaml",
         "section_title": f"State Grounded Training: {model_key}",
@@ -427,8 +470,38 @@ def _make_model_state_record(
     }
 
 
+def _dataset_prompt_variant(
+    dataset_key: str,
+    ds_info: dict[str, Any],
+    comp_p: int,
+    variant: int,
+) -> tuple[str, str, str]:
+    """Select user query, opening, and next step for dataset compile ``variant``."""
+    fmt = str(ds_info.get("canonical_format", "webdataset"))
+    folder = str(ds_info.get("modernized_folder", dataset_key))
+    val_split = ds_info.get("val_split", 0.12)
+    task = ds_info.get("task", "vision")
+    if variant == 1:
+        return (
+            f"In [GUI_STATE] on `tab-datasets`, `{dataset_key}` targets `{fmt}` in "
+            f"`{folder}` (val_split={val_split}). What validation and sidecar contracts apply?",
+            f"[CONFIRMED] `{dataset_key}` enforces `{fmt}` container validation, "
+            f"`val_split={val_split}`, and sidecar routing on port `{comp_p}` for `{folder}`.",
+            f"Next step: run `python cli.py verify --manifold {folder}` (or `python cli.py llm "
+            f"validate` for JSONL) before publishing `{dataset_key}`.",
+        )
+    return (
+        f"On tab-datasets, I selected `{dataset_key}` (format `{fmt}`, folder `{folder}`). "
+        "Which GUI controls and CLI commands validate and compile this manifold?",
+        f"[CONFIRMED] Manifold `{dataset_key}` compiles into `{folder}` using canonical "
+        f"format `{fmt}` for `{task}` with validation split `{val_split}`.",
+        f"Next step: click `compiler-btn-validate-schema`, then trigger `comp-btn-compile` "
+        f"to build `{folder}` on port {comp_p}.",
+    )
+
+
 def _dataset_turns(
-    dataset_key: str, ds_info: dict[str, Any], idx: int
+    dataset_key: str, ds_info: dict[str, Any], idx: int, variant: int = 0
 ) -> tuple[str, str, str]:
     """Build (retrieved_docs, user_turn, assistant_turn) for a dataset manifold record."""
     _env_p, comp_p, _train_p = sidecar_ports()
@@ -439,15 +512,7 @@ def _dataset_turns(
         f"in canonical format {fmt} with val_split {ds_info.get('val_split', 0.12)}. "
         f"Dataset Compiler listens on port {comp_p}."
     )
-    user_turn = (
-        f"On tab-datasets, I selected `{dataset_key}` (format `{fmt}`, folder `{folder}`). "
-        "Which GUI controls and CLI commands validate and compile this manifold?"
-    )
-    opening = (
-        f"[CONFIRMED] Manifold `{dataset_key}` compiles into `{folder}` using canonical "
-        f"format `{fmt}` for `{ds_info.get('task', 'vision')}` with validation split "
-        f"`{ds_info.get('val_split', 0.12)}`."
-    )
+    user_turn, opening, next_step = _dataset_prompt_variant(dataset_key, ds_info, comp_p, variant)
     bullets = [
         f"GUI Pre-Flight: click `compiler-btn-validate-schema` (Validate Schema) on port "
         f"{comp_p} before selecting `{dataset_key}` in `comp-select-manifold`.",
@@ -458,10 +523,6 @@ def _dataset_turns(
         "Verification Gate: after `WS /api/ws/events` finishes, confirm `shard_offsets.json` "
         "and run `python cli.py verify` to enforce the 4-Pillar Invariant.",
     ]
-    next_step = (
-        f"Next step: click `compiler-btn-validate-schema`, then trigger `comp-btn-compile` "
-        f"to build `{folder}` on port {comp_p}."
-    )
     assistant_turn = format_structured_reply(
         opening,
         bullets,
@@ -469,7 +530,7 @@ def _dataset_turns(
         ReplyOptions(
             category="gui_procedure",
             epistemic_tag="[CONFIRMED]",
-            seed_key=f"ds:{dataset_key}:{idx}",
+            seed_key=f"ds:{dataset_key}:{idx}:v{variant}",
         ),
     )
     return retrieved, user_turn, assistant_turn
@@ -480,6 +541,7 @@ def _make_dataset_state_record(
     ds_info: dict[str, Any],
     idx: int,
     system_prompt: str,
+    variant: int = 0,
 ) -> dict[str, Any]:
     """Build one live dataset compilation copilot record grounded in ``unified_data.yaml``."""
     fmt = str(ds_info.get("canonical_format", "webdataset"))
@@ -489,19 +551,21 @@ def _make_dataset_state_record(
             hardware=dict(HARDWARE_PROFILES[idx % len(HARDWARE_PROFILES)]),
             active_compile={
                 "dataset_key": dataset_key,
-                "status": "READY" if idx % 2 == 0 else "COMPILING",
+                "status": "READY" if variant == 0 else "COMPILING",
                 "format": fmt,
                 "folder": str(ds_info.get("modernized_folder", dataset_key)),
-                "progress_pct": 0 if idx % 2 == 0 else 64,
+                "progress_pct": 0 if variant == 0 else 64,
             },
         )
     )
-    retrieved, user_turn, assistant_turn = _dataset_turns(dataset_key, ds_info, idx)
+    retrieved, user_turn, assistant_turn = _dataset_turns(
+        dataset_key, ds_info, idx, variant=variant
+    )
     sys_turn = format_grounded_system_turn(
         system_prompt, gui_state=gui_state, retrieved_docs=retrieved
     )
     return {
-        "id": _deterministic_id("copilot_data", f"{dataset_key}:{idx}:{fmt}"),
+        "id": _deterministic_id("copilot_data", f"{dataset_key}:{idx}:v{variant}:{fmt}"),
         "category": "gui_procedure",
         "source_doc": "unified_data.yaml",
         "section_title": f"State Grounded Compile: {dataset_key}",
@@ -527,17 +591,34 @@ def _resolve_control_tab(cid: str, idx: int) -> str:
     return GUI_TABS[idx % len(GUI_TABS)]
 
 
-def _gui_control_bullets(cid: str, ctype: str, tab: str) -> list[str]:
-    """Build grounded bullets citing registry contract and SSOT sidecar ports."""
+def _gui_control_bullets(control: dict[str, str], tab: str) -> list[str]:
+    """Build control-specific grounded bullets citing registry contract and SSOT ports."""
     env_p, comp_p, train_p = sidecar_ports()
-    return [
-        f"Registry Contract: `{cid}` is a `{ctype}` element in "
-        "GUI_CONTROL_REGISTRY.md sending `X-LemGendary-Client: ai-studio-gui`.",
-        f"Sidecar Routing: `{tab}` coordinates Environment Manager ({env_p}), Dataset "
-        f"Compiler ({comp_p}), and Training Suite ({train_p}) via `sidecarFetch`.",
-        "Companion Controls: verify secrets in `sidebar-btn-config` (Config & Secrets) "
-        "and run diagnostics in `header-btn-test-modal` if a route returns 422.",
+    cid = control["id"]
+    ctype = control["type"]
+    label = control["label"]
+    summary = control["summary"].strip() or f"Operates `{cid}` inside `{tab}`."
+    bullets = [
+        f"Registry Contract: `{cid}` (`{ctype}`, label \"{label}\") in "
+        "GUI_CONTROL_REGISTRY.md sends `X-LemGendary-Client: ai-studio-gui`.",
+        f"Behavior Scope: {truncate_to_token_limit(summary, 55)}.",
     ]
+    if tab == "tab-datasets":
+        bullets.append(
+            f"Compiler Sidecar: routes via `sidecarFetch` to port {comp_p} and works "
+            "with `comp-select-manifold`, `compiler-btn-validate-schema`, and `comp-btn-compile`."
+        )
+    elif tab == "tab-training":
+        bullets.append(
+            f"Training Sidecar: coordinates port {train_p} (`Local Training`, "
+            "Monotonic Ratchet, and `Blend Soup`) with telemetry streamed on `WS /api/ws/events`."
+        )
+    else:
+        bullets.append(
+            f"Sidecar Mesh: `{tab}` monitors Environment Manager ({env_p}), Dataset "
+            f"Compiler ({comp_p}), and Training Suite ({train_p}) via `header-btn-test-modal`."
+        )
+    return bullets
 
 
 def _make_gui_control_record(
@@ -572,12 +653,12 @@ def _make_gui_control_record(
         f"{truncate_to_token_limit(summary, 28)}."
     )
     next_step = (
-        f"Next step: confirm all required sidecar dots are green on `tab-dashboard` "
-        f"before invoking `{cid}` on `{tab}`."
+        f"Next step: confirm required sidecar dots are online on `tab-dashboard` "
+        f"before triggering `{cid}` (\"{label}\") on `{tab}`."
     )
     assistant_turn = format_structured_reply(
         opening,
-        _gui_control_bullets(cid, control["type"], tab),
+        _gui_control_bullets(control, tab),
         next_step,
         ReplyOptions(
             category="gui_procedure",
@@ -607,13 +688,20 @@ def synthesize_state_grounded_copilot_records(
     """Synthesize live state-grounded records across models, datasets, and GUI controls."""
     records: list[dict[str, Any]] = []
     for idx, (m_key, m_info) in enumerate(sorted(ctx.models.items())):
-        records.append(_make_model_state_record(m_key, m_info, idx, system_prompt))
-        records.append(_make_model_state_record(m_key, m_info, idx + 5, system_prompt))
+        for variant in (0, 1, 2):
+            records.append(
+                _make_model_state_record(
+                    m_key, m_info, idx + variant * 3, system_prompt, variant=variant
+                )
+            )
 
     for idx, (d_key, d_info) in enumerate(sorted(ctx.datasets.items())):
-        records.append(_make_dataset_state_record(d_key, d_info, idx, system_prompt))
+        for variant in (0, 1):
+            records.append(
+                _make_dataset_state_record(d_key, d_info, idx, system_prompt, variant=variant)
+            )
 
-    for idx, ctrl in enumerate(ctx.gui_controls[:24]):
+    for idx, ctrl in enumerate(ctx.gui_controls):
         records.append(_make_gui_control_record(ctrl, idx, system_prompt))
 
     return [r for r in records if _within_synthesis_budget(r)]

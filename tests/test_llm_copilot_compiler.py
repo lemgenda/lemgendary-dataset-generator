@@ -9,6 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from api.routes.llm import LLMValidationRequest, validate_llm_corpus
+
+from core.manifold_compile import _create_layout, _is_llm_dataset
 from tests.llm_records import chat_record
 from tools.llm_helper.base_compiler import BaseLLMCompiler
 from tools.llm_helper.copilot_grounding import (
@@ -33,6 +36,11 @@ from tools.llm_helper.knowledge_synthesizer import (
     synthesize_instructions_from_section,
 )
 from tools.llm_helper.quality_validator import QualityValidator, TokenValidationConfig
+from tools.llm_helper.response_formatter import (
+    ReplyOptions,
+    distill_section_to_structured_parts,
+    format_structured_reply,
+)
 from tools.llm_helper.taxonomy import sidecar_ports
 from tools.llm_helper.token_budget import (
     ASSISTANT_HARD_MAX_TOKENS,
@@ -381,3 +389,66 @@ def test_end_to_end_compile_manifold_curation() -> None:
         assert res["total_records"] == 2
         q_report = json.loads((Path(res["target_dir"]) / "quality_report.json").read_text("utf-8"))
         assert q_report["curation_stats"]["token_budget_rejected"] == 1
+        readme_text = (Path(res["target_dir"]) / "README.md").read_text(encoding="utf-8")
+        assert "Total Samples:** 2" in readme_text
+        meta_json = json.loads(
+            (Path(res["target_dir"]) / "dataset-metadata.json").read_text("utf-8")
+        )
+        assert any(r["path"] == "data/test_llm_train.jsonl" for r in meta_json["resources"])
+
+
+def test_distill_balanced_parens_and_stage_alignment() -> None:
+    """Verify numbered headings, wrapped Markdown, JSON lines, and diag stage order."""
+    _env_p, _comp_p, train_p = sidecar_ports()
+    body = (
+        "Symptom: Sidecar status stays stuck in RUNNING after job completion.\n"
+        "Wrapped continuation explains websocket EOF missed.\n\n"
+        f'{{"status": "RUNNING", "port": {train_p}}}\n\n'
+        "Root Cause: Event loop close skips terminal status broadcast.\n\n"
+        "Remediation: Flush terminal event frame and verify via lem-env validate."
+    )
+    opening, bullets, next_step, tag = distill_section_to_structured_parts(
+        doc_id="AI_HELPER_TROUBLESHOOTING_KNOWLEDGE.md",
+        header="Doc > 3. Core Diagnostics > Scenario 12 [CONFIRMED]",
+        clean_text=body,
+        category="troubleshooting_diagnostic",
+        gui_state=build_gui_state_snapshot(GuiStateOptions(active_tab="tab-health")),
+    )
+    reply = format_structured_reply(
+        opening,
+        bullets,
+        next_step,
+        ReplyOptions(category="troubleshooting_diagnostic", epistemic_tag=tag, is_diagnostic=True),
+    )
+    first_line = reply.splitlines()[0]
+    assert first_line.count("(") == first_line.count(")")
+    assert '{"status":' not in reply
+    assert "Stage 1 (Initial Triage)" in reply
+    assert "Stage 2 (Targeted Diagnosis)" in reply
+    assert "Stage 3 (Bounded Remediation)" in reply
+
+
+def test_llm_layout_and_api_validate_parity() -> None:
+    """Verify LLM layout skips image dirs and API validate enforces copilot rules."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_dir = Path(tmp_dir) / "LemGendizedAIHelperLemGend"
+        cfg = {"dataset_type": "llm", "canonical_format": "jsonl"}
+        assert _is_llm_dataset(cfg)
+        _create_layout(out_dir, cfg, "ai_helper")
+        assert not (out_dir / "images").exists()
+
+    non_copilot = chat_record(
+        record_id="api_val_1",
+        turns=(
+            "System [GUI_STATE]{}[/GUI_STATE]",
+            "Where do I click?",
+            "Short answer without three bullets or next step.",
+        ),
+        category="gui_procedure",
+    )
+    resp = validate_llm_corpus(LLMValidationRequest(records=[non_copilot]))
+    assert resp["issues_count"] >= 1
+    assert any(
+        "bullet" in iss["issue"].lower() or "next-step" in iss["issue"].lower()
+        for iss in resp["issues"]
+    )

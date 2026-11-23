@@ -17,7 +17,7 @@ from services.llm_service import compile_llm_manifold, llm_compile_invocation
 from api.jobs import job_manager, submit_job
 from api.models import JobType
 from api.routes.datasets import _resolve_output_root
-from tools.llm_helper.quality_validator import QualityValidator
+from tools.llm_helper.quality_validator import QualityValidator, TokenValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,9 @@ def validate_llm_corpus(req: LLMValidationRequest) -> dict[str, Any]:
             detail="Must provide either file_path or records",
         )
 
-    validator = QualityValidator()
+    validator = QualityValidator(
+        token_config=TokenValidationConfig(enforce_copilot_structure=True)
+    )
     is_valid, issues = validator.validate_corpus(records)
 
     return {
