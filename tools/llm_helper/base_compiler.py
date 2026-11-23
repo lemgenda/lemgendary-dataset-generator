@@ -27,6 +27,7 @@ from .chunker import RecursiveChunker
 from .curation import (
     CurationStats,
     decontaminate_splits,
+    filter_by_token_budget,
     heuristic_quality_filter,
     minhash_semantic_dedup,
 )
@@ -74,13 +75,11 @@ class BaseLLMCompiler:
     ) -> dict[str, Any]:
         """Compile a complete LLM manifold declared in unified_data.yaml with atomic swap."""
         cfg = self._get_dataset_config(dataset_key)
-        target_dir = (
-            self.workspace_root / "LemGendaryDatasets" / cfg.get("modernized_folder", dataset_key)
-        )
+        folder_name = cfg.get("modernized_folder") or dataset_key
+        target_dir = self.workspace_root / "LemGendaryDatasets" / folder_name
         records = custom_records or self._generate_records(dataset_key, cfg)
-        self._require_valid(records)
-
         splits, curation_meta = self._prepare_splits_and_curation(records, cfg)
+        self._require_valid([rec for split in splits for rec in split])
         with tempfile.TemporaryDirectory(prefix=f".staging_build_{dataset_key}_") as tmp_dir:
             staging_dir = Path(tmp_dir)
             (staging_dir / "data").mkdir(parents=True, exist_ok=True)
@@ -105,8 +104,8 @@ class BaseLLMCompiler:
         dict[str, Any],
     ]:
         """Curate records, partition into splits, and decontaminate train against eval."""
-        llm_pipe = cfg.get("llm_pipeline", {})
-        seed = int(llm_pipe.get("seed", 42))
+        llm_pipe = cfg.get("llm_pipeline") or {}
+        seed = int(llm_pipe.get("seed") or 42)
         curated, rejected, stats = self._curate_records(records, llm_pipe)
 
         val_ratio = float(cfg.get("val_split", 0.20) or 0.20)
@@ -118,6 +117,7 @@ class BaseLLMCompiler:
         rejected.extend(leaked)
         final_stats = CurationStats(
             input_count=stats.input_count,
+            token_budget_rejected=stats.token_budget_rejected,
             quality_rejected=stats.quality_rejected,
             dedup_rejected=stats.dedup_rejected,
             decontam_rejected=len(leaked),
@@ -142,18 +142,20 @@ class BaseLLMCompiler:
         records: list[dict[str, Any]],
         llm_pipe: dict[str, Any],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], CurationStats]:
-        """Run heuristic quality filtering and MinHash/semantic deduplication."""
+        """Run token-budget gate, quality filtering, and MinHash/semantic deduplication."""
         min_q = float(llm_pipe.get("min_quality_score", 0.30))
-        accepted_q, rej_q = heuristic_quality_filter(records, min_quality=min_q)
+        accepted_tok, rej_tok = filter_by_token_budget(records)
+        accepted_q, rej_q = heuristic_quality_filter(accepted_tok, min_quality=min_q)
         accepted_d, rej_d = minhash_semantic_dedup(accepted_q)
         stats = CurationStats(
             input_count=len(records),
+            token_budget_rejected=len(rej_tok),
             quality_rejected=len(rej_q),
             dedup_rejected=len(rej_d),
             decontam_rejected=0,
             output_count=len(accepted_d),
         )
-        return accepted_d, rej_q + rej_d, stats
+        return accepted_d, rej_tok + rej_q + rej_d, stats
 
     def _write_outputs(
         self,
@@ -167,20 +169,19 @@ class BaseLLMCompiler:
         """Write jsonl shards and trigger metadata generation."""
         train_recs, val_recs, test_recs = splits
         meta = curation_meta or {}
-        total = len(train_recs) + len(val_recs) + len(test_recs)
-        train_path = target_dir / Path(cfg.get("train_file", f"data/{dataset_key}_train.jsonl"))
-        val_path = target_dir / Path(cfg.get("val_file", f"data/{dataset_key}_val.jsonl"))
+        train_path = target_dir / Path(cfg.get("train_file") or f"data/{dataset_key}_train.jsonl")
+        val_path = target_dir / Path(cfg.get("val_file") or f"data/{dataset_key}_val.jsonl")
         _write_jsonl(train_path, train_recs)
         _write_jsonl(val_path, val_recs)
 
         test_path: Path | None = None
         if test_recs:
-            test_path = target_dir / Path(cfg.get("test_file", f"data/{dataset_key}_test.jsonl"))
+            test_path = target_dir / Path(cfg.get("test_file") or f"data/{dataset_key}_test.jsonl")
             _write_jsonl(test_path, test_recs)
 
         generate_llm_metadata(
             target_dir,
-            cfg.get("modernized_folder", dataset_key),
+            cfg.get("modernized_folder") or dataset_key,
             train_recs,
             val_recs,
             descriptor=_descriptor_for(cfg),
@@ -193,7 +194,7 @@ class BaseLLMCompiler:
         res: dict[str, Any] = {
             "dataset_key": dataset_key,
             "target_dir": str(target_dir),
-            "total_records": total,
+            "total_records": len(train_recs) + len(val_recs) + len(test_recs),
             "train_count": len(train_recs),
             "val_count": len(val_recs),
             "train_path": str(train_path),
@@ -206,7 +207,7 @@ class BaseLLMCompiler:
 
     def _generate_records(self, dataset_key: str, cfg: dict[str, Any]) -> list[dict[str, Any]]:
         """Run the generator declared in the manifold's ``llm_pipeline`` block."""
-        llm_pipe = cfg.get("llm_pipeline", {})
+        llm_pipe = cfg.get("llm_pipeline") or {}
         gen_module = llm_pipe.get("generator_module")
         if gen_module != "tools.llm_helper.knowledge_synthesizer" and dataset_key not in (
             "test_llm",
@@ -248,12 +249,12 @@ def _remap_output_paths(
 ) -> None:
     """Remap staged outcome paths to target destination paths."""
     res["target_dir"] = str(target_dir)
-    tr_file = cfg.get("train_file", f"data/{dataset_key}_train.jsonl")
+    tr_file = cfg.get("train_file") or f"data/{dataset_key}_train.jsonl"
     res["train_path"] = str(target_dir / Path(tr_file))
-    vl_file = cfg.get("val_file", f"data/{dataset_key}_val.jsonl")
+    vl_file = cfg.get("val_file") or f"data/{dataset_key}_val.jsonl"
     res["val_path"] = str(target_dir / Path(vl_file))
     if "test_path" in res:
-        ts_file = cfg.get("test_file", f"data/{dataset_key}_test.jsonl")
+        ts_file = cfg.get("test_file") or f"data/{dataset_key}_test.jsonl"
         res["test_path"] = str(target_dir / Path(ts_file))
 
 
@@ -309,14 +310,14 @@ def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 def _descriptor_for(cfg: dict[str, Any]) -> LLMManifoldDescriptor:
     """Metadata descriptor from the manifold config, with AI-helper defaults."""
     return LLMManifoldDescriptor(
-        category=cfg.get("category", "Technical Documentation & AI Assistant Training"),
-        classes=[cfg.get("task", "ai_helper")],
-        original_sources=cfg.get(
-            "provenance_sources",
-            [
+        category=cfg.get("category") or "Technical Documentation & AI Assistant Training",
+        classes=[cfg.get("task") or "ai_helper"],
+        original_sources=(
+            cfg.get("provenance_sources")
+            or [
                 "LemGendary AI Documentation Hub",
                 "Master Operations Manuals (GUI, CLI, API)",
                 "Architectural Whitepapers",
-            ],
+            ]
         ),
     )

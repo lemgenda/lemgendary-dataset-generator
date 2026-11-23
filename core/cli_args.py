@@ -24,12 +24,13 @@ import shutil
 import sys
 from pathlib import Path
 
-from core import ecosystem
 from generators import LabelGenerator, MaskGenerator, PromptGenerator
+
+from core import ecosystem
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 PROJECT_NAME = "lemgendary-datasets"
-__version__ = "16.9.114"
+__version__ = "16.9.117"
 
 
 # ─── Shared argparse parser ─────────────────────────────────────────────────

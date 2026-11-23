@@ -3,7 +3,7 @@
   "info": {
     "title": "LemGendary Dataset Compiler API",
     "description": "REST and WebSocket sidecar service for LemGendary AI Studio.",
-    "version": "16.9.114"
+    "version": "16.9.117"
   },
   "paths": {
     "/api/health": {
@@ -2846,18 +2846,6 @@
             "title": "Dataset Key",
             "description": "Target dataset key from unified_data.yaml (e.g. test_llm, ai_helper_lemgend)"
           },
-          "target_samples": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Samples",
-            "description": "Override target sample count"
-          },
           "async_mode": {
             "type": "boolean",
             "title": "Async Mode",
@@ -3248,18 +3236,6 @@
             ],
             "title": "End Date",
             "description": "Forex/time-series end date (YYYY-MM-DD)"
-          },
-          "target_samples": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Samples",
-            "description": "Target sample count for LLM synthesis"
           },
           "label_strategy": {
             "anyOf": [

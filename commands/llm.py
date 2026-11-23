@@ -9,8 +9,9 @@ from typing import Annotated
 
 import requests
 import typer
-
 from api.auth import get_or_create_token
+from services.llm_service import LLM_COMPILE_ERRORS, compile_llm_manifold, summary_lines
+
 from commands.common import (
     DEFAULT_JOB_TIMEOUT_S,
     _is_server_available,
@@ -18,8 +19,7 @@ from commands.common import (
     console,
     sidecar_url,
 )
-from services.llm_service import LLM_COMPILE_ERRORS, compile_llm_manifold, summary_lines
-from tools.llm_helper.quality_validator import QualityValidator
+from tools.llm_helper.quality_validator import QualityValidator, TokenValidationConfig
 
 logger = logging.getLogger(__name__)
 llm_app = typer.Typer(help="LLM instruction dataset compilation and quality invariant validation.")
@@ -89,23 +89,26 @@ def llm_validate(
         Path, typer.Option("--file", "-f", help="Path to .jsonl dataset file to validate")
     ],
 ) -> None:
-    """Run QualityValidator on an LLM dataset JSONL file for 4 quality invariants."""
+    """Run QualityValidator on an LLM dataset JSONL file for schema, token, and copilot gates."""
     if not file_path.exists():
         console.print(f"[bold red]File not found:[/bold red] {file_path}")
         raise typer.Exit(1)
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             records = [json.loads(line) for line in f if line.strip()]
     except (OSError, ValueError) as exc:
         console.print(f"[bold red]Could not read {file_path}:[/bold red] {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     console.print(
         f"[cyan]Loaded {len(records)} records from {file_path.name}. Running"
         " QualityValidator...[/cyan]"
     )
-    is_valid, issues = QualityValidator().validate_corpus(records)
+    validator = QualityValidator(
+        token_config=TokenValidationConfig(enforce_copilot_structure=True)
+    )
+    is_valid, issues = validator.validate_corpus(records)
     errors = [iss for iss in issues if iss.severity == "ERROR"]
     warnings = [iss for iss in issues if iss.severity == "WARNING"]
     if is_valid:

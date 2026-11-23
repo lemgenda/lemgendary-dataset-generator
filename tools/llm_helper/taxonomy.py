@@ -1,12 +1,49 @@
 """Controlled Domain Taxonomy and Authority Classification for LLM Tooling.
 
-Enforces domain categorization, token boundary matching, and provenance tiering
-to guarantee precision during instruction corpus synthesis.
+Enforces domain categorization, token boundary matching, provenance tiering,
+and SSOT sidecar port lookups from ``core.ecosystem``.
 """
 
 from __future__ import annotations
 
+import functools
 import re
+from typing import Any
+
+from core import ecosystem
+
+HARDWARE_PROFILES: tuple[dict[str, Any], ...] = (
+    {
+        "gpu": "NVIDIA GeForce GTX 1650",
+        "vram_mb": 4096,
+        "backend": "cuda",
+        "turing_no_tensor_cores": True,
+    },
+    {
+        "gpu": "NVIDIA GeForce RTX 3060",
+        "vram_mb": 12288,
+        "backend": "cuda",
+        "turing_no_tensor_cores": False,
+    },
+    {
+        "gpu": "NVIDIA Tesla T4",
+        "vram_mb": 15360,
+        "backend": "cuda",
+        "turing_no_tensor_cores": False,
+    },
+    {
+        "gpu": "Google Cloud TPU v5e-8",
+        "vram_mb": 131072,
+        "backend": "xla",
+        "turing_no_tensor_cores": False,
+    },
+    {
+        "gpu": "CPU Fallback (No CUDA)",
+        "vram_mb": 0,
+        "backend": "cpu",
+        "turing_no_tensor_cores": False,
+    },
+)
 
 # (category, doc_tokens, title_tokens)
 CATEGORY_RULES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
@@ -26,7 +63,18 @@ CONTROLLED_DOMAINS: tuple[str, ...] = (
     "troubleshooting_diagnostic",
     "model_pipeline",
     "terminology_concept",
+    "boundary_and_negative",
 )
+
+
+@functools.lru_cache(maxsize=1)
+def sidecar_ports() -> tuple[int, int, int]:
+    """Return ``(env_port, compiler_port, training_port)`` from ``ecosystem.json``."""
+    return (
+        ecosystem.service_port(ecosystem.ENV_MANAGER_SERVICE),
+        ecosystem.service_port(ecosystem.DATASETS_SERVICE),
+        ecosystem.service_port(ecosystem.TRAINING_SERVICE),
+    )
 
 
 def tokenize_text(text: str) -> set[str]:

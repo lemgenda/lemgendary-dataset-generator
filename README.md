@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.116-STABLE` |
+| **Version** | `v16.9.117-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,29 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.117 - State-Grounded Copilot LLM Compiler & Sequence Alignment Gate
+
+- **State & RAG Grounding (`tools/llm_helper/copilot_grounding.py`,
+  `tools/llm_helper/knowledge_synthesizer.py`)**: Grounds >= 60% of
+  `ai_helper_lemgend` records in live Zustand `[GUI_STATE]` snapshots and
+  1-3 sentence `[RETRIEVED_DOCS]` excerpts sourced from
+  `unified_models_v2.yaml`, `unified_data.yaml`, and `GUI_CONTROL_REGISTRY.md`,
+  with `boundary_and_negative` refusal conditioning (~10% of corpus) for
+  offline port 8200 / idle runs, unsupported formats (`TFRecord`, `HDF5`,
+  `LMDB`, `RecordIO`), and missing SOTA targets.
+- **Structured 3-Part Copilot Formatter**
+  (`tools/llm_helper/response_formatter.py`): Formats assistant turns into a
+  1-sentence opening, 3-4 grounded bullet points, and 1 proactive next-step
+  recommendation within 150-350 tokens.
+- **Sequence Alignment & Token Ceilings (`tools/llm_helper/token_budget.py`,
+  `tools/llm_helper/quality_validator.py`, `tools/llm_helper/curation.py`)**:
+  Enforces a 1,536 total token hard ceiling and 420 assistant token cap (using
+  `tiktoken` with `len/3.5` fallback) across validation and curation so QLoRA
+  `max_seq_length: 2048` never truncates assistant completions.
+- **Tests (`tests/test_llm_copilot_compiler.py`)**: Added end-to-end tests
+  covering token estimation, Zustand `[GUI_STATE]` schema, boundary coverage,
+  grounding ratios, 3-part structure, and hard token ceilings.
 
 ### v16.9.116 - Exact Manifold Upstream Source Provenance Resolution
 

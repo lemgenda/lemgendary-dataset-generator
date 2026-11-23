@@ -1,7 +1,9 @@
 """Quality and Invariant Validator for LLM Instruction Datasets.
 
 Enforces zero-emoji rules, ChatML conversation schemas, 3-Stage Diagnostic
-Intake Protocols with epistemic tagging, and duplicate ID detection.
+Intake Protocols with epistemic tagging, 3-part concise copilot reply structure,
+sequence length alignment (1,536 total / 420 assistant hard ceiling), and
+duplicate ID detection.
 """
 
 from __future__ import annotations
@@ -10,8 +12,20 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-EMOJI_PATTERN = re.compile(r"[\U00010000-\U0010ffff]", flags=re.UNICODE)
+from .token_budget import (
+    ASSISTANT_HARD_MAX_TOKENS,
+    ASSISTANT_TARGET_MAX_TOKENS,
+    ASSISTANT_TARGET_MIN_TOKENS,
+    MAX_TOTAL_TOKENS,
+    count_record_tokens,
+)
+
+EMOJI_PATTERN = re.compile(
+    r"[\U00010000-\U0010ffff\u2600-\u26FF\u2700-\u27BF\uFE0F]",
+    flags=re.UNICODE,
+)
 EPISTEMIC_TAG_PATTERN = re.compile(r"\[(CONFIRMED|PROBABLE|ILLUSTRATIVE)\]")
+_BULLET_LINE_RE = re.compile(r"^\s*[-*]\s+\S")
 
 
 # Each stage of the Diagnostic Intake Protocol is present when any of its markers is.
@@ -20,6 +34,17 @@ _DIAG_STAGE_MARKERS = (
     ("stage 2", "diagnosis"),
     ("stage 3", "remediation"),
 )
+
+
+@dataclass(frozen=True)
+class TokenValidationConfig:
+    """Sequence-length and copilot structure thresholds for ``QualityValidator``."""
+
+    max_total_tokens: int = MAX_TOTAL_TOKENS
+    max_assistant_tokens: int = ASSISTANT_HARD_MAX_TOKENS
+    target_assistant_min_tokens: int = ASSISTANT_TARGET_MIN_TOKENS
+    target_assistant_max_tokens: int = ASSISTANT_TARGET_MAX_TOKENS
+    enforce_copilot_structure: bool = False
 
 
 @dataclass(frozen=True)
@@ -37,9 +62,10 @@ class ValidationIssue:
 
 def _collect_message_text(
     rec_id: str, messages: list[Any], issues: list[ValidationIssue]
-) -> tuple[str, str]:
-    """Flag malformed or empty turns; return (all text, assistant text)."""
+) -> tuple[str, str, str]:
+    """Flag malformed or empty turns; return (all text, system text, assistant text)."""
     full_text = ""
+    system_text = ""
     assistant_text = ""
     for idx, m in enumerate(messages):
         if not isinstance(m, dict):
@@ -50,10 +76,55 @@ def _collect_message_text(
         content = m.get("content", "")
         if not isinstance(content, str) or not content.strip():
             issues.append(ValidationIssue(rec_id, f"messages[{idx}]", "Message content is empty"))
+        role = m.get("role")
         full_text += " " + str(content)
-        if m.get("role") == "assistant":
-            assistant_text += " " + str(content)
-    return full_text, assistant_text
+        if role == "system":
+            system_text += " " + str(content)
+        elif role == "assistant":
+            assistant_text += ("\n" if assistant_text else "") + str(content)
+    return full_text, system_text, assistant_text
+
+
+def _copilot_structure_issues(rec_id: str, assistant_text: str) -> list[ValidationIssue]:
+    """Warn if a copilot reply deviates from the 1-opening / 3-4 bullets / 1-next-step layout."""
+    lines = [line.strip() for line in assistant_text.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    bullet_indices = [i for i, ln in enumerate(lines) if _BULLET_LINE_RE.match(ln)]
+    issues: list[ValidationIssue] = []
+    if not 3 <= len(bullet_indices) <= 4:
+        issues.append(
+            ValidationIssue(
+                rec_id,
+                "assistant",
+                f"Expected 3-4 bullet points in copilot reply, found {len(bullet_indices)}",
+                severity="WARNING",
+            )
+        )
+        return issues
+
+    first_bullet = bullet_indices[0]
+    last_bullet = bullet_indices[-1]
+    if first_bullet == 0:
+        issues.append(
+            ValidationIssue(
+                rec_id,
+                "assistant",
+                "Missing 1-sentence direct opening before bullet points",
+                severity="WARNING",
+            )
+        )
+    if last_bullet >= len(lines) - 1:
+        issues.append(
+            ValidationIssue(
+                rec_id,
+                "assistant",
+                "Missing proactive next-step closing recommendation after bullet points",
+                severity="WARNING",
+            )
+        )
+    return issues
 
 
 class QualityValidator:
@@ -64,10 +135,12 @@ class QualityValidator:
         zero_emojis: bool = True,
         enforce_epistemic_tags: bool = True,
         enforce_diag_stages: bool = True,
+        token_config: TokenValidationConfig | None = None,
     ) -> None:
         self.zero_emojis = zero_emojis
         self.enforce_epistemic_tags = enforce_epistemic_tags
         self.enforce_diag_stages = enforce_diag_stages
+        self.token_config = token_config or TokenValidationConfig()
 
     def validate_record(self, record: dict[str, Any]) -> list[ValidationIssue]:
         """Return the quality issues found in one LLM training record."""
@@ -89,7 +162,7 @@ class QualityValidator:
         if roles not in (["system", "user", "assistant"], ["user", "assistant"]):
             issues.append(ValidationIssue(rec_id, "messages", f"Unexpected role sequence: {roles}"))
 
-        full_text, assistant_text = _collect_message_text(rec_id, messages, issues)
+        full_text, system_text, assistant_text = _collect_message_text(rec_id, messages, issues)
 
         if self.zero_emojis:
             emojis = EMOJI_PATTERN.findall(full_text)
@@ -100,10 +173,77 @@ class QualityValidator:
                     )
                 )
 
+        issues.extend(self._token_budget_issues(record, rec_id, system_text, assistant_text))
+
         category = str(record.get("category", "")).strip().lower()
         if category in ("troubleshooting_diagnostic", "troubleshooting_diagnostics"):
             issues.extend(self._diagnostic_issues(rec_id, assistant_text))
 
+        return issues
+
+    def _token_budget_issues(
+        self,
+        record: dict[str, Any],
+        rec_id: str,
+        system_text: str,
+        assistant_text: str,
+    ) -> list[ValidationIssue]:
+        """Enforce sequence alignment ceilings and copilot reply target structure."""
+        issues: list[ValidationIssue] = []
+        cfg = self.token_config
+        total_tokens, assistant_tokens = count_record_tokens(record)
+
+        if total_tokens > cfg.max_total_tokens:
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "tokens",
+                    f"Total sequence tokens ({total_tokens}) exceed hard limit "
+                    f"({cfg.max_total_tokens})",
+                )
+            )
+        if assistant_tokens > cfg.max_assistant_tokens:
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "assistant",
+                    f"Assistant turn tokens ({assistant_tokens}) exceed hard ceiling "
+                    f"({cfg.max_assistant_tokens})",
+                )
+            )
+
+        category = str(record.get("category", "")).strip().lower()
+        is_copilot_record = (
+            cfg.enforce_copilot_structure
+            or "[GUI_STATE]" in system_text
+            or "[RETRIEVED_DOCS]" in system_text
+            or category == "boundary_and_negative"
+        )
+        if not is_copilot_record:
+            return issues
+
+        if assistant_tokens < cfg.target_assistant_min_tokens:
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "assistant",
+                    f"Assistant turn tokens ({assistant_tokens}) below target minimum "
+                    f"({cfg.target_assistant_min_tokens})",
+                    severity="WARNING",
+                )
+            )
+        elif assistant_tokens > cfg.target_assistant_max_tokens:
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "assistant",
+                    f"Assistant turn tokens ({assistant_tokens}) above target maximum "
+                    f"({cfg.target_assistant_max_tokens})",
+                    severity="WARNING",
+                )
+            )
+
+        issues.extend(_copilot_structure_issues(rec_id, assistant_text))
         return issues
 
     def _diagnostic_issues(self, rec_id: str, assistant_text: str) -> list[ValidationIssue]:
@@ -146,7 +286,6 @@ class QualityValidator:
                 all_issues.append(ValidationIssue(r_id, "id", f"Duplicate record ID found: {r_id}"))
             seen_ids.add(r_id)
 
-            # Check for duplicate normalized prompt across corpus
             messages = rec.get("messages") or []
             user_text = next(
                 (
