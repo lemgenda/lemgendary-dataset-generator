@@ -22,6 +22,7 @@ __all__ = [
     "DatasetFileStats",
     "calculate_dataset_file_stats",
     "extract_jsonl_provenance_counts",
+    "extract_manifold_provenance_counts",
     "jsonl_files",
 ]
 
@@ -290,3 +291,33 @@ def extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError) as exc:
             logger.debug("Failed extracting provenance from %s: %s", jf, exc)
     return dict(counts)
+
+
+def _counts_from_index_data(data: Any) -> dict[str, int]:
+    """Tally 'source' field values from list or dict index structure."""
+    counts: Counter[str] = Counter()
+    entries = data if isinstance(data, list) else (data.values() if isinstance(data, dict) else ())
+    for item in entries:
+        if isinstance(item, dict):
+            src = item.get("source")
+            if src:
+                counts[str(src)] += 1
+    return dict(counts)
+
+
+def extract_manifold_provenance_counts(manifold_dir: Path) -> dict[str, int]:
+    """Return exact sample count per source across index.json or JSONL files."""
+    index_file = manifold_dir / "index.json"
+    if index_file.is_file():
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            counts = _counts_from_index_data(data)
+            if counts:
+                return counts
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            logger.debug(
+                "Failed extracting provenance from index.json in %s: %s", manifold_dir, exc
+            )
+
+    return extract_jsonl_provenance_counts(manifold_dir)

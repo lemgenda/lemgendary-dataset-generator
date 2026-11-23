@@ -25,6 +25,8 @@ import yaml
 from PIL import Image
 
 from api.auth import get_or_create_token
+from api.dataset_stats import _build_sources
+from api.manifold_scan import extract_manifold_provenance_counts
 from api.server import app
 from core.ecosystem import ecosystem
 from services.audit_service import audit_manifold
@@ -426,6 +428,32 @@ class TestAllServicesOrchestration(unittest.TestCase):
             ret = SyncService.push_metadata(model="nima_technical", dry_run=True)
             self.assertEqual(ret, 0)
             mock_meta.assert_called_once()
+
+    def test_extract_manifold_provenance_counts(self) -> None:
+        """extract_manifold_provenance_counts resolves exact sample counts from index.json."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            idx_file = tmp_path / "index.json"
+            idx_file.write_text(
+                dumps([
+                    {"id": 1, "source": "Source A"},
+                    {"id": 2, "source": "Source A"},
+                    {"id": 3, "source": "Source B"},
+                ]),
+                encoding="utf-8",
+            )
+            counts = extract_manifold_provenance_counts(tmp_path)
+            self.assertEqual(counts, {"Source A": 2, "Source B": 1})
+
+            sources = _build_sources(
+                raw_sources=["Source A (Main)", "Source B"],
+                refs=[],
+                sample_count=3,
+                provenance_counts=counts,
+            )
+            self.assertEqual(len(sources), 2)
+            self.assertEqual(sources[0].count, 2)
+            self.assertEqual(sources[1].count, 1)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.114-STABLE` |
+| **Version** | `v16.9.116-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,23 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.116 - Exact Manifold Upstream Source Provenance Resolution
+
+- **Exact Source Count Resolution (`api/manifold_scan.py`)**: Added
+  `extract_manifold_provenance_counts()` to inspect `index.json` (WebDataset,
+  Parquet, and sharded manifolds) and extract exact sample tallies per upstream
+  source, falling back seamlessly to JSONL sources.
+- **Robust Source Matching (`api/dataset_stats.py`)**: Replaced the legacy
+  synthetic even-split fallback with `_match_provenance_count()`, matching
+  catalog source names to internal provenance slugs via exact name, normalized
+  alphanumeric representation, and token overlap.
+- **Dynamic Synchronous Manifold Attribution**: Ensures every manifold update,
+  repair pass, or stats inspection accurately reflects the ground-truth sample
+  counts per source (e.g. `LemGendizedParseNet` now attributes exact counts:
+  SFHQ Part 1: 89,785, Part 2: 91,361, Part 3: 118,358, Part 4: 125,754).
+- **Unit Test Coverage (`tests/test_api_and_services.py`)**: Added regression
+  tests asserting exact per-source sample count extraction and source matching.
 
 ### v16.9.115 - Autonomous Knowledge Yield Discovery for LLM Manifolds
 

@@ -15,13 +15,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from core import paths
-from core.presets import recommended_preset_for_dataset
 
 from api.manifold_scan import (
     DatasetFileStats,
     calculate_dataset_file_stats,
     extract_jsonl_provenance_counts,
+    extract_manifold_provenance_counts,
     jsonl_files,
 )
 from api.models import (
@@ -29,6 +28,8 @@ from api.models import (
     DatasetSourceInfo,
     DatasetStatsListResponse,
 )
+from core import paths
+from core.presets import recommended_preset_for_dataset
 
 __all__ = [
     "DatasetFileStats",
@@ -138,9 +139,8 @@ def _read_manifold_meta(info_file: Path, reg_info: dict[str, Any]) -> _ManifoldM
     )
     meta = read_yaml_mapping(info_file)
     result.task = meta.get("task", result.task)
-    result.sample_count = as_count(
-        meta.get("count") or meta.get("total_samples") or meta.get("samples")
-    )
+    raw_cnt = meta.get("count") or meta.get("total_samples") or meta.get("samples")
+    result.sample_count = as_count(raw_cnt)
     if meta.get("canonical_format"):
         result.canonical_format = str(meta["canonical_format"])
     if meta.get("format"):
@@ -189,12 +189,44 @@ def _match_ref(s_lower: str, ref_lookup: dict[str, str]) -> str | None:
     return None
 
 
+def _match_provenance_count(s_name: str, provenance_counts: dict[str, int]) -> int | None:
+    """Find exact sample count in provenance_counts by exact name or token overlap."""
+    if not provenance_counts:
+        return None
+    # 1. Exact match
+    if s_name in provenance_counts:
+        return provenance_counts[s_name]
+
+    # 2. Normalized alphanumeric match
+    norm_target = re.sub(r"[^a-z0-9]+", "", s_name.lower())
+    for p_name, count in provenance_counts.items():
+        if re.sub(r"[^a-z0-9]+", "", p_name.lower()) == norm_target:
+            return count
+
+    # 3. Token-level overlap (e.g. 'SFHQ Part 3' vs 'synthetic-faces-high-quality-sfhq-part-3')
+    target_tokens = set(re.findall(r"[a-z0-9]+", s_name.lower()))
+    best_overlap = 0.0
+    best_count: int | None = None
+    for p_name, count in provenance_counts.items():
+        p_tokens = set(re.findall(r"[a-z0-9]+", p_name.lower()))
+        common = target_tokens & p_tokens
+        if common:
+            # Overlap relative to the shorter token set
+            overlap = len(common) / min(len(target_tokens), len(p_tokens))
+            if overlap > best_overlap and overlap >= 0.5:
+                best_overlap = overlap
+                best_count = count
+
+    return best_count
+
+
 def _source_count(
     s_idx: int, s_name: str, sample_count: int, provenance_counts: dict[str, int], n_sources: int
 ) -> int | None:
-    """Exact JSONL provenance count, else an even split of ``sample_count`` across sources."""
-    if provenance_counts:
-        return provenance_counts.get(s_name, 0)
+    """Exact provenance count from index.json or JSONL, else an even split of ``sample_count``."""
+    matched = _match_provenance_count(s_name, provenance_counts)
+    if matched is not None:
+        return matched
     if sample_count > 0:
         base_count = sample_count // n_sources
         if s_idx == n_sources - 1:
@@ -273,7 +305,7 @@ def _build_detail(
         _read_original_sources(info_file) or reg_info.get("provenance_sources") or [],
         reg_info.get("refs") or [],
         meta.sample_count,
-        extract_jsonl_provenance_counts(entry) if jsonl_paths else {},
+        extract_manifold_provenance_counts(entry),
     )
     return DatasetDetailStats(
         name=entry.name,
