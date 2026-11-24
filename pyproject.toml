@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lemgendary-datasets"
+version = "16.9.112"
+description = "High-performance datasets and curation pipelines for vision, multimodal, and financial data"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*", "core*", "audit*", "forex*", "models*", "degrade*", "formats*", "runtime*", "sources*", "commands*", "services*", "converters*", "generators*", "utils*", "tools*"]
+
+[tool.pyright]
+include = ["api", "commands", "converters", "core", "degrade", "forex", "formats", "generators", "models", "runtime", "services", "sources", "tools", "utils", "tests"]
+exclude = ["**/__pycache__", ".venv"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100

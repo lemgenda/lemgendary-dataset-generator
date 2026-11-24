@@ -57,12 +57,15 @@ class AutoLabeler:
             return self.face_detector
         base_dir = os.path.dirname(__file__)
         # Point to the downloaded face_landmarker.task
-        model_path = os.path.join(
-            base_dir, "..", "..", "lemgendary-training-suite", "face_landmarker.task"
+        suite_chk = os.path.join(
+            base_dir, "..", "..", "lemgendary-training-suite", "checkpoints", "face_landmarker.task"
         )
-        if not os.path.exists(model_path):
-            # Fallback to current dir if needed
-            model_path = os.path.join(base_dir, "face_landmarker.task")
+        candidates = [
+            suite_chk,
+            os.path.join(base_dir, "..", "..", "lemgendary-training-suite", "face_landmarker.task"),
+            os.path.join(base_dir, "face_landmarker.task"),
+        ]
+        model_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
 
         base_options = python.BaseOptions(model_asset_path=model_path)
         options = vision.FaceLandmarkerOptions(base_options=base_options,
@@ -79,8 +82,9 @@ class AutoLabeler:
         # Initialize detector lazily
         detector = self._face_detector_instance(python, vision)
 
-        # Convert PIL to mp.Image (ensure 3-channel RGB)
-        img_np = np.array(img_pil.convert("RGB"))
+        # Convert PIL to mp.Image (ensure 3-channel RGB and C-contiguous memory
+        # layout for NumPy 2.x stride safety)
+        img_np = np.ascontiguousarray(np.array(img_pil.convert("RGB")))
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
         detection_result = detector.detect(mp_image)
 
