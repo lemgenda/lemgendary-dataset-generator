@@ -84,6 +84,7 @@ present file and fails on a stale one.
 
 ### v16.9.120 - Dataset Compiler Audit: GUI Parsing & LLM Rung Routing
 
+- Upgraded 14 package(s) for the lemgendary-datasets.
 - **GUI Control Multi-Line Parsing (`tools/llm_helper/copilot_grounding.py`)**:
   Rewrote
   `_parse_gui_controls()` to collect full multi-line entries before parsing

@@ -547,9 +547,12 @@ def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | N
             )
         active_train = gui_state.get("active_training")
         is_model_pipeline = category == "model_pipeline"
-        has_active_train = isinstance(active_train, dict) and active_train.get("model_key")
-        if is_model_pipeline and has_active_train:
-            mkey = active_train["model_key"]
+        if (
+            is_model_pipeline
+            and isinstance(active_train, dict)
+            and active_train.get("model_key") is not None
+        ):
+            mkey = str(active_train.get("model_key", ""))
             return (
                 f"Next step: monitor {mkey} under training-telemetry-tabs-tab-local "
                 f"and use train-btn-eval-{mkey} or Blend Soup once targets converge."
