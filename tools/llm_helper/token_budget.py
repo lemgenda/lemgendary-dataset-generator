@@ -76,13 +76,62 @@ def count_record_tokens(record: dict[str, Any]) -> tuple[int, int]:
     return count_messages_tokens(messages)
 
 
+_DANGLING_STOPWORDS = {
+    "for",
+    "and",
+    "with",
+    "to",
+    "of",
+    "in",
+    "by",
+    "or",
+    "as",
+    "from",
+    "the",
+    "a",
+    "an",
+    "at",
+    "on",
+    "into",
+    "onto",
+    "that",
+    "which",
+}
+
+
+def _strip_dangling_tail(text: str) -> str:
+    """Strip trailing stopwords, prepositions, or dangling conjunctions from truncated text."""
+    res = text.rstrip(" ,;:-_")
+    while res:
+        words = res.split()
+        if not words:
+            break
+        last_word = words[-1].lower().rstrip(".,;:!?()[]{}'\"")
+        if last_word in _DANGLING_STOPWORDS:
+            words.pop()
+            res = " ".join(words).rstrip(" ,;:-_")
+        else:
+            break
+    # Balance parentheses if unclosed opening paren exists
+    open_p = res.count("(")
+    close_p = res.count(")")
+    if open_p > close_p:
+        # Strip trailing unclosed open paren content if at the end, or close it
+        last_open = res.rfind("(")
+        if last_open >= 0 and not any(c in res[last_open:] for c in ".!?"):
+            res = res[:last_open].rstrip(" ,;:-_")
+        else:
+            res += ")" * (open_p - close_p)
+    return res
+
+
 def truncate_to_token_limit(text: str, max_tokens: int) -> str:
     """Trim ``text`` cleanly on word or sentence boundaries to stay within ``max_tokens``."""
     stripped = text.strip()
     if not stripped or max_tokens <= 0:
         return ""
     if count_tokens(stripped) <= max_tokens:
-        return stripped
+        return _strip_dangling_tail(stripped)
 
     words = stripped.split()
     if not words:
@@ -105,9 +154,9 @@ def truncate_to_token_limit(text: str, max_tokens: int) -> str:
         best = stripped[:char_cap].strip()
         while best and count_tokens(best) > max_tokens:
             best = best[:-1].strip()
-        return best
+        return _strip_dangling_tail(best)
 
     last_period = max(best.rfind(". "), best.rfind("! "), best.rfind("? "))
     if last_period >= int(len(best) * 0.6):
         return best[: last_period + 1].strip()
-    return best.rstrip(",;:")
+    return _strip_dangling_tail(best)

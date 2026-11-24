@@ -146,24 +146,51 @@ def _extract_models_from_yaml(data: dict[str, Any]) -> dict[str, dict[str, Any]]
 
 def _parse_gui_controls(markdown_text: str) -> list[dict[str, str]]:
     """Extract control IDs, labels, and full descriptions from GUI_CONTROL_REGISTRY.md."""
-    controls: list[dict[str, str]] = []
+    entries: list[dict[str, str]] = []
+    cur_entry: dict[str, str] | None = None
+    line_re = re.compile(r"^\s*-\s+`(?P<cid>[^`]+)`\s+\(`(?P<ctype>[^`]+)`\):\s*(?P<rest>.*)$")
+
     for raw in markdown_text.splitlines():
-        match = _GUI_CONTROL_LINE_RE.match(raw.strip())
+        stripped = raw.strip()
+        match = line_re.match(raw)
         if match:
-            label = (match.group("qlabel") or match.group("ulabel") or "").strip()
-            controls.append(
-                {
-                    "id": match.group("cid"),
-                    "type": match.group("ctype"),
-                    "label": label,
-                    "summary": strip_emojis(match.group("rest").strip()),
-                }
-            )
-            continue
-        if controls and raw.startswith("  ") and raw.strip() and not raw.strip().startswith("- "):
-            controls[-1]["summary"] = (
-                f"{controls[-1]['summary']} {strip_emojis(raw.strip())}".strip()
-            )
+            if cur_entry:
+                entries.append(cur_entry)
+            cur_entry = {
+                "id": match.group("cid"),
+                "type": match.group("ctype"),
+                "raw_desc": match.group("rest").strip(),
+            }
+        elif cur_entry:
+            if stripped.startswith("- ") or stripped.startswith("#"):
+                entries.append(cur_entry)
+                cur_entry = None
+            elif stripped:
+                cur_entry["raw_desc"] = f"{cur_entry['raw_desc']} {stripped}".strip()
+
+    if cur_entry:
+        entries.append(cur_entry)
+
+    controls: list[dict[str, str]] = []
+    for entry in entries:
+        desc = entry["raw_desc"]
+        q_match = re.match(r'^"([^"]+)"\.?\s*(.*)$', desc, re.DOTALL)
+        if q_match:
+            label, summary = q_match.group(1), q_match.group(2)
+        else:
+            u_match = re.match(r"^([^.]+)\.\s*(.*)$", desc)
+            if u_match:
+                label, summary = u_match.group(1), u_match.group(2)
+            else:
+                label, summary = "", desc
+        controls.append(
+            {
+                "id": entry["id"],
+                "type": entry["type"],
+                "label": label.strip(),
+                "summary": strip_emojis(summary.strip()),
+            }
+        )
     return controls
 
 
@@ -236,11 +263,16 @@ def build_gui_state_snapshot(options: GuiStateOptions | None = None) -> dict[str
     }
 
 
+def _clean_markdown_formatting(text: str) -> str:
+    """Strip markdown formatting (#, *, `, |) while preserving identifiers."""
+    cleaned = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    cleaned = re.sub(r"(?<!\w)[#*`|]+|[#*`|]+(?!\w)", " ", cleaned)
+    return re.sub(r"\s+", " ", strip_emojis(cleaned)).strip()
+
+
 def build_retrieved_docs_snippet(text: str, max_sentences: int = 3, max_tokens: int = 110) -> str:
     """Extract a 1-3 sentence clean excerpt for ``[RETRIEVED_DOCS]`` RAG grounding."""
-    cleaned = strip_emojis(re.sub(r"```.*?```", " ", text, flags=re.DOTALL))
-    cleaned = re.sub(r"[#*_`|]+", " ", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = _clean_markdown_formatting(text)
     if not cleaned:
         return ""
     sentences = [s.strip() for s in _SENTENCE_RE.split(cleaned) if len(s.strip()) >= 15]
@@ -293,7 +325,11 @@ def _build_model_run_snapshot(
     hw = dict(HARDWARE_PROFILES[idx % len(HARDWARE_PROFILES)])
     governor = _GOVERNOR_STATES[idx % len(_GOVERNOR_STATES)]
     opt = model_info.get("optimization") or {}
-    ladder = opt.get("res_ladder") or [model_info.get("val_resolution") or 256]
+    category = str(model_info.get("category") or "").lower()
+    if category == "llm" or "llm" in model_key.lower():
+        ladder = opt.get("seq_ladder") or [model_info.get("max_seq_length") or 2048]
+    else:
+        ladder = opt.get("res_ladder") or [model_info.get("val_resolution") or 256]
     rung = ladder[idx % len(ladder)]
     targets = dict(model_info.get("sota_targets") or {})
     recent_errors: list[str] = []
@@ -369,6 +405,11 @@ def _model_prompt_variant(
             if hw["turing_no_tensor_cores"]
             else f"uses native `{hw['backend']}` precision within `{hw['vram_mb']}` MB VRAM"
         )
+        next_action = (
+            f"maintain steady monitoring while `{run['governor']}` operates normally"
+            if run["governor"] == "NOMINAL_CRUISE"
+            else f"wait for `{run['governor']}` to clear"
+        )
         return (
             f"Given [GUI_STATE] on `{hw['gpu']}` (vram_mb={hw['vram_mb']}, "
             f"turing_no_tensor_cores={hw['turing_no_tensor_cores']}), how does "
@@ -376,7 +417,7 @@ def _model_prompt_variant(
             f"[CONFIRMED] `{model_key}` on `{hw['gpu']}` (`vram_mb={hw['vram_mb']}`) "
             f"{prec_mode} at epoch `{run['epoch']}/{run['budget']}` under `{run['governor']}`.",
             f"Next step: monitor `training-telemetry-tabs-tab-local` for `{model_key}` "
-            f"and wait for `{run['governor']}` to clear before bumping rung `{run['rung']}`.",
+            f"and {next_action} before bumping rung `{run['rung']}`.",
         )
     if variant == 2:
         return (
@@ -389,6 +430,11 @@ def _model_prompt_variant(
             f"Next step: evaluate `{model_key}` with `train-btn-eval-{model_key}` and run "
             f"`train-btn-soup-{model_key}` (Blend Soup) once plateau settles.",
         )
+    wait_action = (
+        f"while `{run['governor']}` operates normally"
+        if run["governor"] == "NOMINAL_CRUISE"
+        else f"until `{run['governor']}` clears cooldown"
+    )
     return (
         f"Look at [GUI_STATE] for {model_key} at epoch {run['epoch']}/{run['budget']} "
         f"(rung={run['rung']}, fraction={run['fraction']}, governor={run['governor']}, "
@@ -397,8 +443,8 @@ def _model_prompt_variant(
         f"[CONFIRMED] `{model_key}` is at epoch {run['epoch']}/{run['budget']} on rung "
         f"`{run['rung']}` (fraction `{run['fraction']}`) under `{run['governor']}` with "
         f"`{primary_metric}={cur_val}` versus SOTA target `{tgt_val}` (delta `{gap_note}`).",
-        f"Next step: keep `{model_key}` training until `{run['governor']}` clears "
-        f"cooldown, then run `train-btn-eval-{model_key}` and Blend Soup.",
+        f"Next step: keep `{model_key}` training {wait_action}, then run "
+        f"`train-btn-eval-{model_key}` and Blend Soup.",
     )
 
 
@@ -621,6 +667,21 @@ def _gui_control_bullets(control: dict[str, str], tab: str) -> list[str]:
     return bullets
 
 
+def _resolve_behavior_clause(summary: str) -> str:
+    """Return the control behavior description derived from its summary text."""
+    _none_dot_prefix = "None."
+    _none_prefix = "None"
+    if summary.startswith(_none_dot_prefix):
+        behavior_text = summary.removeprefix(_none_dot_prefix).strip()
+    elif summary.startswith(_none_prefix):
+        behavior_text = summary.removeprefix(_none_prefix).strip(" :.,")
+    else:
+        return f"executes: {summary}"
+    if behavior_text:
+        return f"performs client-side GUI action: {behavior_text}"
+    return "manages local GUI state"
+
+
 def _make_gui_control_record(
     control: dict[str, str],
     idx: int,
@@ -648,9 +709,10 @@ def _make_gui_control_record(
         f"On `{tab}`, what does the `{cid}` control (\"{label}\") do and how does it "
         "interact with the sidecar mesh?"
     )
+    behavior_clause = _resolve_behavior_clause(summary)
     opening = (
-        f"[CONFIRMED] Control `{cid}` (\"{label}\") on `{tab}` executes: "
-        f"{truncate_to_token_limit(summary, 28)}."
+        f"[CONFIRMED] Control `{cid}` (\"{label}\") on `{tab}` "
+        f"{truncate_to_token_limit(behavior_clause, 32)}."
     )
     next_step = (
         f"Next step: confirm required sidecar dots are online on `tab-dashboard` "

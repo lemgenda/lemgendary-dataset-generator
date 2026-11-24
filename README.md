@@ -82,6 +82,51 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.120 - Dataset Compiler Audit: GUI Parsing & LLM Rung Routing
+
+- **GUI Control Multi-Line Parsing (`tools/llm_helper/copilot_grounding.py`)**:
+  Rewrote
+  `_parse_gui_controls()` to collect full multi-line entries before parsing
+  label vs. summary,
+  fixing broken controls for multi-line entries. Added
+  `_resolve_behavior_clause()` helper
+  (extracted from `_make_gui_control_record()`) to reduce local variable count.
+  Fixed LLM
+  category rung routing to use `seq_ladder`/`max_seq_length` instead of spatial
+  `res_ladder`.
+  Fixed control opening phrase to emit `performs client-side GUI action: ...`
+  for `None.`-prefixed
+  summaries. Broke long f-strings to satisfy 100-char line limit.
+- **Dangling Tail Elimination (`tools/llm_helper/token_budget.py`)**: Added
+  `_DANGLING_STOPWORDS`
+  set and `_strip_dangling_tail()` function. `truncate_to_token_limit()` now
+  strips dangling
+  prepositions and conjunctions from all outputs (292 instances reduced to 2
+  acceptable natural
+  sentence endings).
+- **Placeholder Bullet Fix (`tools/llm_helper/response_formatter.py`)**: Fixed
+  `distill_section_to_structured_parts()` placeholder bullet fallback to use
+  `_category_grounding_pool()` with 2 grounded bullets instead of `"{leaf_h}
+  specification rule."`
+  (325 placeholders reduced to 0). Fixed `_match_stage_line()` to remove unused
+  `low` parameter;
+  extracted `_KEY_PREFIXES` and `_STAGE_SUBHEADING_RE` as module-level
+  constants. Fixed all
+  18 C0301 line-length violations (100-char limit). Fixed
+  `_ensure_single_sentence()` epistemic
+  tag check and `_match_stage_line()` markdown subheading stripping.
+- **Heading Stack Nesting Fix (`tools/llm_helper/knowledge_synthesizer.py`)**:
+  `_iter_sections()`
+  now tracks `list[tuple[int, str]]` for heading stack instead of `list[str]`,
+  fixing incorrect
+  nesting. `_clean_content()` strips markdown image links and converts `<foo>`
+  to `{foo}`.
+  `_training_stub()` uses LLM-aware rung (`2048`) for `llm` category.
+- **Source Path Manifest Fix (`tools/llm_helper/metadata_compiler.py`)**:
+  `_build_source_manifest()`
+  resolves source path from `metadata.source_path` before falling back to
+  `source_doc`.
+
 ### v16.9.119 - Kaggle Slug Normalization & Control-Character Guard
 
 - **Kaggle ID Normalization**: Added `_normalize_kaggle_id()` in

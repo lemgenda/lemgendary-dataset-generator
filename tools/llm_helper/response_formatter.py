@@ -87,8 +87,8 @@ def _split_safe_sentences(text: str) -> list[str]:
             continue
         if idx + 1 >= n or not text[idx + 1].isspace():
             continue
-        nxt = text[idx + 1:].lstrip()
-        if not nxt or not (nxt[0].isupper() or nxt[0] in "[`\""):
+        nxt = text[idx + 1 :].lstrip()
+        if not nxt or not (nxt[0].isupper() or nxt[0] in '[`"'):
             continue
         prefix = text[start:idx].rstrip()
         if ch == "." and (_NUMBERED_PREFIX_RE.search(prefix) or _ABBREV_RE.search(prefix)):
@@ -112,7 +112,7 @@ def _looks_like_raw_code_or_json(line: str) -> bool:
         return True
     if '",.' in s or "\\n" in s or "```" in s:
         return True
-    punct = sum(1 for c in s if c in "{}[]\";")
+    punct = sum(1 for c in s if c in '{}[]";')
     return punct >= max(4, len(s) // 8)
 
 
@@ -142,8 +142,8 @@ def _category_grounding_pool() -> dict[str, tuple[str, ...]]:
             "manifolds via python cli.py compile or lem.",
             "Check environment alignment with lem-env validate and launch local "
             "training runs via lemtrain train MODEL_KEY.",
-            "All Typer CLI commands share the in-process service layer with the "
-            "FastAPI sidecar routes.",
+            "All Typer CLI commands share the in-process service layer "
+            "with the FastAPI sidecar routes.",
         ),
         "api_procedure": (
             f"Sidecar REST APIs bind to {env_p} (Env Manager), {comp_p} (Dataset "
@@ -174,8 +174,8 @@ def _category_grounding_pool() -> dict[str, tuple[str, ...]]:
             "Master Manuals > Architectural Whitepapers > Guides.",
             "The 4-Pillar Invariant binds schema validation, split integrity, "
             "epistemic tagging, and zero-emoji compliance.",
-            "QLoRA checkpoints optimize r=16, alpha=32 adapters over NF4 base "
-            "weights for INT4 ONNX Studio deployment.",
+            "QLoRA checkpoints optimize r=16, alpha=32 adapters over NF4 base weights "
+            "for INT4 ONNX Studio deployment.",
         ),
         "boundary_and_negative": (
             f"Refuse unverified guesses when active_training is null, port {train_p} "
@@ -222,12 +222,35 @@ def strip_emojis(text: str) -> str:
     return EMOJI_STRIP_PATTERN.sub("", text)
 
 
+_DANGLING_TAIL_WORDS = {
+    "for", "and", "with", "to", "of", "in", "by", "or", "as", "from",
+    "the", "a", "an", "at", "on", "into", "onto", "that", "which",
+}
+
+
+def _clean_dangling_tail(text: str) -> str:
+    """Strip trailing stopwords/prepositions from clauses before final punctuation."""
+    raw = text.rstrip(" .,;:!?-_")
+    while raw:
+        words = raw.split()
+        if not words:
+            break
+        last_word = words[-1].lower().rstrip(".,;:!?()[]{}'\"")
+        if last_word in _DANGLING_TAIL_WORDS:
+            words.pop()
+            raw = " ".join(words).rstrip(" .,;:!?-_")
+        else:
+            break
+    return raw
+
+
 def _clean_line(text: str) -> str:
     """Collapse internal whitespace, strip emojis, and strip bullet prefixes."""
     cleaned = strip_emojis(_CODE_FENCE_RE.sub(" ", text))
     cleaned = cleaned.replace("|", " ").replace("`", "")
     cleaned = _MULTI_WS_RE.sub(" ", cleaned).strip()
     cleaned = _LEADING_BULLET_RE.sub("", cleaned).strip()
+    cleaned = _clean_dangling_tail(cleaned)
     return _balance_parens(cleaned)
 
 
@@ -243,8 +266,9 @@ def _ensure_single_sentence(text: str, epistemic_tag: str | None = None) -> str:
         first = "Follow the documented LemGendary AI Studio workflow for this operation."
     if first[-1] not in ".!?":
         first += "."
-    if epistemic_tag and epistemic_tag not in first:
-        return f"{epistemic_tag} {first}"
+    if epistemic_tag:
+        if not first.startswith(epistemic_tag):
+            return f"{epistemic_tag} {first}"
     return first
 
 
@@ -357,10 +381,9 @@ def _append_bullet_supplement(
     if supplement.lower() in cur_bullets[target_idx].lower():
         return False
     candidate = f"{cur_bullets[target_idx].rstrip('.')} ({supplement.rstrip('.')})."
-    trial = [*cur_bullets[:target_idx], candidate, *cur_bullets[target_idx + 1:]]
-    if count_tokens(_assemble_reply(_ReplyParts(parts.opening, trial, parts.next_step))) <= (
-        max_tokens
-    ):
+    trial = [*cur_bullets[:target_idx], candidate, *cur_bullets[target_idx + 1 :]]
+    reply_parts = _ReplyParts(parts.opening, trial, parts.next_step)
+    if count_tokens(_assemble_reply(reply_parts)) <= max_tokens:
         cur_bullets[target_idx] = candidate
         return True
     return False
@@ -387,12 +410,11 @@ def _append_pad_notes(opening: str, cur_bullets: list[str], next_step: str) -> s
     for note in _PAD_NOTES:
         if count_tokens(reply) >= _EFFECTIVE_MIN_FALLBACK_TOKENS:
             break
-        candidate = _assemble_reply(
-            _ReplyParts(opening, cur_bullets, f"{cur_next.rstrip('.')}.{note}")
-        )
-        if count_tokens(candidate) > _SHRINK_TARGET_TOKENS and (
-            count_tokens(reply) >= ASSISTANT_TARGET_MIN_TOKENS
-        ):
+        next_parts = _ReplyParts(opening, cur_bullets, f"{cur_next.rstrip('.')}.{note}")
+        candidate = _assemble_reply(next_parts)
+        over_shrink = count_tokens(candidate) > _SHRINK_TARGET_TOKENS
+        over_min = count_tokens(reply) >= ASSISTANT_TARGET_MIN_TOKENS
+        if over_shrink and over_min:
             break
         cur_next = f"{cur_next.rstrip('.')}.{note}"
         reply = candidate
@@ -503,10 +525,8 @@ def _extract_candidate_facts(clean_text: str) -> list[str]:
         for sent in _split_safe_sentences(cleaned):
             s = _balance_parens(sent.strip()).rstrip(" ,;:")
             if (
-                len(s) < 28
-                or len(s.split()) < 5
-                or s[0].islower()
-                or _looks_like_raw_code_or_json(s)
+                len(s) < 28 or len(s.split()) < 5
+                or s[0].islower() or _looks_like_raw_code_or_json(s)
             ):
                 continue
             if s[-1] not in ".!?":
@@ -526,11 +546,9 @@ def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | N
                 "from tab-dashboard before dispatching training or evaluation."
             )
         active_train = gui_state.get("active_training")
-        if (
-            category == "model_pipeline"
-            and isinstance(active_train, dict)
-            and active_train.get("model_key")
-        ):
+        is_model_pipeline = category == "model_pipeline"
+        has_active_train = isinstance(active_train, dict) and active_train.get("model_key")
+        if is_model_pipeline and has_active_train:
             mkey = active_train["model_key"]
             return (
                 f"Next step: monitor {mkey} under training-telemetry-tabs-tab-local "
@@ -580,13 +598,21 @@ _STAGE_STRIP_RE = re.compile(
     r"remediation|fix|resolution|mitigation|verification)\s*:?\s*",
     re.IGNORECASE,
 )
+_STAGE_SUBHEADING_RE = re.compile(
+    r"^\*{1,2}Stage\s+\d+[^:*]*\*{1,2}\s*:?\s*", re.IGNORECASE
+)
+_KEY_PREFIXES: tuple[str, ...] = (
+    "model:", "dataset:", "hardware:", "tool:", "component:"
+)
 
 
-def _match_stage_line(first: str, low: str, assigned: list[str]) -> bool:
+def _match_stage_line(first: str, assigned: list[str]) -> bool:
     """Assign ``first`` to the first matching empty diagnostic stage slot."""
+    clean_first = _STAGE_SUBHEADING_RE.sub("", first).strip()
+    clean_low = clean_first.lower()
     for idx, (label, cues) in enumerate(_STAGE_CUES):
-        if not assigned[idx] and any(c in low for c in cues):
-            body = _STAGE_STRIP_RE.sub("", first).strip()
+        if not assigned[idx] and any(c in clean_low for c in cues):
+            body = _STAGE_STRIP_RE.sub("", clean_first).strip()
             if len(body) >= 24:
                 assigned[idx] = f"{label}: {body}"
                 return True
@@ -603,16 +629,15 @@ def _extract_troubleshooting_stages(clean_text: str) -> list[str]:
         if len(cleaned) < 28 or _looks_like_raw_code_or_json(cleaned):
             continue
         low = cleaned.lower()
-        if any(
-            low.startswith(k)
-            for k in ("model:", "dataset:", "hardware:", "tool:", "component:")
-        ):
+        if any(low.startswith(k) for k in _KEY_PREFIXES):
             continue
         first = _split_safe_sentences(cleaned)[0]
         if len(first) < 28:
             continue
-        if not _match_stage_line(first, low, assigned) and not guardrail and any(
-            k in low for k in ("governor", "ratchet", "invariant", "prevent")
+        if (
+            not _match_stage_line(first, assigned)
+            and not guardrail
+            and any(k in low for k in ("governor", "ratchet", "invariant", "prevent"))
         ):
             guardrail = f"Governor Guardrail: {first}"
 
@@ -649,7 +674,11 @@ def distill_section_to_structured_parts(
     )
     if category == "troubleshooting_diagnostic":
         raw_bullets = _extract_troubleshooting_stages(clean_text)
+    elif len(facts) > 1:
+        raw_bullets = facts[1:5]
     else:
-        raw_bullets = facts[1:5] if len(facts) > 1 else [f"{leaf_h} specification rule."]
+        grounding_pools = _category_grounding_pool()
+        cat_pool = grounding_pools.get(category) or grounding_pools["general_knowledge"]
+        raw_bullets = [cat_pool[0], cat_pool[1]]
 
     return opening, raw_bullets, _select_next_step(category, leaf_h, gui_state), epistemic_tag

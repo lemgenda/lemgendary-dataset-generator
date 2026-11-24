@@ -377,8 +377,9 @@ def _build_source_manifest(
     """Catalog unique source documents, record counts, and provenance tiers."""
     sources: dict[str, dict[str, Any]] = {}
     for r in records:
-        doc = str(r.get("source_doc") or "unknown")
-        tier = str(r.get("authority_tier") or "tier_4_educational")
+        meta = r.get("metadata") if isinstance(r.get("metadata"), dict) else {}
+        doc = str(meta.get("source_path") or r.get("source_doc") or "unknown")
+        tier = str(r.get("authority_tier") or meta.get("authority_tier") or "tier_4_educational")
         info = sources.setdefault(doc, {"count": 0, "authority_tier": tier})
         info["count"] += 1
     return {

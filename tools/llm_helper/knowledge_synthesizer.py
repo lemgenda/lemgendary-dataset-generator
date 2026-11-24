@@ -127,9 +127,11 @@ class _PairGrounding:
 
 
 def _clean_content(text: str) -> str:
-    """Strip emojis, raw HTML tags, HTML comments, and markdown TOC anchors."""
+    """Strip emojis, markdown images, raw HTML tags, HTML comments, and TOC anchors."""
     clean = strip_emojis(text)
-    clean = re.sub(r"<[^>]+>", "", clean)
+    clean = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", clean)
+    clean = re.sub(r"<([a-zA-Z0-9_]+)>", r"{\1}", clean)
+    clean = re.sub(r"<(?!\/?(?:code|pre|b|i|strong|em)\b)[^>]+>", "", clean)
     clean = re.sub(r"<!--.*?-->", "", clean, flags=re.DOTALL)
     clean = "\n".join(line for line in clean.splitlines() if not line.strip().startswith("* ["))
     return clean.strip()
@@ -164,12 +166,14 @@ def _training_stub(
     registry_ctx: RegistryContext | None, mkey: str, index: int, governor: str
 ) -> dict[str, Any]:
     m_info = (registry_ctx.models.get(mkey) if registry_ctx else None) or {}
+    category = str(m_info.get("category") or "").lower()
+    rung_val = 2048 if category == "llm" or "llm" in mkey.lower() else 256
     return {
         "model_key": mkey,
         "status": "TRAINING",
         "epoch": 10 + (index % 25),
         "budget": 80,
-        "rung": 256,
+        "rung": rung_val,
         "fraction": 0.4,
         "governor": governor,
         "metrics": {},
@@ -631,7 +635,7 @@ def _append_capability_entry(cap: dict[str, Any], md_blocks: list[str]) -> None:
 def _iter_sections(content: str) -> Iterator[tuple[str, str, str]]:
     """Yield ``(leaf_header, full_heading_path, body)`` respecting code fences."""
     in_code_fence = False
-    heading_stack: list[str] = []
+    heading_stack: list[tuple[int, str]] = []
     current_leaf: str | None = None
     current_path: str | None = None
     current_lines: list[str] = []
@@ -660,12 +664,12 @@ def _iter_sections(content: str) -> Iterator[tuple[str, str, str]]:
             if body:
                 yield current_leaf, current_path or current_leaf, body
 
-        while len(heading_stack) >= level:
+        while heading_stack and heading_stack[-1][0] >= level:
             heading_stack.pop()
-        heading_stack.append(title)
+        heading_stack.append((level, title))
 
         current_leaf = title
-        current_path = " > ".join(heading_stack)
+        current_path = " > ".join(t for _, t in heading_stack)
         current_lines = []
 
     if current_leaf and current_lines:
