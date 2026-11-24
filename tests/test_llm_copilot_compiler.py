@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from api.routes.llm import LLMValidationRequest, validate_llm_corpus
 
+from core.ecosystem import kaggle_owner
 from core.manifold_compile import _create_layout, _is_llm_dataset
 from tests.llm_records import chat_record
 from tools.llm_helper.base_compiler import BaseLLMCompiler
@@ -283,6 +284,19 @@ def test_quality_validator_token_ceilings_and_emoji_gates() -> None:
     }
     assert any("emoji" in i.issue.lower() for i in validator.validate_record(dingbat_rec))
 
+    ctrl_rec = {
+        "id": "ctrl_1",
+        "category": "gui_procedure",
+        "messages": [
+            {"role": "system", "content": "Sys."},
+            {"role": "user", "content": "Check \x07lert."},
+            {"role": "assistant", "content": "Ok."},
+        ],
+    }
+    assert any(
+        "control characters" in i.issue.lower() for i in validator.validate_record(ctrl_rec)
+    )
+
 
 def _sample_curation_records() -> tuple[dict, dict, dict]:
     """Build two valid copilot records and one oversized record for curation tests."""
@@ -380,6 +394,7 @@ def test_end_to_end_compile_manifold_curation() -> None:
             "    task: ai_helper\n"
             "    dataset_type: llm\n"
             "    modernized_folder: TestLLM\n"
+            f"    kaggle_ref: kaggle://{kaggle_owner()}/testllm\n"
             "    canonical_format: jsonl\n"
             "    val_split: 0.2\n",
             encoding="utf-8",
@@ -395,6 +410,8 @@ def test_end_to_end_compile_manifold_curation() -> None:
             (Path(res["target_dir"]) / "dataset-metadata.json").read_text("utf-8")
         )
         assert any(r["path"] == "data/test_llm_train.jsonl" for r in meta_json["resources"])
+        assert meta_json["id"] == f"{kaggle_owner()}/testllm"
+        assert "kaggle://" not in readme_text
 
 
 def test_distill_balanced_parens_and_stage_alignment() -> None:

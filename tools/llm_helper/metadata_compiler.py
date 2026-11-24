@@ -235,6 +235,12 @@ def _detect_existing_extras(manifest_meta: dict[str, Any]) -> tuple[str | None, 
     return cover, notebooks
 
 
+def _normalize_kaggle_id(raw_ref: Any, default_ref: str) -> str:
+    """Strip optional ``kaggle://`` URI prefix so Kaggle IDs match ``owner/slug``."""
+    cleaned = str(raw_ref or "").strip().removeprefix("kaggle://").strip("/")
+    return cleaned or default_ref
+
+
 def _build_llm_readme(
     dataset_name: str,
     descriptor: LLMManifoldDescriptor,
@@ -249,7 +255,7 @@ def _build_llm_readme(
     va_file = manifest_meta.get("val_file") or f"data/{descriptor.task}_val.jsonl"
     te_file = manifest_meta.get("test_file") or f"data/{descriptor.task}_test.jsonl"
     default_ref = f"{kaggle_owner()}/{dataset_name.lower()}"
-    kaggle_id = manifest_meta.get("kaggle_ref") or default_ref
+    kaggle_id = _normalize_kaggle_id(manifest_meta.get("kaggle_ref"), default_ref)
     lines = [
         f"# {dataset_name}",
         "",
@@ -348,7 +354,7 @@ def _build_llm_kaggle_metadata(
     default_ref = f"{kaggle_owner()}/{dataset_name.lower()}"
     payload: dict[str, Any] = {
         "title": manifest_meta.get("title") or dataset_name,
-        "id": manifest_meta.get("kaggle_ref") or default_ref,
+        "id": _normalize_kaggle_id(manifest_meta.get("kaggle_ref"), default_ref),
         "subtitle": manifest_meta.get("subtitle") or descriptor.category,
         "description": readme_text,
         "keywords": ["computer-science", "deep-learning", "artificial-intelligence", "text"],

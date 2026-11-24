@@ -13,7 +13,7 @@
 
 | Metric | Value |
 | :--- | :--- |
-| **Version** | `v16.9.118-STABLE` |
+| **Version** | `v16.9.119-STABLE` |
 | **Phase** | Senior Developer Audit & S.O.L.I.D. Refactoring Verified |
 | **Next** | Production Modernization & S.O.L.I.D. Complete — Ecosystem Ready |
 | **Verified Manifolds** | 22 production manifolds, 1.4M+ sample stability |
@@ -81,6 +81,15 @@ present file and fails on a stale one.
 ---
 
 ## Changelog
+
+### v16.9.119 - Kaggle Slug Normalization & Control-Character Guard
+
+- **Kaggle ID Normalization**: Added `_normalize_kaggle_id()` in
+  `tools/llm_helper/metadata_compiler.py` to strip `kaggle://` prefixes so
+  `dataset-metadata.json` emits `owner/slug` and `README.md` links cleanly.
+- **Control-Character Sanitization & Gate**: Stripped non-whitespace ASCII
+  control bytes in `KnowledgeDocument.__post_init__` and added
+  `CONTROL_CHAR_PATTERN` enforcement in `QualityValidator.validate_record`.
 
 ### v16.9.118 - Prose Distillation Hardening & LLM Recompile Parity
 
@@ -2197,13 +2206,13 @@ Contract Regenerated.*
 
 ### v16.9.22 - JSONL Manifold Scanning & Canonical Provenance Counting
 
-- **Subdirectory JSONL Scanning & Container Detection (pi.routes.gui)**:
+- **Subdirectory JSONL Scanning & Container Detection (\pi.routes.gui\)**:
   - Fixed compiled status detection for language model datasets by recursively
     checking data/*.jsonl alongside root globbing.
   - Added data container directory scanning to _calculate_dataset_file_stats so
     LLM training and validation splits are recognized as compiled data
     containers.
-- **Exact SSOT Upstream Source Provenance Mapping (pi.routes.gui)**:
+- **Exact SSOT Upstream Source Provenance Mapping (\pi.routes.gui\)**:
   - Implemented _extract_jsonl_provenance_counts() to map instruction records
     directly from source_doc tags to the 9 canonical SSOT provenance sources
     defined in unified_data.yaml, replacing uniform mock divisions with

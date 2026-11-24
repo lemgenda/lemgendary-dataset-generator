@@ -24,6 +24,7 @@ EMOJI_PATTERN = re.compile(
     r"[\U00010000-\U0010ffff\u2600-\u26FF\u2700-\u27BF\uFE0F]",
     flags=re.UNICODE,
 )
+CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 EPISTEMIC_TAG_PATTERN = re.compile(r"\[(CONFIRMED|PROBABLE|ILLUSTRATIVE)\]")
 _BULLET_LINE_RE = re.compile(r"^\s*[-*]\s+\S")
 
@@ -172,6 +173,16 @@ class QualityValidator:
                         rec_id, "content", f"Found {len(emojis)} illegal emoji characters: {emojis}"
                     )
                 )
+
+        ctrl_chars = CONTROL_CHAR_PATTERN.findall(full_text)
+        if ctrl_chars:
+            issues.append(
+                ValidationIssue(
+                    rec_id,
+                    "content",
+                    f"Found {len(ctrl_chars)} illegal ASCII control characters",
+                )
+            )
 
         issues.extend(self._token_budget_issues(record, rec_id, system_text, assistant_text))
 

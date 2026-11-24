@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger("lemdata.llm.ingestor")
+_CTRL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 @dataclass(eq=False)
@@ -38,6 +39,7 @@ class KnowledgeDocument:
 
     def __post_init__(self) -> None:
         self.metadata = self.metadata or {}
+        self.content = _CTRL_CHAR_RE.sub("", self.content)
         self.content_hash = hashlib.sha256(self.content.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
