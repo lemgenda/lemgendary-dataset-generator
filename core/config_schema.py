@@ -204,6 +204,54 @@ class QualityInvariantsConfig(BaseModel):
     max_duplicate_threshold: float = 0.0
 
 
+class DomainProfileConfig(BaseModel):
+    """Pluggable domain profile for knowledge synthesis, authority rules and taxonomy."""
+    model_config = ConfigDict(extra="allow")
+
+    domain_name: str = "general"
+    system_role: str | None = None
+    authority_hierarchy: list[str] = Field(
+        default_factory=lambda: [
+            "tier_1_manifest",
+            "tier_2_operational_manual",
+            "tier_3_whitepaper",
+            "tier_4_educational",
+        ]
+    )
+    categories: list[str] = Field(default_factory=list)
+    diagnostic_stages: list[tuple[str, str]] = Field(
+        default_factory=lambda: [
+            ("stage 1", "triage"),
+            ("stage 2", "diagnosis"),
+            ("stage 3", "remediation"),
+        ]
+    )
+    epistemic_tags: list[str] = Field(
+        default_factory=lambda: ["[CONFIRMED]", "[PROBABLE]", "[ILLUSTRATIVE]"]
+    )
+
+
+class ToolCallingConfig(BaseModel):
+    """Specification for structured tool/function calling synthesis."""
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = False
+    format: str = "hermes"
+    openapi_specs: list[str] = Field(default_factory=list)
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DPOConfig(BaseModel):
+    """Configuration for Direct Preference Optimization (DPO/ORPO) pair synthesis."""
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = False
+    negative_strategies: list[str] = Field(
+        default_factory=lambda: ["hallucination", "incomplete", "uncalibrated", "verbose"]
+    )
+    emit_separate_files: bool = True
+
+
 class LLMPipelineConfig(BaseModel):
     """Declarative configuration for LLM dataset synthesis and knowledge extraction."""
     model_config = ConfigDict(extra="forbid")
@@ -215,6 +263,11 @@ class LLMPipelineConfig(BaseModel):
     knowledge_sources: list[KnowledgeSourceConfig] = Field(default_factory=list)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     quality_invariants: QualityInvariantsConfig = Field(default_factory=QualityInvariantsConfig)
+    domain_profile: DomainProfileConfig = Field(default_factory=DomainProfileConfig)
+    tool_calling: ToolCallingConfig = Field(default_factory=ToolCallingConfig)
+    dpo: DPOConfig = Field(default_factory=DPOConfig)
+    multi_turn: bool = True
+    anchor_mix_ratio: float = 0.0
 
 
 # ─── Dataset entry ──────────────────────────────────────────────────────────

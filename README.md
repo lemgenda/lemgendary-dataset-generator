@@ -82,6 +82,36 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.121 - Universal LLM Dataset Compiler & Preference Synthesis
+
+- **Domain Decoupling & Configurable Taxonomy (`tools/llm_helper/taxonomy.py`,
+  `core/config_schema.py`)**: Introduced `TaxonomyEngine` and
+  `DomainProfileConfig` enabling dynamic domain categorization, custom
+  authority hierarchies, and pluggable diagnostic stages without hard-coded
+  sidecar dependencies.
+- **Multi-Persona Evol-Instruct Engine
+  (`tools/llm_helper/evol_synthesizer.py`)**: Implemented
+  `EvolPromptSynthesizer` generating multi-persona queries across Novice, Staff
+  Architect, Adversarial Boundary, and Operational Triage personas with
+  guaranteed zero-emoji compliance.
+- **Multi-Turn Stateful Dialogue Synthesis
+  (`tools/llm_helper/dialogue_synthesizer.py`)**: Implemented
+  `MultiTurnDialogueSynthesizer` modeling 4-turn stateful exchanges (Initial
+  Triage -> Targeted Diagnosis -> Bounded Remediation).
+- **Structured Tool Calling Engine (`tools/llm_helper/tool_calling.py`)**:
+  Added `ToolCallingFormatter` converting OpenAPI 3.1 endpoints and CLI syntax
+  into standard function calling declarations and execution dialogues.
+- **Direct Preference Optimization (DPO/ORPO)
+  (`tools/llm_helper/dpo_synthesizer.py`)**: Added `DPOSynthesizer` synthesizing
+  paired chosen/rejected records across four negative strategies
+  (overconfidence, hallucination, omission, verbosity).
+- **Catastrophic Forgetting Safeguard (`tools/llm_helper/anchor_mixer.py`)**:
+  Implemented `AnchorMixer` blending calibrated ratios of reasoning and coding
+  anchors into specialized domain splits.
+- **Unit Verification (`tests/test_universal_llm_compiler.py`)**: Added 6
+  comprehensive unit tests validating taxonomy, multi-persona evolutions, tool
+  calling, DPO pairs, and anchor blending.
+
 ### v16.9.120 - Dataset Compiler Audit: GUI Parsing & LLM Rung Routing
 
 - Upgraded 14 package(s) for the lemgendary-datasets.

@@ -128,6 +128,15 @@ def _copilot_structure_issues(rec_id: str, assistant_text: str) -> list[Validati
     return issues
 
 
+@dataclass(frozen=True)
+class ValidatorProtocolOptions:
+    """Configurable protocol rules and markers for ``QualityValidator``."""
+
+    diag_stage_markers: tuple[tuple[str, ...], ...] = _DIAG_STAGE_MARKERS
+    epistemic_tag_pattern: re.Pattern[str] = EPISTEMIC_TAG_PATTERN
+    allow_multi_turn: bool = True
+
+
 class QualityValidator:
     """Enforces strict schema and content invariants over LLM dialogue records."""
 
@@ -137,11 +146,16 @@ class QualityValidator:
         enforce_epistemic_tags: bool = True,
         enforce_diag_stages: bool = True,
         token_config: TokenValidationConfig | None = None,
+        protocol_options: ValidatorProtocolOptions | None = None,
     ) -> None:
         self.zero_emojis = zero_emojis
         self.enforce_epistemic_tags = enforce_epistemic_tags
         self.enforce_diag_stages = enforce_diag_stages
         self.token_config = token_config or TokenValidationConfig()
+        opts = protocol_options or ValidatorProtocolOptions()
+        self.diag_stage_markers = opts.diag_stage_markers
+        self.epistemic_tag_pattern = opts.epistemic_tag_pattern
+        self.allow_multi_turn = opts.allow_multi_turn
 
     def validate_record(self, record: dict[str, Any]) -> list[ValidationIssue]:
         """Return the quality issues found in one LLM training record."""
@@ -160,7 +174,7 @@ class QualityValidator:
             return issues
 
         roles = [m.get("role") for m in messages if isinstance(m, dict)]
-        if roles not in (["system", "user", "assistant"], ["user", "assistant"]):
+        if not self._is_valid_role_sequence(roles):
             issues.append(ValidationIssue(rec_id, "messages", f"Unexpected role sequence: {roles}"))
 
         full_text, system_text, assistant_text = _collect_message_text(rec_id, messages, issues)
@@ -258,9 +272,9 @@ class QualityValidator:
         return issues
 
     def _diagnostic_issues(self, rec_id: str, assistant_text: str) -> list[ValidationIssue]:
-        """Warnings for a troubleshooting reply without epistemic tags or the 3 stages."""
+        """Warnings for a troubleshooting reply without epistemic tags or the stages."""
         issues: list[ValidationIssue] = []
-        if self.enforce_epistemic_tags and not EPISTEMIC_TAG_PATTERN.findall(assistant_text):
+        if self.enforce_epistemic_tags and not self.epistemic_tag_pattern.findall(assistant_text):
             issues.append(
                 ValidationIssue(
                     rec_id,
@@ -272,18 +286,34 @@ class QualityValidator:
 
         lowered = assistant_text.lower()
         if self.enforce_diag_stages and not all(
-            any(marker in lowered for marker in stage) for stage in _DIAG_STAGE_MARKERS
+            any(marker in lowered for marker in stage) for stage in self.diag_stage_markers
         ):
             issues.append(
                 ValidationIssue(
                     rec_id,
                     "assistant",
-                    "Incomplete 3-Stage Diagnostic Intake Protocol in troubleshooting"
-                    " response",
+                    "Incomplete Diagnostic Protocol in troubleshooting response",
                     severity="WARNING",
                 )
             )
         return issues
+
+    def _is_valid_role_sequence(self, roles: list[Any]) -> bool:
+        """Validate single-turn or multi-turn conversational role sequences."""
+        if not roles:
+            return False
+        # Optional initial system prompt
+        start_idx = 1 if roles[0] == "system" else 0
+        rem_roles = roles[start_idx:]
+        if not rem_roles or len(rem_roles) % 2 != 0:
+            return False
+        if not self.allow_multi_turn and len(rem_roles) > 2:
+            return False
+        for i, r in enumerate(rem_roles):
+            expected = "user" if i % 2 == 0 else "assistant"
+            if r != expected:
+                return False
+        return True
 
     def validate_corpus(self, records: list[dict[str, Any]]) -> tuple[bool, list[ValidationIssue]]:
         """Validate an entire collection of records, checking uniqueness and compliance."""

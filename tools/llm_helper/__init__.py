@@ -8,11 +8,15 @@ for LLM instruction and dialogue manifolds.
 from __future__ import annotations
 
 from . import (
+    anchor_mixer,
     base_compiler,
     boundary_synthesizer,
     chunker,
     copilot_grounding,
     curation,
+    dialogue_synthesizer,
+    dpo_synthesizer,
+    evol_synthesizer,
     knowledge_ingestor,
     knowledge_synthesizer,
     metadata_compiler,
@@ -21,14 +25,19 @@ from . import (
     response_formatter,
     taxonomy,
     token_budget,
+    tool_calling,
 )
 
 __all__ = [
+    "anchor_mixer",
     "base_compiler",
     "boundary_synthesizer",
     "chunker",
     "copilot_grounding",
     "curation",
+    "dialogue_synthesizer",
+    "dpo_synthesizer",
+    "evol_synthesizer",
     "knowledge_ingestor",
     "knowledge_synthesizer",
     "metadata_compiler",
@@ -37,4 +46,5 @@ __all__ = [
     "response_formatter",
     "taxonomy",
     "token_budget",
+    "tool_calling",
 ]

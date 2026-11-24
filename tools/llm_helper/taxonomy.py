@@ -77,28 +77,75 @@ def sidecar_ports() -> tuple[int, int, int]:
     )
 
 
+class TaxonomyEngine:
+    """Configurable domain taxonomy and authority classifier for arbitrary domains."""
+
+    def __init__(
+        self,
+        domain_name: str = "general",
+        categories: list[str] | None = None,
+        authority_hierarchy: list[str] | None = None,
+        custom_rules: list[tuple[str, tuple[str, ...], tuple[str, ...]]] | None = None,
+    ) -> None:
+        self.domain_name = domain_name
+        self.categories = tuple(categories or CONTROLLED_DOMAINS)
+        self.authority_hierarchy = tuple(
+            authority_hierarchy
+            or [
+                "tier_1_manifest",
+                "tier_2_operational_manual",
+                "tier_3_whitepaper",
+                "tier_4_educational",
+            ]
+        )
+        self.rules = tuple(custom_rules or CATEGORY_RULES)
+
+    def classify_category(self, doc_id: str, section_title: str) -> str:
+        """Classify knowledge chunk into domain categories using token boundaries."""
+        doc_tokens = tokenize_text(doc_id)
+        title_tokens = tokenize_text(section_title)
+        for category, doc_keys, title_keys in self.rules:
+            if any(k in doc_tokens for k in doc_keys) or any(k in title_tokens for k in title_keys):
+                return category
+        return self.categories[0] if self.categories else "general_knowledge"
+
+    def resolve_authority_tier(self, doc_id: str) -> str:
+        """Classify the document into an authoritative provenance tier."""
+        lower = doc_id.lower()
+        if any(k in lower for k in ("manifest", "canonical", "unified_data", "schema", "spec")):
+            return (
+                self.authority_hierarchy[0]
+                if len(self.authority_hierarchy) > 0
+                else "tier_1_manifest"
+            )
+        if any(k in lower for k in ("manual", "cli", "api", "operations", "guide", "handbook")):
+            return (
+                self.authority_hierarchy[1]
+                if len(self.authority_hierarchy) > 1
+                else "tier_2_operational_manual"
+            )
+        if any(k in lower for k in ("paper", "architecture", "whitepaper", "specification", "rfc")):
+            return (
+                self.authority_hierarchy[2]
+                if len(self.authority_hierarchy) > 2
+                else "tier_3_whitepaper"
+            )
+        return self.authority_hierarchy[-1] if self.authority_hierarchy else "tier_4_educational"
+
+
 def tokenize_text(text: str) -> set[str]:
     """Tokenize text into lowercase alphanumeric words for boundary-clean matching."""
     return set(re.findall(r"[a-zA-Z0-9]+", text.lower()))
 
 
+_GLOBAL_TAXONOMY_ENGINE = TaxonomyEngine()
+
+
 def classify_category(doc_id: str, section_title: str) -> str:
     """Classify knowledge chunk into domain categories using token boundaries."""
-    doc_tokens = tokenize_text(doc_id)
-    title_tokens = tokenize_text(section_title)
-    for category, doc_keys, title_keys in CATEGORY_RULES:
-        if any(k in doc_tokens for k in doc_keys) or any(k in title_tokens for k in title_keys):
-            return category
-    return "general_knowledge"
+    return _GLOBAL_TAXONOMY_ENGINE.classify_category(doc_id, section_title)
 
 
 def resolve_authority_tier(doc_id: str) -> str:
     """Classify the document into an authoritative provenance tier."""
-    lower = doc_id.lower()
-    if any(k in lower for k in ("manifest", "canonical", "unified_data", "unified_models")):
-        return "tier_1_manifest"
-    if any(k in lower for k in ("manual", "cli", "api", "operations")):
-        return "tier_2_operational_manual"
-    if any(k in lower for k in ("paper", "architecture", "whitepaper", "specification")):
-        return "tier_3_whitepaper"
-    return "tier_4_educational"
+    return _GLOBAL_TAXONOMY_ENGINE.resolve_authority_tier(doc_id)
