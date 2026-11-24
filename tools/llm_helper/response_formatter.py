@@ -545,7 +545,7 @@ def _select_next_step(category: str, clean_h: str, gui_state: dict[str, Any] | N
                 f"Next step: start the Model Training Suite sidecar on port {train_p} "
                 "from tab-dashboard before dispatching training or evaluation."
             )
-        active_train = gui_state.get("active_training")
+        active_train = gui_state.get("active_training") if isinstance(gui_state, dict) else None
         is_model_pipeline = category == "model_pipeline"
         if (
             is_model_pipeline

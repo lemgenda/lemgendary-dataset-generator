@@ -85,6 +85,9 @@ present file and fails on a stale one.
 ### v16.9.120 - Dataset Compiler Audit: GUI Parsing & LLM Rung Routing
 
 - Upgraded 14 package(s) for the lemgendary-datasets.
+- **Next Step Subscript Diagnostic (`tools/llm_helper/response_formatter.py`)**:
+  Guarded `gui_state` dictionary access when resolving `active_training` in
+  `_select_next_step()`, resolving subscript type diagnostics.
 - **GUI Control Multi-Line Parsing (`tools/llm_helper/copilot_grounding.py`)**:
   Rewrote
   `_parse_gui_controls()` to collect full multi-line entries before parsing
@@ -209,7 +212,7 @@ present file and fails on a stale one.
   source, and updated `provenance_sources` (`LemGendizedAIHelperLemGend`:
   `2,432` curated samples).
 
-### v16.9.114 - SUITE_PAT Ingestion, Notebook/Doc Generation Audit & CLI Hardening
+### v16.9.114 - SUITE_PAT Ingestion, Notebook/Doc Audit & CLI Hardening
 
 - **CLI Hardening (`cli.py`, `commands/server.py`)**: Added top-level
   `--version` and `-V` flag callback options to the unified `lemgendary` CLI.
