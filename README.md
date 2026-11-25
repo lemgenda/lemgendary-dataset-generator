@@ -82,6 +82,19 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.123 - S3 AWS SDK Pinning & OpenCV Metadata Alignment
+
+- **Modern AWS SDK Dependency Pins (`requirements.txt`)**: Pinned
+  `boto3==1.44.11`, `botocore==1.44.11`, `jmespath==1.1.0`, and `six==1.17.0`
+  to resolve `litdata==0.2.76` S3 streaming dependencies and eliminate `bcdoc`.
+- **OpenCV Metadata Satisfaction (`requirements.txt`)**: Added explicit
+  `opencv-python==5.1.0.95` pin alongside `opencv-contrib-python==5.1.0.95`,
+  ensuring `ultralytics==8.4.218`'s `Requires-Dist: opencv-python` metadata
+  check passes under `uv pip check`.
+- **Environment & ABI Regression Suite
+  (`tests/regression/test_env_and_abi_compatibility.py`)**: Added verification
+  guards for modern AWS SDK pins and `ultralytics` metadata satisfaction.
+
 ### v16.9.122 - Async Catalog Stats & Provenance Caching
 
 - **Async & Threaded Catalog Stats

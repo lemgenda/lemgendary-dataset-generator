@@ -67,3 +67,32 @@ def test_platform_gated_dependencies() -> None:
         assert mt5 is not None
         pnd_ta = importlib.import_module("pandas_ta_classic")
         assert pnd_ta is not None
+
+
+def test_boto3_deadlock_prevention() -> None:
+    """Ensure litdata S3 dependencies are modern and bcdoc is eliminated."""
+    with pytest.raises(ImportError):
+        importlib.import_module("bcdoc")
+
+    import boto3
+    import botocore
+    import jmespath
+    import six
+    from packaging.version import Version
+
+    assert Version(boto3.__version__) >= Version("1.44.11")
+    assert Version(botocore.__version__) >= Version("1.44.11")
+    assert Version(jmespath.__version__) >= Version("1.1.0")
+    assert Version(six.__version__) >= Version("1.17.0")
+
+
+def test_ultralytics_opencv_metadata_satisfaction() -> None:
+    """Ensure opencv-python is installed and satisfies ultralytics requirements."""
+    import importlib.metadata
+
+    requires = importlib.metadata.requires("ultralytics") or []
+    has_opencv_dep = any("opencv-python" in r for r in requires)
+    assert has_opencv_dep, "Expected ultralytics to specify opencv-python"
+
+    cv2_pkg = importlib.metadata.version("opencv-python")
+    assert cv2_pkg == "5.1.0.95"
