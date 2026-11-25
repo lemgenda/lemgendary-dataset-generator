@@ -87,9 +87,10 @@ present file and fails on a stale one.
 - **Python 3.14.10 LTS Target**: Updated runtime environment,
   `requires-python = ">=3.14,<3.15"`, `.python-version`, and Ruff/Pyright
   configs to Python 3.14.
-- **MediaPipe NumPy 2.x Stride Safety (`models/detection.py`)**: Wrapped input
-  frames in `np.ascontiguousarray(...)` to ensure sliced and channel-flipped
-  arrays never cause silent memory stride issues during landmark detection.
+- **MediaPipe NumPy 2.x Stride Safety (`models/detection.py`)**: Wrapped
+  input frames in `np.ascontiguousarray(...)` to ensure sliced and
+  channel-flipped arrays never cause silent memory stride issues during
+  landmark detection.
 - **Dependency & Regression Verification**: Established automated test suite
   under `tests/regression/test_env_and_abi_compatibility.py` and
   `tests/regression/test_data_pipeline_regression.py`.
