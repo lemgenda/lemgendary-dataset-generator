@@ -27,6 +27,9 @@ typings/
 
 # Local Tooling & Linters
 pyrightconfig.json
+*.egg-info/
+build/
+dist/
 
 # IDEs & Editors
 .vscode/
