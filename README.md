@@ -82,6 +82,11 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.124 - Package Version Synchronization
+
+- **Manifest Updates (`requirements.txt`)**: Updated `transformers==5.24.1`
+  and `regex==2026.11.24` for upstream dependency parity.
+
 ### v16.9.123 - S3 AWS SDK Pinning & OpenCV Metadata Alignment
 
 - **Modern AWS SDK Dependency Pins (`requirements.txt`)**: Pinned
