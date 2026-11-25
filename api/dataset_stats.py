@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -359,19 +361,32 @@ def _build_uncompiled_detail(key: str, reg_info: dict[str, Any]) -> DatasetDetai
     )
 
 
+_RESPONSE_CACHE: dict[tuple[str, bool], tuple[float, DatasetStatsListResponse]] = {}
+_RESPONSE_CACHE_TTL_S = 60.0
+
+
 def build_dataset_stats_response(
     root: Path,
     include_uncompiled: bool = False,
 ) -> DatasetStatsListResponse:
-    """Enriched catalog of every manifold folder under ``root``."""
+    """Enriched catalog of every manifold folder under ``root`` with parallel build and caching."""
+    cache_key = (str(root.resolve()), include_uncompiled)
+    cached = _RESPONSE_CACHE.get(cache_key)
+    if cached and (time.monotonic() - cached[0] < _RESPONSE_CACHE_TTL_S):
+        return cached[1]
+
     folder_index = _load_folder_index()
     dataset_stats: list[DatasetDetailStats] = []
     if root.exists():
-        dataset_stats = [
-            _build_detail(entry, folder_index)
+        entries = [
+            entry
             for entry in sorted(root.iterdir(), key=lambda p: p.name.lower())
             if entry.is_dir() and not entry.name.startswith(".")
         ]
+        with ThreadPoolExecutor(max_workers=min(8, len(entries) or 1)) as executor:
+            dataset_stats = list(
+                executor.map(lambda e: _build_detail(e, folder_index), entries)
+            )
     if include_uncompiled:
         existing_keys = {d.key for d in dataset_stats}
         for key, reg_info in folder_index.values():
@@ -380,9 +395,11 @@ def build_dataset_stats_response(
                 existing_keys.add(key)
         dataset_stats.sort(key=lambda d: (d.display_name or d.name).lower())
     total_storage_bytes = sum(d.size_bytes for d in dataset_stats)
-    return DatasetStatsListResponse(
+    response = DatasetStatsListResponse(
         datasets=dataset_stats,
         total=len(dataset_stats),
         total_size_bytes=total_storage_bytes,
         total_size_gb=round(total_storage_bytes / _GB, 3),
     )
+    _RESPONSE_CACHE[cache_key] = (time.monotonic(), response)
+    return response

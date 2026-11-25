@@ -82,6 +82,19 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.122 - Async Catalog Stats & Provenance Caching
+
+- **Async & Threaded Catalog Stats
+  (`api/dataset_stats.py`, `api/routes/gui.py`)**:
+  Converted `GET /gui/datasets/with-stats` to an asynchronous endpoint
+  offloading disk inspection to a threadpool with a 60-second response cache,
+  preventing Uvicorn event loop blockage during frontend UI polling.
+- **Index Provenance Caching (`api/manifold_scan.py`)**:
+  Cached sample source counts with a 10-minute TTL keyed to file mtime,
+  eliminating repetitive JSON decoding of large manifold index files.
+- **Development Origin Allowlist (`api/security.py`)**:
+  Added Vite dev server origins (port 5173) to `ALLOWED_ORIGINS`.
+
 ### v16.9.120 - Python 3.14.10 Migration & MediaPipe NumPy 2.x Stride Hardening
 
 - **Python 3.14.10 LTS Target**: Updated runtime environment,

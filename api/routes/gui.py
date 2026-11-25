@@ -6,15 +6,13 @@ and compile-request translation in :mod:`api.gui_compile`.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
-
-from core import presets
-from core.cli_args import __version__
 
 from api.dataset_stats import build_dataset_stats_response
 from api.gui_compile import (
@@ -43,6 +41,8 @@ from api.models import (
 )
 from api.routes.datasets import _resolve_output_root
 from api.routes.health import _START_TIME, get_hardware_info
+from core import presets
+from core.cli_args import __version__
 
 __all__ = [
     "custom_compile",
@@ -93,10 +93,12 @@ async def get_gui_state() -> GuiStateResponse:
 
 
 @router.get("/datasets/with-stats", response_model=DatasetStatsListResponse)
-def get_datasets_with_stats(include_uncompiled: bool = False) -> DatasetStatsListResponse:
+async def get_datasets_with_stats(include_uncompiled: bool = False) -> DatasetStatsListResponse:
     """Enriched dataset catalog with detailed format breakdown, storage metrics, and hardlinks."""
-    return build_dataset_stats_response(
-        _resolve_output_root(), include_uncompiled=include_uncompiled
+    loop = asyncio.get_running_loop()
+    root = _resolve_output_root()
+    return await loop.run_in_executor(
+        None, build_dataset_stats_response, root, include_uncompiled
     )
 
 

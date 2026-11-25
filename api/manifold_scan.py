@@ -305,15 +305,29 @@ def _counts_from_index_data(data: Any) -> dict[str, int]:
     return dict(counts)
 
 
+_PROVENANCE_CACHE: dict[str, tuple[float, float, dict[str, int]]] = {}
+_PROVENANCE_CACHE_TTL_S = 600.0
+
+
 def extract_manifold_provenance_counts(manifold_dir: Path) -> dict[str, int]:
-    """Return exact sample count per source across index.json or JSONL files."""
+    """Return exact sample count per source across index.json or JSONL files (cached)."""
     index_file = manifold_dir / "index.json"
+    cache_key = str(manifold_dir.resolve())
     if index_file.is_file():
         try:
+            mtime = index_file.stat().st_mtime
+            cached = _PROVENANCE_CACHE.get(cache_key)
+            if (
+                cached
+                and cached[0] == mtime
+                and (time.monotonic() - cached[1] < _PROVENANCE_CACHE_TTL_S)
+            ):
+                return cached[2]
             with open(index_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             counts = _counts_from_index_data(data)
             if counts:
+                _PROVENANCE_CACHE[cache_key] = (mtime, time.monotonic(), counts)
                 return counts
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             logger.debug(
