@@ -82,7 +82,17 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.125 - Package Version Synchronization
+
+- Upgraded package(s) for the lemgendary-datasets.
+
+- **Manifest Updates (`requirements.txt`)**: Synchronized `typer==0.29.3`,
+  `regex==2026.11.25`, `ultralytics==8.4.219`, `boto3==1.44.12`, and
+  `botocore==1.44.12`.
+
 ### v16.9.124 - Package Version Synchronization
+
+- Upgraded package(s) for the lemgendary-datasets.
 
 - **Manifest Updates (`requirements.txt`)**: Updated `transformers==5.24.1`
   and `regex==2026.11.24` for upstream dependency parity.
