@@ -84,6 +84,9 @@ present file and fails on a stale one.
 
 ### v16.9.126 - Non-Blocking Sidecar Health, Single-Flight Catalog Cache & Warmup
 
+- **Pre-Commit Hook Sync (`.githooks/pre-commit`)**: Updated line-length guard
+  hook path to `lemgendary-env-manager/tools/check_line_lengths.py`.
+
 - **Early Runtime Bootstrap & Startup Warm-Up (`api/server.py`)**:
   - Invoked `bootstrap_runtime()` before route imports and added non-blocking
     background catalog cache warm-up in `lifespan`.
