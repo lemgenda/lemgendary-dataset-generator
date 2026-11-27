@@ -82,6 +82,24 @@ present file and fails on a stale one.
 
 ## Changelog
 
+### v16.9.126 - Non-Blocking Sidecar Health, Single-Flight Catalog Cache & Warmup
+
+- **Early Runtime Bootstrap & Startup Warm-Up (`api/server.py`)**:
+  - Invoked `bootstrap_runtime()` before route imports and added non-blocking
+    background catalog cache warm-up in `lifespan`.
+- **O(1) Health Check & Threadpool Offloading (`api/jobs.py`,
+  `api/routes/health.py`, `api/routes/gui.py`, `api/routes/modernize.py`,
+  `api/routes/kaggle.py`, `api/routes/gates.py`)**:
+  - Added in-memory `JobManager.active_jobs_fast()` for `/api/health` and
+    offloaded synchronous SQLite, `torch`/CUDA, YAML, and filesystem scans via
+    `run_in_executor`.
+- **Single-Flight Compiled Catalog & Single-Pass JSONL Cache
+  (`api/dataset_stats.py`, `api/manifold_scan.py`)**:
+  - Added `_SCAN_LOCK` shared compiled-manifold caching so concurrent
+    `include_uncompiled=false` and `include_uncompiled=true` requests reuse one
+    scan, and unified JSONL sample counting and provenance extraction into one
+    mtime-cached pass.
+
 ### v16.9.125 - Package Version Synchronization
 
 - Upgraded package(s) for the lemgendary-datasets.

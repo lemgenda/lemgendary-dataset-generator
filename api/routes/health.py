@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 
@@ -47,13 +48,11 @@ async def check_health() -> HealthResponse:
         service="LemGendary Dataset Compiler API",
         version=__version__,
         uptime_seconds=uptime,
-        active_jobs=job_manager.count_active_jobs(),
+        active_jobs=job_manager.active_jobs_fast(),
     )
 
 
-@router.get("/full", response_model=FullHealthResponse)
-async def check_health_full() -> FullHealthResponse:
-    """Detailed health probe including hardware sensors and resource utilization."""
+def _build_full_health() -> FullHealthResponse:
     uptime = round(time.time() - _START_TIME, 2)
     hardware = get_hardware_info()
     return FullHealthResponse(
@@ -64,3 +63,10 @@ async def check_health_full() -> FullHealthResponse:
         active_jobs=job_manager.count_active_jobs(),
         hardware=hardware,
     )
+
+
+@router.get("/full", response_model=FullHealthResponse)
+async def check_health_full() -> FullHealthResponse:
+    """Detailed health probe including hardware sensors and resource utilization."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _build_full_health)

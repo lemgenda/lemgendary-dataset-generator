@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from utils.shard_offsets import OFFSETS_FILENAME
 __all__ = [
     "DatasetFileStats",
     "calculate_dataset_file_stats",
+    "count_jsonl_samples",
     "extract_jsonl_provenance_counts",
     "extract_manifold_provenance_counts",
     "jsonl_files",
@@ -277,20 +279,65 @@ def _provenance_label(doc: str) -> str:
     return _DEFAULT_PROVENANCE
 
 
-def extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
-    """Parse JSONL datasets and return exact sample count per SSOT provenance source."""
+_JSONL_LOCK = threading.Lock()
+_JSONL_CACHE: dict[
+    str, tuple[tuple[tuple[str, int, int], ...], float, tuple[int, dict[str, int]]]
+] = {}
+_JSONL_CACHE_TTL_S = 600.0
+
+
+def _jsonl_signature(files: list[Path]) -> tuple[tuple[str, int, int], ...]:
+    sig: list[tuple[str, int, int]] = []
+    for jf in sorted(files):
+        try:
+            st = jf.stat()
+            sig.append((jf.name, st.st_mtime_ns, st.st_size))
+        except OSError as exc:
+            logger.debug("Could not stat JSONL file %s: %s", jf, exc)
+    return tuple(sig)
+
+
+def _scan_jsonl_cached(manifold_dir: Path) -> tuple[int, dict[str, int]]:
+    """Compute (total_lines, provenance_counts) in one pass with mtime/size caching."""
+    files = jsonl_files(manifold_dir)
+    if not files:
+        return 0, {}
+    cache_key = str(manifold_dir.resolve())
+    sig = _jsonl_signature(files)
+    now = time.monotonic()
+    with _JSONL_LOCK:
+        cached = _JSONL_CACHE.get(cache_key)
+        if cached and cached[0] == sig and (now - cached[1] < _JSONL_CACHE_TTL_S):
+            return cached[2]
+
+    total_lines = 0
     counts: Counter[str] = Counter()
-    for jf in jsonl_files(manifold_dir):
+    for jf in files:
         try:
             with open(jf, "r", encoding="utf-8") as f:
                 for line in f:
                     if not line.strip():
                         continue
+                    total_lines += 1
                     item = json.loads(line)
                     counts[_provenance_label(str(item.get("source_doc") or ""))] += 1
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError) as exc:
             logger.debug("Failed extracting provenance from %s: %s", jf, exc)
-    return dict(counts)
+
+    result = (total_lines, dict(counts))
+    with _JSONL_LOCK:
+        _JSONL_CACHE[cache_key] = (sig, time.monotonic(), result)
+    return result
+
+
+def count_jsonl_samples(manifold_dir: Path) -> int:
+    """Return total non-empty sample lines across a manifold's JSONL files (cached)."""
+    return _scan_jsonl_cached(manifold_dir)[0]
+
+
+def extract_jsonl_provenance_counts(manifold_dir: Path) -> dict[str, int]:
+    """Parse JSONL datasets and return exact sample count per SSOT provenance source."""
+    return dict(_scan_jsonl_cached(manifold_dir)[1])
 
 
 def _counts_from_index_data(data: Any) -> dict[str, int]:

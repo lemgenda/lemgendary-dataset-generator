@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,8 @@ async def evaluate_hardlinks_gate(
             detail=f"Directory '{path}' does not exist",
         )
 
-    res = audit_hardlinks(target)
+    loop = asyncio.get_running_loop()
+    res = await loop.run_in_executor(None, audit_hardlinks, target)
     return {
         "path": str(target),
         "total_files": res.total_files,

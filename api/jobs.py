@@ -47,6 +47,7 @@ class JobManager:
         self.db_path = db_path
         self.logs_dir = logs_dir
         self.active_processes: dict[str, subprocess.Popen[str]] = {}
+        self._active_job_ids: set[str] = set()
         self._lock = threading.Lock()
         self._init_storage()
 
@@ -119,6 +120,8 @@ class JobManager:
                     cursor.rowcount,
                 )
             conn.commit()
+        with self._lock:
+            self._active_job_ids.clear()
 
     def create_job(
         self,
@@ -150,6 +153,9 @@ class JobManager:
                 ),
             )
             conn.commit()
+
+        with self._lock:
+            self._active_job_ids.add(job_id)
 
         logger.info("Created job %s (%s)", job_id, job_type.value)
         return JobResponse(
@@ -198,6 +204,8 @@ class JobManager:
                 (JobState.RUNNING.value, claimed.started_at, job_id, JobState.PENDING.value),
             ).rowcount
         if not updated:
+            with self._lock:
+                self._active_job_ids.discard(job_id)
             logger.info("Job %s is no longer pending (cancelled before start); not running it",
                         job_id)
             return None
@@ -293,6 +301,9 @@ class JobManager:
             )
             conn.commit()
 
+        with self._lock:
+            self._active_job_ids.discard(job_id)
+
         logger.info(
             "Job %s finalized with state: %s (exit code: %s)", job_id, final_state.value, exit_code
         )
@@ -321,7 +332,11 @@ class JobManager:
                 ),
             )
             conn.commit()
-            return conn.total_changes > 0
+            changed = conn.total_changes > 0
+        if changed:
+            with self._lock:
+                self._active_job_ids.discard(job_id)
+        return changed
 
     def get_job(self, job_id: str) -> JobResponse | None:
         """Fetch single job record by ID."""
@@ -355,6 +370,11 @@ class JobManager:
         with self._get_connection() as conn:
             rows = conn.execute(query, params).fetchall()
             return [self._row_to_response(r) for r in rows]
+
+    def active_jobs_fast(self) -> int:
+        """Return active (pending or running) job count from memory without SQLite I/O."""
+        with self._lock:
+            return len(self._active_job_ids)
 
     def count_active_jobs(self) -> int:
         """Count jobs currently in running or pending state."""

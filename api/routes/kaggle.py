@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -132,7 +133,8 @@ async def get_kaggle_status() -> dict[str, Any]:
     ``authenticated`` is True when any store holds a token or key; it does not
     prove Kaggle accepts it.
     """
-    sources = credential_sources()
+    loop = asyncio.get_running_loop()
+    sources = await loop.run_in_executor(None, credential_sources)
     return {"authenticated": any(sources.values()), "auth_methods": sources}
 
 @router.get("/registry-datasets", response_model=list[KaggleDatasetRegistryItem])

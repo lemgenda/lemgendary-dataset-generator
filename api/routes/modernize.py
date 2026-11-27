@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, fields
 from typing import Any
@@ -148,10 +149,15 @@ def build_reduce_command(req: ManifoldReduceRequest) -> ServiceInvocation:
 @router.get("/queue", response_model=list[QueueItemResponse])
 async def get_modernization_queue() -> list[QueueItemResponse]:
     """Scan and retrieve real-time modernization status queue across all manifolds."""
+    loop = asyncio.get_running_loop()
     root = _resolve_output_root()
     unified_yaml = paths.UNIFIED_DATA
 
-    items = load_queue_manifest(root, unified_yaml) if unified_yaml.exists() else []
+    items = (
+        await loop.run_in_executor(None, load_queue_manifest, root, unified_yaml)
+        if unified_yaml.exists()
+        else []
+    )
     return [_queue_item_response(it) for it in items]
 
 
@@ -187,7 +193,8 @@ async def run_reduce(req: ManifoldReduceRequest) -> JobResponse:
 @router.post("/regenerate-manifolds")
 async def regenerate_manifolds_documentation() -> dict[str, Any]:
     """Regenerate authoritative manifolds.md matrix from on-disk status and registries."""
-    code = DocService.rebuild_manifolds_md(check_only=False)
+    loop = asyncio.get_running_loop()
+    code = await loop.run_in_executor(None, DocService.rebuild_manifolds_md, False)
     if code != 0:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

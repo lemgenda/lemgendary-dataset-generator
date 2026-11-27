@@ -72,9 +72,7 @@ def _count_dataset_folders(root: Path) -> int:
     return total_datasets
 
 
-@router.get("/state", response_model=GuiStateResponse)
-async def get_gui_state() -> GuiStateResponse:
-    """Aggregated sidecar status snapshot for LemGendary AI Studio Desktop GUI hydration."""
+def _build_gui_state() -> GuiStateResponse:
     total_datasets = _count_dataset_folders(_resolve_output_root())
     total_bytes = 0
     all_presets = presets.list_presets()
@@ -90,6 +88,13 @@ async def get_gui_state() -> GuiStateResponse:
         hardware=get_hardware_info(),
         presets=sorted(all_presets.keys()),
     )
+
+
+@router.get("/state", response_model=GuiStateResponse)
+async def get_gui_state() -> GuiStateResponse:
+    """Aggregated sidecar status snapshot for LemGendary AI Studio Desktop GUI hydration."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _build_gui_state)
 
 
 @router.get("/datasets/with-stats", response_model=DatasetStatsListResponse)
@@ -151,9 +156,7 @@ def _job_telemetry(job: JobResponse) -> ActiveJobTelemetry:
     )
 
 
-@router.get("/jobs/active", response_model=ActiveJobsResponse)
-async def get_active_jobs_telemetry() -> ActiveJobsResponse:
-    """Detailed live execution telemetry for running compiler background jobs."""
+def _build_active_jobs_telemetry() -> ActiveJobsResponse:
     running_jobs = job_manager.list_jobs(state=JobState.RUNNING)
     pending_jobs = job_manager.list_jobs(state=JobState.PENDING)
     telemetry_list: list[ActiveJobTelemetry] = [
@@ -162,9 +165,14 @@ async def get_active_jobs_telemetry() -> ActiveJobsResponse:
     return ActiveJobsResponse(active_jobs=telemetry_list, count=len(telemetry_list))
 
 
-@router.get("/presets", response_model=PresetListResponse)
-async def list_compiler_presets() -> PresetListResponse:
-    """Retrieve all available compiler presets with parameters for GUI configuration."""
+@router.get("/jobs/active", response_model=ActiveJobsResponse)
+async def get_active_jobs_telemetry() -> ActiveJobsResponse:
+    """Detailed live execution telemetry for running compiler background jobs."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _build_active_jobs_telemetry)
+
+
+def _build_preset_list() -> PresetListResponse:
     raw_presets = presets.list_presets()
     converted: dict[str, CompilerPresetModel] = {}
 
@@ -186,6 +194,13 @@ async def list_compiler_presets() -> PresetListResponse:
         )
 
     return PresetListResponse(presets=converted, total=len(converted))
+
+
+@router.get("/presets", response_model=PresetListResponse)
+async def list_compiler_presets() -> PresetListResponse:
+    """Retrieve all available compiler presets with parameters for GUI configuration."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _build_preset_list)
 
 
 @router.post("/quick-compile", response_model=JobResponse)

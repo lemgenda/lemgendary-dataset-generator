@@ -13,9 +13,11 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth import verify_token
+from api.dataset_stats import build_dataset_stats_response
 from api.events import drain_event_queue, manager
 from api.routes.config import router as config_router
 from api.routes.config import validate_router as config_validate_router
+from api.routes.datasets import _resolve_output_root
 from api.routes.datasets import router as datasets_router
 from api.routes.env import router as env_router
 from api.routes.gates import router as gates_router
@@ -35,26 +37,42 @@ from api.security import (
 )
 from core import ecosystem, paths
 from core.cli_args import __version__
+from runtime.environment import bootstrap_runtime
+
+bootstrap_runtime()
 
 logger = logging.getLogger("lemgendary.api.server")
 _PID_FILE = paths.pid_file()
 
 
+async def _warm_catalog_cache() -> None:
+    """Pre-warm the dataset catalog cache in the background after server startup."""
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, build_dataset_stats_response, _resolve_output_root(), True)
+        logger.info("Dataset catalog cache warmed on startup")
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Background catalog cache warm-up failed: %s", exc)
+
+
 @asynccontextmanager
-async def lifespan(app_instance: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app_instance: FastAPI) -> AsyncGenerator[None]:
     """Lifespan context manager controlling event queue draining and server lifecycle."""
     del app_instance
     drain_task = asyncio.create_task(drain_event_queue())
+    warm_task = asyncio.create_task(_warm_catalog_cache())
     _write_pid()
     logger.info("LemGendary Dataset Compiler API server initialized (version: %s)", __version__)
     try:
         yield
     finally:
+        warm_task.cancel()
         drain_task.cancel()
-        try:
-            await drain_task
-        except asyncio.CancelledError:
-            logger.debug("Drain task cancelled on shutdown")
+        for task in (warm_task, drain_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                logger.debug("Background task cancelled on shutdown")
         _remove_pid()
         logger.info("LemGendary Dataset Compiler API server shut down")
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ import yaml
 from api.manifold_scan import (
     DatasetFileStats,
     calculate_dataset_file_stats,
+    count_jsonl_samples,
     extract_jsonl_provenance_counts,
     extract_manifold_provenance_counts,
     jsonl_files,
@@ -37,6 +39,7 @@ __all__ = [
     "DatasetFileStats",
     "build_dataset_stats_response",
     "calculate_dataset_file_stats",
+    "clear_catalog_cache",
     "extract_jsonl_provenance_counts",
     "read_yaml_mapping",
 ]
@@ -153,17 +156,6 @@ def _read_manifold_meta(info_file: Path, reg_info: dict[str, Any]) -> _ManifoldM
 def _read_original_sources(info_file: Path) -> list[Any]:
     sources = read_yaml_mapping(info_file).get("original_sources") or []
     return sources if isinstance(sources, list) else [sources]
-
-
-def _count_jsonl_lines(jsonl_paths: list[Path]) -> int:
-    total = 0
-    for jf in jsonl_paths:
-        try:
-            with open(jf, encoding="utf-8") as jf_in:
-                total += sum(1 for line in jf_in if line.strip())
-        except OSError as exc:
-            logger.debug("Failed counting lines in %s: %s", jf, exc)
-    return total
 
 
 def _build_ref_lookup(refs: list[Any]) -> dict[str, str]:
@@ -289,7 +281,7 @@ def _build_detail(
     jsonl_paths = jsonl_files(entry)
     if meta.sample_count == 0:
         if jsonl_paths:
-            meta.sample_count = _count_jsonl_lines(jsonl_paths)
+            meta.sample_count = count_jsonl_samples(entry)
         else:
             f = stats.formats
             meta.sample_count = f.webp + f.jpg + f.png + f.parquet
@@ -361,45 +353,71 @@ def _build_uncompiled_detail(key: str, reg_info: dict[str, Any]) -> DatasetDetai
     )
 
 
-_RESPONSE_CACHE: dict[tuple[str, bool], tuple[float, DatasetStatsListResponse]] = {}
-_RESPONSE_CACHE_TTL_S = 60.0
+_SCAN_LOCK = threading.Lock()
+_COMPILED_CACHE: dict[str, tuple[tuple[Any, ...], float, list[DatasetDetailStats]]] = {}
+_RESPONSE_CACHE_TTL_S = 300.0
+
+
+def clear_catalog_cache() -> None:
+    """Clear the compiled-manifold response cache (used by tests and index rebuilds)."""
+    with _SCAN_LOCK:
+        _COMPILED_CACHE.clear()
+
+
+def _safe_mtime_ns(path: Path) -> int:
+    try:
+        return path.stat().st_mtime_ns if path.exists() else 0
+    except OSError:
+        return 0
 
 
 def build_dataset_stats_response(
     root: Path,
     include_uncompiled: bool = False,
 ) -> DatasetStatsListResponse:
-    """Enriched catalog of every manifold folder under ``root`` with parallel build and caching."""
-    cache_key = (str(root.resolve()), include_uncompiled)
-    cached = _RESPONSE_CACHE.get(cache_key)
-    if cached and (time.monotonic() - cached[0] < _RESPONSE_CACHE_TTL_S):
-        return cached[1]
-
-    folder_index = _load_folder_index()
-    dataset_stats: list[DatasetDetailStats] = []
+    """Enriched catalog of every manifold folder under ``root`` with single-flight caching."""
+    resolved_root = str(root.resolve())
+    entries: list[Path] = []
     if root.exists():
         entries = [
             entry
             for entry in sorted(root.iterdir(), key=lambda p: p.name.lower())
             if entry.is_dir() and not entry.name.startswith(".")
         ]
-        with ThreadPoolExecutor(max_workers=min(8, len(entries) or 1)) as executor:
-            dataset_stats = list(
-                executor.map(lambda e: _build_detail(e, folder_index), entries)
-            )
+    sig = (
+        _safe_mtime_ns(root),
+        _safe_mtime_ns(_unified_yaml_path()),
+        tuple((entry.name, _safe_mtime_ns(entry)) for entry in entries),
+    )
+
+    with _SCAN_LOCK:
+        cached = _COMPILED_CACHE.get(resolved_root)
+        if cached and cached[0] == sig and (time.monotonic() - cached[1] < _RESPONSE_CACHE_TTL_S):
+            compiled_stats = list(cached[2])
+        else:
+            folder_index = _load_folder_index()
+            compiled_stats = []
+            if entries:
+                with ThreadPoolExecutor(max_workers=min(4, len(entries))) as executor:
+                    compiled_stats = list(
+                        executor.map(lambda e: _build_detail(e, folder_index), entries)
+                    )
+            _COMPILED_CACHE[resolved_root] = (sig, time.monotonic(), list(compiled_stats))
+
+    dataset_stats = list(compiled_stats)
     if include_uncompiled:
+        folder_index = _load_folder_index()
         existing_keys = {d.key for d in dataset_stats}
         for key, reg_info in folder_index.values():
             if key and key not in existing_keys:
                 dataset_stats.append(_build_uncompiled_detail(key, reg_info))
                 existing_keys.add(key)
         dataset_stats.sort(key=lambda d: (d.display_name or d.name).lower())
+
     total_storage_bytes = sum(d.size_bytes for d in dataset_stats)
-    response = DatasetStatsListResponse(
+    return DatasetStatsListResponse(
         datasets=dataset_stats,
         total=len(dataset_stats),
         total_size_bytes=total_storage_bytes,
         total_size_gb=round(total_storage_bytes / _GB, 3),
     )
-    _RESPONSE_CACHE[cache_key] = (time.monotonic(), response)
-    return response

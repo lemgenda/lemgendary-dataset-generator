@@ -24,8 +24,10 @@ from urllib.parse import urlsplit
 import yaml
 from PIL import Image
 
+from api import dataset_stats
 from api.auth import get_or_create_token
-from api.dataset_stats import _build_sources
+from api.dataset_stats import _build_sources, clear_catalog_cache
+from api.jobs import job_manager
 from api.manifold_scan import extract_manifold_provenance_counts
 from api.server import app
 from core.ecosystem import ecosystem
@@ -281,6 +283,35 @@ class TestApiRoutes(unittest.TestCase):
             mod_resp = self.client.get("/api/modernize/queue")
             self.assertEqual(mod_resp.status_code, 200)
             self.assertEqual(mod_resp.json(), [])
+
+    def test_gui_datasets_with_stats_shares_compiled_cache(self) -> None:
+        """Concurrent/sequential include_uncompiled calls reuse the single compiled scan."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            m_dir = tmp_root / "LemGendizedCacheTest"
+            (m_dir / "shards").mkdir(parents=True)
+            (m_dir / "shards" / "shard-00000.data").write_bytes(b"0" * 64)
+            (m_dir / "dataset_info.yaml").write_text(
+                yaml.safe_dump({"task": "restoration", "total_samples": 12}),
+                encoding="utf-8",
+            )
+            clear_catalog_cache()
+            with (
+                patch("api.routes.gui._resolve_output_root", return_value=tmp_root),
+                patch(
+                    "api.dataset_stats.calculate_dataset_file_stats",
+                    wraps=dataset_stats.calculate_dataset_file_stats,
+                ) as spy_scan,
+            ):
+                r1 = self.client.get("/api/gui/datasets/with-stats")
+                r2 = self.client.get("/api/gui/datasets/with-stats?include_uncompiled=true")
+                self.assertEqual(r1.status_code, 200)
+                self.assertEqual(r2.status_code, 200)
+                self.assertEqual(r1.json()["total"], 1)
+                self.assertGreaterEqual(r2.json()["total"], 1)
+                self.assertEqual(spy_scan.call_count, 1)
+
+        self.assertGreaterEqual(job_manager.active_jobs_fast(), 0)
 
 
 class TestAuditManifold(unittest.TestCase):
