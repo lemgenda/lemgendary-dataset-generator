@@ -112,13 +112,16 @@ class TaxonomyEngine:
     def resolve_authority_tier(self, doc_id: str) -> str:
         """Classify the document into an authoritative provenance tier."""
         lower = doc_id.lower()
-        if any(k in lower for k in ("manifest", "canonical", "unified_data", "schema", "spec")):
+        if any(
+            k in lower
+            for k in ("manifest", "canonical", "unified_data", "unified_models", "schema", "spec")
+        ):
             return (
                 self.authority_hierarchy[0]
                 if len(self.authority_hierarchy) > 0
                 else "tier_1_manifest"
             )
-        if any(k in lower for k in ("manual", "cli", "api", "operations", "guide", "handbook")):
+        if any(k in lower for k in ("manual", "cli", "api", "operations", "handbook")):
             return (
                 self.authority_hierarchy[1]
                 if len(self.authority_hierarchy) > 1

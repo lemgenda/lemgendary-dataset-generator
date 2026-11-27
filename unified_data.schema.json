@@ -174,6 +174,31 @@
       "title": "ContainerPolicy",
       "type": "object"
     },
+    "DPOConfig": {
+      "additionalProperties": true,
+      "description": "Configuration for Direct Preference Optimization (DPO/ORPO) pair synthesis.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "negative_strategies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Negative Strategies",
+          "type": "array"
+        },
+        "emit_separate_files": {
+          "default": true,
+          "title": "Emit Separate Files",
+          "type": "boolean"
+        }
+      },
+      "title": "DPOConfig",
+      "type": "object"
+    },
     "DatasetEntry": {
       "additionalProperties": false,
       "description": "A single manifold definition inside `datasets:`.",
@@ -704,6 +729,69 @@
       "title": "DatasetEntry",
       "type": "object"
     },
+    "DomainProfileConfig": {
+      "additionalProperties": true,
+      "description": "Pluggable domain profile for knowledge synthesis, authority rules and taxonomy.",
+      "properties": {
+        "domain_name": {
+          "default": "general",
+          "title": "Domain Name",
+          "type": "string"
+        },
+        "system_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Role"
+        },
+        "authority_hierarchy": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Authority Hierarchy",
+          "type": "array"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "diagnostic_stages": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Diagnostic Stages",
+          "type": "array"
+        },
+        "epistemic_tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Epistemic Tags",
+          "type": "array"
+        }
+      },
+      "title": "DomainProfileConfig",
+      "type": "object"
+    },
     "GlobalConstraints": {
       "additionalProperties": true,
       "description": "Global size bounds applied to every non-forex manifold.",
@@ -943,6 +1031,25 @@
         },
         "quality_invariants": {
           "$ref": "#/$defs/QualityInvariantsConfig"
+        },
+        "domain_profile": {
+          "$ref": "#/$defs/DomainProfileConfig"
+        },
+        "tool_calling": {
+          "$ref": "#/$defs/ToolCallingConfig"
+        },
+        "dpo": {
+          "$ref": "#/$defs/DPOConfig"
+        },
+        "multi_turn": {
+          "default": true,
+          "title": "Multi Turn",
+          "type": "boolean"
+        },
+        "anchor_mix_ratio": {
+          "default": 0.0,
+          "title": "Anchor Mix Ratio",
+          "type": "number"
         }
       },
       "required": [
@@ -1075,6 +1182,39 @@
         "ref"
       ],
       "title": "SourceRef",
+      "type": "object"
+    },
+    "ToolCallingConfig": {
+      "additionalProperties": true,
+      "description": "Specification for structured tool/function calling synthesis.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "format": {
+          "default": "hermes",
+          "title": "Format",
+          "type": "string"
+        },
+        "openapi_specs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Openapi Specs",
+          "type": "array"
+        },
+        "tools": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "title": "ToolCallingConfig",
       "type": "object"
     }
   },

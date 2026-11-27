@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lemgendary-datasets"
-version = "16.9.112"
+version = "16.9.126"
 description = "High-performance datasets and curation pipelines for vision, multimodal, and financial data"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
